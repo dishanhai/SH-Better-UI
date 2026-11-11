@@ -62,6 +62,21 @@ public final class UiOverlayHost {
     private boolean ownerClosing;
     private boolean settleHostFocus;
     private Layer modal;
+    private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease modalLease;
+
+    private void ownModal() {
+        if (modal == null || modalLease != null) return;
+        modalLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeModal(owner, () -> {
+            modalLease = null;
+            if (modal != null) ownerClosed();
+        });
+    }
+
+    private void releaseModal() {
+        var lease = modalLease;
+        modalLease = null;
+        if (lease != null) lease.close();
+    }
     private UiButton pressed;
     private Bubble bubble;
 
@@ -168,6 +183,7 @@ public final class UiOverlayHost {
         boolean wasModal = modal != null;
         if (wasModal) modal.enter.close();
         modal = null;
+        releaseModal();
         bubble = null;
         pressed = null;
         previousFocus = null;
@@ -222,6 +238,7 @@ public final class UiOverlayHost {
             if (layer.source != null && modal.source == layer.source) layer.enter = modal.enter;
         }
         modal = layer;
+        ownModal();
         layer.buttons.get(layer.focused).setFocused(true);
         var policy = layer.enter.target() == 0f && layer.enter.running()
                 ? InterruptibleAnimation.Policy.REVERSE : InterruptibleAnimation.Policy.RETARGET;
@@ -271,6 +288,7 @@ public final class UiOverlayHost {
         GuiEventListener target = restore && sourceAvailable(modal.source) ? modal.source : previousFocus;
         modal.enter.close();
         modal = null;
+        releaseModal();
         pressed = null;
         previousFocus = null;
         settleHostFocus = false;
@@ -300,6 +318,7 @@ public final class UiOverlayHost {
 
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (Minecraft.getInstance().screen != owner) return;
+        ownModal();
         Layer layer = modal;
         boolean morph = layer != null && sourceAvailable(layer.source);
         if (layer != null && layer.closing() && !morph) {

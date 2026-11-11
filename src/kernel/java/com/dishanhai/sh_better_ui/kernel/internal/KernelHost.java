@@ -26,6 +26,9 @@ final class KernelHost implements AutoCloseable {
     private final EnginePublication publication;
     private final EngineLifecycle lifecycle = new EngineLifecycle();
     private final ServiceRegistry registry = new ServiceRegistry();
+    private final RuntimeStatistics metrics = new RuntimeStatistics();
+
+    RuntimeStatistics metrics() { return metrics; }
     private final ScopeLifecycle scopes;
     private final DirtyWork dirty;
     private final CentralScheduler scheduler;
@@ -34,6 +37,7 @@ final class KernelHost implements AutoCloseable {
     private final StateStore states;
     private final CommandBus commands;
     private final EventBus events;
+    private final DynamicCapabilities capabilities;
     private final Map<UiId, MountedModule> mounted = new LinkedHashMap<>();
     private final Map<UiId, ModuleDiscovery.Module> running = new LinkedHashMap<>();
     private Map<UiId, Set<UiId>> required = Map.of();
@@ -59,7 +63,17 @@ final class KernelHost implements AutoCloseable {
         configs = new ConfigCenter(scopes.root(), lifecycle, mutations, this::report);
         states = new StateStore(scopes.root(), mutations, this::report);
         commands = new CommandBus(scheduler, states, dirty, mutations);
-        events = new EventBus(scopes, scheduler, mutations, this::report);
+        events = new EventBus(scopes, scheduler, mutations, this::report, metrics);
+        capabilities = new DynamicCapabilities(scopes, () -> {
+            var snapshot = published;
+            return snapshot == null ? CapabilityIndex.fromModules(running.values()) : snapshot.capabilities();
+        }, this::report);
+    }
+
+    void storage(java.nio.file.Path directory) {
+        assertOwner();
+        if (lifecycle.state() != EngineState.NEW) throw new IllegalStateException("Configure storage before startup");
+        configs.storage(directory);
     }
 
     UILifecycle lifecycle() {
@@ -107,6 +121,24 @@ final class KernelHost implements AutoCloseable {
     private void prepareFrame() {
         dirty.beginFrame();
         scopes.ownership().sweep();
+        if (!capabilities.commit()) return;
+        var available = capabilities.excluding(Set.of());
+        for (var module : List.copyOf(running.values())) {
+            if (!running.containsKey(module.id())) continue;
+            var descriptor = module.descriptor();
+            boolean missing = descriptor.requiredCapabilities().entrySet().stream().anyMatch(entry ->
+                    available.select(entry.getKey(), entry.getValue(), provider -> {
+                        var candidate = running.get(provider);
+                        return candidate != null && !provider.equals(module.id())
+                                && candidate.descriptor().initializationPhase()
+                                .compareTo(descriptor.initializationPhase()) <= 0;
+                    }) == null);
+            if (missing) {
+                var failure = new IllegalStateException("Required UI capability withdrawn from " + module.id());
+                failModule(module.id(), failure);
+                if (lifecycle.state() != EngineState.RUNNING) throw failure;
+            }
+        }
     }
 
     long nowNanos() { return scheduler.nowNanos(); }
@@ -197,6 +229,7 @@ final class KernelHost implements AutoCloseable {
         states.remove(closing);
         commands.remove(closing);
         events.remove(closing);
+        capabilities.remove(closing);
     }
 
     private ModuleAccess access(ScopeLifecycle.Scope scope, ModuleDiscovery.Module module) {
@@ -207,7 +240,7 @@ final class KernelHost implements AutoCloseable {
                                 Supplier<EngineAccess.Published> source) {
         var facets = new EngineAccess.Facets(scheduler.view(access), dirty.view(access),
                 configs.view(access), states.view(access), access, commands.view(access), events.view(access),
-                scopes.ownership().view(access));
+                scopes.ownership().view(access), capabilities.view(access), metrics.view(access));
         var view = new UILifecycle() {
             @Override
             public EngineState state() {
@@ -348,14 +381,30 @@ final class KernelHost implements AutoCloseable {
         releasing = true;
         try {
             var removed = new LinkedHashSet<UiId>();
-            for (UiId module : running.keySet()) {
-                if (module.equals(id) || required.get(module).stream().anyMatch(removed::contains)) {
-                    removed.add(module);
-                    if (!module.equals(id)) {
-                        lifecycle.diagnostic(module + " stopped because it depends on " + id);
+            removed.add(id);
+            boolean changed;
+            do {
+                changed = false;
+                var remaining = capabilities.excluding(removed);
+                for (var module : running.values()) {
+                    if (removed.contains(module.id())) continue;
+                    var descriptor = module.descriptor();
+                    boolean missingModule = descriptor.dependencies().entrySet().stream().anyMatch(entry ->
+                            entry.getValue().required() && removed.contains(entry.getKey()));
+                    boolean missingCapability = descriptor.requiredCapabilities().entrySet().stream().anyMatch(entry ->
+                            remaining.select(entry.getKey(), entry.getValue(), provider -> {
+                                var candidate = running.get(provider);
+                                return candidate != null && !provider.equals(module.id())
+                                        && candidate.descriptor().initializationPhase()
+                                        .compareTo(descriptor.initializationPhase()) <= 0;
+                            }) == null);
+                    if (missingModule || missingCapability) {
+                        removed.add(module.id());
+                        changed = true;
+                        lifecycle.diagnostic(module.id() + " stopped after losing required dependencies of " + id);
                     }
                 }
-            }
+            } while (changed);
             for (UiId module : removed) {
                 scopes.beginClose(mounted.get(module).scope);
                 running.remove(module);
@@ -511,6 +560,7 @@ final class KernelHost implements AutoCloseable {
                 }
             }
             scopes.close(scopes.root());
+            configs.closeStorage();
             scheduler.close();
             mounted.clear();
             running.clear();

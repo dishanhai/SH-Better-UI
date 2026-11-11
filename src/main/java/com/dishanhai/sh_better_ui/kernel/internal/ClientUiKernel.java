@@ -117,10 +117,12 @@ public final class ClientUiKernel implements AutoCloseable {
 
     public static void start(ModuleDescriptor.Platform platform, List<ModFile> modFiles) {
         if (active == null) {
-            var settings = LiveSurfaceConfig.load(Minecraft.getInstance().gameDirectory.toPath().resolve("config"));
+            var config = Minecraft.getInstance().gameDirectory.toPath().resolve("config");
+            var settings = LiveSurfaceConfig.load(config);
             if (!settings.kernelEnabled()) return;
             active = install(platform, EnginePublication.CLIENT, MinecraftThemes.manager(), MinecraftThemes::shutdown,
-                    System::nanoTime, NativeModuleSources.discover(modFiles), settings);
+                    System::nanoTime, NativeModuleSources.discover(modFiles), settings,
+                    config.resolve("sh_better_ui/modules"));
         }
     }
 
@@ -132,6 +134,18 @@ public final class ClientUiKernel implements AutoCloseable {
         client.publishSettings();
         client.host.beginNativeFrame(() -> {}, client::phase);
         client.host.finishNativeFrame();
+    }
+
+    public static OwnershipLease ownNativeGpu(ModuleDescriptor.ResourceKind kind, UiId id, Runnable release) {
+        RenderSystem.assertOnRenderThread();
+        if (kind != ModuleDescriptor.ResourceKind.RENDER_TARGET && kind != ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE) {
+            throw new IllegalArgumentException("Not a GPU resource kind: " + kind);
+        }
+        if (!id.namespace().equals("sh_better_ui")) throw new IllegalArgumentException("Native UI resource namespace");
+        Objects.requireNonNull(release);
+        var client = active;
+        if (client == null || client.host.lifecycle().state() != EngineState.RUNNING) return null;
+        return client.host.rootScope().claim(new ModuleDescriptor.ResourceClaim(kind, id), release::run);
     }
 
     public static boolean hasNativeAuthority() {
@@ -253,6 +267,17 @@ public final class ClientUiKernel implements AutoCloseable {
                 y * window.getGuiScaledHeight() / Math.max(1, window.getScreenHeight()), -1, 0, 0));
     }
 
+    public static OwnershipLease ownNativeModal(Screen owner, Runnable release) {
+        Objects.requireNonNull(release);
+        if (!hasNativeAuthority() || Minecraft.getInstance().screen != owner) return null;
+        var client = active;
+        client.host.assertOwner();
+        var scope = client.screens.activeScope(owner);
+        if (scope == null || !scope.isOpen()) return null;
+        return scope.claim(new ModuleDescriptor.ResourceClaim(ModuleDescriptor.ResourceKind.MODAL_LAYER,
+                UiId.parse("sh_better_ui:native/modal")), release::run);
+    }
+
     public static OwnershipLease claimNativePointer(Screen owner, ModuleContext module, ScopeHandle node,
                                                     UiId claimId, Runnable revoke) {
         if (!hasNativeAuthority()) return null;
@@ -286,15 +311,24 @@ public final class ClientUiKernel implements AutoCloseable {
     public static PreparableReloadListener reloadListener(Runnable apply) {
         return (barrier, manager, preparationProfiler, reloadProfiler, prepareExecutor, reloadExecutor) -> {
             var client = active;
-            long ticket = client == null ? 0 : client.resources.begin();
-            return barrier.wait(Long.valueOf(ticket)).thenAcceptAsync(ready -> {
+            var themes = MinecraftThemes.prepareReload(manager, prepareExecutor);
+            var data = client == null
+                    ? java.util.concurrent.CompletableFuture.<ClientResources.Prepared>completedFuture(null)
+                    : client.resources.prepare(manager, prepareExecutor);
+            record Batch(MinecraftThemes.PreparedReload themes, ClientResources.Prepared data) {}
+            return themes.thenCombine(data, Batch::new).thenCompose(barrier::wait).thenAcceptAsync(ready -> {
                 var running = active;
-                if (client == null) {
+                if (client != null && running != client) return;
+                Runnable install = () -> {
+                    if (!MinecraftThemes.commitReload(ready.themes())) {
+                        throw new IllegalStateException("UI theme reload was superseded or stopped");
+                    }
                     if (running == null) apply.run();
-                    else running.resources.commit(running.resources.begin(), () -> running.reload(apply));
-                } else if (running == client) {
-                    client.resources.commit(ready, () -> client.reload(apply));
-                }
+                    else running.reload(apply);
+                };
+                if (running == null) install.run();
+                else if (client == null) running.resources.commit(running.resources.begin(), install);
+                else running.resources.commit(ready.data(), install);
             }, Minecraft.getInstance());
         };
     }
@@ -443,13 +477,15 @@ public final class ClientUiKernel implements AutoCloseable {
     static ClientUiKernel install(ModuleDescriptor.Platform platform, EnginePublication publication,
                                   ThemeManager manager, AutoCloseable release, LongSupplier clock,
                                   List<ModuleDiscovery.Candidate> extensions) {
-        return install(platform, publication, manager, release, clock, extensions, LiveSurfaceSettings.DEFAULT);
+        return install(platform, publication, manager, release, clock, extensions, LiveSurfaceSettings.DEFAULT, null);
     }
 
     private static ClientUiKernel install(ModuleDescriptor.Platform platform, EnginePublication publication,
                                           ThemeManager manager, AutoCloseable release, LongSupplier clock,
-                                          List<ModuleDiscovery.Candidate> extensions, LiveSurfaceSettings liveSettings) {
+                                          List<ModuleDiscovery.Candidate> extensions, LiveSurfaceSettings liveSettings,
+                                          Path storage) {
         var kernel = new KernelHost(platform, publication, clock, null, SchedulerBudget.DEFAULT);
+        if (storage != null) kernel.storage(storage);
         var module = new BuiltinTheme(kernel, manager, release);
         var animation = new ClientAnimation(kernel);
         var layout = new ClientLayout(kernel);

@@ -121,9 +121,12 @@ final class ClientRender implements RenderService {
         }
         var context = new PassContext(scope);
         backend.push();
-        try {
+        try (var sample = host.metrics().begin(RuntimeMetrics.Category.RENDER)) {
             backend.translate(0, 0, z);
             draw.accept(context);
+        } catch (RuntimeException | LinkageError | AssertionError failure) {
+            host.metrics().failure(RuntimeMetrics.Category.RENDER);
+            throw failure;
         } finally {
             context.live = false;
             backend.pop();

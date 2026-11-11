@@ -12,7 +12,7 @@ final class EngineAccess implements UIEngine {
 
     record Facets(UIScheduler scheduler, UIInvalidation invalidations, UIConfigCenter configs, UIStateStore states,
                   UIPermissionManager permissions, UICommandBus commands, UIEventBus events,
-                  UIResourceOwnership ownership) {}
+                  UIResourceOwnership ownership, CapabilityResolver dynamicCapabilities, RuntimeMetrics metrics) {}
 
     private final UILifecycle lifecycle;
     private final Supplier<Published> source;
@@ -21,17 +21,36 @@ final class EngineAccess implements UIEngine {
     private final CapabilityResolver capabilities = new CapabilityResolver() {
         @Override
         public CapabilityStatus status(CapabilityKey key) {
-            return current().capabilities().status(key);
+            current();
+            return facets.dynamicCapabilities().status(key);
         }
 
         @Override
         public List<CapabilityDescriptor> available() {
-            return current().capabilities().available();
+            current();
+            return facets.dynamicCapabilities().available();
         }
 
         @Override
         public CapabilityResolution resolve(CapabilityRequest request) {
-            return current().capabilities().resolve(request);
+            current();
+            return facets.dynamicCapabilities().resolve(request);
+        }
+
+        @Override public CapabilityResolver at(ScopeHandle scope) {
+            current();
+            return facets.dynamicCapabilities().at(scope);
+        }
+
+        @Override public Subscription provide(ScopeHandle scope, CapabilityKey key, ModuleDescriptor.CapabilityOffer offer) {
+            current();
+            return facets.dynamicCapabilities().provide(scope, key, offer);
+        }
+
+        @Override public Subscription observe(ScopeHandle scope, CapabilityRequest request,
+                                               java.util.function.Consumer<CapabilityChange> listener) {
+            current();
+            return facets.dynamicCapabilities().observe(scope, request, listener);
         }
     };
 
@@ -103,6 +122,11 @@ final class EngineAccess implements UIEngine {
     public UIResourceOwnership ownership() {
         current();
         return facets.ownership();
+    }
+
+    @Override public RuntimeMetrics metrics() {
+        current();
+        return facets.metrics();
     }
 
     private Published current() {

@@ -214,8 +214,7 @@ public final class NativeKernelBenchmark implements UIModule {
                 keys.add(key);
             }
         }
-        int java = engine.platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
-        require(Runtime.version().feature() == java, "Unexpected game Java " + Runtime.version());
+        require(Runtime.version().feature() == 21, "Expected game Java 21, got " + Runtime.version());
         int scale = count("scale", 2, 1, 2);
         require(client.getWindow().getGuiScale() == scale, "Unexpected GUI Scale");
         client.setWindowActive(true);

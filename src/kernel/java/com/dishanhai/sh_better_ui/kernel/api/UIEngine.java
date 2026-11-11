@@ -15,6 +15,10 @@ public interface UIEngine {
 
     UILifecycle lifecycle();
 
+    default RuntimeMetrics metrics() {
+        throw new UnsupportedOperationException("This UIEngine implementation does not expose runtime metrics");
+    }
+
     /** Scheduler access is bound to the module context that issued this view. */
     default UIScheduler scheduler() {
         throw new UnsupportedOperationException("This UIEngine implementation does not expose a scheduler");

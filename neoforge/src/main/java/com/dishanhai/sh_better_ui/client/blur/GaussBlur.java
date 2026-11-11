@@ -170,10 +170,8 @@ public final class GaussBlur {
     public static void release() {
         clear();
         clearTopLayer();
-        if (chain != null) {
-            chain.close();
-            chain = null;
-        }
+        if (chainLease != null) chainLease.close();
+        else destroyChain();
         chainWidth = -1;
         chainHeight = -1;
         failed = false;
@@ -758,8 +756,32 @@ public final class GaussBlur {
         return null;
     }
 
+    private static com.dishanhai.sh_better_ui.kernel.api.OwnershipLease chainLease;
+
+    private static void ownChain() {
+        if (chainLease != null || chain == null) return;
+        chainLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.RENDER_TARGET,
+                com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/gauss_blur/chain"),
+                GaussBlur::destroyChain);
+    }
+
+    private static void destroyChain() {
+        chainLease = null;
+        var post = chain;
+        chain = null;
+        chainWidth = -1;
+        chainHeight = -1;
+        clear();
+        clearTopLayer();
+        if (post != null) post.close();
+    }
+
     private static PostChain ensureChain(Minecraft mc) {
-        if (chain != null) return chain;
+        if (chain != null) {
+            ownChain();
+            return chain;
+        }
         var target = mc.getMainRenderTarget();
         if (target == null || target.width <= 0 || target.height <= 0) return null;
         long now = System.currentTimeMillis();
@@ -777,8 +799,10 @@ public final class GaussBlur {
             chainHeight = target.height;
             failed = false;
             uniformFailed = false;
+            ownChain();
             return chain;
         } catch (Exception e) {
+            if (chain == created) chain = null;
             if (created != null) closeAfterFailure(created, e);
             failed = true;
             failedAtMs = now;

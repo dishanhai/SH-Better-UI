@@ -52,10 +52,11 @@ dependencies {
 }
 
 def java17 = JavaLanguageVersion.of(17)
-def compiler17 = javaToolchains.compilerFor { languageVersion = java17 }
+def java21 = JavaLanguageVersion.of(21)
+def compiler21 = javaToolchains.compilerFor { languageVersion = java21 }
 [kernel, contracts].each { sources ->
     tasks.named(sources.compileJavaTaskName, JavaCompile) {
-        javaCompiler = compiler17
+        javaCompiler = compiler21
         options.release = 17
     }
 }

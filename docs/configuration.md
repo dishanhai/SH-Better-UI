@@ -14,7 +14,7 @@
 | `ENGINE_DEFAULTS` | `ConfigKey.defaultValue()`，由 schema 提供。 |
 | `MODULE_DEFAULTS` | 引擎根，限 schema 擁有者或宿主。 |
 | `RESOURCE_THEME` | 引擎根，需要全域設定與全域主題授權。 |
-| `USER_GLOBAL` | 引擎根，需要全域設定授權。 |
+| `USER_GLOBAL` | 引擎根；自己的已綁定持久化鍵可直接寫入，其他鍵需要全域設定授權。 |
 | `SCREEN` | `SCREEN` 作用域，核對所有者。 |
 | `COMPONENT` | `COMPONENT` 作用域，核對所有者。 |
 | `RUNTIME_OVERRIDE` | 指定的有效作用域。引擎根需要全域設定授權。 |
@@ -51,7 +51,21 @@ final class PageSettings {
 
 - `beginTransaction()` 擷取基線。以 `set`、`clear`、`load` 暫存同一批修改，再呼叫 `commit()`。型別、允許層、權限、作用域與基線版本都會驗證。失敗保留先前發布值，過期基線會拋出 `ConcurrentModificationException`。重新讀取後建立新交易。
 - `observe(scope, key, listener)` 以該作用域的有效值發出 `ValueChange<T>`。多次暫存同一鍵以最終有效值通知。關閉觀察的作用域或模組會移除訂閱。監聽器可排隊或提交下一批，內核診斷循環因果並限制連續通知批次。快照只讀，保留取得時的版本和值。
-- `ConfigTransaction.load(...)` 在 `USER_GLOBAL` 層載入 `Persistence.USER_GLOBAL` 的鍵，逐版應用同型別遷移再驗證。這是 schema 和載入契約。第三方資料的磁碟格式與儲存由自己的持久化接線管理。SH-Better-UI 的 `UIApis.CLIENT_SETTINGS` 鏡像 Loader 的客戶端 TOML 快照，既有設定保存仍透過 `ShBetterUiApi.settings()`。資源包主題沿用主題解析與資源重載。 [原有設定入口](API_REFERENCE.md#全库客户端主题) · [平台相容性](platform-compatibility.md)
+- `ConfigTransaction.load(...)` 在 `USER_GLOBAL` 層載入 `Persistence.USER_GLOBAL` 的鍵，逐版應用同型別遷移再驗證。SH-Better-UI 的 `UIApis.CLIENT_SETTINGS` 繼續鏡像 Loader 的客戶端 TOML 快照，既有設定保存仍透過 `ShBetterUiApi.settings()`。資源包主題沿用主題解析與資源重載。 [原有設定入口](API_REFERENCE.md#全库客户端主题) · [平台相容性](platform-compatibility.md)
+
+### 共用持久化
+
+兩端原生客戶端將儲存目錄接到遊戲實例的 `config/sh_better_ui/modules/`。第三方在 `start` 中先 `define(key)`，再呼叫 `persist(key, codec)`；鍵必須宣告 `Persistence.USER_GLOBAL` 並允許 `USER_GLOBAL` 層。只允許 schema 擁有模組綁定，回傳的訂閱可停止後續保存，不會刪除磁碟資料。模組停止時自動解除綁定。未配置儲存的獨立核心宿主會明確拒絕綁定。
+
+`ConfigCodec` 提供字串、整數、長整數、浮點數、嚴格布林及 enum 工廠，自訂型別用 `ConfigCodec.of(encode, decode)`。編解碼器與 schema 驗證器一樣須為純函式。讀取時核對儲存型別及版本，先解碼，再逐版遷移和驗證；失敗不發布值，也不覆寫原檔。`STARTUP_ONLY` 的載入仍只能在初始化階段執行。
+
+`userGlobal()` 提供交易所需的引擎全域層參照，不授予建立或關閉引擎作用域的權限。模組可以交易修改自己已綁定的持久化鍵，不需申請修改其他模組設定的權限；其他全域鍵仍需 `MODIFY_GLOBAL_CONFIG`。以 `beginTransaction().set(configs.userGlobal(), key, value).commit()` 保存值，以 `clear` 撤回該層覆寫並刪除對應磁碟條目。其他層的暫存覆寫不會被保存。
+
+每個 namespace 保存一個 `.properties` 檔，包含鍵的版本、Java 型別及編碼值。未知鍵保留，以便可選模組暫時移除後重新載入。輸入及輸出各限 1 MiB；編碼與大小驗證先於記憶體交易發布。背景單一寫入器按 namespace 合併尚未寫入的快照，使用同目錄暫存檔、檔案同步及原子替換。原子性以單一 namespace 檔為單位，不宣稱跨檔磁碟交易。
+
+記憶體 `commit` 成功不代表落盤完成。`persistence()` 提供提交／完成序號、寫入中狀態與最近失敗；`flush()` 回傳 `CompletionStage<Void>`，完成才表示其涵蓋的寫入已完成。寫入失敗保留先前檔案並記錄診斷；再次 `flush()` 會以目前最新快照重試失敗 namespace。完成回呼在背景寫入器執行，不在內部鎖內執行；不要在其中直接改 UI，應交回中央調度。引擎停止時等待待保存工作，超時或失敗仍留下診斷，不冒充成功。
+
+GraalVM 21 的獨立程序驗證已完成首次保存 7、重新啟動讀回 7、schema v1→v2 遷移後讀回並保存 8，未授予一般全域修改權限。實際檔案位於 `build/reports/config-persistence-20261110/persist_demo.properties`。另以同一 GraalVM 21 透過 JShell 直接呼叫磁碟層，使用非空目錄阻擋原子替換：`flush` 如預期失敗且完成序號維持 0，移除阻擋後再次 `flush` 成功，提交／完成序號均為 3、失敗狀態清空，未知 properties 鍵仍保留。日誌為 `build/reports/config-disk-boundaries-java21.utf8.log`。該次手寫損壞檔輸入未轉義 properties 的冒號，不能用來證明不完整條目拒絕；後續以 `Properties.store` 產生正確鍵名的獨立重驗已確認拒絕，見 `build/reports/config-disk-incomplete-java21.log` 的 `INCOMPLETE_ENTRY_REJECTED_VERIFIED`。這些直接磁碟層結果不替代完整模組權限與原生客戶端驗收；兩端生產客戶端的完整持久化驗收仍待進行。 [平台相容性](platform-compatibility.md)
 
 ## 狀態與派生資料
 

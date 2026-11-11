@@ -30,7 +30,7 @@
 
 ## 建置
 
-從儲存庫根目錄以 Git Bash 執行。先建置 SH-Better-UI 兩端的依賴 JAR，並安裝 Java 17 和 Java 21 工具鏈。本例以 Forge Gradle 8.8 和 NeoForge 的 Gradle 9.2.1 啟動，分別編譯 Java 17 和 21。Forge 依賴工作區的 `libs/kotlinforforge-4.12.0-all.jar`；NeoForge 開發啟動會使用 Maven 上的 KotlinForForge 5.10.0。依賴尚未下載時需在線執行一次。
+從儲存庫根目錄以 Git Bash 執行。先建置 SH-Better-UI 兩端的依賴 JAR，並將 `JAVA_HOME` 與 Gradle Java 工具鏈設為 `C:/GRAALVM/graalvm-jdk-21.0.6+8.1`。本例以 Forge Gradle 8.8 和 NeoForge 的 Gradle 9.2.1 啟動，兩端均使用 Java 21；Forge 以 `--release 17` 保留舊版位元組碼相容性，NeoForge 輸出 Java 21。Forge 依賴工作區的 `libs/kotlinforforge-4.12.0-all.jar`；NeoForge 開發啟動會使用 Maven 上的 KotlinForForge 5.10.0。依賴尚未下載時需在線執行一次。`build` 不會啟動遊戲；以下客戶端煙測命令是另行授權時的操作說明，本輪不執行。
 
 ```bash
 ./gradle-install/gradle-8.8/bin/gradle -p examples/kernel-extension/forge build --offline --no-daemon --console=plain

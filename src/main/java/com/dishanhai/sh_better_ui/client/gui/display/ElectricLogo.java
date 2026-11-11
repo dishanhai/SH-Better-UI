@@ -35,7 +35,25 @@ public final class ElectricLogo implements AutoCloseable {
     private ElectricLogoShape shape;
     private ElectricLogoShape previousShape;
     private double morphStarted;
+    private static long nextField;
+    private final long fieldIdentity = ++nextField;
     private DynamicTexture field;
+    private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease fieldLease;
+
+    private void ownField() {
+        if (field == null || fieldLease != null) return;
+        fieldLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
+                new com.dishanhai.sh_better_ui.kernel.api.UiId("sh_better_ui", "native/electric_logo/" + fieldIdentity),
+                this::destroyField);
+    }
+
+    private void destroyField() {
+        fieldLease = null;
+        var texture = field;
+        field = null;
+        if (texture != null) texture.close();
+    }
     private int atlasWidth;
     private int atlasHeight;
     private boolean closed;
@@ -181,7 +199,10 @@ public final class ElectricLogo implements AutoCloseable {
     }
 
     private DynamicTexture fieldTexture() {
-        if (field != null) return field;
+        if (field != null) {
+            ownField();
+            return field;
+        }
         DynamicTexture texture = new DynamicTexture(atlasWidth, atlasHeight, true);
         try {
             var image = Objects.requireNonNull(texture.getPixels());
@@ -191,8 +212,10 @@ public final class ElectricLogo implements AutoCloseable {
             texture.bind();
             texture.setFilter(true, false);
             field = texture;
+            ownField();
             return field;
         } catch (RuntimeException | Error failure) {
+            if (field == texture) field = null;
             texture.close();
             throw failure;
         }
@@ -343,10 +366,8 @@ public final class ElectricLogo implements AutoCloseable {
     }
 
     private void releaseField() {
-        if (field != null) {
-            field.close();
-            field = null;
-        }
+        if (fieldLease != null) fieldLease.close();
+        else destroyField();
     }
 
     /** 视图移除时在客户端渲染线程释放生成的 GPU 贴图。可重复调用。 */

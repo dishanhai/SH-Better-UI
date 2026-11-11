@@ -18,16 +18,18 @@ final class EventBus {
 
     private final ScopeLifecycle scopes;
     private final CentralScheduler scheduler;
+    private final RuntimeStatistics metrics;
     private final ScopedSubscriptions<Address, Listener> listeners;
     private final BiConsumer<String, Throwable> failures;
     private int depth;
     private int delivered;
 
     EventBus(ScopeLifecycle scopes, CentralScheduler scheduler, MutationCoordinator mutations,
-             BiConsumer<String, Throwable> failures) {
+             BiConsumer<String, Throwable> failures, RuntimeStatistics metrics) {
         this.scopes = scopes;
         this.scheduler = scheduler;
         this.failures = failures;
+        this.metrics = metrics;
         listeners = new ScopedSubscriptions<>(mutations::assertOutsideValidation, ORDER);
     }
 
@@ -148,9 +150,10 @@ final class EventBus {
             if (entry.isActive()) {
                 Listener listener = entry.listener();
                 if (listener.access().allowsScope(event.target)) {
-                    try {
+                    try (var sample = metrics.begin(RuntimeMetrics.Category.EVENT)) {
                         listener.delivery().invoke(event, current, phase);
                     } catch (RuntimeException | LinkageError | AssertionError failure) {
+                        metrics.failure(RuntimeMetrics.Category.EVENT);
                         failures.accept("UI event " + event.type.id() + " at " + current.id(), failure);
                     }
                 }

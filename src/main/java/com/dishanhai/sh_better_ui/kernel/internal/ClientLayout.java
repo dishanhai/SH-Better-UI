@@ -60,9 +60,11 @@ final class ClientLayout implements LayoutService {
         for (var node : host.dirty().drain(flag)) {
             var work = bindings.get(node);
             if (work == null || !work.isActive()) continue;
-            try {
+            var category = flag == UIDirtyFlag.MEASURE ? RuntimeMetrics.Category.MEASURE : RuntimeMetrics.Category.LAYOUT;
+            try (var sample = host.metrics().begin(category)) {
                 (flag == UIDirtyFlag.MEASURE ? work.measure : work.arrange).run();
             } catch (RuntimeException | LinkageError | AssertionError failure) {
+                host.metrics().failure(category);
                 host.report("UI layout " + node.id() + " at " + flag, failure);
                 work.close();
             }

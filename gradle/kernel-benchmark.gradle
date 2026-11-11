@@ -7,17 +7,18 @@ def benchmark = sourceSets.create('kernelBenchmark') {
 }
 
 def java17 = JavaLanguageVersion.of(17)
+def java21 = JavaLanguageVersion.of(21)
 tasks.named(benchmark.compileJavaTaskName, JavaCompile) {
-    javaCompiler = javaToolchains.compilerFor { languageVersion = java17 }
+    javaCompiler = javaToolchains.compilerFor { languageVersion = java21 }
     options.release = 17
 }
 
 tasks.register('kernelBenchmark', JavaExec) {
     group = 'verification'
-    description = 'Measures shared UI kernel workloads in a fresh Java 17 process.'
+    description = 'Measures shared UI kernel workloads in a fresh Java 21 process.'
     classpath = benchmark.runtimeClasspath
     mainClass = 'com.dishanhai.sh_better_ui.kernel.internal.KernelBenchmark'
-    javaLauncher = javaToolchains.launcherFor { languageVersion = java17 }
+    javaLauncher = javaToolchains.launcherFor { languageVersion = java21 }
     minHeapSize = '512m'
     maxHeapSize = '512m'
     jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'

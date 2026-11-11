@@ -18,7 +18,7 @@ import java.util.TreeMap;
 import java.util.TreeSet;
 import java.util.stream.Collectors;
 
-/** Stable bootstrap order and required dependencies pinned for the lifetime of the plan. */
+/** Stable bootstrap order and the dependencies required during initialization. */
 final class DependencyGraph {
     private DependencyGraph() {
     }

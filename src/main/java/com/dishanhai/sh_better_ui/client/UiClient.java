@@ -253,7 +253,6 @@ public final class UiClient {
 
         @SubscribeEvent
         public static void onRegisterReloadListeners(RegisterClientReloadListenersEvent event) {
-            event.registerReloadListener(MinecraftThemes.reloadListener());
             // 等待資源準備完成，再回主執行緒重建目前畫面需要的 GL 資源。
             event.registerReloadListener(ClientUiKernel.reloadListener(UiClient::reloadCurrentScreen));
         }

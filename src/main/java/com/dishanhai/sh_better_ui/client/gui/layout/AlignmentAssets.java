@@ -44,7 +44,16 @@ public final class AlignmentAssets {
     private long hits;
     private long misses;
 
-    public AlignmentAssets(ResourceManager resources) { this.resources = Objects.requireNonNull(resources); }
+    private final Runnable cacheHit;
+    private final Runnable cacheMiss;
+
+    public AlignmentAssets(ResourceManager resources) { this(resources, () -> {}, () -> {}); }
+
+    public AlignmentAssets(ResourceManager resources, Runnable cacheHit, Runnable cacheMiss) {
+        this.resources = Objects.requireNonNull(resources);
+        this.cacheHit = Objects.requireNonNull(cacheHit);
+        this.cacheMiss = Objects.requireNonNull(cacheMiss);
+    }
 
     /** 登记由图标作者标注的归一化边界与中心，优先于 alpha 扫描。 */
     public void textureMetadata(ResourceLocation id, TextureMetrics metrics) {
@@ -58,15 +67,18 @@ public final class AlignmentAssets {
         TextureMetrics override = authored.get(id);
         if (override != null) {
             hits++;
+            cacheHit.run();
             return Optional.of(override);
         }
         var key = new TextureKey(id, threshold);
         var cached = textures.get(key);
         if (cached != null) {
             hits++;
+            cacheHit.run();
             return cached;
         }
         misses++;
+        cacheMiss.run();
         return textures.computeIfAbsent(key, this::load);
     }
 
@@ -91,7 +103,14 @@ public final class AlignmentAssets {
         try {
             text.accept((index, style, codePoint) -> {
                 var key = new GlyphKey(font, style.getFont(), codePoint, style.isBold(), style.isItalic());
-                Glyph glyph = glyphs.computeIfAbsent(key, glyphAccess::glyph);
+                Glyph glyph = glyphs.get(key);
+                if (glyph == null) {
+                    cacheMiss.run();
+                    glyph = glyphAccess.glyph(key);
+                    glyphs.put(key, glyph);
+                } else {
+                    cacheHit.run();
+                }
                 Rect ink = glyph.ink();
                 measure.add(new Rect(measure.pen + ink.x(), ink.y(), ink.width(), ink.height()));
                 if (style.isStrikethrough()) measure.add(new Rect(measure.pen - 1, 3.5, glyph.advance() + 1, 1));

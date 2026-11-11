@@ -21,7 +21,7 @@ flowchart TD
     Legacy --> Adapter
 ```
 
-保留兩套獨立 Gradle 啟動點。共用 `src/kernel/java` 作為純 Java 17 source set，其中 `com.dishanhai.sh_better_ui.kernel.api` 是公開契約，`kernel.internal` 是實作。兩端透過同一份 `gradle/kernel.gradle` 把輸出接進 main、test、發行包和 sources JAR。核心使用 JDK 17 工具鏈及 `--release 17`，NeoForge 其餘源碼以 21 編譯。雙端獨立的 `kernelTest` 共用 `src/kernelTest/java`。Minecraft 適配在既有的 main 源集，雙端以各自 `UiClient` 或明列的替換類接線。 [平台相容性](platform-compatibility.md)
+保留兩套獨立 Gradle 啟動點。共用 `src/kernel/java` 作為純 Java 17 source set，其中 `com.dishanhai.sh_better_ui.kernel.api` 是公開契約，`kernel.internal` 是實作。兩端透過同一份 `gradle/kernel.gradle` 把輸出接進 main、test、發行包和 sources JAR。核心使用 JDK 21 工具鏈及 `--release 17`，Forge 主程式亦保留 Java 17 位元碼，NeoForge 其餘源碼以 21 編譯。雙端獨立的 `kernelTest` 共用 `src/kernelTest/java`，以 Java 17 執行。Minecraft 適配在既有的 main 源集，雙端以各自 `UiClient` 或明列的替換類接線。 [平台相容性](platform-compatibility.md)
 
 沿用現有 mod ID、Forge 開發／重映射 JAR 與 NeoForge JAR。核心類由 SH-Better-UI 自身封裝一次。消費模組照現行方式聲明依賴。分離 source set 可用 `jdeps` 和 class major 檢查 Java 17 的依賴邊界。正式包以 ABI 比對驗證，原生行為以隔離的開發客戶端驗證。
 
@@ -63,7 +63,7 @@ flowchart TD
 ## 狀態、設定與命令
 
 - `StateKey<T>` 與 `ConfigKey<T>` 含 ID、型別與 schema。以登記的鍵實例取值。狀態依模組或目標作用域保留。派生狀態依輸入圖重算，輸入可為同一所有者的全域或同範圍值。鍵值可用不可變型別，或由 schema 提供純且可並行呼叫的防禦性複製。
-- 設定由低到高為 Engine Defaults、Module Defaults、資源／主題、使用者全域、Screen、Component、Runtime Override。設定鍵宣告預設、驗證器、允許層、可變性、持久化分類、版本、描述與遷移。內建 `CLIENT_SETTINGS` 於 User Global 鏡像既有 TOML 的已發布設定。第三方鍵的磁碟保存由消費者整合。
+- 設定由低到高為 Engine Defaults、Module Defaults、資源／主題、使用者全域、Screen、Component、Runtime Override。設定鍵宣告預設、驗證器、允許層、可變性、持久化分類、版本、描述與遷移。內建 `CLIENT_SETTINGS` 於 User Global 鏡像既有 TOML 的已發布設定。第三方鍵可透過 `UIConfigCenter.persist` 登記編解碼器，由兩端宿主共用的背景持久化管線保存至實例設定目錄，並提供落盤回執和錯誤狀態。
 - `ThemeService.snapshot()` 與既有主題入口共用 `ThemeManager`。`ThemeService.scope(context, node)` 提供該 UI 樹節點的繼承式 token 分支，`configure` 只修改這個分支。節點關閉後會釋放分支。`LayoutService.styles` 可將既有 `ThemeScope` 的批量 `StyleInvalidation` 接到中央量測、佈局和繪製失效。
 - 配置和狀態交易以各自的基線版本驗證型別、權限、所有權和範圍，再一次發布。過期交易或驗證錯誤保留原版本。監聽器回寫可提交下一版本，通知在當前批次完成後送出，依因果鏈與批次上限診斷 A→B→C→A。更新函式、驗證器與命令準備只能暫存意圖。
 - `UICommandBus` 讓具型別的處理器以呼叫者權限準備命令。提交同時驗證狀態版本、失效旗標與後續工作容量。後續工作有獨立的 `TaskHandle`，可設逾時，須無依賴與替換鍵。副作用執行失敗可從回執查看，已發布的狀態版本繼續有效。 [設定、狀態與命令](configuration.md)
@@ -85,7 +85,10 @@ flowchart TD
 - 指標命中採最後已提交的呈現幾何和裁剪範圍。碰撞目標按各物體的擴大命中範圍和繪製順序查索引，每次輸入只為同一碰撞佈局查一次。既有模態與捕獲路由保留優先順序，尚未處理的事件再交由活動 Screen 的內核目標判斷。原生捕獲使用共用槽位，需同時持有捕獲和原版阻斷授權。拖曳和對應的放開優先送給捕獲者。視窗失焦、換頁或拖曳回呼失敗會取消手勢並處理尚未配對的放開。
 - Forge 以單軸 wheel 轉譯成 `(0, dy)`，NeoForge 保留 `(dx, dy)`。原生鍵盤回呼區分 press、repeat 和 release，字元事件保留 UTF-16 單元。指標移動以觀察事件發布。沒有有效範圍或獲准的攔截時，原生事件繼續交給原版控件。原生座標、輸入與旁白介面見 [Forge 1.20.1 Screens](https://docs.minecraftforge.net/en/1.20.1/gui/screens/) 與 [NeoForge 1.21.1 Screens](https://docs.neoforged.net/docs/1.21.1/gui/screens/)。
 - `UIPlatform` 公開平台識別、UI 執行緒判定、連線會話狀態及包含 GUI Scale 與焦點的 viewport 快照。已掛載的樹可訂閱 `ScreenService.VIEWPORT_CHANGED`。平台在同步視口後核對原事件的 Screen 和世代，防止回呼換頁時把舊輸入或繪製轉交新頁面。繪製經 `RenderService.Context` 使用 GUI 座標、色值、層、裁剪、變換與 Z 值，原生 `GuiGraphics` 只在適配層的回呼期間有效。
-- 原生資源重載從 Loader 的準備屏障回到客戶端執行緒。內核驗證世代和執行狀態，再於重載範圍內套用。過期的準備結果捨棄。成功套用後先使受管的 `AlignmentAssets` 快取失效，再更新資源版本和通知仍存活的訂閱者。既有主題解析器繼續負責資源包的主題資料驗證。
+- 原生資源重載使用單一 Loader 監聽器，將主題和 `ResourcesService.registerData` 登記的資料一起在背景準備，完成後穿過同一準備屏障回到客戶端執行緒。資料鍵須屬於登記模組的 namespace，並綁定其擁有的作用域；同作用域同 ID 不可重複，最多 1024 筆。載入器與驗證器必須是可並行呼叫的純函式，回傳不可變且符合鍵型別的非空值；不得操作 GL、畫面或內核。準備或驗證失敗使本次重載失敗，保留先前已發布的資料快照。
+- 內核驗證世代和執行狀態後，在重載範圍內套用主題及既有畫面重載，再使 `AlignmentAssets` 快取失效，最後一次發布全部仍有效資料與資源版本，並通知仍存活的訂閱者。原生套用回呼自身的外部副作用不具回滾保證。過期準備結果捨棄；準備開始後才登記的資料等待下一次重載。`Data.snapshot()` 在第一次成功重載前或關閉後回傳空值，成功後帶資料提交世代；關閉句柄或所屬作用域會撤回該資料。視覺揭示暫存目標、波紋離屏目標／字形圖集、文字遮罩、電弧 Logo、歌詞字形圖集、音樂封面及高斯模糊後處理鏈已接到中央 GPU 租約，既有失效入口透過租約釋放，內核停止時也會清理。原生模態堆疊使用 Screen 作用域的 `MODAL_LAYER` 租約，保留既有焦點和關閉動畫，Screen 關閉或內核停止時強制清理。這些接線已通過雙端 Java 21 編譯，實機模態行為及 GPU 回收尚待驗證。
+
+GraalVM 21 的非遊戲獨立宿主已直接呼叫 NeoForge 成品內的共用 `ClientResources`：確認 prepare 不發布，首次 commit 發布並通知一次；驗證器拒絕時保留舊值與通知數；新準備批次使舊批次過期且不執行其 installer；新批次發布最新值；關閉資料後快照為空。日誌為 `build/reports/resource-data-boundaries-java21.log`。使用直接 executor 與不讀取 ResourceManager 的純資料載入器，沒有建立 Minecraft 客戶端、圖形上下文或執行 GL；因此不涵蓋背景並行、真實資源包、主題回呼、原生 F3+T 和 GPU 釋放驗收。
 
 ## 內建服務與效能
 

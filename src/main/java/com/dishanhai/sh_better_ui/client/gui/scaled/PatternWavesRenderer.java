@@ -39,6 +39,41 @@ final class PatternWavesRenderer extends RenderType {
     private static TextureTarget field;
     private static DynamicTexture atlas;
     private static String atlasCharacters;
+    private static com.dishanhai.sh_better_ui.kernel.api.OwnershipLease fieldLease;
+    private static com.dishanhai.sh_better_ui.kernel.api.OwnershipLease atlasLease;
+
+    private static void ownField() {
+        if (fieldLease != null || field == null) return;
+        fieldLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.RENDER_TARGET,
+                com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/pattern_waves/field"), () -> {
+                    var target = field;
+                    field = null;
+                    fieldLease = null;
+                    if (target != null) target.destroyBuffers();
+                });
+    }
+
+    private static void ownAtlas() {
+        if (atlasLease != null || atlas == null) return;
+        atlasLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
+                com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/pattern_waves/atlas"),
+                PatternWavesRenderer::destroyAtlas);
+    }
+
+    private static void destroyAtlas() {
+        var texture = atlas;
+        atlas = null;
+        atlasCharacters = null;
+        atlasLease = null;
+        if (texture != null) texture.close();
+    }
+
+    private static void releaseAtlas() {
+        if (atlasLease != null) atlasLease.close();
+        else destroyAtlas();
+    }
     private static final RenderType FIELD_TYPE = create("sh_better_ui_pattern_waves_field", DefaultVertexFormat.POSITION_TEX,
             VertexFormat.Mode.QUADS, 256, false, false, CompositeState.builder()
                     .setShaderState(new ShaderStateShard(() -> fieldShader))
@@ -56,8 +91,19 @@ final class PatternWavesRenderer extends RenderType {
     }
 
     static void registerShaders(ResourceProvider resources, BiConsumer<ShaderInstance, Consumer<ShaderInstance>> register) {
-        register(resources, register, "pattern_waves_field", loaded -> fieldShader = loaded);
-        register(resources, register, "pattern_waves", loaded -> markShader = loaded);
+        register(resources, register, "pattern_waves_field", loaded -> {
+            if (fieldLease != null) fieldLease.close();
+            else if (field != null) {
+                var target = field;
+                field = null;
+                target.destroyBuffers();
+            }
+            fieldShader = loaded;
+        });
+        register(resources, register, "pattern_waves", loaded -> {
+            releaseAtlas();
+            markShader = loaded;
+        });
     }
 
     private static void register(ResourceProvider resources, BiConsumer<ShaderInstance, Consumer<ShaderInstance>> register,
@@ -127,6 +173,7 @@ final class PatternWavesRenderer extends RenderType {
             RenderSystem.disableScissor();
             if (field == null) field = new TextureTarget(grid.columns, grid.rows, false, Minecraft.ON_OSX);
             else if (grow) field.resize(Math.max(field.width, grid.columns), Math.max(field.height, grid.rows), Minecraft.ON_OSX);
+            ownField();
             // 波面只写离屏颜色。避免通知光影管线宿主的主目标已被替换。
             GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, field.frameBufferId);
             RenderSystem.viewport(0, 0, grid.columns, grid.rows);
@@ -205,9 +252,10 @@ final class PatternWavesRenderer extends RenderType {
         }
         texture.upload();
         texture.setFilter(true, false);
-        if (atlas != null) atlas.close();
+        releaseAtlas();
         atlas = texture;
         atlasCharacters = characters;
+        ownAtlas();
         return atlas;
     }
 

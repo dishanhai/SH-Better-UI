@@ -50,7 +50,30 @@ public final class SdfAtlas implements AutoCloseable {
     private final List<Page> pages = new ArrayList<>();
     private final int[] scratch = new int[2];
 
+    private static final java.util.concurrent.atomic.AtomicLong NEXT_ATLAS = new java.util.concurrent.atomic.AtomicLong();
+    private final long identity = NEXT_ATLAS.incrementAndGet();
+    private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease lease;
     private Slot whiteSlot;
+
+    private void own() {
+        if (lease != null || pages.isEmpty()) return;
+        lease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
+                new com.dishanhai.sh_better_ui.kernel.api.UiId("sh_better_ui", "native/sdf_atlas/" + identity),
+                this::destroy);
+    }
+
+    private void destroy() {
+        lease = null;
+        var textures = List.copyOf(pages);
+        pages.clear();
+        whiteSlot = null;
+        var textureManager = Minecraft.getInstance().getTextureManager();
+        for (var page : textures) {
+            textureManager.release(page.name);
+            page.close();
+        }
+    }
 
     public SdfAtlas(ResourceLocation namePrefix, int pageSize) {
         this.namePrefix = namePrefix;
@@ -90,6 +113,7 @@ public final class SdfAtlas implements AutoCloseable {
         if (width + GUTTER > pageSize || height + GUTTER > pageSize) {
             return null;
         }
+        own();
         for (Page page : pages) {
             Slot slot = page.tryAdd(width, height, data);
             if (slot != null) {
@@ -122,6 +146,7 @@ public final class SdfAtlas implements AutoCloseable {
         boolean first = pages.isEmpty();
         pages.add(page);
         Minecraft.getInstance().getTextureManager().register(name, page);
+        own();
         if (first) {
             reserveWhiteBlock(page);
         }
@@ -143,13 +168,8 @@ public final class SdfAtlas implements AutoCloseable {
 
     @Override
     public void close() {
-        var textureManager = Minecraft.getInstance().getTextureManager();
-        for (Page page : pages) {
-            textureManager.release(page.name);
-            page.close();
-        }
-        pages.clear();
-        whiteSlot = null;
+        if (lease != null) lease.close();
+        else destroy();
     }
 
     /** 一页图集，支撑为 GL_R8 纹理。 */

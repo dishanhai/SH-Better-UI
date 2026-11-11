@@ -196,6 +196,28 @@ ABI 快照位於 `C:/jtmp/shbui-kernel78-abi.OtMK3SqN`。兩端各 196 個核心
 
 每端六段完整 Java 文件範例均編譯通過，`SHUI` 片段通過 JavaScript 語法檢查。Python 抽取契約 7 項通過。相對 1.0.4 和 Phase 8 的 1.0.5 基線，Forge 正式／dev／raw 和 NeoForge 正式 JAR 均無既有 ABI 破壞。預編譯的舊消費端與實作者在新 JAR 上通過連結探針，核心仍為 Java 17 classfile。Forge 正式 SRG JAR 的生產客戶端啟動、實體 F3+T 和長時間資源壓測另行記錄於 TODO。
 
+### Java 21 待交付快照複核（2026-11-10）
+
+本輪使用 `C:\GRAALVM\graalvm-jdk-21.0.6+8.1`，先執行 `cleanCompileJava cleanProcessResources` 清除原生基準注入的編譯及資源輸出，再執行 `kernelTest test build --continue`。沒有新增或修改測試，亦未排除失敗用例。以下是本輪結果，不覆蓋上方歷史 Phase 10 紀錄：
+
+| 平台 | 核心測試 | 一般測試 | 封裝與建置結果 |
+| --- | --- | --- | --- |
+| Forge 1.20.1／GraalVM 21 | 96 項，95 通過、1 失敗 | 814 項全部通過 | `reobfJar`、`releaseJar`、`verifyLibraryJar` 完成；整體 `build` 因核心測試失敗而未通過 |
+| NeoForge 1.21.1／GraalVM 21 | 96 項，95 通過、1 失敗 | 816 項全部通過 | `jar`、`verifyLibraryJar` 完成；整體 `build` 因核心測試失敗而未通過 |
+
+雙端唯一核心失敗皆為 `UnifiedUIContractTest.contractTestsRunOnJava17WithoutGameOrKotlinClasses` 第 22 行硬性要求 Java 17 執行期，與本輪指定 Java 21 不符；保留測試原狀及失敗紀錄。日誌為 `build/reports/delivery-forge-java21.log`（另有保留非 UTF-8 位元組轉義的 `.utf8.log` 閱讀副本）及 `build/reports/delivery-neoforge-java21-online.log`。NeoForge 首次離線執行因 JUnit 聚合 JAR 未快取而失敗，恢復線上依賴解析後完成上述測試。
+
+兩端正式 JAR 均檢查到 224 個純核心 class，全部為 Java 17 class major 61；未發現重複 ZIP 項目、原生 benchmark／smoke 類或 benchmark mixin 資源混入。這僅驗證封裝與 classfile 邊界，不能替代舊版預編譯消費方連結。此時產出的 SHA-256：
+
+配置檔讀取改為有界 `readNBytes(1 MiB + 1)` 後，雙端再執行 `kernelTest test build --continue --offline`：結果仍為各 96 項核心測試僅 Java 17 執行期斷言失敗，一般測試分別 814／816 項全過，兩端封裝檢查通過。日誌為 `build/reports/delivery-{forge,neoforge}-bounded-read-java21.utf8.log`。更新後正式成品 SHA-256：
+
+- Forge `build/libs/sh_better_ui-1.0.5.jar`：`752e43ad4c612b798e2565e71aa37ebf7edbc920b3be3eda90ebc172db001077`
+- NeoForge `neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.5.jar`：`ebbe834833aa140f4aac0d29d43c7fc7277fdd64a937812f6180c9f7f1a048be`
+
+有界讀取的非遊戲實際呼叫拒絕 1,048,577 bytes 檔案並成功讀取合法條目，見 `build/reports/config-bounded-read-java21.log`。未模擬競爭寫入，僅由實作確認讀取配置本身的陣列上限。
+
+Python 抽取契約本輪執行 7 項，3 通過、4 錯誤；四項均因預期的相鄰 `gt_shanhai` 消費工程檔案不存在，沒有偽造工程或略過檢查。獨立擴展範例的 Forge 與 NeoForge `build --offline` 均已在 GraalVM 21 通過，包括 `verifyExampleJar`；Forge 範例工具鏈已改為 Java 21，仍以 `--release 17` 輸出。日誌為 `build/reports/example-forge-java21.log` 和 `build/reports/example-neoforge-java21.log`。未執行 `runClient`，因此不能將範例編譯視為獨立 JAR 的遊戲內發現驗收。`public-api`、`module-development`、`capability-system`、`configuration`、`scheduler`、`migration-guide` 的六段完整 Java 範例已由 GraalVM 21 的 `javac` 分別對 Forge dev JAR／1.20.1-47.4.16 映射依賴及 NeoForge 正式 JAR／21.1.251 merged 依賴編譯通過，輸出日誌為 `build/doc-compile-java21/{forge,neoforge}.log`。編譯停用註解處理並指定空處理器搜尋路徑，避免與本專案無關的全域快取編譯器插件自動載入；未執行文件中的遊戲操作。歷史 ABI 快照所指的 `C:/jtmp/shbui-kernel78-abi.OtMK3SqN` 目前不存在，舊 ABI 連結仍待本輪重新核驗。使用者已要求不啟動遊戲，因此後續不執行客戶端或專用服啟動；生產實例、實體 F3+T、長時間資源壓測及原生效能驗收保持未驗證，不能以非遊戲建置替代。
+
 ## 共用驗證命令與交付門檻
 
 在 Git Bash 由專案根目錄執行。設定環境與路徑依 [工程審計](kernel-audit.md)。Python 抽取契約使用 Python 3.11 或更新版本讀取 TOML。

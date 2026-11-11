@@ -139,19 +139,30 @@ public final class MinecraftThemes {
         return Map.copyOf(values);
     }
 
+    public record PreparedReload(long ticket, ThemeResourceLoader.Batch batch) {}
+
+    public static CompletableFuture<PreparedReload> prepareReload(ResourceManager resources,
+                                                                 java.util.concurrent.Executor executor) {
+        long ticket = RELOAD.begin();
+        var instance = runtime;
+        var catalog = instance == null ? BUILTIN_CATALOG : instance.manager.tokenCatalog();
+        var resourceLoader = loader;
+        return CompletableFuture.supplyAsync(() -> {
+            var batch = prepare(resources, resourceLoader, catalog);
+            if (batch.error() != null) throw new IllegalArgumentException(batch.error());
+            return new PreparedReload(ticket, batch);
+        }, executor);
+    }
+
+    public static boolean commitReload(PreparedReload prepared) {
+        return !stopped && RELOAD.commit(prepared.ticket(), prepared.batch());
+    }
+
     /** Prepares the pack layer off-thread, then commits after the native preparation barrier. */
     public static PreparableReloadListener reloadListener() {
-        return (barrier, resources, preparationProfiler, reloadProfiler, prepareExecutor, applyExecutor) -> {
-            long ticket = RELOAD.begin();
-            var instance = runtime;
-            var catalog = instance == null ? BUILTIN_CATALOG : instance.manager.tokenCatalog();
-            var resourceLoader = loader;
-            return CompletableFuture.supplyAsync(() -> prepare(resources, resourceLoader, catalog), prepareExecutor)
-                    .thenCompose(barrier::wait)
-                    .thenAcceptAsync(batch -> {
-                        if (!stopped) RELOAD.commit(ticket, batch);
-                    }, Minecraft.getInstance());
-        };
+        return (barrier, resources, preparationProfiler, reloadProfiler, prepareExecutor, applyExecutor) ->
+                prepareReload(resources, prepareExecutor).thenCompose(barrier::wait)
+                        .thenAcceptAsync(MinecraftThemes::commitReload, Minecraft.getInstance());
     }
 
     private static ThemeResourceLoader.Batch prepare(ResourceManager resources, ThemeResourceLoader resourceLoader,

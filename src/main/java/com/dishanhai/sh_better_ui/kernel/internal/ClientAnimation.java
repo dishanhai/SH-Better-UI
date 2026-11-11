@@ -45,9 +45,10 @@ final class ClientAnimation implements AnimationService {
         long nowMs = nowMs();
         for (var track : List.copyOf(active)) {
             if (track.isActive() && !track.paused) {
-                try {
+                try (var sample = host.metrics().begin(RuntimeMetrics.Category.ANIMATION)) {
                     track.sample(nowMs);
                 } catch (RuntimeException | LinkageError | AssertionError failure) {
+                    host.metrics().failure(RuntimeMetrics.Category.ANIMATION);
                     host.report("UI animation " + track.lease.resource().id(), failure);
                     track.close();
                 }

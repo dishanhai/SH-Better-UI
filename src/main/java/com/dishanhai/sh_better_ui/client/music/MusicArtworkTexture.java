@@ -24,6 +24,23 @@ public final class MusicArtworkTexture {
     private Future<?> task;
     private NativeImage pending;
     private Texture current;
+    private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease textureLease;
+
+    private void ownTexture() {
+        if (textureLease != null || current == null) return;
+        textureLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
+                com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/music/current_cover"),
+                this::releaseTexture);
+    }
+
+    private synchronized void releaseTexture() {
+        textureLease = null;
+        var texture = current;
+        current = null;
+        requested = null;
+        if (texture != null) Minecraft.getInstance().getTextureManager().release(texture.id());
+    }
     private long generation;
     private boolean closed;
 
@@ -52,6 +69,7 @@ public final class MusicArtworkTexture {
                 image.close();
             }
         }
+        ownTexture();
         return Optional.ofNullable(current);
     }
 
@@ -83,10 +101,8 @@ public final class MusicArtworkTexture {
     public synchronized void invalidate() {
         requested = null;
         cancelDecode();
-        if (current != null) {
-            Minecraft.getInstance().getTextureManager().release(ID);
-            current = null;
-        }
+        if (textureLease != null) textureLease.close();
+        else releaseTexture();
     }
 
     /** At JVM shutdown the game owns GL cleanup; this only disposes the CPU side. */

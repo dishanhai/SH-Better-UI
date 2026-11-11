@@ -109,7 +109,24 @@ public final class VisualRevealRenderer extends RenderType {
         quad(graphics, TYPE, x, y, width, height, graphics.pose().last().pose());
     }
 
+    private static com.dishanhai.sh_better_ui.kernel.api.OwnershipLease scratchLease;
+
+    private static void ownScratch() {
+        if (scratchLease != null || scratch == null) return;
+        scratchLease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.RENDER_TARGET,
+                com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/visual_reveal/scratch"),
+                VisualRevealRenderer::destroyScratch);
+    }
+
     private static void releaseScratch() {
+        var lease = scratchLease;
+        if (lease != null) lease.close();
+        else destroyScratch();
+    }
+
+    private static void destroyScratch() {
+        scratchLease = null;
         if (scratch == null) return;
         int drawTarget = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
         int readTarget = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
@@ -158,6 +175,7 @@ public final class VisualRevealRenderer extends RenderType {
                 linearScratchFilter();
             }
             // 保留原始纹理分辨率。只更新当前贴图覆盖的区域，其余空间留给较大的贴图复用。
+            ownScratch();
             scratch.bindWrite(false);
             RenderSystem.viewport(0, 0, sourceWidth, sourceHeight);
             horizontalShader.safeGetUniform("Size").set((float) width, (float) height);

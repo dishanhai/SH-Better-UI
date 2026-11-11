@@ -33,6 +33,83 @@ final class ConfigCenter {
         observers = new ScopedSubscriptions<>(mutations::assertOutsideValidation);
     }
 
+    private ConfigDiskStore disk;
+    private final Map<UiId, PersistenceBinding<?>> persistence = new java.util.concurrent.ConcurrentHashMap<>();
+
+    void storage(java.nio.file.Path directory) {
+        root.assertOwner();
+        if (disk != null || !published.keys().isEmpty()) {
+            throw new IllegalStateException("Configure persistence before UI schemas are defined");
+        }
+        disk = new ConfigDiskStore(directory, failures);
+    }
+
+    void closeStorage() {
+        if (disk == null) return;
+        try {
+            disk.close();
+        } catch (RuntimeException failure) {
+            failures.accept("Closing UI configuration storage", failure);
+        }
+    }
+
+    private <T> Subscription persist(ModuleAccess access, ConfigKey<T> key, ConfigCodec<T> codec) {
+        access.assertSideEffectAllowed();
+        var issuer = access.requireIssuer();
+        issuer.assertOwner();
+        var schema = requireKey(published, key);
+        if (schema.owner() != issuer) throw new SecurityException("Only the schema owner can bind persistence: " + key.id());
+        if (key.persistence() != ConfigKey.Persistence.USER_GLOBAL || !key.layers().contains(USER_GLOBAL)) {
+            throw new IllegalArgumentException("Configuration has no User Global persistence: " + key.id());
+        }
+        if (disk == null) throw new IllegalStateException("The host has not configured persistent storage");
+        if (persistence.containsKey(key.id())) throw new IllegalStateException("Persistence already bound: " + key.id());
+        var binding = new PersistenceBinding<>(key, Objects.requireNonNull(codec), access);
+        var stored = disk.read(key.id());
+        if (stored != null && !stored.type().equals(key.type().getName())) {
+            throw new IllegalArgumentException("Persisted configuration type mismatch: " + key.id());
+        }
+        persistence.put(key.id(), binding);
+        try {
+            if (stored != null) {
+                T decoded = mutations.write(() -> key.copy(codec.decode(stored.value())));
+                commit(access, published, List.of(new Edit(new ConfigScope(root, USER_GLOBAL), key,
+                        decoded, stored.version(), false)));
+            }
+            return binding;
+        } catch (RuntimeException | LinkageError | AssertionError failure) {
+            persistence.remove(key.id(), binding);
+            throw failure;
+        }
+    }
+
+    private final class PersistenceBinding<T> implements Subscription {
+        private final ConfigKey<T> key;
+        private final ConfigCodec<T> codec;
+        private final ModuleAccess access;
+
+        private PersistenceBinding(ConfigKey<T> key, ConfigCodec<T> codec, ModuleAccess access) {
+            this.key = key;
+            this.codec = codec;
+            this.access = access;
+        }
+
+        ConfigDiskStore.Stored encode(Object value) {
+            return new ConfigDiskStore.Stored(key.version(), key.type().getName(),
+                    Objects.requireNonNull(codec.encode(key.copy(value)), "Encoded configuration"));
+        }
+
+        @Override public boolean isActive() {
+            return access.defaultScope().isOpen() && persistence.get(key.id()) == this;
+        }
+
+        @Override public void close() {
+            root.assertOwner();
+            access.assertSideEffectAllowed();
+            persistence.remove(key.id(), this);
+        }
+    }
+
     UIConfigCenter view(ModuleAccess access) {
         return new View(access);
     }
@@ -106,8 +183,18 @@ final class ConfigCenter {
                 return base.version();
             }
             var next = new Published(base.version() + 1, base.keys(), Map.copyOf(candidate));
+            var persisted = new LinkedHashMap<UiId, ConfigDiskStore.Stored>();
+            for (var address : addresses) {
+                var binding = persistence.get(address.key());
+                if (address.layer() == USER_GLOBAL && binding != null && binding.isActive()) {
+                    Object value = candidate.get(address);
+                    persisted.put(address.key(), value == null ? null : binding.encode(value));
+                }
+            }
+            var prepared = disk == null || persisted.isEmpty() ? null : disk.prepare(persisted);
             mutations.stage(changed, () -> notify(keys, base, next));
             published = next;
+            if (prepared != null) disk.apply(prepared);
             return next.version();
         });
     }
@@ -135,7 +222,10 @@ final class ConfigCenter {
             }
             case USER_GLOBAL -> {
                 requireKind(target, ScopeKind.ENGINE);
-                access.require(UIPermission.MODIFY_GLOBAL_CONFIG, target);
+                var persisted = persistence.get(key.id());
+                if (binding.owner() != access.requireIssuer() || persisted == null || !persisted.isActive()) {
+                    access.require(UIPermission.MODIFY_GLOBAL_CONFIG, target);
+                }
             }
             case SCREEN -> {
                 requireKind(target, ScopeKind.SCREEN);
@@ -232,6 +322,7 @@ final class ConfigCenter {
         closing.forEach(scope -> generations.add(scope.generation()));
         var keys = new LinkedHashMap<>(base.keys());
         keys.values().removeIf(binding -> generations.contains(binding.owner().generation()));
+        persistence.keySet().removeIf(id -> !keys.containsKey(id));
         var values = new LinkedHashMap<>(base.values());
         values.keySet().removeIf(address -> generations.contains(address.generation()) || !keys.containsKey(address.key()));
         if (keys.size() != base.keys().size() || values.size() != base.values().size()) {
@@ -267,6 +358,26 @@ final class ConfigCenter {
 
         private View(ModuleAccess access) {
             this.access = access;
+        }
+
+        @Override public <T> Subscription persist(ConfigKey<T> key, ConfigCodec<T> codec) {
+            return ConfigCenter.this.persist(access, key, codec);
+        }
+
+        @Override public ConfigScope userGlobal() {
+            access.requireIssuer();
+            return new ConfigScope(root.reference(), USER_GLOBAL);
+        }
+
+        @Override public ConfigPersistenceSnapshot persistence() {
+            access.read(root);
+            return disk == null ? new ConfigPersistenceSnapshot(false, 0, 0, false, "") : disk.snapshot();
+        }
+
+        @Override public java.util.concurrent.CompletionStage<Void> flush() {
+            access.requireIssuer().assertOwner();
+            access.assertSideEffectAllowed();
+            return disk == null ? UIConfigCenter.super.flush() : disk.flush();
         }
 
         @Override

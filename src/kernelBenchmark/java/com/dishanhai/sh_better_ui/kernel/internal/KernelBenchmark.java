@@ -52,10 +52,17 @@ public final class KernelBenchmark {
             var workload = scenario.create().apply(fixture);
             var sampler = new BenchmarkSamples(options.samples);
             var scheduler = fixture.engine.scheduler();
+            int interval = Integer.getInteger("sh_better_ui.benchmark.runtimeSampleEvery", 0);
+            if (interval < 0) throw new IllegalArgumentException("Negative runtime sampling interval");
+            var metrics = new com.dishanhai.sh_better_ui.kernel.api.RuntimeMetrics.Configuration(
+                    interval != 0, Math.max(1, interval), 1024, true);
+            fixture.host.metrics().configure(metrics);
             for (int i = 0; i < options.warmup; i++) {
                 fixture.stepClock();
                 workload.operation().run();
             }
+            fixture.host.metrics().configure(com.dishanhai.sh_better_ui.kernel.api.RuntimeMetrics.Configuration.DISABLED);
+            fixture.host.metrics().configure(metrics);
             long beforeWork = workload.totalWork().getAsLong();
             var before = scheduler.snapshot();
             for (int i = 0; i < options.samples; i++) {
@@ -74,6 +81,25 @@ public final class KernelBenchmark {
                     + (after.succeeded() - before.succeeded()) + "," + (after.cancelled() - before.cancelled()) + ","
                     + (after.deferred() - before.deferred()) + "," + (after.rejected() - before.rejected()) + ","
                     + after.queued() + "\n");
+            writeRuntimeMetrics(options.output.resolve("runtime-" + scenario.name() + ".csv"), fixture);
+        }
+    }
+
+    private static void writeRuntimeMetrics(Path path, Fixture fixture) throws IOException {
+        var snapshot = fixture.engine.metrics().snapshot();
+        try (var writer = Files.newBufferedWriter(path)) {
+            writer.write("category,enabled,sample_every,generation,operations,samples,failures,total_ns,max_ns,"
+                    + "p50_ns,p95_ns,p99_ns,allocation_supported,allocation_samples,allocated_bytes,cache_hits,cache_misses\n");
+            for (var category : com.dishanhai.sh_better_ui.kernel.api.RuntimeMetrics.Category.values()) {
+                var value = snapshot.measurements().get(category);
+                writer.write(category + "," + snapshot.configuration().enabled() + ","
+                        + snapshot.configuration().sampleEvery() + "," + snapshot.generation() + ","
+                        + value.operations() + "," + value.samples() + "," + value.failures() + ","
+                        + value.totalNanos() + "," + value.maximumNanos() + "," + value.p50Nanos() + ","
+                        + value.p95Nanos() + "," + value.p99Nanos() + "," + snapshot.allocationSupported() + ","
+                        + value.allocationSamples() + "," + value.allocatedBytes() + ","
+                        + snapshot.cacheHits() + "," + snapshot.cacheMisses() + "\n");
+            }
         }
     }
 
@@ -106,6 +132,8 @@ public final class KernelBenchmark {
         props.setProperty("benchmark.simulatedStepNs", Long.toString(KernelBenchmarkWorkloads.STEP_NANOS));
         props.setProperty("benchmark.schedulerBudget", KernelBenchmarkWorkloads.BUDGET.toString());
         props.setProperty("benchmark.percentile", "nearest rank, ceil(n*p)");
+        props.setProperty("runtime.metrics.sampleEvery",
+                System.getProperty("sh_better_ui.benchmark.runtimeSampleEvery", "0"));
         props.setProperty("kernel.codeSource", KernelHost.class.getProtectionDomain().getCodeSource().getLocation().toString());
         try (var out = Files.newBufferedWriter(metadata)) {
             props.store(out, "Shared UI kernel benchmark");

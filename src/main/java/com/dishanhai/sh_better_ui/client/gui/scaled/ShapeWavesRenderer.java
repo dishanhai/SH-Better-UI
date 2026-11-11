@@ -51,7 +51,11 @@ final class ShapeWavesRenderer extends RenderType {
     static void registerShaders(ResourceProvider resources, BiConsumer<ShaderInstance, Consumer<ShaderInstance>> register) {
         var id = ResourceLocation.fromNamespaceAndPath(ShBetterUi.MOD_ID, "shape_waves");
         try {
-            register.accept(new ShaderInstance(resources, id, DefaultVertexFormat.POSITION_TEX), loaded -> shader = loaded);
+            register.accept(new ShaderInstance(resources, id, DefaultVertexFormat.POSITION_TEX), loaded -> {
+                java.util.List.copyOf(MASKS.values()).forEach(Mask::close);
+                MASKS.clear();
+                shader = loaded;
+            });
         } catch (IOException exception) {
             shader = null;
             ShBetterUi.LOGGER.warn("Could not load GUI shader {}", id, exception);
@@ -119,8 +123,9 @@ final class ShapeWavesRenderer extends RenderType {
             var entries = MASKS.values().iterator();
             Mask removed = entries.next();
             entries.remove();
-            if (removed.texture != null) removed.texture.close();
+            removed.close();
         }
+        mask.own();
         return mask;
     }
 
@@ -163,7 +168,40 @@ final class ShapeWavesRenderer extends RenderType {
 
     private record MaskKey(String text, String family, int weight) {}
 
-    private record Mask(DynamicTexture texture, float aspect) {
+    private static long nextMask;
+
+    private static final class Mask implements AutoCloseable {
         private static final Mask EMPTY = new Mask(null, 1);
+        private final DynamicTexture texture;
+        private final float aspect;
+        private final long identity = ++nextMask;
+        private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease lease;
+        private boolean closed;
+
+        private Mask(DynamicTexture texture, float aspect) {
+            this.texture = texture;
+            this.aspect = aspect;
+        }
+
+        private void own() {
+            if (texture == null || closed || lease != null) return;
+            lease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
+                    com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
+                    new com.dishanhai.sh_better_ui.kernel.api.UiId("sh_better_ui", "native/shape_waves/mask/" + identity),
+                    this::destroy);
+        }
+
+        private void destroy() {
+            if (closed || texture == null) return;
+            closed = true;
+            lease = null;
+            MASKS.values().removeIf(value -> value == this);
+            texture.close();
+        }
+
+        @Override public void close() {
+            if (lease != null) lease.close();
+            else destroy();
+        }
     }
 }
