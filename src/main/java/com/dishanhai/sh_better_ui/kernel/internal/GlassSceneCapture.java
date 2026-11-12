@@ -33,6 +33,23 @@ final class GlassSceneCapture implements AutoCloseable {
         }
     }
 
+    record MipChain(int levels, long bytes) {
+        static MipChain fit(Size base, long budget) {
+            int width = base.width(), height = base.height();
+            long bytes = base.bytes();
+            int levels = 0;
+            while (width > 1 || height > 1) {
+                width = Math.max(1, width / 2);
+                height = Math.max(1, height / 2);
+                long next = 4L * width * height;
+                if (next > budget - bytes) break;
+                bytes += next;
+                levels++;
+            }
+            return new MipChain(levels, bytes);
+        }
+    }
+
     record Viewport(int x, int y, int width, int height) {
         static Viewport current() {
             try (var stack = MemoryStack.stackPush()) {
@@ -47,7 +64,7 @@ final class GlassSceneCapture implements AutoCloseable {
 
     private record Source(Viewport viewport, int framebuffer) {}
 
-    private record Target(Size size, int framebuffer, int texture) {
+    private record Target(Size size, int framebuffer, int texture, MipChain blur) {
         void release() {
             GL30.glDeleteFramebuffers(framebuffer);
             GL11.glDeleteTextures(texture);
@@ -60,6 +77,8 @@ final class GlassSceneCapture implements AutoCloseable {
     private int maxTexture;
     private boolean inPass;
     private boolean attempted;
+    private boolean blurAllocated;
+    private int blurLevel;
     private boolean closed;
     private Snapshot snapshot;
 
@@ -75,6 +94,7 @@ final class GlassSceneCapture implements AutoCloseable {
     void end() {
         snapshot = null;
         attempted = false;
+        blurLevel = 0;
         inPass = false;
     }
 
@@ -95,6 +115,23 @@ final class GlassSceneCapture implements AutoCloseable {
             report.accept("Liquid Glass scene capture unavailable", failure);
         }
         return snapshot;
+    }
+
+    /** Called with the capture texture bound by GlassDrawState and the host FBO restored. */
+    int prepareBlur() {
+        int levels = target.blur().levels();
+        if (blurLevel > 0 || levels == 0) return blurLevel;
+        if (!blurAllocated) GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, levels);
+        GL30.glGenerateMipmap(GL11.GL_TEXTURE_2D);
+        if (!blurAllocated) {
+            if (GL11.glGetTexLevelParameteri(GL11.GL_TEXTURE_2D, levels, GL11.GL_TEXTURE_WIDTH) == 0) {
+                GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL12.GL_TEXTURE_MAX_LEVEL, 0);
+                return 0;
+            }
+            GL11.glTexParameteri(GL11.GL_TEXTURE_2D, GL11.GL_TEXTURE_MIN_FILTER, GL11.GL_LINEAR_MIPMAP_LINEAR);
+            blurAllocated = true;
+        }
+        return blurLevel = levels;
     }
 
     private Snapshot capture(Viewport view, int draw) {
@@ -169,7 +206,7 @@ final class GlassSceneCapture implements AutoCloseable {
             if (GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE) {
                 throw new IllegalStateException("Incomplete RGBA8 Liquid Glass capture target at " + size);
             }
-            target = new Target(size, framebuffer, texture);
+            target = new Target(size, framebuffer, texture, MipChain.fit(size, BYTE_BUDGET));
             return target;
         } finally {
             GL11.glBindTexture(GL11.GL_TEXTURE_2D, previousTexture);
@@ -184,18 +221,23 @@ final class GlassSceneCapture implements AutoCloseable {
     void reset() {
         snapshot = null;
         attempted = false;
+        blurLevel = 0;
         failedSource = null;
         maxTexture = 0;
         releaseTarget();
     }
 
-    long allocatedBytes() { return target == null ? 0 : target.size().bytes(); }
+    long allocatedBytes() {
+        if (target == null) return 0;
+        return blurAllocated ? target.blur().bytes() : target.size().bytes();
+    }
 
     private void releaseTarget() {
         if (target == null) return;
         RenderSystem.assertOnRenderThread();
         target.release();
         target = null;
+        blurAllocated = false;
     }
 
     @Override public void close() {

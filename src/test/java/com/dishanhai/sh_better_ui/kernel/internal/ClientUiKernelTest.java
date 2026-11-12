@@ -7,24 +7,51 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.DotMatrixProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PatternWavesProfile;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.DynamicThemeSettings;
+import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityStatus;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeKind;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
+import com.dishanhai.sh_better_ui.kernel.api.UIPermission;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
+import com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceSettings;
 import com.dishanhai.sh_better_ui.theme.BuiltinThemes;
 import com.dishanhai.sh_better_ui.theme.ThemeManager;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
 import com.dishanhai.sh_better_ui.theme.transition.TransitionSpec;
 import com.google.gson.JsonObject;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class ClientUiKernelTest {
+    @Test
+    void registersHardwareAndHudServicesWithNativeCapabilities() throws Exception {
+        try (var fixture = new ClientServiceFixture(Set.of(), Set.of(UIPermission.REGISTER_RENDER_PASS))) {
+            var engine = fixture.module.engine();
+            assertEquals(CapabilityStatus.AVAILABLE, engine.capabilities().status(UIApis.COMPUTER_STATUS_READ));
+            assertEquals(CapabilityStatus.AVAILABLE, engine.capabilities().status(UIApis.NATIVE_HUD));
+            assertSame(com.dishanhai.sh_better_ui.client.system.ClientComputerStatus.INSTANCE,
+                    engine.require(UIApis.COMPUTER_STATUS));
+            var empty = engine.require(UIApis.COMPUTER_STATUS).read(Set.of());
+            assertTrue(empty.memory().isEmpty() && empty.cpu().isEmpty() && empty.gpu().isEmpty() && empty.disk().isEmpty());
+            var handle = engine.require(UIApis.HUD).mount(fixture.module, frame -> fail("A CPU-only frame cannot draw HUDs"));
+            fixture.client.runFrame();
+            handle.close();
+            handle.close();
+        }
+        try (var fixture = new ClientServiceFixture(Set.of(), Set.of())) {
+            var hud = fixture.module.engine().require(UIApis.HUD);
+            assertThrows(SecurityException.class, () -> hud.mount(fixture.module, frame -> {}));
+        }
+    }
+
     @Test
     void scopedThemeOverridesInheritAndExpireWithTheirKernelNodes() {
         try (var fixture = new ClientServiceFixture(Set.of(), Set.of())) {
@@ -48,7 +75,7 @@ class ClientUiKernelTest {
 
     @Test
     void builtInServiceUsesTheOriginalManagerAndExpiresWithTheHost() {
-        for (var platform : ModuleDescriptor.Platform.values()) {
+        for (var platform : List.of(ModuleDescriptor.Platform.FORGE_1_20_1, ModuleDescriptor.Platform.NEOFORGE_1_21_1)) {
             var publication = new EnginePublication();
             var manager = new ThemeManager();
             var host = ClientUiKernel.install(platform, publication, manager, manager::close);
@@ -62,6 +89,15 @@ class ClientUiKernelTest {
                 manager.transitionTo(BuiltinThemes.LIGHT_ID, TransitionSpec.immediate());
                 assertSame(manager.snapshot(), service.snapshot());
                 assertEquals(BuiltinThemes.LIGHT_ID, service.snapshot().themeIds().get(0));
+                assertTrue(service.availableThemes().contains(BuiltinThemes.LIQUID_GLASS));
+                manager.setTheme(BuiltinThemes.LIQUID_GLASS);
+                assertEquals(List.of(BuiltinThemes.LIQUID_GLASS), service.snapshot().themeIds());
+                assertTrue(service.snapshot().resolve(ThemeTokens.LIQUID_GLASS));
+                assertEquals(12f, service.snapshot().resolve(ThemeTokens.BLUR));
+                assertTrue(service.availableThemes().contains(BuiltinThemes.HUD_GLASS));
+                manager.setTheme(BuiltinThemes.HUD_GLASS);
+                assertEquals(List.of(BuiltinThemes.HUD_GLASS), service.snapshot().themeIds());
+                assertTrue(service.snapshot().resolve(ThemeTokens.HUD_GLASS));
                 host.runFrame();
                 assertEquals(1, engine.scheduler().snapshot().frame());
             }
@@ -115,16 +151,17 @@ class ClientUiKernelTest {
     }
 
     @Test
-    void mirrorsTheCommittedSettingsAndOwnsThePageThemeLifetime() {
+    void importsLegacySettingsAndOwnsThePageThemeLifetime() {
         var previous = ClientUiSettings.current();
         var next = previous.withDynamicTheme(new DynamicThemeSettings("example:theme", 125, true));
+        ClientUiSettings.update(next);
         var publication = new EnginePublication();
         var manager = new ThemeManager();
         try (var host = ClientUiKernel.install(ModuleDescriptor.Platform.FORGE_1_20_1, publication, manager, manager::close)) {
             var configs = publication.current().configs();
-            assertEquals(previous, configs.get(UIApis.CLIENT_SETTINGS));
+            assertEquals(next, configs.get(UIApis.CLIENT_SETTINGS));
             assertThrows(SecurityException.class, () -> configs.set(UIApis.CLIENT_SETTINGS, next));
-            ClientUiSettings.update(next);
+            ClientUiSettings.update(previous);
             host.runFrame();
             assertEquals(next, configs.get(UIApis.CLIENT_SETTINGS));
             var page = manager.global().child("screen");
@@ -135,6 +172,114 @@ class ClientUiKernelTest {
             assertNotEquals(lifetime.generation(), remount.generation());
         } finally {
             ClientUiSettings.update(previous);
+        }
+    }
+
+    @Test
+    void userGlobalSettingsDriveCompatibilityReadersAndSurviveRestart(@TempDir Path storage) {
+        var legacy = ClientUiSettings.current();
+        var imported = legacy.withDisplay(true, false, false);
+        var effects = new JsonObject();
+        effects.addProperty("raysOrigin", "TOP_RIGHT");
+        var theme = imported.theme().withMode(ThemeSettings.Mode.CUSTOM).withBackgroundEffect("lightRays");
+        var saved = imported.withTheme(theme.withEffects(theme.effects().withGroup("lightRays", effects)))
+                .withDynamicTheme(new DynamicThemeSettings(BuiltinThemes.NETHER, 125, true));
+        var publication = EnginePublication.CLIENT;
+        try {
+            ClientUiSettings.update(imported);
+            var manager = new ThemeManager();
+            try (var client = ClientUiKernel.install(ModuleDescriptor.Platform.FORGE_1_20_1, publication, manager,
+                    manager::close, System::nanoTime, List.of(), LiveSurfaceSettings.DEFAULT, storage)) {
+                assertEquals(imported, ClientUiSettings.current());
+                assertTrue(client.saveSettings(saved));
+                assertEquals(saved, publication.current().configs().get(UIApis.CLIENT_SETTINGS));
+                assertEquals(saved, ShBetterUiApi.settings().current());
+                ClientUiSettings.update(legacy);
+                client.runFrame();
+                assertEquals(saved, ClientUiSettings.current());
+            }
+
+            var reopened = new ThemeManager();
+            try (var client = ClientUiKernel.install(ModuleDescriptor.Platform.FORGE_1_20_1, publication, reopened,
+                    reopened::close, System::nanoTime, List.of(), LiveSurfaceSettings.DEFAULT, storage)) {
+                assertEquals(saved, publication.current().configs().get(UIApis.CLIENT_SETTINGS));
+                assertEquals(saved, ClientUiSettings.current());
+            }
+        } finally {
+            ClientUiSettings.update(legacy);
+        }
+    }
+
+    @Test
+    void kernelSettingsSavedBeforeBackgroundSelectionStillLoad() {
+        var original = ClientUiSettings.DEFAULT;
+        var encoded = com.google.gson.JsonParser.parseString(ClientSettingsCodec.CODEC.encode(original)).getAsJsonObject();
+        encoded.getAsJsonObject("theme").remove("backgroundEffect");
+        encoded.getAsJsonObject("theme").remove("hudBackgroundEffect");
+        encoded.getAsJsonObject("theme").remove("hudBlurRadius");
+        assertEquals(original, ClientSettingsCodec.CODEC.decode(encoded.toString()));
+    }
+
+    @Test
+    void corruptSettingsKeepTheirOriginalBytesAndCanBeSavedAgain(@TempDir Path directory) throws Exception {
+        String key = UIApis.CLIENT_SETTINGS.id().toString().replace(":", "\\:");
+        String type = ClientUiSettings.class.getName();
+        String validSettings = ClientSettingsCodec.CODEC.encode(ClientUiSettings.DEFAULT);
+        List<String> invalid = List.of(key + ".version=1\n", "broken=\\uXXZZ\n",
+                key + ".version=2147483647\n" + key + ".type=" + type + "\n" + key + ".value=" + validSettings + "\n",
+                key + ".version=1\n" + key + ".type=" + type + "\n" + key + ".value={\n");
+        var previous = ClientUiSettings.current();
+        var imported = ClientUiSettings.DEFAULT.withDisplay(true, false, false);
+        var saved = imported.withDynamicTheme(new DynamicThemeSettings(BuiltinThemes.NETHER, 125, true));
+        try {
+            ClientUiSettings.update(imported);
+            for (int index = 0; index < invalid.size(); index++) {
+                Path storage = Files.createDirectory(directory.resolve("case-" + index));
+                Path file = storage.resolve(UIApis.CLIENT_SETTINGS.id().namespace() + ".properties");
+                String original = invalid.get(index);
+                Files.writeString(file, original);
+                var publication = new EnginePublication();
+                var manager = new ThemeManager();
+                try (var client = ClientUiKernel.install(ModuleDescriptor.Platform.FORGE_1_20_1, publication, manager,
+                        manager::close, System::nanoTime, List.of(), LiveSurfaceSettings.DEFAULT, storage)) {
+                    assertEquals(imported, publication.current().configs().get(UIApis.CLIENT_SETTINGS));
+                    assertTrue(client.saveSettings(saved));
+                }
+                try (var files = Files.list(storage)) {
+                    var backups = files.filter(path -> path.toString().endsWith(".properties.corrupt")).toList();
+                    assertEquals(1, backups.size());
+                    assertEquals(original, Files.readString(backups.get(0)));
+                }
+                var reopened = new ThemeManager();
+                try (var client = ClientUiKernel.install(ModuleDescriptor.Platform.FORGE_1_20_1, publication, reopened,
+                        reopened::close, System::nanoTime, List.of(), LiveSurfaceSettings.DEFAULT, storage)) {
+                    assertEquals(saved, publication.current().configs().get(UIApis.CLIENT_SETTINGS));
+                }
+            }
+        } finally {
+            ClientUiSettings.update(previous);
+        }
+    }
+
+    @Test
+    void liquidGlassModeAndDynamicThemeRoundTripTogether() {
+        for (var mode : List.of(ThemeSettings.Mode.LIQUID_GLASS, ThemeSettings.Mode.HUD_GLASS)) {
+            var settings = ClientUiSettings.DEFAULT.withTheme(ThemeSettings.DEFAULT.withMode(mode)
+                            .withBackgroundEffect("lightRays").withHudBackgroundEffect("dotMatrix").withHudBlurRadius(0))
+                    .withDynamicTheme(new DynamicThemeSettings(BuiltinThemes.END, 125, true));
+            assertEquals(settings, ClientSettingsCodec.CODEC.decode(ClientSettingsCodec.CODEC.encode(settings)));
+        }
+    }
+
+    @Test
+    void permittedModulesCanWriteUserGlobalSettingsWithoutFramePollingOverwritingThem() {
+        try (var fixture = new ClientServiceFixture(Set.of(), Set.of(UIPermission.MODIFY_GLOBAL_CONFIG))) {
+            var configs = fixture.module.engine().configs();
+            var next = configs.get(UIApis.CLIENT_SETTINGS).withDynamicTheme(
+                    new DynamicThemeSettings(BuiltinThemes.END, 0, false));
+            configs.beginTransaction().set(configs.userGlobal(), UIApis.CLIENT_SETTINGS, next).commit();
+            fixture.client.runFrame();
+            assertEquals(next, fixture.publication.current().configs().get(UIApis.CLIENT_SETTINGS));
         }
     }
 }

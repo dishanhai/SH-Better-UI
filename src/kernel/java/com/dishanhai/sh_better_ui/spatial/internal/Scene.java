@@ -22,7 +22,14 @@ public final class Scene implements SpatialScene {
 
     public record Paint(Shape shape, ShadowType type, double x, double y, double blur, double spread,
                         int color, boolean soft, boolean clipNode, float highlight, float border, float depth,
-                        float roughness, float lightX, float lightY) {}
+                        float roughness, float lightX, float lightY, ShadowPath shadowPath) {
+        public Paint(Shape shape, ShadowType type, double x, double y, double blur, double spread,
+                     int color, boolean soft, boolean clipNode, float highlight, float border, float depth,
+                     float roughness, float lightX, float lightY) {
+            this(shape, type, x, y, blur, spread, color, soft, clipNode, highlight, border, depth,
+                    roughness, lightX, lightY, null);
+        }
+    }
 
     @FunctionalInterface
     public interface Sink {
@@ -52,6 +59,7 @@ public final class Scene implements SpatialScene {
     private double width, height, guiScale;
     private Clip viewport;
     private boolean sdf = true;
+    private boolean pathSdf = true;
     private Profile profile = new Profile(0, 0, 0, 0, 0, 0, 0, Quality.HIGH);
     private Quality automatic = Quality.HIGH;
     private double smoothedCpu;
@@ -198,14 +206,21 @@ public final class Scene implements SpatialScene {
     }
 
     public void draw(double width, double height, double guiScale, boolean sdf, Sink sink, boolean content) {
+        draw(width, height, guiScale, sdf, sdf, sink, content);
+    }
+
+    public void draw(double width, double height, double guiScale, boolean sdf, boolean pathSdf,
+                     Sink sink, boolean content) {
         check();
         if (!Double.isFinite(width) || width < 0 || !Double.isFinite(height) || height < 0
                 || !Double.isFinite(guiScale) || guiScale <= 0) throw new IllegalArgumentException("Invalid spatial viewport");
-        if (viewport == null || this.width != width || this.height != height || this.guiScale != guiScale || this.sdf != sdf) {
+        if (viewport == null || this.width != width || this.height != height || this.guiScale != guiScale
+                || this.sdf != sdf || this.pathSdf != pathSdf) {
             this.width = width;
             this.height = height;
             this.guiScale = guiScale;
             this.sdf = sdf;
+            this.pathSdf = pathSdf;
             viewport = new Clip(Matrix.IDENTITY, width, height);
             invalidatePaint();
         }
@@ -286,8 +301,8 @@ public final class Scene implements SpatialScene {
         var shape = node.shape;
         double alpha = node.alpha();
         var material = node.material == null ? theme().material() : node.material;
-        var layers = settings.shadows() && sdf ? (node.shadows == null ? theme().shadows(node.elevation()) : node.shadows)
-                : List.<Shadow>of();
+        var layers = settings.shadows() && sdf && (node.shadowPath == null || pathSdf)
+                ? (node.shadows == null ? theme().shadows(node.elevation()) : node.shadows) : List.<Shadow>of();
         var list = new ArrayList<Draw>(Math.min(layers.size(), quality.shadowLimit()) + 1);
         var center = matrix.point(shape.width() / 2, shape.height() / 2);
         var light = SpatialLighting.sample(lightIndex, center.x(), center.y(), node.elevation(), node.inverse,
@@ -336,13 +351,20 @@ public final class Scene implements SpatialScene {
             dy = -light.directionY() * distance;
         }
         double pad = (soft ? 3 : 1) * layer.blur() + Math.max(0, layer.spread()) + 2;
-        double padX = shape.kind() == Kind.ELLIPSE ? pad * shape.width() / Math.min(shape.width(), shape.height()) : pad;
-        double padY = shape.kind() == Kind.ELLIPSE ? pad * shape.height() / Math.min(shape.width(), shape.height()) : pad;
-        var mesh = clipNode ? quad(matrix, -2, -2, shape.width() + 2, shape.height() + 2)
-                : quad(matrix, dx - padX, dy - padY, dx + shape.width() + padX, dy + shape.height() + padY);
+        var path = node.shadowPath;
+        var bounds = path == null ? null : path.bounds();
+        double left = bounds == null ? 0 : bounds.left();
+        double top = bounds == null ? 0 : bounds.top();
+        double right = bounds == null ? shape.width() : bounds.right();
+        double bottom = bounds == null ? shape.height() : bounds.bottom();
+        boolean ellipse = path == null && shape.kind() == Kind.ELLIPSE;
+        double padX = ellipse ? pad * shape.width() / Math.min(shape.width(), shape.height()) : pad;
+        double padY = ellipse ? pad * shape.height() / Math.min(shape.width(), shape.height()) : pad;
+        var mesh = clipNode ? quad(matrix, left - 2, top - 2, right + 2, bottom + 2)
+                : quad(matrix, dx + left - padX, dy + top - padY, dx + right + padX, dy + bottom + padY);
         mesh = clipped(node, mesh, inner ? ShadowClip.PARENT : node.shadowClip);
         if (mesh.size() >= 3) out.add(new Draw(new Paint(shape, layer.type(), dx, dy,
-                layer.blur(), layer.spread(), color, soft, clipNode, 0, 0, 0, 1, 0, 0), mesh, null));
+                layer.blur(), layer.spread(), color, soft, clipNode, 0, 0, 0, 1, 0, 0, path), mesh, null));
     }
 
     private List<Vertex> clipped(Element node, List<Vertex> mesh, ShadowClip policy) {
@@ -427,6 +449,7 @@ public final class Scene implements SpatialScene {
         private Elevation token = Elevation.SURFACE;
         private Material material;
         private List<Shadow> shadows;
+        private ShadowPath shadowPath;
         private List<Draw> draws;
         private ShadowClip shadowClip = ShadowClip.PARENT;
         private HitTransparency hitTransparency = HitTransparency.SHAPE;
@@ -549,6 +572,12 @@ public final class Scene implements SpatialScene {
             checkNode();
             if (next != null && next.size() > 8) throw new IllegalArgumentException("Too many shadow layers");
             shadows = next == null ? null : List.copyOf(next);
+            draws = null;
+        }
+        @Override public void shadowPath(ShadowPath next) {
+            checkNode();
+            if (Objects.equals(shadowPath, next)) return;
+            shadowPath = next;
             draws = null;
         }
         @Override public void shadowClip(ShadowClip next) { checkNode(); shadowClip = Objects.requireNonNull(next); draws = null; }

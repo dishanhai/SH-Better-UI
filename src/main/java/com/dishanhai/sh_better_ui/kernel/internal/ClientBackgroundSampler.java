@@ -49,6 +49,10 @@ final class ClientBackgroundSampler implements AutoCloseable {
     }
 
     BackgroundSample request(UiId id, PixelRegion roi, Stage stage) {
+        return request(id, roi, stage, null);
+    }
+
+    BackgroundSample request(UiId id, PixelRegion roi, Stage stage, Runnable beforeCapture) {
         requireOpen(); Objects.requireNonNull(id); Objects.requireNonNull(roi); Objects.requireNonNull(stage);
         Entry entry = entries.get(id);
         if (entry == null || !entry.region.equals(roi) || entry.stage != stage || entry.version != version) {
@@ -62,6 +66,7 @@ final class ClientBackgroundSampler implements AutoCloseable {
             Slot free = freeSlot();
             if (free != null) {
                 try {
+                    if (beforeCapture != null) beforeCapture.run();
                     enqueue(free, id, entry);
                 } catch (RuntimeException | LinkageError failure) {
                     failed = true;

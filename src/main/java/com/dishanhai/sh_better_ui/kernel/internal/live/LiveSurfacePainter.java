@@ -49,15 +49,20 @@ public final class LiveSurfacePainter {
     }
 
     public record Layer(SurfaceGeometry geometry, List<SurfaceTransition.Layer<Content>> contentMix,
-                        SurfaceTransition.Target<Content> input, UiId focusedControl, UiId hoveredControl, UiId pressedControl,
-                        Double seekPreview) {
+                        Object targetContentKey, SurfaceTransition.Target<Content> input, UiId focusedControl,
+                        UiId hoveredControl, UiId pressedControl, Double seekPreview) {
         public Layer { contentMix = List.copyOf(contentMix); }
+
+        boolean isTargetContent(SurfaceTransition.Layer<Content> painted) {
+            return targetContentKey != null && targetContentKey.equals(painted.contentKey());
+        }
     }
 
     public record Measured(float width, float height, float minWidth, float minHeight) {}
 
-    public record Painted(List<Control> primaryControls, List<Control> secondaryControls) {
-        private static final Painted EMPTY = new Painted(List.of(), List.of());
+    public record Painted(List<Control> primaryControls, List<Control> secondaryControls,
+                          boolean primaryTargetPainted, boolean secondaryTargetPainted) {
+        private static final Painted EMPTY = new Painted(List.of(), List.of(), false, false);
     }
 
     public record Control(UiId id, Text label, boolean seek, int x, int y, int width, int height) {
@@ -123,7 +128,7 @@ public final class LiveSurfacePainter {
             fallback(graphics, font, second, viewport, secondaryTokens, tokens, still);
             fallback(graphics, font, first, viewport, primaryTokens, tokens, still);
         }
-        return new Painted(first.controls, second.controls);
+        return new Painted(first.controls, second.controls, first.targetPainted, second.targetPainted);
     }
 
     private SpatialScene.Node node(String name, int z) {
@@ -193,11 +198,12 @@ public final class LiveSurfacePainter {
             var bounds = innerBounds(geometry, appearance.dimensions().forPresentation(mix.presentation()).padding()).intersect(viewport);
             if (bounds.width() == 0 || bounds.height() == 0) continue;
             boolean interactive = acceptsInput && mix.presentation() == layer.input().presentation()
-                    && mix.content().equals(layer.input().content());
+                    && layer.isTargetContent(mix);
             graphics.enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom());
             try {
                 List<Control> controls = paintContent(graphics, font, mix.content(), mix.presentation(), bounds,
                         appearance, opacity, still || appearance.highContrast(), interactive ? layer : null);
+                slot.targetPainted |= layer.isTargetContent(mix);
                 if (interactive) slot.controls = controls;
             } finally {
                 graphics.disableScissor();
@@ -459,6 +465,7 @@ public final class LiveSurfacePainter {
     private static final class Slot {
         private final Layer layer;
         private List<Control> controls = List.of();
+        private boolean targetPainted;
 
         private Slot(Layer layer) { this.layer = layer; }
     }

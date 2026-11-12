@@ -24,6 +24,8 @@ import static org.junit.jupiter.api.Assertions.*;
 final class LiveSurfaceRuntimeTest {
     private static final UiId FIRST = UiId.parse("example:first");
     private static final UiId SECOND = UiId.parse("example:second");
+    private static final UiId OPEN = UiId.parse("example:open");
+    private static final Action OPEN_ACTION = new Action(OPEN, -1);
     private final AtomicLong clock = new AtomicLong();
     private KernelHost host;
     private LiveSurfaceRuntime live;
@@ -42,6 +44,55 @@ final class LiveSurfaceRuntimeTest {
     }
 
     @AfterEach void stop() { host.close(); }
+
+    @Test void notificationShortcutHintsRetractHalfwayThroughTheVisibleLifetime() {
+        var request = new NotificationService.Request(FIRST, content("Warning"), Priority.HIGH,
+                Duration.ofSeconds(30), SECOND, NotificationService.Merge.REPLACE, null);
+        var handle = live.publish(owner, owner.scope(), request);
+        frame(4_000);
+        frame(18_999);
+        assertEquals(0, live.shortcutHintRetraction(handle.snapshot(), true));
+        frame(19_090);
+        assertEquals(.5, live.shortcutHintRetraction(handle.snapshot(), true));
+        assertEquals(1, live.shortcutHintRetraction(handle.snapshot(), false));
+        assertSame(handle, live.publish(owner, owner.scope(), request));
+        frame(19_180);
+        assertEquals(1, live.shortcutHintRetraction(handle.snapshot(), true));
+        assertEquals(FIRST, live.plan().primary().id());
+        frame(34_000);
+        assertEquals(Lifecycle.TIMED_OUT, handle.snapshot().lifecycle());
+    }
+
+    @Test void timedAndPersistentActivitiesUseTheirAvailablePresentationWindow() {
+        var timed = live.publish(owner, owner.scope(), new ActivityService.Request(FIRST, content("Timed"),
+                Priority.NORMAL, Duration.ofSeconds(8), true, null));
+        frame(2_000);
+        frame(4_999);
+        assertEquals(0, live.shortcutHintRetraction(timed.snapshot(), false));
+        frame(5_000);
+        assertEquals(1, live.shortcutHintRetraction(timed.snapshot(), false));
+        timed.cancel();
+
+        var persistent = live.publish(owner, owner.scope(), request(SECOND, Priority.NORMAL));
+        frame(5_100);
+        frame(7_099);
+        assertEquals(0, live.shortcutHintRetraction(persistent.snapshot(), false));
+        frame(7_100);
+        assertEquals(1, live.shortcutHintRetraction(persistent.snapshot(), false));
+    }
+
+    @Test void explicitExpansionKeepsDetailsOpenOnRepeatedRequests() {
+        var activity = live.publish(owner, owner.scope(), request(FIRST, Priority.NORMAL));
+        frame(0);
+        assertTrue(live.expand(activity.snapshot()));
+        frame(10);
+        assertEquals(SurfacePresentation.EXPANDED, live.plan().requested());
+        assertTrue(live.expand(activity.snapshot()));
+        frame(20);
+        assertEquals(SurfacePresentation.EXPANDED, live.plan().requested());
+        activity.cancel();
+        assertFalse(live.expand(activity.snapshot()));
+    }
 
     @Test void backgroundUpdatesCoalesceAndNotifyOnOwnerThread() {
         var handle = live.publish(owner, owner.scope(), request(FIRST, Priority.NORMAL));
@@ -141,6 +192,44 @@ final class LiveSurfaceRuntimeTest {
         assertEquals(FIRST, live.plan().primary().id());
     }
 
+    @Test void replacedNotificationRejectsAnActionFromThePreviouslyPaintedRevision() {
+        var invoked = new ArrayList<String>();
+        var handle = live.publish(owner, owner.scope(), notice("First", invoked));
+        frame(0);
+        var painted = live.plan().primary();
+        assertSame(handle, live.publish(owner, owner.scope(), notice("Second", invoked)));
+        assertEquals(painted.instance(), handle.snapshot().instance());
+        assertFalse(live.isInputCurrent(painted));
+        assertTrue(live.isInputCurrent(handle.snapshot()));
+        assertFalse(live.dispatch(painted, OPEN_ACTION));
+        assertTrue(live.dispatch(handle.snapshot(), OPEN_ACTION));
+        frame(1);
+        assertEquals(List.of("Second"), invoked);
+    }
+
+    @Test void replacingANotificationCancelsActionsAlreadyQueuedForItsPreviousCallback() {
+        var invoked = new ArrayList<String>();
+        live.publish(owner, owner.scope(), notice("First", invoked));
+        frame(0);
+        assertTrue(live.dispatch(live.plan().primary(), OPEN_ACTION));
+        live.publish(owner, owner.scope(), notice("Second", invoked));
+        frame(1);
+        assertTrue(invoked.isEmpty());
+    }
+
+    @Test void refreshingProgressKeepsTheExistingSeekGestureValid() {
+        var sought = new ArrayList<Double>();
+        var handle = live.publish(owner, owner.scope(), new ActivityService.Request(FIRST, seekable(.2),
+                Priority.NORMAL, Duration.ZERO, true, action -> sought.add(action.fraction())));
+        var pressed = handle.snapshot();
+        handle.update(seekable(.4));
+        frame(0);
+        assertTrue(handle.snapshot().revision() > pressed.revision());
+        assertTrue(live.dispatch(pressed, new Action(ActivityService.SEEK, .6)));
+        frame(1);
+        assertEquals(List.of(.6), sought);
+    }
+
     @Test void stableMinimumDwellAndFairnessKeepLowPriorityEligible() {
         live.publish(owner, owner.scope(), request(FIRST, Priority.NORMAL));
         frame(0);
@@ -215,6 +304,15 @@ final class LiveSurfaceRuntimeTest {
     }
 
     private static Content content(String title) { return Content.label(Text.literal(title)); }
+    private static NotificationService.Request notice(String title, List<String> invoked) {
+        var content = new Content(Text.literal(title), Text.literal(""), null, -1, false,
+                List.of(new Control(OPEN, Text.literal(title))), List.of());
+        return new NotificationService.Request(FIRST, content, Priority.NORMAL, Duration.ofSeconds(1),
+                SECOND, NotificationService.Merge.REPLACE, action -> invoked.add(title));
+    }
+    private static Content seekable(double progress) {
+        return new Content(Text.literal("Initial"), Text.literal(""), null, progress, true, List.of(), List.of());
+    }
     private static Content progress(double value) {
         return new Content(Text.literal("Initial"), Text.literal(""), null, value, false, List.of(), List.of());
     }

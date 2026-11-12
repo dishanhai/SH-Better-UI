@@ -17,6 +17,7 @@ final class GlassDrawState implements AutoCloseable {
     private final boolean blend = GL11.glIsEnabled(GL11.GL_BLEND);
     private final boolean depth = GL11.glIsEnabled(GL11.GL_DEPTH_TEST);
     private final boolean depthWrite = GL11.glGetBoolean(GL11.GL_DEPTH_WRITEMASK);
+    private final int depthFunction = GL11.glGetInteger(GL11.GL_DEPTH_FUNC);
     private final boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
     private final boolean stencil = GL11.glIsEnabled(GL11.GL_STENCIL_TEST);
     private final int srcRgb = GL11.glGetInteger(GL14.GL_BLEND_SRC_RGB);
@@ -43,8 +44,9 @@ final class GlassDrawState implements AutoCloseable {
         GL20.glBlendEquationSeparate(GL14.GL_FUNC_ADD, GL14.GL_FUNC_ADD);
         GL14.glBlendFuncSeparate(GL11.GL_SRC_ALPHA, GL11.GL_ONE_MINUS_SRC_ALPHA,
                 GL11.GL_ONE, GL11.GL_ONE_MINUS_SRC_ALPHA);
-        GL11.glDisable(GL11.GL_DEPTH_TEST);
-        GL11.glDepthMask(false);
+        GL11.glEnable(GL11.GL_DEPTH_TEST);
+        GL11.glDepthFunc(GL11.GL_LEQUAL);
+        GL11.glDepthMask(true);
         GL11.glDisable(GL11.GL_CULL_FACE);
         GL11.glDisable(GL11.GL_STENCIL_TEST);
     }
@@ -59,6 +61,7 @@ final class GlassDrawState implements AutoCloseable {
         GL14.glBlendFuncSeparate(srcRgb, dstRgb, srcAlpha, dstAlpha);
         restore(GL11.GL_BLEND, blend);
         restore(GL11.GL_DEPTH_TEST, depth);
+        GL11.glDepthFunc(depthFunction);
         GL11.glDepthMask(depthWrite);
         restore(GL11.GL_CULL_FACE, cull);
         restore(GL11.GL_STENCIL_TEST, stencil);

@@ -14,6 +14,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.concurrent.FutureTask;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicReference;
 
 import static com.dishanhai.sh_better_ui.kernel.internal.TestModules.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -63,6 +64,29 @@ class ScopeLifecycleContractTest {
         assertFalse(remounted.isOpen());
         assertEquals(List.of("component", "broken", "screen", "session"), log);
         assertThrows(IllegalStateException.class, module::close);
+    }
+
+    @Test
+    void childCleanupCanOpenTheSameIdentityUnderItsLiveParent() {
+        var scopes = new ScopeLifecycle((scope, failure) -> fail(failure));
+        var module = scopes.openModule(module("module").build());
+        var original = module.openChild(ScopeKind.SCREEN, SCREEN);
+        var child = original.openChild(ScopeKind.UI_TREE, UiId.parse("example:tree"));
+        var replacement = new AtomicReference<ScopeHandle>();
+        child.track(() -> {
+            assertFalse(child.isOpen());
+            assertFalse(original.isOpen());
+            replacement.set(module.openChild(ScopeKind.SCREEN, SCREEN));
+        });
+
+        original.close();
+        var reopened = replacement.get();
+        assertTrue(reopened.isOpen());
+        assertNotEquals(original.generation(), reopened.generation());
+        original.close();
+        assertTrue(reopened.isOpen());
+        scopes.close(module);
+        assertFalse(reopened.isOpen());
     }
 
     @Test

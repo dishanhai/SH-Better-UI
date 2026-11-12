@@ -4,11 +4,15 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 import com.dishanhai.sh_better_ui.client.api.BlurApi;
 import com.dishanhai.sh_better_ui.client.api.GraphicsApi;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.BackgroundSample;
 import com.dishanhai.sh_better_ui.spatial.SpatialScene;
 import com.dishanhai.sh_better_ui.spatial.internal.Scene;
+import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -110,6 +114,28 @@ final class ClientRender implements RenderService {
 
     void reload() { glass.reload(); }
 
+    BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
+        return glass.sampleHudText(graphics, id, local);
+    }
+
+    void paintHudGlass(GuiGraphics graphics, GlassDraw surface) {
+        if (backend != null) {
+            glass.paint(graphics, List.of(surface));
+            return;
+        }
+        // The position editor draws its preview during Screen.render, before the native post pass.
+        glass.begin();
+        try {
+            glass.paint(graphics, List.of(surface));
+        } finally {
+            glass.end();
+        }
+    }
+
+    void paintDock(ScopeHandle scope, Surface surface, Consumer<Context> draw) {
+        if (scope != null && scope.isOpen()) paint(scope, surface, 200, draw);
+    }
+
     void renderMaterialPreview(Screen owner, ScopeHandle scope) {
         var draw = DeveloperPanelScreen.takeMaterialDraw(owner);
         if (draw != null) paint(scope, Surface.SCREEN, 0, draw);
@@ -143,6 +169,11 @@ final class ClientRender implements RenderService {
         @Override public Frame frame() {
             requireLive();
             return frame;
+        }
+
+        @Override public float musicPulse() {
+            requireLive();
+            return ClientMusicPulse.global().level();
         }
 
         @Override public void fill(int x, int y, int right, int bottom, int argb) {

@@ -120,6 +120,8 @@ final class CentralScheduler {
         return Thread.currentThread() == uiThread && advancing ? frameTime : clock.getAsLong();
     }
 
+    long frameNumber() { return frame; }
+
     boolean canBeginNativeFrame() {
         assertOwner();
         return !advancing && phase == null;
@@ -453,6 +455,10 @@ final class CentralScheduler {
                 return false;
             }
             job.lane.pending.remove(job);
+            job.lane.reservations--;
+            if (job.replacement != null) {
+                replacements.remove(job.replacement, job);
+            }
             job.handle.status = RUNNING;
             action = job.continuation;
             job.continuation = null;
@@ -595,10 +601,12 @@ final class CentralScheduler {
         if (job.handle.status.isTerminal()) {
             return;
         }
+        if (job.background || job.handle.status != RUNNING) {
+            job.lane.reservations--;
+        }
         job.handle.status = status;
         job.handle.scheduler = null;
         job.continuation = null;
-        job.lane.reservations--;
         job.lane.pending.remove(job);
         if (job.background) {
             backgroundReservations--;

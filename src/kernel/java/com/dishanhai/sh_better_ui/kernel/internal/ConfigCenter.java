@@ -65,22 +65,24 @@ final class ConfigCenter {
         if (disk == null) throw new IllegalStateException("The host has not configured persistent storage");
         if (persistence.containsKey(key.id())) throw new IllegalStateException("Persistence already bound: " + key.id());
         var binding = new PersistenceBinding<>(key, Objects.requireNonNull(codec), access);
-        var stored = disk.read(key.id());
-        if (stored != null && !stored.type().equals(key.type().getName())) {
-            throw new IllegalArgumentException("Persisted configuration type mismatch: " + key.id());
-        }
         persistence.put(key.id(), binding);
         try {
+            var stored = disk.read(key.id());
             if (stored != null) {
+                if (!stored.type().equals(key.type().getName())) {
+                    throw new IllegalArgumentException("Persisted configuration type mismatch: " + key.id());
+                }
                 T decoded = mutations.write(() -> key.copy(codec.decode(stored.value())));
                 commit(access, published, List.of(new Edit(new ConfigScope(root, USER_GLOBAL), key,
                         decoded, stored.version(), false)));
             }
-            return binding;
-        } catch (RuntimeException | LinkageError | AssertionError failure) {
+        } catch (RuntimeException failure) {
+            disk.reject(key.id(), failure);
+        } catch (LinkageError | AssertionError failure) {
             persistence.remove(key.id(), binding);
             throw failure;
         }
+        return binding;
     }
 
     private final class PersistenceBinding<T> implements Subscription {
@@ -112,6 +114,12 @@ final class ConfigCenter {
 
     UIConfigCenter view(ModuleAccess access) {
         return new View(access);
+    }
+
+    boolean hasUserValue(ConfigKey<?> key) {
+        var current = published;
+        requireKey(current, key);
+        return current.values().containsKey(new Address(key.id(), USER_GLOBAL, root.generation()));
     }
 
     private void define(ModuleAccess access, ConfigKey<?> key) {

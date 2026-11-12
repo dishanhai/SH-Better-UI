@@ -3,21 +3,85 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.api.LayoutApi;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentLayout;
+import com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator;
+import com.dishanhai.sh_better_ui.client.visual.VisualLayoutBinding;
 import com.dishanhai.sh_better_ui.kernel.api.*;
+import com.dishanhai.sh_better_ui.kernel.api.dock.DockLayoutSnapshot;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Rect;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Space;
+import com.dishanhai.sh_better_ui.kernel.internal.dock.DockLayout;
 import com.dishanhai.sh_better_ui.theme.ThemeScope;
 
 import java.util.EnumSet;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
+import java.util.function.Consumer;
 
 final class ClientLayout implements LayoutService {
     private static final Set<UIDirtyFlag> MEASURE_AND_ARRANGE = Set.of(UIDirtyFlag.MEASURE, UIDirtyFlag.LAYOUT);
+    private static final Rect EMPTY_DOCK_AREA = new Rect(0, 0, 0, 0, Space.GUI);
     private final KernelHost host;
     private final Map<ScopeLifecycle.Scope, Work> bindings = new HashMap<>();
+    private List<DockLayout.Item> dockItems = List.of();
+    private DockLayoutSnapshot dock = DockLayout.solve(0, EMPTY_DOCK_AREA, List.of(), 0);
+    private long dockVersion, dockNanos, dockSolves, dockSurface;
 
-    ClientLayout(KernelHost host) { this.host = host; }
+    DockLayoutSnapshot solveDock(long surface, Rect safe, List<DockLayout.Item> items) {
+        if (dockSurface == surface && dock.safeArea().equals(safe) && dockItems.equals(items)) return dock;
+        long start = System.nanoTime();
+        dock = DockLayout.solve(++dockVersion, safe, items, 4);
+        dockSurface = surface;
+        dockItems = List.copyOf(items);
+        dockNanos = System.nanoTime() - start;
+        dockSolves++;
+        return dock;
+    }
+
+    DockLayoutSnapshot emptyDock() {
+        return solveDock(0, EMPTY_DOCK_AREA, List.of());
+    }
+    long dockNanos() { return dockNanos; }
+    long dockSolves() { return dockSolves; }
+
+    @Override
+    public Optional<Rect> dockContentArea(ModuleContext module, ScopeHandle node) {
+        var target = host.ownedNode(module, node);
+        var screen = target.ancestor(ScopeKind.SCREEN);
+        var insets = dock.pushInsets();
+        return screen != null && screen.generation() == dockSurface
+                && (insets.top() != 0 || insets.right() != 0 || insets.bottom() != 0 || insets.left() != 0)
+                ? Optional.of(dock.contentArea()) : Optional.empty();
+    }
+
+    private final ClientScreens screens;
+    private final Map<Long, VisualLayoutBinding> visualBindings = new HashMap<>();
+
+    ClientLayout(KernelHost host, ClientScreens screens) {
+        this.host = host;
+        this.screens = screens;
+    }
+
+    @Override
+    public VisualLayoutBinding bindVisual(ModuleContext module, ScopeHandle node, AlignmentLayout layout,
+                                          Consumer<VisualLayoutBinding.FrameTime> sample) {
+        var target = host.ownedNode(module, node);
+        var owner = screens.ownerOf(target);
+        if (owner == null) throw new IllegalStateException("Visual layout requires an active Screen scope");
+        long mount = screens.activeScope(owner).generation();
+        var existing = visualBindings.get(mount);
+        if (existing != null && existing.isActive()) {
+            throw new IllegalStateException("The Screen mount already owns a visual layout");
+        }
+        var binding = VisualFrameCoordinator.bind(owner, mount, target, layout, sample);
+        visualBindings.put(mount, binding);
+        target.track(() -> visualBindings.remove(mount, binding));
+        return binding;
+    }
 
     @Override public LayoutApi layout() { return ShBetterUiApi.layout(); }
 

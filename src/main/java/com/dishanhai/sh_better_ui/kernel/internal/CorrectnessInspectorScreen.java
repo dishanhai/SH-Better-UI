@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.LiquidGlassTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
@@ -27,10 +28,13 @@ import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /** Optional, on-demand inspection of one frozen publication. Opening this screen does not run analysis. */
 public final class CorrectnessInspectorScreen extends Screen {
-    private enum Tab { LAYOUT, MOTION, VISUAL, CORRECTNESS }
+    private enum Tab { LAYOUT, MOTION, VISUAL, CORRECTNESS, PAGE_TREE, PAGE_LAYOUT, PAGE_PROTOCOL }
+    private static final List<Tab> CORRECTNESS_TABS = List.of(Tab.LAYOUT, Tab.MOTION, Tab.VISUAL, Tab.CORRECTNESS);
+    private static final List<Tab> PAGE_TABS = List.of(Tab.PAGE_TREE, Tab.PAGE_LAYOUT, Tab.PAGE_PROTOCOL);
     private static final String PREFIX = "sh_better_ui.correctness.inspector.";
     private static final int GAP = 5;
     private static final int BUTTON_HEIGHT = 20;
@@ -39,13 +43,19 @@ public final class CorrectnessInspectorScreen extends Screen {
     private final GuiEventListener returnFocus;
     private final UISnapshot snapshot;
     private final String exportedJson;
+    private final Supplier<PageStudioReport> studioSource;
+    private final List<Tab> availableTabs;
+    private PageStudioReport studio;
     private final UiPreferences preferences = UiPreferences.configured();
+    private final UiDotBackground backdrop = new UiDotBackground();
     private final List<UISnapshot.Node> nodes;
     private final int[] scrolls = new int[Tab.values().length];
-    private final UiButton[] tabs = new UiButton[Tab.values().length];
+    private final UiButton[] tabs;
     private List<FormattedCharSequence> lines = List.of();
     private Tab selected = Tab.LAYOUT;
     private UiButton copy;
+    private UiButton previous;
+    private UiButton next;
     private int nodeIndex;
     private int contentTop, contentBottom, textTop, textRight, previewHeight;
     private int dragOffset = -1;
@@ -54,15 +64,37 @@ public final class CorrectnessInspectorScreen extends Screen {
     private boolean tooSmall;
 
     public CorrectnessInspectorScreen(Screen parent, UISnapshot snapshot, String exportedJson) {
-        super(label("title"));
+        this(parent, snapshot, exportedJson, null);
+    }
+
+    CorrectnessInspectorScreen(Screen parent, Supplier<PageStudioReport> source) {
+        this(parent, null, null, Objects.requireNonNull(source));
+    }
+
+    private CorrectnessInspectorScreen(Screen parent, UISnapshot snapshot, String exportedJson,
+                                       Supplier<PageStudioReport> source) {
+        super(source == null ? label("title") : PageStudioReport.label("title"));
         this.parent = parent;
         returnFocus = parent == null ? null : parent.getFocused();
-        this.snapshot = Objects.requireNonNull(snapshot);
-        this.exportedJson = Objects.requireNonNull(exportedJson);
-        nodes = snapshot.nodes().values().stream().sorted(Comparator.comparing(UISnapshot.Node::id)).toList();
+        studioSource = source;
+        if (source == null) {
+            this.snapshot = Objects.requireNonNull(snapshot);
+            this.exportedJson = Objects.requireNonNull(exportedJson);
+            nodes = snapshot.nodes().values().stream().sorted(Comparator.comparing(UISnapshot.Node::id)).toList();
+            availableTabs = CORRECTNESS_TABS;
+        } else {
+            this.snapshot = null;
+            this.exportedJson = null;
+            nodes = List.of();
+            availableTabs = PAGE_TABS;
+            selected = Tab.PAGE_TREE;
+            studio = source.get();
+        }
+        tabs = new UiButton[availableTabs.size()];
     }
 
     @Override protected void init() {
+        previous = next = null;
         int inset = Math.min(8, Math.max(1, width / 12));
         int innerWidth = Math.max(1, width - inset * 2);
         tooSmall = width < 120 || height < 100;
@@ -73,16 +105,16 @@ public final class CorrectnessInspectorScreen extends Screen {
             previewHeight = 0;
             int half = Math.max(1, (innerWidth - GAP) / 2);
             var back = button(inset, Math.max(0, height - 24), half, Component.translatable("gui.back"), this::onClose);
-            copy = button(inset + half + GAP, Math.max(0, height - 24), half, label(copied ? "copied" : "copy"), this::copyJson);
+            copy = button(inset + half + GAP, Math.max(0, height - 24), half, auxiliaryLabel(), this::auxiliary);
             setInitialFocus(back);
             rebuild();
             return;
         }
-        int columns = innerWidth >= 340 || height < 160 ? 4 : 2;
+        int columns = innerWidth >= 340 || height < 160 ? tabs.length : 2;
         int cellWidth = Math.max(1, (innerWidth - GAP * (columns - 1)) / columns);
         int tabY = height < 124 ? 26 : 42;
         for (int index = 0; index < tabs.length; index++) {
-            var tab = Tab.values()[index];
+            var tab = availableTabs.get(index);
             var button = button(inset + index % columns * (cellWidth + GAP), tabY + index / columns * 24,
                     cellWidth, label("tab." + tab.name().toLowerCase(Locale.ROOT)), () -> select(tab));
             button.setPreview(label("tab_hint." + tab.name().toLowerCase(Locale.ROOT)));
@@ -91,19 +123,21 @@ public final class CorrectnessInspectorScreen extends Screen {
         }
         contentTop = tabY + ((tabs.length + columns - 1) / columns) * 24 + 4;
         contentBottom = Math.max(contentTop, height - 56);
-        previewHeight = contentBottom - contentTop >= 130 ? Math.min(136, (contentBottom - contentTop) / 3) : 0;
-        textTop = contentTop + previewHeight + (previewHeight > 0 ? GAP : 0);
+        int availableHeight = contentBottom - contentTop;
+        previewHeight = availableHeight >= (studio == null ? 130 : 80) ? Math.min(136, availableHeight / 3) : 0;
+        updateTextTop();
         textRight = Math.max(inset + 1, width - inset - TRACK_WIDTH - GAP);
 
         int half = Math.max(1, (innerWidth - GAP) / 2);
-        var previous = button(inset, height - 50, half, label("previous"), () -> selectNode(-1));
-        var next = button(inset + half + GAP, height - 50, half, label("next"), () -> selectNode(1));
-        previous.active = next.active = nodes.size() > 1;
+        previous = button(inset, height - 50, half,
+                studio == null ? label("previous") : PageStudioReport.label("previous"), () -> selectNode(-1));
+        next = button(inset + half + GAP, height - 50, half,
+                studio == null ? label("next") : PageStudioReport.label("next"), () -> selectNode(1));
+        previous.active = next.active = itemCount() > 1;
         var back = button(inset, height - 26, half,
                 Component.translatable("gui.back"), this::onClose);
-        copy = button(inset + half + GAP, height - 26, half,
-                label(copied ? "copied" : "copy"), this::copyJson);
-        copy.setPreview(label("copy_hint"));
+        copy = button(inset + half + GAP, height - 26, half, auxiliaryLabel(), this::auxiliary);
+        if (studio == null) copy.setPreview(label("copy_hint"));
         setInitialFocus(back);
         rebuild();
     }
@@ -117,24 +151,42 @@ public final class CorrectnessInspectorScreen extends Screen {
 
     private void select(Tab tab) {
         selected = tab;
-        for (int index = 0; index < tabs.length; index++) if (tabs[index] != null) tabs[index].setSelected(Tab.values()[index] == tab);
+        for (int index = 0; index < tabs.length; index++) if (tabs[index] != null) tabs[index].setSelected(availableTabs.get(index) == tab);
         dragOffset = -1;
+        updateTextTop();
         rebuild();
     }
 
+    private void updateTextTop() {
+        boolean preview = previewHeight > 0 && (studio == null || selected == Tab.PAGE_LAYOUT);
+        textTop = contentTop + (preview ? previewHeight + GAP : 0);
+    }
+
     private void selectNode(int offset) {
-        if (nodes.isEmpty()) return;
-        nodeIndex = Math.floorMod(nodeIndex + offset, nodes.size());
+        if (itemCount() == 0) return;
+        nodeIndex = Math.floorMod(nodeIndex + offset, itemCount());
         scrolls[selected.ordinal()] = 0;
         rebuild();
     }
 
     private UISnapshot.Node node() { return nodes.isEmpty() ? null : nodes.get(nodeIndex); }
+    private int itemCount() { return studio == null ? nodes.size() : studio.pages().size(); }
+    private PageStudioReport.Page page() { return studio.pages().isEmpty() ? null : studio.pages().get(nodeIndex); }
 
     private void rebuild() {
         var content = new ArrayList<Component>();
         if (tooSmall) content.add(label("too_small"));
         content.add(label("frozen"));
+        if (studio != null) {
+            content.addAll(switch (selected) {
+                case PAGE_TREE -> studio.tree(page());
+                case PAGE_LAYOUT -> studio.layout(page());
+                case PAGE_PROTOCOL -> studio.protocol();
+                default -> throw new IllegalStateException("Invalid page Studio tab");
+            });
+            wrap(content);
+            return;
+        }
         content.add(label("versions", snapshot.version(), snapshot.declarationVersion(), snapshot.resourceVersion(), snapshot.themeVersion()));
         content.add(label("status", snapshot.status().name(), snapshot.report().unresolvedHard().size()));
         var node = node();
@@ -154,13 +206,17 @@ public final class CorrectnessInspectorScreen extends Screen {
         if (selected == Tab.CORRECTNESS || node == null) {
             for (String limitation : snapshot.report().limitations()) content.add(label("limitation", Component.translatable(limitation)));
         }
+        wrap(content);
+        samplePixels = node == null ? new int[0] : displaySample(node).pixels();
+    }
+
+    private void wrap(List<Component> content) {
         var wrapped = new ArrayList<FormattedCharSequence>();
         for (var paragraph : content) {
             wrapped.addAll(font.split(paragraph, Math.max(1, textRight - 8)));
             wrapped.add(FormattedCharSequence.EMPTY);
         }
         lines = List.copyOf(wrapped);
-        samplePixels = node == null ? new int[0] : displaySample(node).pixels();
         scrollTo(scrolls[selected.ordinal()]);
     }
 
@@ -275,11 +331,17 @@ public final class CorrectnessInspectorScreen extends Screen {
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {}
 
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        DarkModeTheme.background(graphics, 0, 0, width, height);
+        backdrop.render(this, graphics, width, height, UiPreferences.configured());
         draw(graphics, getTitle().getVisualOrderText(), 8, 8, LiquidGlassTheme.textColor());
-        if (height >= 124 && !tooSmall) draw(graphics, label("frame", snapshot.frameId(), snapshot.version()).getVisualOrderText(),
-                8, 24, LiquidGlassTheme.textColor());
-        if (previewHeight > 0) drawPreview(graphics);
+        if (height >= 124 && !tooSmall) {
+            var subtitle = studio == null ? label("frame", snapshot.frameId(), snapshot.version())
+                    : PageStudioReport.label("position", itemCount() == 0 ? 0 : nodeIndex + 1, itemCount());
+            draw(graphics, subtitle.getVisualOrderText(), 8, 24, LiquidGlassTheme.textColor());
+        }
+        if (previewHeight > 0) {
+            if (studio == null) drawPreview(graphics);
+            else if (selected == Tab.PAGE_LAYOUT) drawPagePreview(graphics);
+        }
         graphics.enableScissor(8, textTop, textRight, contentBottom);
         try {
             int scroll = scrolls[selected.ordinal()];
@@ -325,6 +387,23 @@ public final class CorrectnessInspectorScreen extends Screen {
         }
         draw(graphics, label(selected == Tab.MOTION ? "prediction_notice" : "layout_legend").getVisualOrderText(),
                 12, contentTop + previewHeight - font.lineHeight - 2, 0xfff0f3f7);
+    }
+
+    private void drawPagePreview(GuiGraphics graphics) {
+        var page = page();
+        if (page == null || page.layout() == null || page.viewport() == null) return;
+        var area = page.viewport();
+        if (area.width() <= 0 || area.height() <= 0) return;
+        var viewport = new Rect(area.x(), area.y(), area.width(), area.height(), Space.GUI);
+        double scale = Math.min((width - 24.0) / viewport.width(), (previewHeight - 16.0) / viewport.height());
+        graphics.fill(8, contentTop, width - 8, contentTop + previewHeight, 0xff17202b);
+        outline(graphics, viewport, viewport, scale, 0xff536779);
+        for (var box : page.layout().widgets()) {
+            if (!box.visible()) continue;
+            boolean focused = page.layout().focused().filter(box.id()::equals).isPresent();
+            outline(graphics, new Rect(box.x(), box.y(), box.width(), box.height(), Space.GUI), viewport, scale,
+                    focused ? 0xffffb454 : box.enabled() ? 0xff58c4fa : 0xff536779);
+        }
     }
 
     private Rect frameBounds(SpatialIntelligence.Keyframe keyframe) {
@@ -378,10 +457,12 @@ public final class CorrectnessInspectorScreen extends Screen {
     }
 
     @Override public boolean keyPressed(int key, int scanCode, int modifiers) {
-        if (hasControlDown() && key >= GLFW.GLFW_KEY_1 && key <= GLFW.GLFW_KEY_4) {
-            select(Tab.values()[key - GLFW.GLFW_KEY_1]); return true;
+        if (hasControlDown() && key >= GLFW.GLFW_KEY_1 && key < GLFW.GLFW_KEY_1 + tabs.length) {
+            select(availableTabs.get(key - GLFW.GLFW_KEY_1)); return true;
         }
-        if (hasControlDown() && key == GLFW.GLFW_KEY_C) { copyJson(); return true; }
+        if (hasControlDown() && key == (studio == null ? GLFW.GLFW_KEY_C : GLFW.GLFW_KEY_R)) {
+            auxiliary(); return true;
+        }
         if (hasControlDown() && (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_RIGHT)) {
             selectNode(key == GLFW.GLFW_KEY_LEFT ? -1 : 1); return true;
         }
@@ -435,7 +516,18 @@ public final class CorrectnessInspectorScreen extends Screen {
     private int thumbHeight() { return Math.max(8, viewHeight() * viewHeight() / Math.max(1, lines.size() * lineStep())); }
     private int thumbTop() { return textTop + (int) ((long) scrolls[selected.ordinal()] * (viewHeight() - thumbHeight()) / Math.max(1, maxScroll())); }
 
-    private void copyJson() {
+    private Component auxiliaryLabel() {
+        return studio == null ? label(copied ? "copied" : "copy") : PageStudioReport.label("refresh");
+    }
+
+    private void auxiliary() {
+        if (studio != null) {
+            studio = studioSource.get();
+            nodeIndex = Math.min(nodeIndex, Math.max(0, itemCount() - 1));
+            if (previous != null) previous.active = next.active = itemCount() > 1;
+            rebuild();
+            return;
+        }
         minecraft.keyboardHandler.setClipboard(exportedJson);
         copied = true;
         if (copy != null) copy.setMessage(label("copied"));
@@ -445,12 +537,19 @@ public final class CorrectnessInspectorScreen extends Screen {
         minecraft.setScreen(parent);
         if (parent != null && minecraft.screen == parent && returnFocus != null && parent.children().contains(returnFocus)) {
             parent.setFocused(returnFocus);
+        } else if (parent instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn.Target target) {
+            target.prepareReturnLayer();
         }
     }
     @Override public void removed() { dragOffset = -1; super.removed(); }
     @Override public void tick() { if (!minecraft.isWindowActive()) dragOffset = -1; super.tick(); }
     @Override public boolean isPauseScreen() { return parent != null && parent.isPauseScreen(); }
     @Override public Component getNarrationMessage() {
+        if (studio != null) {
+            return CommonComponents.joinForNarration(getTitle(),
+                    label("tab." + selected.name().toLowerCase(Locale.ROOT)),
+                    page() == null ? PageStudioReport.label("empty") : Component.literal(page().id().toString()));
+        }
         var node = node();
         return CommonComponents.joinForNarration(getTitle(), label("frozen"), label("frame", snapshot.frameId(), snapshot.version()),
                 label("active_tab", label("tab." + selected.name().toLowerCase(Locale.ROOT))),

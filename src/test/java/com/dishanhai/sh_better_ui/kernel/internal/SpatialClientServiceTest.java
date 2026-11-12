@@ -88,6 +88,21 @@ class SpatialClientServiceTest {
         }
     }
 
+    @Test
+    void pathShadowCapabilityHonorsGlobalSettings() {
+        var original = ClientUiSettings.current();
+        try (var fixture = new ClientServiceFixture(Set.of(), Set.of())) {
+            var api = fixture.publication.current().require(SpatialUI.KEY);
+            var capability = SpatialUI.Capability.ARBITRARY_PATH_SHADOWS;
+            ClientUiSettings.update(original.withSpatial(new Settings(true, false, true, true, Quality.HIGH)));
+            assertEquals(SpatialUI.Support.DISABLED, api.capability(capability));
+            ClientUiSettings.update(original.withSpatial(new Settings(false, true, true, true, Quality.HIGH)));
+            assertEquals(SpatialUI.Support.DISABLED, api.capability(capability));
+        } finally {
+            ClientUiSettings.update(original);
+        }
+    }
+
     private static Spec spec() {
         return new Spec(id("node"), null, Shape.rounded(20, 10, 3), Transform.IDENTITY, 0, 0, true, false);
     }

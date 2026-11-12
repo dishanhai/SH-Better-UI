@@ -109,6 +109,33 @@ class SchedulerContractTest {
     }
 
     @Test
+    void runningUiTaskCanScheduleTheSameReplacementKeyWithoutCancellingItsDependents() {
+        try (var fixture = new Fixture(new SchedulerBudget(1, 2, 1, 8, 8, 8, 100))) {
+            var ui = fixture.ui();
+            var screen = fixture.screen();
+            var key = UiId.parse("example:repeat");
+            var second = new AtomicReference<TaskHandle>();
+            var calls = new ArrayList<String>();
+            var first = ui.submit(UITask.ui(screen, STATE_MUTATION, NORMAL, () -> {
+                calls.add("first");
+                second.set(ui.submit(UITask.ui(screen, STATE_MUTATION, NORMAL, () -> calls.add("second"))
+                        .replacing(key)));
+            }).replacing(key));
+            var dependent = ui.submit(UITask.ui(screen, LAYOUT, NORMAL, () -> calls.add("dependent")).after(first));
+
+            fixture.host.runFrame();
+            assertEquals(TaskHandle.Status.SUCCEEDED, first.status());
+            assertEquals(TaskHandle.Status.SUCCEEDED, dependent.status());
+            assertEquals(TaskHandle.Status.PENDING, second.get().status());
+            assertEquals(List.of("first", "dependent"), calls);
+
+            fixture.host.runFrame();
+            assertEquals(TaskHandle.Status.SUCCEEDED, second.get().status());
+            assertEquals(List.of("first", "dependent", "second"), calls);
+        }
+    }
+
+    @Test
     void backgroundResultsCannotRunAfterCloseOrRemount() {
         try (var fixture = new Fixture()) {
             var ui = fixture.ui();

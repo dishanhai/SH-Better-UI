@@ -84,7 +84,7 @@ public record ModuleDescriptor(UiId id, UiVersion version, int apiContractVersio
 
     public enum ExecutionAffinity { UI_THREAD, RENDER_THREAD, BACKGROUND }
 
-    public enum Platform { FORGE_1_20_1, NEOFORGE_1_21_1 }
+    public enum Platform { FORGE_1_20_1, NEOFORGE_1_21_1, NEOFORGE_26_1_2, NEOFORGE_26_2 }
 
     public static final class Builder {
         private UiId id;

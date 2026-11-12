@@ -62,4 +62,21 @@ class GlassMaterialContractTest {
         assertThrows(IllegalArgumentException.class, () -> from.interpolate(
                 new GlassDraw(GlassRegion.ellipse(0, 0, 10, 20), regular), .5f));
     }
+
+    @Test
+    void snellForegroundBoundsFollowTheMorphAndLegacyConstructorsKeepTheirProfile() {
+        var material = GlassMaterial.preset(GlassVariant.CLEAR);
+        var left = GlassRegion.capsule(10, 10, 64, 30);
+        var right = GlassRegion.capsule(20, 16, 84, 34);
+        var start = new GlassDraw(left, material, GlassDraw.Profile.SNELL, new GlassDraw.ForegroundBounds(22, 17, 40, 12));
+        var end = new GlassDraw(right, material, GlassDraw.Profile.SNELL, new GlassDraw.ForegroundBounds(40, 25, 44, 14));
+        var legacy = new GlassDraw(left, material, 0, 0, 0);
+
+        assertEquals(new GlassDraw.ForegroundBounds(31, 21, 42, 13), start.interpolate(end, .5f).foregroundBounds());
+        assertEquals(GlassDraw.Profile.SNELL, start.interpolate(end, .5f).profile());
+        assertEquals(GlassDraw.Profile.LEGACY, legacy.profile());
+        assertNull(legacy.foregroundBounds());
+        assertThrows(IllegalArgumentException.class, () -> start.interpolate(legacy, .5f));
+        assertThrows(IllegalArgumentException.class, () -> new GlassDraw.ForegroundBounds(0, 0, Float.NaN, 8));
+    }
 }

@@ -10,15 +10,19 @@ import java.io.UncheckedIOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.FileChannel;
 import java.nio.file.Files;
+import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
+import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.Properties;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
 import java.util.function.BiConsumer;
@@ -39,6 +43,7 @@ final class ConfigDiskStore implements AutoCloseable {
     private final Map<String, Properties> states = new LinkedHashMap<>();
     private final Map<String, byte[]> pending = new LinkedHashMap<>();
     private final Map<String, Throwable> failed = new LinkedHashMap<>();
+    private final Set<String> rejected = ConcurrentHashMap.newKeySet();
     private final ArrayList<Waiter> waiters = new ArrayList<>();
     private long submitted;
     private long completed;
@@ -63,6 +68,11 @@ final class ConfigDiskStore implements AutoCloseable {
         int parsed = Integer.parseInt(version);
         if (parsed < 1) throw new IllegalArgumentException("Invalid persisted configuration version: " + id);
         return new Stored(parsed, type, value);
+    }
+
+    void reject(UiId id, RuntimeException failure) {
+        rejected.add(id.namespace());
+        failures.accept("Loading UI configuration " + id, failure);
     }
 
     synchronized Prepared prepare(Map<UiId, Stored> changes) {
@@ -187,7 +197,6 @@ final class ConfigDiskStore implements AutoCloseable {
         return states.computeIfAbsent(namespace, name -> {
             Path file = directory.resolve(name + ".properties");
             var values = new Properties();
-            if (!Files.exists(file)) return values;
             try {
                 if (Files.size(file) > MAX_FILE_BYTES) throw new IOException("Configuration file too large: " + file);
                 byte[] bytes;
@@ -197,14 +206,19 @@ final class ConfigDiskStore implements AutoCloseable {
                 if (bytes.length > MAX_FILE_BYTES) throw new IOException("Configuration file too large: " + file);
                 values.load(new ByteArrayInputStream(bytes));
                 return values;
-            } catch (IOException failure) {
-                throw new UncheckedIOException(failure);
+            } catch (NoSuchFileException missing) {
+                return values;
+            } catch (IOException | IllegalArgumentException failure) {
+                rejected.add(name);
+                failures.accept("Loading UI configuration " + name, failure);
+                return new Properties();
             }
         });
     }
 
     private void write(String namespace, byte[] bytes) throws IOException {
         Files.createDirectories(directory);
+        Path target = directory.resolve(namespace + ".properties");
         Path temporary = Files.createTempFile(directory, namespace + "-", ".tmp");
         try {
             try (var channel = FileChannel.open(temporary, StandardOpenOption.WRITE, StandardOpenOption.TRUNCATE_EXISTING)) {
@@ -212,10 +226,28 @@ final class ConfigDiskStore implements AutoCloseable {
                 while (buffer.hasRemaining()) channel.write(buffer);
                 channel.force(true);
             }
-            Files.move(temporary, directory.resolve(namespace + ".properties"),
+            if (rejected.contains(namespace)) preserveRejected(target, namespace);
+            Files.move(temporary, target,
                     StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.ATOMIC_MOVE);
         } finally {
             Files.deleteIfExists(temporary);
+        }
+    }
+
+    private void preserveRejected(Path target, String namespace) throws IOException {
+        Path backup = Files.createTempFile(directory, namespace + "-", ".properties.corrupt");
+        boolean preserved = false;
+        try {
+            if (!Files.readAttributes(target, BasicFileAttributes.class).isRegularFile()) {
+                throw new IOException("Configuration is not a regular file: " + target);
+            }
+            Files.copy(target, backup, StandardCopyOption.REPLACE_EXISTING);
+            preserved = true;
+            rejected.remove(namespace);
+        } catch (NoSuchFileException missing) {
+            rejected.remove(namespace);
+        } finally {
+            if (!preserved) Files.deleteIfExists(backup);
         }
     }
 

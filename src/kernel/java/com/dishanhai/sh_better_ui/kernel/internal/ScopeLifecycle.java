@@ -136,11 +136,7 @@ final class ScopeLifecycle {
         invalidate(order);
         for (Scope child : order) {
             child.released = true;
-        }
-        for (int i = order.size() - 1; i >= 0; i--) {
-            Scope child = order.get(i);
-            cleanup.release(child);
-            child.children.clear();
+            // Cleanup may synchronously mount another scope with the same identity.
             if (child.parent != null) {
                 child.parent.children.remove(child.identity, child);
             }
@@ -152,6 +148,9 @@ final class ScopeLifecycle {
                 }
                 child.mountedFrom = null;
             }
+        }
+        for (int i = order.size() - 1; i >= 0; i--) {
+            cleanup.release(order.get(i));
         }
     }
 
@@ -196,7 +195,7 @@ final class ScopeLifecycle {
         return switch (parent) {
             case ENGINE, MODULE -> child == ScopeKind.CLIENT_SESSION || child == ScopeKind.SCREEN
                     || child == ScopeKind.RESOURCE_RELOAD;
-            case CLIENT_SESSION -> child == ScopeKind.SCREEN;
+            case CLIENT_SESSION -> child == ScopeKind.SCREEN || child == ScopeKind.UI_TREE;
             case SCREEN -> child == ScopeKind.UI_TREE;
             case UI_TREE, COMPONENT -> child == ScopeKind.COMPONENT;
             case RESOURCE_RELOAD -> false;

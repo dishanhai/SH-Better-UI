@@ -152,10 +152,12 @@ class DynamicCapabilitiesTest {
         private Fixture(ModuleDescriptor.Platform platform) {
             host = new KernelHost(platform, new EnginePublication());
             var captured = new AtomicReference<ModuleContext>();
+            var platforms = Set.of(platform);
             host.start(List.of(
-                    candidate(module(PROVIDER.path()).providedCapability(CAPABILITY, VERSION).build()),
-                    candidate(module("b_replacement").build(), Set.of(), false, ctx -> {}, captured::set, ctx -> {}),
-                    candidate(module(CONSUMER.path()).requiredCapability(CAPABILITY, VersionRange.ANY).build())));
+                    candidate(module(PROVIDER.path()).platforms(platforms).providedCapability(CAPABILITY, VERSION).build()),
+                    candidate(module("b_replacement").platforms(platforms).build(), Set.of(), false,
+                            ctx -> {}, captured::set, ctx -> {}),
+                    candidate(module(CONSUMER.path()).platforms(platforms).requiredCapability(CAPABILITY, VersionRange.ANY).build())));
             context = captured.get();
         }
 

@@ -12,6 +12,7 @@ import com.dishanhai.sh_better_ui.kernel.api.live.SurfaceGeometry;
 import com.dishanhai.sh_better_ui.kernel.internal.live.LiveSurfacePainter;
 import com.dishanhai.sh_better_ui.kernel.internal.live.LiveSurfacePainter.Control;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import org.lwjgl.glfw.GLFW;
 
@@ -35,6 +36,7 @@ final class ClientLiveInput {
     private Screen screen;
     private Hit primary, secondary;
     private Choice focused, hovered;
+    private GuiEventListener previousNativeFocus;
     private Press active;
     private long lastInteraction, lastBodyClick = Long.MIN_VALUE, lastClickedInstance;
     private long swipeInstance;
@@ -56,6 +58,9 @@ final class ClientLiveInput {
             tree = null;
             screen = null;
             clear();
+        }
+        if (focused != null && !(screen instanceof LiveActivityScreen) && screen.getFocused() != previousNativeFocus) {
+            clearFocus();
         }
         if (!available || current == null || tree != null || screens.activeScope(current) == null) return;
         screen = current;
@@ -80,6 +85,14 @@ final class ClientLiveInput {
         });
     }
 
+    void observe(NativeInput event) {
+        if (focused != null && !(screen instanceof LiveActivityScreen)
+                && event instanceof NativeInput.Pointer pointer && pointer.action() == NativeInput.PointerAction.PRESS
+                && pick(pointer.x(), pointer.y()) == null) {
+            clearFocus();
+        }
+    }
+
     void painted(Hit first, Hit second, Snapshot intendedFirst, Snapshot intendedSecond) {
         primary = first;
         secondary = second;
@@ -89,18 +102,23 @@ final class ClientLiveInput {
             if (current != null) focused = current;
             else if (hit != null) focus(body(hit));
             else if (!sameInstance(focused.snapshot, intendedFirst) && !sameInstance(focused.snapshot, intendedSecond)) {
-                focused = null;
+                clearFocus();
             }
         }
         if (hovered != null && locate(hovered) == null) hovered = null;
         if (active != null && !valid(active.choice)) {
             var pressed = active.choice;
-            boolean changingShape = pressed.control == null && live.isEligible(pressed.snapshot)
+            boolean changingShape = pressed.control == null && live.isInputCurrent(pressed.snapshot)
                     && (sameInstance(pressed.snapshot, intendedFirst) || sameInstance(pressed.snapshot, intendedSecond));
             if (!changingShape) UiPointerCapture.cancel(screen);
         }
         if (focused == null && primary != null && screen instanceof LiveActivityScreen dashboard
-                && dashboard.takeInitialFocus()) focus(body(primary));
+                && dashboard.takeInitialFocus()) {
+            focus(body(primary));
+            if (dashboard.expandsOnOpen(primary.snapshot.instance()) && live.isInputCurrent(primary.snapshot)) {
+                live.expand(primary.snapshot);
+            }
+        }
     }
 
     boolean available() { return tree != null && tree.isOpen(); }
@@ -108,7 +126,8 @@ final class ClientLiveInput {
     void resetPresentation() {
         if (active != null && screen != null) UiPointerCapture.cancel(screen);
         primary = secondary = null;
-        focused = hovered = null;
+        clearFocus();
+        hovered = null;
         swipe.snap(0);
         swipeInstance = 0;
     }
@@ -164,12 +183,12 @@ final class ClientLiveInput {
         if ((key.modifiers() & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_ALT | GLFW.GLFW_MOD_SUPER)) != 0) return false;
         if (focused == null && !(screen instanceof LiveActivityScreen) || primary == null) return false;
         var choice = focused == null ? body(primary) : locate(focused);
-        if (choice == null) return false;
+        if (choice == null || !live.isInputCurrent(choice.snapshot)) return false;
         boolean handled = switch (key.key()) {
             case GLFW.GLFW_KEY_ESCAPE -> {
                 if (live.collapse()) yield true;
                 if (screen instanceof LiveActivityScreen) yield false;
-                focused = null;
+                clearFocus();
                 yield true;
             }
             case GLFW.GLFW_KEY_TAB -> moveFocus(choice, (key.modifiers() & GLFW.GLFW_MOD_SHIFT) == 0 ? 1 : -1, false);
@@ -200,7 +219,7 @@ final class ClientLiveInput {
         int target = position + direction;
         if (target < 0 || target >= choices.size()) {
             if (!wrap && !(screen instanceof LiveActivityScreen)) {
-                focused = null;
+                clearFocus();
                 return false;
             }
             target = Math.floorMod(target, choices.size());
@@ -227,11 +246,17 @@ final class ClientLiveInput {
         lastInteraction = now();
         if (focused != null && same(focused, choice)) return;
         focused = choice;
+        previousNativeFocus = screen.getFocused();
         var narrator = Minecraft.getInstance().getNarrator();
         if (narrator.isActive()) {
             var label = choice.control == null ? choice.snapshot.content().title() : choice.control.label();
             narrator.sayNow(LiveSurfacePainter.component(label));
         }
+    }
+
+    private void clearFocus() {
+        focused = null;
+        previousNativeFocus = null;
     }
 
     private static void appendChoices(List<Choice> choices, Hit hit) {
@@ -249,7 +274,8 @@ final class ClientLiveInput {
     }
 
     private boolean valid(Choice choice) {
-        return locate(choice) != null && live.isEligible(choice.snapshot);
+        return locate(choice) != null && (choice.control == null
+                ? live.isInputCurrent(choice.snapshot) : live.hasActions(choice.snapshot));
     }
 
     private Choice locate(Choice choice) {
@@ -282,6 +308,31 @@ final class ClientLiveInput {
     }
 
     record Hit(Snapshot snapshot, SurfaceGeometry geometry, List<Control> controls) {}
+
+    static final class DetailsShortcut {
+        enum Result { NONE, EXPAND, POINTER }
+
+        private int pendingAlt = GLFW.GLFW_KEY_UNKNOWN;
+
+        Result key(int key, int action, int modifiers) {
+            boolean plain = (modifiers & (GLFW.GLFW_MOD_CONTROL | GLFW.GLFW_MOD_SUPER)) == 0;
+            if (action == GLFW.GLFW_PRESS) {
+                boolean alt = key == GLFW.GLFW_KEY_LEFT_ALT || key == GLFW.GLFW_KEY_RIGHT_ALT;
+                pendingAlt = plain && alt && pendingAlt == GLFW.GLFW_KEY_UNKNOWN
+                        && (modifiers & GLFW.GLFW_MOD_SHIFT) == 0 ? key : GLFW.GLFW_KEY_UNKNOWN;
+                if (plain && key == GLFW.GLFW_KEY_GRAVE_ACCENT && (modifiers & GLFW.GLFW_MOD_ALT) != 0) {
+                    return Result.POINTER;
+                }
+            } else if (action == GLFW.GLFW_RELEASE && pendingAlt == key && key != GLFW.GLFW_KEY_UNKNOWN) {
+                reset();
+                if (plain && (modifiers & GLFW.GLFW_MOD_SHIFT) == 0) return Result.EXPAND;
+            }
+            return Result.NONE;
+        }
+
+        void reset() { pendingAlt = GLFW.GLFW_KEY_UNKNOWN; }
+    }
+
     private record Choice(Snapshot snapshot, Control control) {
         UiId id() { return control == null ? LiveSurfacePainter.SURFACE_FOCUS : control.id(); }
     }
@@ -323,7 +374,7 @@ final class ClientLiveInput {
             if (!valid(choice)) return;
             if (seekPreview != null) {
                 var current = locate(choice);
-                live.dispatch(current.snapshot, new Action(ActivityService.SEEK, current.control.fraction(pointerX)));
+                live.dispatch(choice.snapshot, new Action(ActivityService.SEEK, current.control.fraction(pointerX)));
                 return;
             }
             if (longPress) return;
@@ -337,7 +388,7 @@ final class ClientLiveInput {
             if (button == GLFW.GLFW_MOUSE_BUTTON_RIGHT) {
                 live.dismiss(choice.snapshot);
             } else if (choice.control != null) {
-                activate(over);
+                activate(choice);
             } else {
                 long time = now();
                 if (lastClickedInstance == choice.snapshot.instance() && lastBodyClick != Long.MIN_VALUE

@@ -76,6 +76,10 @@ final class KernelHost implements AutoCloseable {
         configs.storage(directory);
     }
 
+    boolean hasUserConfig(ConfigKey<?> key) {
+        return configs.hasUserValue(key);
+    }
+
     UILifecycle lifecycle() {
         return lifecycle;
     }
@@ -142,6 +146,8 @@ final class KernelHost implements AutoCloseable {
     }
 
     long nowNanos() { return scheduler.nowNanos(); }
+
+    long frameNumber() { return scheduler.frameNumber(); }
 
     boolean canBeginNativeFrame() { return scheduler.canBeginNativeFrame(); }
 

@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.Foreground;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassQuality;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceProvider;
@@ -19,7 +20,8 @@ import java.nio.charset.StandardCharsets;
 /** Owns one linked program and the empty VAO used for vertex-ID quads. */
 final class GlassProgram implements AutoCloseable {
     private final int program, vertices;
-    private final int backdrop, viewport, quad, geometry, radius, optics, material, light, flatColor, mode;
+    private final int backdrop, viewport, quad, geometry, radius, optics, material, light, flatColor, mode, layerDepth;
+    private final int opticalProfile, foregroundBounds, blurMaxLod;
 
     private GlassProgram(int program, int vertices) throws IOException {
         this.program = program;
@@ -34,6 +36,11 @@ final class GlassProgram implements AutoCloseable {
         light = uniform("Light");
         flatColor = uniform("FlatColor");
         mode = uniform("Mode");
+        layerDepth = uniform("LayerDepth");
+        // Shader packs may omit the optional optical refinements.
+        opticalProfile = GL20.glGetUniformLocation(program, "OpticalProfile");
+        foregroundBounds = GL20.glGetUniformLocation(program, "ForegroundBounds");
+        blurMaxLod = GL20.glGetUniformLocation(program, "BlurMaxLod");
     }
 
     static GlassProgram load(ResourceProvider resources) throws IOException {
@@ -98,12 +105,17 @@ final class GlassProgram implements AutoCloseable {
         return location;
     }
 
-    void bind(GlassDrawState state, GlassSceneCapture.Snapshot scene) {
+    void bind(GlassDrawState state, GlassSceneCapture.Snapshot scene, float depth) {
         var view = scene.viewport();
         state.bind(program, vertices, scene.texture());
         GL20.glUniform1i(backdrop, 0);
         GL20.glUniform4f(viewport, view.x(), view.y(), view.width(), view.height());
+        GL20.glUniform1f(layerDepth, depth);
     }
+
+    boolean supportsBlurMipmaps() { return blurMaxLod >= 0; }
+
+    void setBlurLevel(int level) { GL20.glUniform1f(blurMaxLod, level); }
 
     boolean draw(GlassDraw draw, GlassSceneCapture.Viewport view, float centerX, float centerY,
                  float halfWidth, float halfHeight, float unit, boolean highContrast) {
@@ -143,6 +155,20 @@ final class GlassProgram implements AutoCloseable {
         int argb = preset.foreground().fallbackArgb();
         GL20.glUniform3f(flatColor, (argb >> 16 & 255) / 255f, (argb >> 8 & 255) / 255f, (argb & 255) / 255f);
         GL20.glUniform3i(mode, shape, quality, highContrast ? 1 : 0);
+        int profile = draw.profile() == GlassDraw.Profile.LEGACY ? 0
+                : preset.variant() == GlassVariant.CLEAR ? 2 : 1;
+        GL20.glUniform1i(opticalProfile, profile);
+        var text = draw.foregroundBounds();
+        if (profile == 0 || text == null) {
+            GL20.glUniform4f(foregroundBounds, 0f, 0f, 0f, 0f);
+        } else {
+            var region = draw.region();
+            // Relative GUI bounds map to the optical geometry even under different X and Y scales.
+            GL20.glUniform4f(foregroundBounds,
+                    (text.x() - region.x()) / region.width(), (text.y() - region.y()) / region.height(),
+                    (text.x() + text.width() - region.x()) / region.width(),
+                    (text.y() + text.height() - region.y()) / region.height());
+        }
         GL11.glDrawArrays(GL11.GL_TRIANGLE_STRIP, 0, 4);
         return true;
     }

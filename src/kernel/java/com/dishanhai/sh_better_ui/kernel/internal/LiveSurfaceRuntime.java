@@ -26,6 +26,7 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
     private static final long NOTIFICATION_QUEUE_LIMIT = Duration.ofMinutes(1).toNanos();
     private static final long RATE_WINDOW = Duration.ofSeconds(1).toNanos();
     private static final long CONTENT_INTERVAL = Duration.ofMillis(16).toNanos();
+    private static final long SHORTCUT_HINT_RETRACTION = Duration.ofMillis(180).toNanos();
     private static final Set<UIDirtyFlag> PRESENTATION_DIRTY = Set.of(UIDirtyFlag.MEASURE, UIDirtyFlag.LAYOUT,
             UIDirtyFlag.PAINT, UIDirtyFlag.HIT_TEST, UIDirtyFlag.ACCESSIBILITY);
     private final KernelHost host;
@@ -189,6 +190,8 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
         rankDirty = true;
     }
 
+    Policy policy() { return policy; }
+
     void advance(boolean interacting) { advance(interacting, true); }
 
     void advance(boolean interacting, boolean inputAvailable) {
@@ -281,19 +284,18 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
     }
 
     boolean hasActions(Snapshot snapshot) {
-        var entry = current(snapshot);
-        return entry != null && entry.onAction != null;
+        return currentActionBinding(snapshot) != null;
     }
 
-    boolean isEligible(Snapshot snapshot) { return current(snapshot) != null; }
+    boolean isInputCurrent(Snapshot snapshot) { return currentInput(snapshot) != null; }
 
     boolean dispatch(Snapshot snapshot, Action action) {
-        var entry = current(snapshot);
-        if (entry == null || entry.onAction == null || !allowsAction(entry.snapshot.content(), action)) return false;
+        var entry = currentActionBinding(snapshot);
+        if (entry == null || !allowsAction(entry.snapshot.content(), action)) return false;
         try {
             entry.scheduler.submit(UITask.ui(entry.scope, UIPhase.STATE_MUTATION, UIPriority.USER_INTERACTION, () -> {
-                var active = current(snapshot);
-                if (active == null || active.onAction == null || !allowsAction(active.snapshot.content(), action)) return;
+                var active = currentActionBinding(snapshot);
+                if (active == null || !allowsAction(active.snapshot.content(), action)) return;
                 try {
                     active.onAction.accept(action);
                 } catch (RuntimeException | LinkageError | AssertionError failure) {
@@ -307,6 +309,16 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
         }
     }
 
+    private Entry currentActionBinding(Snapshot snapshot) {
+        var entry = currentInput(snapshot);
+        return entry != null && entry.onAction != null ? entry : null;
+    }
+
+    private Entry currentInput(Snapshot snapshot) {
+        var entry = current(snapshot);
+        return entry != null && snapshot.revision() >= entry.firstInputRevision ? entry : null;
+    }
+
     private static boolean allowsAction(Content content, Action action) {
         if (action.id().equals(SEEK)) return content.seekable();
         return content.controls().stream().anyMatch(control -> control.id().equals(action.id()));
@@ -315,14 +327,21 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
     boolean toggleExpanded(Snapshot snapshot) {
         var entry = current(snapshot);
         if (!policy.expanded || entry == null) return false;
-        if (expanded == snapshot.instance() || expanded == 0 && entry.expandedHint()) {
-            expanded = 0;
-            entry.hint = SurfacePresentation.COMPACT;
-        } else {
-            expanded = snapshot.instance();
+        if (expanded != snapshot.instance() && (expanded != 0 || !entry.expandedHint())) {
+            return expand(snapshot);
         }
+        expanded = 0;
+        entry.hint = SurfacePresentation.COMPACT;
+        planDirty = true;
+        return true;
+    }
+
+    boolean expand(Snapshot snapshot) {
+        if (!policy.expanded || current(snapshot) == null) return false;
+        if (expanded == snapshot.instance()) return true;
+        expanded = snapshot.instance();
         // Selecting a visible sidecar is an explicit user preference for the next plan.
-        if (expanded != 0 && expanded != primary) {
+        if (expanded != primary) {
             pinned = expanded;
             rankDirty = true;
         }
@@ -357,9 +376,28 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
     boolean hasResources() { return activityCount + notificationCount > 0; }
     void markPainted(Snapshot snapshot) {
         var entry = current(snapshot);
-        if (entry == null || entry.notification == null || entry.firstShown != NOT_SHOWN) return;
+        if (entry == null || entry.firstShown != NOT_SHOWN) return;
         entry.firstShown = host.nowNanos();
-        nextDeadline = Math.min(nextDeadline, entry.deadline());
+        if (entry.notification != null) nextDeadline = Math.min(nextDeadline, entry.deadline());
+    }
+
+    boolean hasPainted(Snapshot snapshot) {
+        var entry = current(snapshot);
+        return entry != null && entry.firstShown != NOT_SHOWN;
+    }
+
+    /** Zero while the hints are fully visible and one once they have retracted. */
+    double shortcutHintRetraction(Snapshot snapshot, boolean animate) {
+        var entry = current(snapshot);
+        if (entry == null || entry.firstShown == NOT_SHOWN) return 1;
+        long visibleDuration = entry.duration == 0 ? policy.defaultDurationNanos : entry.deadline() - entry.firstShown;
+        if (visibleDuration <= 0) return 1;
+        long halfway = visibleDuration / 2;
+        long pastHalfway = host.nowNanos() - entry.firstShown - halfway;
+        if (pastHalfway < 0) return 0;
+        if (!animate) return 1;
+        long retraction = Math.min(SHORTCUT_HINT_RETRACTION, visibleDuration - halfway);
+        return Math.min(1, pastHalfway / (double) retraction);
     }
 
     List<SurfacePlacement.Rect> occupied() { return occupied; }
@@ -436,6 +474,7 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
         private final List<Watch> observers = new ArrayList<>();
         private volatile Snapshot snapshot;
         private Consumer<Action> onAction;
+        private long firstInputRevision = 1;
         private Subscription release;
         private NotificationHandle notification;
         private Content pending;
@@ -514,6 +553,7 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
                 pending = null;
                 pendingTask = null;
                 onAction = request.onAction();
+                firstInputRevision = before.revision() + 1;
                 updatedAt = host.nowNanos();
             }
             var priority = request.merge() == NotificationService.Merge.REPLACE ? request.priority() : before.priority();

@@ -10,9 +10,16 @@ record BuiltinService<T extends UIService>(ModuleDescriptor descriptor, ServiceD
         implements UIModule {
     static <T extends UIService> ModuleDiscovery.Candidate candidate(ServiceKey<T> key, T adapter,
                                                                     CapabilityKey... capabilities) {
+        return candidate(Set.of(ModuleDescriptor.Platform.FORGE_1_20_1, ModuleDescriptor.Platform.NEOFORGE_1_21_1),
+                key, adapter, capabilities);
+    }
+
+    static <T extends UIService> ModuleDiscovery.Candidate candidate(Set<ModuleDescriptor.Platform> platforms,
+                                                                    ServiceKey<T> key, T adapter,
+                                                                    CapabilityKey... capabilities) {
         var version = new UiVersion(1, 0, 0);
         var descriptor = ModuleDescriptor.builder().id(key.id()).version(version)
-                .initializationPhase(ModuleDescriptor.InitializationPhase.SERVICE);
+                .platforms(platforms).initializationPhase(ModuleDescriptor.InitializationPhase.SERVICE);
         for (var capability : capabilities) descriptor.providedCapability(capability, version);
         var service = new ServiceDescriptor<>(key, version, ServiceDescriptor.Visibility.PUBLIC, 0, false);
         return new ModuleDiscovery.Candidate(key.id().namespace(), adapter.getClass().getName(),

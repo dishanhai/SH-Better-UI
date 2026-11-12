@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiMath;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
@@ -264,10 +265,19 @@ final class ClientLivePresentation {
             }
             var drawn = painter.render(graphics, minecraft.font, frame.width, frame.height, frame.guiScale, tokens, layer, side,
                     appliedMotion != Motion.FULL);
+            if (drawn.primaryTargetPainted() && plannedFirst != null) {
+                live.markPainted(plannedFirst);
+                if (minecraft.screen == null && layer != null) {
+                    double retraction = live.shortcutHintRetraction(plannedFirst, appliedMotion == Motion.FULL);
+                    if (retraction < 1) {
+                        drawShortcutHints(graphics, minecraft.font, layer.geometry(), settings.layout().expanded(), retraction);
+                    }
+                }
+            }
             var hit = hit(layer, plannedFirst, drawn.primaryControls());
             var sideHit = hit(side, plannedSecond, drawn.secondaryControls());
             input.painted(hit, sideHit, plannedFirst, plannedSecond);
-            if (layer != null && layer.geometry().opacity() >= .5 && plannedFirst != null) live.markPainted(plannedFirst);
+            if (drawn.secondaryTargetPainted() && plannedSecond != null) live.markPainted(plannedSecond);
             live.present(new View(live.plan(), one.target().presentation(), one.current().presentation(),
                     layer == null ? SurfaceGeometry.HIDDEN : layer.geometry(),
                     side == null ? SurfaceGeometry.HIDDEN : side.geometry(), hit != null || sideHit != null,
@@ -297,6 +307,67 @@ final class ClientLivePresentation {
         }
     }
 
+    private void drawShortcutHints(GuiGraphics graphics, Font font, SurfaceGeometry geometry, boolean expandable,
+                                   double retraction) {
+        var details = Component.translatable("sh_better_ui.live.shortcut.details");
+        var pointer = Component.translatable("sh_better_ui.live.shortcut.pointer");
+        int detailsWidth = expandable ? font.width(details) : 0;
+        int pointerWidth = font.width(pointer);
+        int line = font.lineHeight + 1;
+        var island = new Rect(geometry.x(), geometry.y(), geometry.width(), geometry.height());
+        var obstacles = new ArrayList<>(occupied);
+        obstacles.addAll(bossThisFrame);
+        int gap = expandable ? 8 : 0;
+        var bounds = shortcutBounds(viewport, island, detailsWidth + gap + pointerWidth + 6, line + 2, obstacles);
+        boolean stacked = bounds == null && expandable;
+        if (stacked) {
+            bounds = shortcutBounds(viewport, island, Math.max(detailsWidth, pointerWidth) + 6, line * 2 + 2, obstacles);
+        }
+        if (bounds == null) return;
+
+        double progress = retraction * retraction * (3 - 2 * retraction);
+        double opacity = 1 - progress;
+        int foreground = hintColor(tokens.title(), opacity);
+        if ((foreground >>> 24) < 4) return;
+
+        int width = (int) bounds.width(), height = (int) bounds.height();
+        double hintX = bounds.x() + width / 2.0, hintY = bounds.y() + height / 2.0;
+        double islandX = island.x() + island.width() / 2, islandY = island.y() + island.height() / 2;
+        var pose = graphics.pose();
+        pose.pushPose();
+        try {
+            pose.translate(hintX + (islandX - hintX) * progress, hintY + (islandY - hintY) * progress, 0);
+            pose.scale((float) opacity, (float) opacity, 1);
+            pose.translate(-width / 2.0, -height / 2.0, 0);
+            graphics.fill(0, 0, width, height, hintColor(tokens.surface(), opacity));
+            if (expandable) graphics.drawString(font, details, 3, 1, foreground, true);
+            graphics.drawString(font, pointer, stacked ? 3 : 3 + detailsWidth + gap, stacked ? 1 + line : 1, foreground, true);
+        } finally {
+            pose.popPose();
+        }
+    }
+
+    private static int hintColor(int argb, double opacity) {
+        return argb & 0xffffff | (int) Math.round((argb >>> 24) * opacity) << 24;
+    }
+
+    static Rect shortcutBounds(Rect viewport, Rect island, int width, int height, List<Rect> obstacles) {
+        if (width > viewport.width() || height > viewport.height()) return null;
+        double x = Math.floor(UiMath.clamp(island.x() + (island.width() - width) / 2,
+                viewport.x(), viewport.right() - width));
+        double y = Math.floor(UiMath.clamp(island.y() + (island.height() - height) / 2,
+                viewport.y(), viewport.bottom() - height));
+        for (var bounds : new Rect[] {
+                new Rect(x, Math.ceil(island.bottom()) + 3, width, height),
+                new Rect(x, Math.floor(island.y()) - 3 - height, width, height),
+                new Rect(Math.ceil(island.right()) + 3, y, width, height),
+                new Rect(Math.floor(island.x()) - 3 - width, y, width, height) }) {
+            if (bounds.x() >= viewport.x() && bounds.y() >= viewport.y() && bounds.right() <= viewport.right()
+                    && bounds.bottom() <= viewport.bottom() && obstacles.stream().noneMatch(bounds::intersects)) return bounds;
+        }
+        return null;
+    }
+
     private LiveSurfacePainter.Layer layer(SurfaceTransition.State<Content> state, Snapshot snapshot, List<Rect> currentBoss) {
         if (!state.animated().visible() || blocked(state.animated(), currentBoss)) return null;
         var interaction = input.available() ? state.input() : HIDDEN;
@@ -313,7 +384,7 @@ final class ClientLivePresentation {
                 }
             }
         }
-        return new LiveSurfacePainter.Layer(geometry, state.contentMix(), interaction, input.focused(instance),
+        return new LiveSurfacePainter.Layer(geometry, state.contentMix(), state.target().contentKey(), interaction, input.focused(instance),
                 input.hovered(instance), input.pressed(instance), input.seekPreview(instance));
     }
 

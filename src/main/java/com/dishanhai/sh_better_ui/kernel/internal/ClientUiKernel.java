@@ -1,18 +1,23 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal;
 
+import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.LiveSurfaceConfig;
 import com.dishanhai.sh_better_ui.client.spatial.SpatialRenderer;
+import com.dishanhai.sh_better_ui.client.system.ClientComputerStatus;
 import com.dishanhai.sh_better_ui.spatial.internal.Scene;
 import com.dishanhai.sh_better_ui.spatial.SpatialScene;
 import com.dishanhai.sh_better_ui.kernel.api.ConfigLayer;
 import com.dishanhai.sh_better_ui.kernel.api.ConfigScope;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityKey;
 import com.dishanhai.sh_better_ui.kernel.api.EventResult;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.BackgroundSample;
 import com.dishanhai.sh_better_ui.kernel.api.EngineState;
 import com.dishanhai.sh_better_ui.kernel.api.ConflictPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
@@ -51,11 +56,13 @@ import net.minecraft.server.packs.resources.PreparableReloadListener;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.function.LongConsumer;
 import java.util.function.Consumer;
 import java.util.function.LongSupplier;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.TimeUnit;
 
 /** Physical client setup and shutdown shared by the two loaders. */
@@ -66,6 +73,8 @@ public final class ClientUiKernel implements AutoCloseable {
     private final KernelHost host;
     private final ModuleContext theme;
     private final ClientAnimation animation;
+    private final ClientCollapse collapse;
+    private final ClientDockWindows dock;
     private final ClientSpatial spatial;
     private final ClientLayout layout;
     private final ClientInput input;
@@ -73,26 +82,35 @@ public final class ClientUiKernel implements AutoCloseable {
     private final ClientFocus focus;
     private final ClientCollision collision;
     private final ClientRender rendering;
+    private final ClientTextReadability textReadability;
+    private final ClientHud hud;
     private final ClientResources resources;
     private final ClientMaterialCatalog materialCatalog;
     private final ClientCorrectness correctness;
     private final LiveSurfaceRuntime live;
     private final ClientLiveInput liveInput;
+    private final ClientLiveInput.DetailsShortcut liveShortcut = new ClientLiveInput.DetailsShortcut();
     private final ClientLivePresentation livePresentation;
     private final ClientLiveNetwork liveNetwork;
+    private final ClientPages pages;
+    private final ClientPageNetwork pageNetwork;
     private final ClientLiveGamepad liveGamepad = new ClientLiveGamepad();
     private final ConfigScope userGlobal;
-    private ClientUiSettings publishedSettings;
+    private boolean pendingLegacySettings;
     private LiveSurfaceSettings liveSettings, publishedLiveSettings;
     private long nextPage;
 
     private ClientUiKernel(KernelHost host, ModuleContext theme, ClientAnimation animation, ClientLayout layout,
                            ClientInput input, ClientScreens screens, ClientFocus focus, ClientCollision collision,
                            ClientRender rendering, ClientResources resources, ClientSpatial spatial, ClientCorrectness correctness,
-                           BuiltinLiveSurface surface, LiveSurfaceSettings liveSettings, ClientMaterialCatalog materialCatalog) {
+                           BuiltinLiveSurface surface, LiveSurfaceSettings liveSettings, ClientMaterialCatalog materialCatalog,
+                           ClientCollapse collapse, ClientDockWindows dock, ClientPages pages, ClientHud hud,
+                           ClientTextReadability textReadability, boolean pendingLegacySettings) {
         this.host = host;
         this.theme = theme;
         this.animation = animation;
+        this.collapse = collapse;
+        this.dock = dock;
         this.spatial = spatial;
         this.layout = layout;
         this.input = input;
@@ -100,6 +118,8 @@ public final class ClientUiKernel implements AutoCloseable {
         this.focus = focus;
         this.collision = collision;
         this.rendering = rendering;
+        this.textReadability = textReadability;
+        this.hud = hud;
         this.resources = resources;
         this.materialCatalog = materialCatalog;
         this.correctness = correctness;
@@ -107,7 +127,10 @@ public final class ClientUiKernel implements AutoCloseable {
         liveInput = surface.input;
         livePresentation = surface.presentation;
         liveNetwork = surface.network;
+        this.pages = pages;
+        pageNetwork = new ClientPageNetwork(pages);
         this.liveSettings = liveSettings;
+        this.pendingLegacySettings = pendingLegacySettings;
         userGlobal = new ConfigScope(host.rootScope(), ConfigLayer.USER_GLOBAL);
     }
 
@@ -120,9 +143,12 @@ public final class ClientUiKernel implements AutoCloseable {
             var config = Minecraft.getInstance().gameDirectory.toPath().resolve("config");
             var settings = LiveSurfaceConfig.load(config);
             if (!settings.kernelEnabled()) return;
+            var sources = modFiles.stream().filter(file -> java.nio.file.Files.isRegularFile(file.descriptor()))
+                    .map(file -> NativeModuleSources.modulePath(file.descriptor(), file.moduleName(), file.modIds())).toList();
             active = install(platform, EnginePublication.CLIENT, MinecraftThemes.manager(), MinecraftThemes::shutdown,
-                    System::nanoTime, NativeModuleSources.discover(modFiles), settings,
+                    System::nanoTime, NativeModuleSources.discover(sources), settings,
                     config.resolve("sh_better_ui/modules"));
+            active.dock.configure(config);
         }
     }
 
@@ -153,6 +179,29 @@ public final class ClientUiKernel implements AutoCloseable {
         return client != null && client.host.lifecycle().state() == EngineState.RUNNING;
     }
 
+    /** Saves through the User Global transaction and waits for the existing save result contract. */
+    public static boolean saveClientSettings(ClientUiSettings settings) {
+        var client = active;
+        return client != null && client.host.lifecycle().state() == EngineState.RUNNING && client.saveSettings(settings);
+    }
+
+    boolean saveSettings(ClientUiSettings settings) {
+        var configs = theme.engine().configs();
+        var previous = configs.get(UIApis.CLIENT_SETTINGS);
+        try {
+            configs.beginTransaction().set(userGlobal, UIApis.CLIENT_SETTINGS, settings).commit();
+            configs.flush().toCompletableFuture().join();
+            return true;
+        } catch (CompletionException failure) {
+            configs.beginTransaction().set(userGlobal, UIApis.CLIENT_SETTINGS, previous).commit();
+            host.report("Saving global client UI settings", failure.getCause());
+            return false;
+        } catch (IllegalArgumentException failure) {
+            host.report("Validating global client UI settings", failure);
+            return false;
+        }
+    }
+
     public static boolean beginNativeFrame(Minecraft minecraft, LongConsumer frameClock) {
         if (!hasNativeAuthority()) return false;
         var client = active;
@@ -161,7 +210,10 @@ public final class ClientUiKernel implements AutoCloseable {
         client.liveGamepad.poll(minecraft);
         client.publishSettings();
         client.livePresentation.beginFrame();
-        client.host.beginNativeFrame(() -> frameClock.accept(client.host.nowNanos()), phase -> {
+        client.host.beginNativeFrame(() -> {
+            client.textReadability.advance();
+            frameClock.accept(client.host.nowNanos());
+        }, phase -> {
             if (phase == UIPhase.STYLE_RESOLUTION) MinecraftThemes.frame();
             client.phase(phase, minecraft);
         });
@@ -184,19 +236,57 @@ public final class ClientUiKernel implements AutoCloseable {
         var frame = new RenderService.Frame(surface, viewport.width(), viewport.height(), viewport.guiScale(), partialTick);
         client.rendering.render(frame, new GuiCanvas(graphics), () -> client.host.renderNativeFrame(screen, () -> {
                 client.rendering.renderMaterialPreview(owner, screen);
+                if (owner == null) client.hud.render(graphics, partialTick);
+                client.dock.render(client.rendering, owner, frame);
                 client.livePresentation.render(minecraft, graphics,
                         new ClientLivePresentation.RenderServiceFrame(frame.width(), frame.height(), frame.guiScale()),
                         client.liveSettings);
                 client.correctness.render(screen, graphics);
+                if (owner != null) client.textReadability.renderOverlay(graphics);
         }));
     }
 
+    public static void toggleTextReadabilityOverlay(Minecraft minecraft) {
+        if (!hasNativeAuthority()) return;
+        boolean enabled = active.textReadability.toggleOverlay();
+        if (minecraft.player != null) minecraft.player.sendSystemMessage(Component.translatable(enabled
+                ? "sh_better_ui.text_readability.debug.enabled" : "sh_better_ui.text_readability.debug.disabled"));
+    }
+
     public static void finishNativeFrame() {
-        if (hasNativeAuthority()) active.host.finishNativeFrame();
+        if (!hasNativeAuthority()) return;
+        var client = active;
+        try {
+            client.host.finishNativeFrame();
+        } finally {
+            client.textReadability.endFrame();
+        }
+    }
+
+    public static boolean paintHudGlass(GuiGraphics graphics, GlassDraw surface) {
+        var client = active;
+        if (client == null || client.host.lifecycle().state() != EngineState.RUNNING) return false;
+        client.rendering.paintHudGlass(graphics, surface);
+        return true;
+    }
+
+    public static BackgroundSample sampleHudText(GuiGraphics graphics, Rect local) {
+        return sampleHudText(graphics, null, local);
+    }
+
+    public static BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
+        var client = active;
+        return client == null || client.host.lifecycle().state() != EngineState.RUNNING
+                ? null : client.rendering.sampleHudText(graphics, id, local);
     }
 
     public static void tick(Minecraft minecraft) {
-        if (hasNativeAuthority()) active.sync(minecraft);
+        if (hasNativeAuthority()) {
+            active.sync(minecraft);
+            active.pages.tickPresentation();
+            active.pageNetwork.tick();
+            com.dishanhai.sh_better_ui.client.visual.ClientRichDocuments.tick(minecraft);
+        }
     }
 
     public static void nativeScoreboard(boolean visible) {
@@ -210,7 +300,84 @@ public final class ClientUiKernel implements AutoCloseable {
     public static void openLiveActivities(Minecraft minecraft) {
         if (!hasNativeAuthority() || !active.liveSettings.layout().enabled() || minecraft.player == null
                 || minecraft.screen != null || minecraft.getOverlay() != null) return;
-        minecraft.setScreen(new LiveActivityScreen());
+        showLiveActivities(minecraft, 0);
+    }
+
+    public static void onLiveActivityKey(Minecraft minecraft, int key, int action, int modifiers) {
+        if (!hasNativeAuthority()) return;
+        Screen screen = minecraft.screen;
+        if (!active.liveSettings.layout().enabled() || minecraft.player == null
+                || !minecraft.isWindowActive() || minecraft.getOverlay() != null
+                || (screen == null ? minecraft.options.hideGui : !(screen instanceof LiveActivityScreen))) {
+            active.liveShortcut.reset();
+            return;
+        }
+        var shortcut = active.liveShortcut.key(key, action, modifiers);
+        if (shortcut == ClientLiveInput.DetailsShortcut.Result.NONE) return;
+        boolean expand = shortcut == ClientLiveInput.DetailsShortcut.Result.EXPAND;
+        if (expand && !active.liveSettings.layout().expanded()) return;
+
+        var visible = active.live.view();
+        var primary = visible.plan().primary();
+        if (primary == null || !visible.primary().visible() || !active.live.isInputCurrent(primary)) return;
+        if (screen == null) {
+            showLiveActivities(minecraft, expand ? primary.instance() : 0);
+        } else if (expand && active.liveInput.available()) {
+            var overlay = UiOverlayHost.current(screen);
+            if ((overlay == null || !overlay.isModalOpen()) && UiLocalModal.current(screen) == null) {
+                active.live.expand(primary);
+            }
+        }
+    }
+
+    private static void showLiveActivities(Minecraft minecraft, long expandOnOpen) {
+        minecraft.setScreen(new LiveActivityScreen(() -> liveActivityPreviewAvailable()
+                && active.live.plan().primary() == null, () -> openLiveActivityPreview(minecraft), expandOnOpen));
+    }
+
+    public static boolean liveActivityPreviewAvailable() {
+        return hasNativeAuthority() && active.liveSettings.layout().enabled();
+    }
+
+    public static void openLiveActivityPreview(Minecraft minecraft) {
+        if (liveActivityPreviewAvailable() && minecraft.getOverlay() == null) {
+            minecraft.setScreen(new LiveActivityScreen(active.theme, minecraft.screen));
+        }
+    }
+
+    public static void openVisualCompositionExample(Minecraft minecraft) {
+        if (hasNativeAuthority()) minecraft.setScreen(
+                new com.dishanhai.sh_better_ui.client.gui.panel.VisualCompositionScreen(active.theme, minecraft.screen));
+    }
+
+    public static void openDockExample(Minecraft minecraft) {
+        if (hasNativeAuthority()) minecraft.setScreen(new DockExampleScreen(active.dock.context(), minecraft.screen));
+    }
+
+    public static void openRichTextExample(Minecraft minecraft) {
+        if (hasNativeAuthority()) minecraft.setScreen(
+                new com.dishanhai.sh_better_ui.client.gui.panel.RichTextExampleScreen(active.theme, minecraft.screen));
+    }
+
+    public static void openRichTextDocument(Minecraft minecraft,
+            com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument document) {
+        if (hasNativeAuthority()) minecraft.setScreen(
+                new com.dishanhai.sh_better_ui.client.gui.panel.RichTextExampleScreen(active.theme, minecraft.screen,
+                        java.util.Objects.requireNonNull(document, "document")));
+    }
+
+    public static void openRichTextPipeline(Minecraft minecraft) {
+        if (hasNativeAuthority()) minecraft.setScreen(
+                new com.dishanhai.sh_better_ui.client.gui.panel.RichTextPipelineScreen(active.theme, minecraft.screen));
+    }
+
+    public static boolean richTextEditorEnabled() {
+        return Boolean.parseBoolean(System.getProperty("shb.richText.editor", "true"));
+    }
+
+    public static void openRichTextEditor(Minecraft minecraft) {
+        if (richTextEditorEnabled() && hasNativeAuthority() && minecraft.getOverlay() == null) minecraft.setScreen(
+                new com.dishanhai.sh_better_ui.client.gui.panel.RichTextEditorScreen(active.theme, minecraft.screen));
     }
 
     /** Loader channels call this after scheduling onto the native game thread. */
@@ -231,11 +398,98 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     public static void login(Object connection) {
-        if (hasNativeAuthority()) active.screens.login(connection);
+        if (hasNativeAuthority()) {
+            active.screens.login(connection);
+            active.pageNetwork.login(connection);
+        }
     }
 
     public static void logout(Object connection) {
-        if (hasNativeAuthority()) active.screens.logout(connection);
+        if (hasNativeAuthority()) {
+            com.dishanhai.sh_better_ui.client.visual.ClientRichDocuments.disconnected(connection);
+            active.pageNetwork.logout(connection);
+            active.screens.logout(connection);
+            active.pages.clearStudioPage();
+        }
+    }
+
+    public static void receivePageFrame(net.minecraft.network.Connection connection, byte[] frame) {
+        if (hasNativeAuthority() && active.screens.acceptsConnection(connection)) {
+            active.pageNetwork.receive(connection, frame);
+        }
+    }
+
+    public static void openPagePermissions(Minecraft minecraft, com.dishanhai.sh_better_ui.kernel.api.page.UiPageType type) {
+        if (hasNativeAuthority()) active.pageNetwork.permissions(minecraft, type);
+    }
+
+    public static void openPriorityPagePermissions(Minecraft minecraft) {
+        if (hasNativeAuthority()) active.pageNetwork.priorityPermissions(minecraft);
+    }
+
+    public static void openInteractionPagePermissions(Minecraft minecraft) {
+        if (hasNativeAuthority()) active.pageNetwork.interactionPermissions(minecraft);
+    }
+
+    public static void observePageInteraction(Minecraft minecraft) {
+        if (hasNativeAuthority()) active.pageNetwork.observeInteraction(minecraft);
+    }
+
+    public static void requestServerPage(Minecraft minecraft, UiId page) {
+        if (!hasNativeAuthority() || minecraft.player == null) return;
+        boolean sent = active.pageNetwork.requestPage(page);
+        minecraft.player.sendSystemMessage(Component.translatable(sent
+                ? "sh_better_ui.pages.request.sent" : "sh_better_ui.pages.request.unavailable", page.toString()));
+    }
+
+    public static void showPageTrace(Minecraft minecraft) {
+        if (hasNativeAuthority()) active.pageNetwork.showTrace(minecraft);
+    }
+
+    public static void openPageStudio(Minecraft minecraft) {
+        if (!hasNativeAuthority()) return;
+        var client = active;
+        minecraft.setScreen(new CorrectnessInspectorScreen(minecraft.screen, () -> {
+            var server = minecraft.getCurrentServer();
+            var identity = server != null ? Component.literal(server.name)
+                    : Component.translatable(minecraft.getSingleplayerServer() == null
+                    ? "sh_better_ui.pages.studio.disconnected" : "menu.singleplayer");
+            return new PageStudioReport(client.pages.studioPages(), client.pageNetwork.diagnostics(), identity);
+        }));
+    }
+
+    public static ScopeHandle openScriptPageScope() {
+        if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
+        return active.pages.openScriptScope();
+    }
+
+    public static void registerScriptPage(ScopeHandle scope,
+            com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition page) {
+        registerScriptPage(scope, page, NativeTextReadability.PageOptions.DEFAULT);
+    }
+
+    public static void registerScriptPage(ScopeHandle scope,
+            com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition page, NativeTextReadability.PageOptions text) {
+        if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
+        active.pages.registerScript(scope, page, text);
+    }
+
+    public static NativeTextReadability.Mount mountScriptText(com.dishanhai.sh_better_ui.client.api.UiScreen screen) {
+        if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
+        return active.pages.mountText(screen);
+    }
+
+    public static com.dishanhai.sh_better_ui.kernel.api.page.PageService.Instance openScriptPage(ScopeHandle scope,
+            UiId id, Map<String, com.dishanhai.sh_better_ui.kernel.api.page.UiValue> data,
+            java.util.function.Consumer<UiId> action) {
+        if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
+        return active.pages.openScript(scope, id, data, action);
+    }
+
+    public static boolean updateScriptPage(ScopeHandle scope, java.util.UUID instance,
+            Map<String, com.dishanhai.sh_better_ui.kernel.api.page.UiValue> updates) {
+        if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
+        return active.pages.updateScript(scope, instance, updates);
     }
 
     public static void windowFocus(Minecraft minecraft) {
@@ -334,6 +588,7 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     public static void stop() {
+        ClientMusicPulse.global().close();
         var client = active;
         if (client != null) {
             try {
@@ -364,6 +619,8 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     EventResult dispatch(ScopeHandle screen, NativeInput event) {
+        dock.observe(event);
+        liveInput.observe(event);
         return input.dispatch(screen, event);
     }
 
@@ -377,6 +634,11 @@ public final class ClientUiKernel implements AutoCloseable {
 
     private void sync(Minecraft minecraft) {
         boolean wasFocused = screens.viewport().focused();
+        var target = minecraft.getMainRenderTarget();
+        if (target != null) {
+            textReadability.targetChanged(target, target.getColorTextureId(), target.width, target.height,
+                    minecraft.getWindow().getGuiScale());
+        }
         screens.sync(minecraft);
         if (wasFocused && !screens.viewport().focused()) {
             UiPointerCapture.windowLost(minecraft.screen);
@@ -387,6 +649,8 @@ public final class ClientUiKernel implements AutoCloseable {
                 && (minecraft.screen != null || !minecraft.options.hideGui);
         var overlay = minecraft.screen == null ? null : UiOverlayHost.current(minecraft.screen);
         visible &= overlay == null || !overlay.isModalOpen();
+        if (!visible) liveShortcut.reset();
+        dock.sync(minecraft, visible);
         if (!visible) correctness.suspendPresentation();
         liveInput.bind(minecraft.screen, visible && liveSettings.layout().enabled()
                 && (live.hasResources() || live.view().primary().visible()),
@@ -410,6 +674,7 @@ public final class ClientUiKernel implements AutoCloseable {
         switch (phase) {
             case STYLE_RESOLUTION -> spatial.resolveStyles();
             case MEASURE -> {
+                dock.advance(minecraft);
                 liveInput.advance();
                 live.advance(liveInput.protectedInteraction(), minecraft != null && liveInput.available());
                 layout.process(UIDirtyFlag.MEASURE);
@@ -420,10 +685,14 @@ public final class ClientUiKernel implements AutoCloseable {
             }
             case ANIMATION -> {
                 animation.update();
+                collapse.update();
                 spatial.update();
                 if (minecraft != null) livePresentation.animate(liveSettings);
             }
-            case GEOMETRY_UPDATE -> collision.update();
+            case GEOMETRY_UPDATE -> {
+                collision.update();
+                dock.prepare(minecraft);
+            }
             case RENDER_PREPARATION -> {
                 var viewport = screens.viewport();
                 var areas = minecraft == null ? List.<com.dishanhai.sh_better_ui.kernel.api.intelligence.UISnapshot.ReservedArea>of()
@@ -436,24 +705,33 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     private void publishSettings() {
-        var current = ClientUiSettings.current();
-        boolean clientChanged = !current.equals(publishedSettings);
-        boolean liveChanged = !liveSettings.equals(publishedLiveSettings);
-        if (!clientChanged && !liveChanged) return;
-        var transaction = theme.engine().configs().beginTransaction();
-        if (clientChanged) transaction.set(userGlobal, UIApis.CLIENT_SETTINGS, current);
-        if (liveChanged) transaction.set(userGlobal, UIApis.LIVE_SURFACE_SETTINGS, liveSettings);
-        transaction.commit();
-        publishedSettings = current;
-        publishedLiveSettings = liveSettings;
+        var configs = theme.engine().configs();
+        if (pendingLegacySettings) pendingLegacySettings = !importLegacySettings(host, theme);
+        if (!liveSettings.equals(publishedLiveSettings)) {
+            configs.beginTransaction().set(userGlobal, UIApis.LIVE_SURFACE_SETTINGS, liveSettings).commit();
+            publishedLiveSettings = liveSettings;
+        }
+    }
+
+    private static boolean importLegacySettings(KernelHost host, ModuleContext context) {
+        if (host.hasUserConfig(UIApis.CLIENT_SETTINGS)) return true;
+        var legacy = ClientUiSettings.legacySnapshot();
+        if (legacy == null) return false;
+        var configs = context.engine().configs();
+        configs.beginTransaction().set(configs.userGlobal(), UIApis.CLIENT_SETTINGS, legacy).commit();
+        return true;
     }
 
     private void reload(Runnable apply) {
+        com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator.end();
+        textReadability.invalidateTarget();
+        TextReadabilityPainter.releaseGpuResources();
         var next = LiveSurfaceConfig.load(Minecraft.getInstance().gameDirectory.toPath().resolve("config"));
         liveSettings = next;
         live.policy(policy(next));
         liveInput.resetPresentation();
         rendering.reload();
+        dock.reload();
         correctness.reset();
         apply.run();
         materialCatalog.refreshResources();
@@ -465,6 +743,8 @@ public final class ClientUiKernel implements AutoCloseable {
         try {
             host.close();
         } finally {
+            textReadability.invalidateTarget();
+            textReadability.endFrame();
             live.clearPresentation();
         }
     }
@@ -480,26 +760,35 @@ public final class ClientUiKernel implements AutoCloseable {
         return install(platform, publication, manager, release, clock, extensions, LiveSurfaceSettings.DEFAULT, null);
     }
 
-    private static ClientUiKernel install(ModuleDescriptor.Platform platform, EnginePublication publication,
+    static ClientUiKernel install(ModuleDescriptor.Platform platform, EnginePublication publication,
                                           ThemeManager manager, AutoCloseable release, LongSupplier clock,
                                           List<ModuleDiscovery.Candidate> extensions, LiveSurfaceSettings liveSettings,
                                           Path storage) {
         var kernel = new KernelHost(platform, publication, clock, null, SchedulerBudget.DEFAULT);
         if (storage != null) kernel.storage(storage);
-        var module = new BuiltinTheme(kernel, manager, release);
+        var module = new BuiltinTheme(kernel, manager, release, storage != null);
         var animation = new ClientAnimation(kernel);
-        var layout = new ClientLayout(kernel);
         var screens = new ClientScreens(kernel, platform);
+        var layout = new ClientLayout(kernel, screens);
         var input = new ClientInput(kernel, screens);
+        var collapse = new ClientCollapse(kernel, animation);
+        var dock = new ClientDockWindows(kernel, screens, input, layout, collapse);
         var focus = new ClientFocus(kernel, screens, input);
         var collision = new ClientCollision(kernel, input);
         var spatial = new ClientSpatial(kernel, manager);
         var glass = new ClientGlassRender(kernel);
         var correctness = new ClientCorrectness(kernel, manager, glass);
         var rendering = new ClientRender(kernel, screens, spatial, glass);
+        var textReadability = new ClientTextReadability(kernel, screens);
+        var hud = new ClientHud(kernel);
         var resources = new ClientResources(kernel);
-        var materialCatalog = new ClientMaterialCatalog(kernel, platform);
+        var materialCatalog = new ClientMaterialCatalog(kernel, platform, asset -> {
+            var minecraft = Minecraft.getInstance();
+            return minecraft != null && minecraft.getResourceManager()
+                    .getResource(net.minecraft.resources.ResourceLocation.tryParse(asset)).isPresent();
+        });
         var live = new BuiltinLiveSurface(kernel, screens, input, spatial, liveSettings);
+        var pages = new ClientPages(kernel, screens, live.runtime);
         var candidates = new ArrayList<ModuleDiscovery.Candidate>();
         candidates.add(new ModuleDiscovery.Candidate(UIApis.THEME.id().namespace(),
                 BuiltinTheme.class.getName(), module, Set.of(UIPermission.MODIFY_GLOBAL_CONFIG), true));
@@ -509,23 +798,33 @@ public final class ClientUiKernel implements AutoCloseable {
         candidates.add(BuiltinService.candidate(UIApis.FOCUS, focus, UIApis.SCREEN_FOCUS));
         candidates.add(BuiltinService.candidate(UIApis.COLLISION, collision, UIApis.PRESENTED_HIT_TEST));
         candidates.add(BuiltinService.candidate(UIApis.RENDER, rendering, UIApis.NATIVE_RENDER));
+        candidates.add(BuiltinService.candidate(UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
+        candidates.add(BuiltinService.candidate(UIApis.HUD, hud, UIApis.NATIVE_HUD));
         candidates.add(BuiltinService.candidate(UIApis.GLASS, glass));
         candidates.add(BuiltinService.candidate(UIApis.MATERIAL_CATALOG, materialCatalog, UIApis.MATERIAL_DISCOVERY));
         candidates.add(BuiltinService.candidate(UIApis.CORRECTNESS, correctness, UIApis.UI_CORRECTNESS));
         candidates.add(BuiltinService.candidate(UIApis.SPATIAL, spatial, UIApis.SPATIAL_SCENE));
         candidates.add(BuiltinService.candidate(UIApis.RESOURCES, resources, UIApis.RELOAD_GENERATIONS));
+        candidates.add(BuiltinService.candidate(com.dishanhai.sh_better_ui.kernel.api.project.ProjectEdits.KEY,
+                new ProjectEditsRuntime(kernel)));
         candidates.add(BuiltinService.candidate(UIApis.ACCESSIBILITY, new ClientAccessibility(kernel),
                 UIApis.MINECRAFT_NARRATION));
         candidates.add(BuiltinService.candidate(UIApis.PLATFORM, screens));
+        candidates.add(BuiltinService.candidate(UIApis.COMPUTER_STATUS, ClientComputerStatus.INSTANCE,
+                UIApis.COMPUTER_STATUS_READ));
         candidates.add(BuiltinService.candidate(UIApis.SCREENS, screens, UIApis.NATIVE_SCREEN));
+        candidates.add(new ModuleDiscovery.Candidate("sh_better_ui", ClientPages.class.getName(),
+                pages, Set.of(), false, true));
         candidates.add(BuiltinService.candidate(UIApis.APPEARANCE,
                 com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffectEditor::new));
         candidates.add(new ModuleDiscovery.Candidate(UIApis.LIVE_SURFACES.id().namespace(),
                 BuiltinLiveSurface.class.getName(), live, BuiltinLiveSurface.GRANTS, false, true));
         candidates.addAll(extensions);
+        candidates.add(dock.candidate());
         kernel.startNative(candidates);
         var client = new ClientUiKernel(kernel, module.context, animation, layout, input, screens, focus, collision,
-                rendering, resources, spatial, correctness, live, liveSettings, materialCatalog);
+                rendering, resources, spatial, correctness, live, liveSettings, materialCatalog, collapse, dock, pages, hud,
+                textReadability, module.pendingLegacySettings);
         try {
             client.publishSettings();
             return client;
@@ -630,12 +929,15 @@ public final class ClientUiKernel implements AutoCloseable {
         private final ThemeManager manager;
         private final KernelHost host;
         private final AutoCloseable release;
+        private final boolean persistent;
         private ModuleContext context;
+        private boolean pendingLegacySettings;
 
-        private BuiltinTheme(KernelHost host, ThemeManager manager, AutoCloseable release) {
+        private BuiltinTheme(KernelHost host, ThemeManager manager, AutoCloseable release, boolean persistent) {
             this.host = host;
             this.manager = manager;
             this.release = release;
+            this.persistent = persistent;
         }
 
         @Override
@@ -652,9 +954,12 @@ public final class ClientUiKernel implements AutoCloseable {
 
         @Override
         public void start(ModuleContext context) {
-            context.engine().configs().define(UIApis.CLIENT_SETTINGS);
-            context.engine().configs().define(UIApis.LIVE_SURFACE_SETTINGS);
-            context.engine().configs().define(com.dishanhai.sh_better_ui.kernel.api.intelligence.UICorrectnessEngine.SETTINGS);
+            var configs = context.engine().configs();
+            configs.define(UIApis.CLIENT_SETTINGS);
+            configs.define(UIApis.LIVE_SURFACE_SETTINGS);
+            configs.define(com.dishanhai.sh_better_ui.kernel.api.intelligence.UICorrectnessEngine.SETTINGS);
+            if (persistent) context.scope().track(configs.persist(UIApis.CLIENT_SETTINGS, ClientSettingsCodec.CODEC));
+            pendingLegacySettings = !importLegacySettings(host, context);
             this.context = context;
         }
 

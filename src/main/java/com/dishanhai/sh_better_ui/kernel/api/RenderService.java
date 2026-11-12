@@ -41,6 +41,9 @@ public interface RenderService extends UIService {
     /** All operations require the current render thread and the active pass. Edges use GUI units. */
     interface Context {
         Frame frame();
+        /** Shared client music pulse (0..1) for this frame. Zero when unavailable or disabled. */
+        default float musicPulse() { return 0f; }
+
         void fill(int x, int y, int right, int bottom, int argb);
         void clip(int x, int y, int right, int bottom, Runnable draw);
         void transform(double x, double y, float scale, Runnable draw);

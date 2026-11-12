@@ -79,7 +79,8 @@ final class ClientSpatial implements SpatialUI {
             case BACKGROUND_BLUR -> !settings.enabled() || !settings.blur()
                     || !ClientUiSettings.current().widgetBackdropBlur() ? Support.DISABLED
                     : SpatialRenderer.backdropReady() ? Support.SUPPORTED : Support.DEGRADED;
-            case ARBITRARY_PATH_SHADOWS -> Support.UNSUPPORTED;
+            case ARBITRARY_PATH_SHADOWS -> !settings.enabled() || !settings.shadows() ? Support.DISABLED
+                    : SpatialRenderer.arbitraryPathReady() ? Support.SUPPORTED : Support.DEGRADED;
             case GPU_TIMING -> settings.enabled() && settings.profiling()
                     ? SpatialRenderer.gpuTimingSupport() : Support.DISABLED;
         };

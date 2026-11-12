@@ -76,6 +76,13 @@ public interface SpatialScene extends AutoCloseable {
         void enabled(boolean enabled);
         void material(Material material);
         void shadows(List<Shadow> shadows);
+        /**
+         * Replaces the silhouette of this node's shadow layers. Null follows the node shape.
+         * The path is independent of the surface geometry, hit testing and child clipping.
+         */
+        default void shadowPath(ShadowPath path) {
+            if (path != null) throw new UnsupportedOperationException("Spatial shadow paths are unavailable");
+        }
         void shadowClip(ShadowClip clip);
         boolean isOpen();
         @Override void close();

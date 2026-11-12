@@ -41,7 +41,7 @@ public final class SurfaceTransition<T> {
         }
     }
 
-    public record Layer<T>(SurfacePresentation presentation, T content, double weight) {}
+    public record Layer<T>(SurfacePresentation presentation, T content, Object contentKey, double weight) {}
 
     /** Current is the last settled endpoint. Animated and input describe this frame. */
     public record State<T>(Target<T> target, Target<T> current, SurfaceGeometry animated, Target<T> input,
@@ -190,7 +190,8 @@ public final class SurfaceTransition<T> {
                 }
             }
         }
-        var layers = weights.stream().map(entry -> new Layer<>(entry.target.presentation, entry.target.content, entry.weight)).toList();
+        var layers = weights.stream().map(entry ->
+                new Layer<>(entry.target.presentation, entry.target.content, entry.target.contentKey, entry.weight)).toList();
         state = new State<>(requested, current, drawn, input, layers, running());
         return state;
     }

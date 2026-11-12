@@ -37,7 +37,7 @@ final class ClientFocus implements FocusService {
                 new ResourceRequest(claim, target, priority, 0, ConflictPolicy.REPLACE), focus::release);
         try {
             if (focus.apply()) return Optional.of(focus.lease);
-            discard(focus);
+            focus.lease.close();
             return Optional.empty();
         } catch (RuntimeException | LinkageError | AssertionError failure) {
             focus.lease.close();
@@ -57,16 +57,11 @@ final class ClientFocus implements FocusService {
 
     void reconcile() {
         var current = active;
-        if (current != null && !current.isCurrent()) discard(current);
+        if (current != null && !current.isCurrent()) current.lease.close();
     }
 
     void windowLost() {
-        if (active != null) discard(active);
-    }
-
-    private void discard(Focus focus) {
-        if (active == focus) active = null;
-        focus.lease.close();
+        if (active != null) active.lease.close();
     }
 
     private Screen requireScreen(ScopeLifecycle.Scope target) {

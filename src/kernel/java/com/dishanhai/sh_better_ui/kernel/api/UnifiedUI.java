@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.api;
 
+import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.internal.EnginePublication;
 
 /** Entry point for consumers of the client UI kernel. */
@@ -19,5 +20,9 @@ public final class UnifiedUI {
 
     public static boolean isAvailable() {
         return EnginePublication.clientEngine() != null;
+    }
+
+    public static PageService pages() {
+        return get().require(PageService.KEY);
     }
 }

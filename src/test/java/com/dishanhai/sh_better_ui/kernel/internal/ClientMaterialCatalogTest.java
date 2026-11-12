@@ -30,7 +30,7 @@ class ClientMaterialCatalogTest {
     @Test
     void bothPlatformsPublishTheSameRendererFreeDirectory() {
         String hash = null;
-        for (var platform : ModuleDescriptor.Platform.values()) {
+        for (var platform : List.of(ModuleDescriptor.Platform.FORGE_1_20_1, ModuleDescriptor.Platform.NEOFORGE_1_21_1)) {
             var publication = new EnginePublication();
             var manager = new ThemeManager();
             try (var client = ClientUiKernel.install(platform, publication, manager, manager::close)) {

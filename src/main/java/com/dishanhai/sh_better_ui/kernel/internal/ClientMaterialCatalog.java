@@ -12,8 +12,6 @@ import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalogSnapshot;
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialEntry;
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialPreset;
 import com.google.gson.Gson;
-import net.minecraft.client.Minecraft;
-import net.minecraft.resources.ResourceLocation;
 
 import java.io.InputStreamReader;
 import java.io.IOException;
@@ -35,13 +33,6 @@ final class ClientMaterialCatalog implements MaterialCatalog, AutoCloseable {
     private final MaterialPresetCodec presets;
     private final Map<String, Binding> registrations = new LinkedHashMap<>();
     private volatile MaterialCatalogSnapshot current;
-
-    ClientMaterialCatalog(KernelHost host, ModuleDescriptor.Platform platform) {
-        this(host, platform, asset -> {
-            var minecraft = Minecraft.getInstance();
-            return minecraft != null && minecraft.getResourceManager().getResource(ResourceLocation.tryParse(asset)).isPresent();
-        });
-    }
 
     ClientMaterialCatalog(KernelHost host, ModuleDescriptor.Platform platform, Predicate<String> resourceExists) {
         this.host = host;
