@@ -11,6 +11,8 @@ public final class ShBetterUiApi {
     private static final SettingsApi SETTINGS = new SettingsApi();
     private static final ControlsApi CONTROLS = new ControlsApi();
     private static final InteractionApi INTERACTIONS = new InteractionApi();
+    private static final LinkApi LINKS = new LinkApi();
+    private static final MarkdownApi MARKDOWN = new MarkdownApi();
     private static final SearchApi SEARCH = new SearchApi();
     private static final IngredientApi INGREDIENTS = new IngredientApi();
     private static final MaterialsApi MATERIALS = new MaterialsApi();
@@ -67,6 +69,14 @@ public final class ShBetterUiApi {
 
     public static InteractionApi interactions() {
         return INTERACTIONS;
+    }
+
+    public static LinkApi links() {
+        return LINKS;
+    }
+
+    public static MarkdownApi markdown() {
+        return MARKDOWN;
     }
 
     public static SearchApi search() {

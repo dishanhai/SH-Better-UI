@@ -3,6 +3,13 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 import com.dishanhai.sh_better_ui.client.blur.GlassStyle;
 import com.dishanhai.sh_better_ui.client.glass.GlassBlur;
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassQuality;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassRegion;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant;
+import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraft.client.gui.GuiGraphics;
 
 /** 山海：原生界面的液态玻璃绘制。调用方在材质之后绘制内容并管理原生输入。 */
@@ -21,6 +28,11 @@ public final class LiquidGlassTheme {
     static final int POPOVER_FILL = 0xE6252B34;
     private static final int LAYERED_POPOVER_FILL = 0xA6252B34;
     private static final float REVEAL_FADE_END = 0.28f;
+    // Keep the refracting rim without regenerating backdrop mipmaps for clear panels.
+    private static final GlassMaterial CLEAR_LIGHT_TEXT = new GlassMaterial(GlassVariant.CLEAR,
+            GlassMaterial.preset(GlassVariant.CLEAR).optics(), GlassQuality.PERFORMANCE, GlassMaterial.Foreground.LIGHT);
+    private static final GlassMaterial CLEAR_DARK_TEXT = new GlassMaterial(GlassVariant.CLEAR,
+            CLEAR_LIGHT_TEXT.optics(), CLEAR_LIGHT_TEXT.quality(), GlassMaterial.Foreground.DARK);
 
     private LiquidGlassTheme() {}
 
@@ -57,10 +69,42 @@ public final class LiquidGlassTheme {
 
     private static void popover(GuiGraphics g, float x, float y, float width, float height, float radius,
                                 UiPreferences preferences, float progress) {
+        var settings = ThemeEffects.settings();
+        if (UiTheme.current().hudGlass() && width > 0 && height > 0 && useBackdrop(preferences)
+                && settings.backdrop().enabled()) {
+            float inset = Math.min(5f, Math.min(width, height) * 0.25f);
+            var foreground = new GlassDraw.ForegroundBounds(x + inset, y + inset,
+                    width - 2 * inset, height - 2 * inset);
+            if (clearSurface(g, GlassRegion.rounded(x, y, width, height, radius), foreground,
+                    textColor(), settings.theme().hudBlurRadius())) return;
+        }
         float opacity = revealCoverage(progress);
         int edge = GuiMotion.lerpColor(accentColor(), edgeColor(), progress);
         surface(g, x, y, width, height, radius, preferences, true, GlassStyle.LIQUID_REGULAR,
                 POPOVER_BLUR_RADIUS, opacity, revealFill(progress), edge, false, opacity, false);
+    }
+
+    /** Shared clear optical surface for HUD and screen panels. Draw the foreground after the glass. */
+    static boolean clearSurface(GuiGraphics graphics, GlassRegion region,
+                                GlassDraw.ForegroundBounds foreground, int textColor) {
+        return clearSurface(graphics, region, foreground, textColor, 0);
+    }
+
+    private static boolean clearSurface(GuiGraphics graphics, GlassRegion region,
+                                        GlassDraw.ForegroundBounds foreground, int textColor, int blurRadius) {
+        int luma = ((textColor >> 16 & 255) * 54 + (textColor >> 8 & 255) * 183 + (textColor & 255) * 19) >> 8;
+        var material = clearMaterial(luma >= 128, blurRadius);
+        return ClientUiKernel.paintHudGlass(graphics, new GlassDraw(region, material, GlassDraw.Profile.SNELL, foreground));
+    }
+
+    static GlassMaterial clearMaterial(boolean lightText, int blurRadius) {
+        var clear = lightText ? CLEAR_LIGHT_TEXT : CLEAR_DARK_TEXT;
+        if (blurRadius == 0) return clear;
+        var optics = clear.optics();
+        // Performance mode samples the refracting rim without filtering the face of the glass.
+        var filtered = new GlassOptics(optics.transmission(), optics.refraction(), optics.lensing(), 0.70f,
+                optics.edgeHighlight(), optics.thickness(), blurRadius);
+        return new GlassMaterial(clear.variant(), filtered, GlassQuality.BALANCED, clear.foreground());
     }
 
     static int revealFill(float progress) {
@@ -99,7 +143,7 @@ public final class LiquidGlassTheme {
         boolean buttonSamples = sampleBackground && buttonBlurRadius > 0f;
         float radius = GuiMotion.lerp(buttonSamples ? buttonBlurRadius : 0f, POPOVER_BLUR_RADIUS, progress);
         float strength = buttonSamples ? 1f : progress;
-        if (!preferences.useBackdropBlur()) {
+        if (!useBackdrop(preferences)) {
             fill |= 0xFF000000;
         } else if (radius > 0f && !GlassBlur.tryBackdrop(g, rect, strength,
                 progress == 0f ? GlassStyle.LIQUID_CLEAR : GlassStyle.LIQUID_REGULAR, radius, corner)) {
@@ -257,11 +301,12 @@ public final class LiquidGlassTheme {
             edge = material.edge(edge);
         }
         float corner = RoundedCorners.fit(width, height, radius);
-        if (preferences.useBackdropBlur() && sampleBackground && blurRadius > 0f) {
+        boolean backdrop = useBackdrop(preferences);
+        if (backdrop && sampleBackground && blurRadius > 0f) {
             boolean sampled = GlassBlur.tryBackdrop(g, new GuiRect(x, y, width, height), blurStrength,
                     style, blurRadius, corner);
             if (!sampled) fill |= 0xFF000000;
-        } else if (!preferences.useBackdropBlur() || blurRadius == 0f) {
+        } else if (!backdrop || blurRadius == 0f) {
             fill |= 0xFF000000;
         }
         boolean highContrast = preferences.highContrast();
@@ -274,6 +319,10 @@ public final class LiquidGlassTheme {
                 : themedStroke(paint, focused, highContrast);
         RoundedCorners.draw(g, x, y, width, height, corner, stroke, edge, fill, !capsule);
         if (!capsule) popoverHighlight(g, x, y, width, height, corner, preferences, opacity);
+    }
+
+    private static boolean useBackdrop(UiPreferences preferences) {
+        return preferences.useBackdropBlur() && !ThemeEffects.settings().dynamicTheme().lowPerformance();
     }
 
     private static void popoverHighlight(GuiGraphics g, float x, float y, float width, float height, float corner,

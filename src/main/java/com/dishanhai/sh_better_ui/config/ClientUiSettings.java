@@ -1,5 +1,8 @@
 package com.dishanhai.sh_better_ui.config;
 
+import com.dishanhai.sh_better_ui.kernel.api.EngineState;
+import com.dishanhai.sh_better_ui.kernel.api.UIApis;
+import com.dishanhai.sh_better_ui.kernel.internal.EnginePublication;
 import com.dishanhai.sh_better_ui.spatial.SpatialStyle.Settings;
 
 import java.util.Objects;
@@ -11,7 +14,7 @@ public record ClientUiSettings(GlassBackdropSettings backdrop, boolean highContr
                                ThemeSettings theme, DynamicThemeSettings dynamicTheme, Settings spatial) {
     public static final ClientUiSettings DEFAULT = new ClientUiSettings(GlassBackdropSettings.DEFAULT, false, false, true,
             ControlFeedbackSettings.DEFAULT, TabScrollSettings.DEFAULT);
-    private static final AtomicReference<ClientUiSettings> CURRENT = new AtomicReference<>(DEFAULT);
+    private static final AtomicReference<ClientUiSettings> LEGACY = new AtomicReference<>();
 
     public ClientUiSettings {
         Objects.requireNonNull(backdrop);
@@ -51,15 +54,34 @@ public record ClientUiSettings(GlassBackdropSettings backdrop, boolean highContr
     }
 
     public static ClientUiSettings current() {
-        return CURRENT.get();
+        var engine = EnginePublication.clientEngine();
+        if (engine != null && engine.lifecycle().state() == EngineState.RUNNING) {
+            return engine.configs().get(UIApis.CLIENT_SETTINGS);
+        }
+        return Objects.requireNonNullElse(legacySnapshot(), DEFAULT);
     }
 
+    /** Latest loader snapshot, available for the initial import and the compatibility runtime. */
+    public static ClientUiSettings legacySnapshot() { return LEGACY.get(); }
+
+    /** Updates the loader snapshot used before the Kernel starts and in compatibility mode. */
     public static void update(ClientUiSettings settings) {
-        CURRENT.set(Objects.requireNonNull(settings));
+        LEGACY.set(Objects.requireNonNull(settings));
     }
 
     static void updateBackdrop(GlassBackdropSettings backdrop) {
-        CURRENT.updateAndGet(settings -> settings.withBackdrop(backdrop));
+        LEGACY.updateAndGet(settings -> Objects.requireNonNullElse(settings, DEFAULT).withBackdrop(backdrop));
+    }
+
+    public boolean validForGlobalConfig() {
+        return inRange(backdrop.blurRadiusScale(), 2f) && inRange(backdrop.strength(), 1f)
+                && inRange(backdrop.tintScale(), 2f) && inRange(backdrop.grainScale(), 2f)
+                && inRange(backdrop.saturationScale(), 2f) && inRange(backdrop.lift(), 0.15f)
+                && inRange(backdrop.rimScale(), 2f) && inRange(backdrop.refractionScale(), 2f);
+    }
+
+    private static boolean inRange(float value, float maximum) {
+        return value >= 0f && value <= maximum;
     }
 
     public ClientUiSettings withBackdrop(GlassBackdropSettings settings) {

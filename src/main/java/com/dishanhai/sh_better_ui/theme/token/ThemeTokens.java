@@ -27,6 +27,9 @@ public final class ThemeTokens {
     public static final ThemeToken<ColorValue> TEXT = color("text.primary", 0xfff1f5f9);
     public static final ThemeToken<ColorValue> TEXT_SECONDARY = color("text.secondary", 0xffcbd5e1);
     public static final ThemeToken<ColorValue> TEXT_DISABLED = color("text.disabled", 0xff94a3b8);
+    public static final ThemeToken<Boolean> TEXT_ADAPTIVE_COLOR = key("text.adaptiveColor", TokenType.BOOLEAN, false);
+    public static final ThemeToken<Boolean> TEXT_FOREGROUND_PROTECTION =
+            key("text.foregroundProtection", TokenType.BOOLEAN, false);
     public static final ThemeToken<ColorValue> BORDER = color("border.default", 0xff334155);
     public static final ThemeToken<ColorValue> BORDER_FOCUSED = color("border.focused", 0xff9cc9ff);
     public static final ThemeToken<ColorValue> BORDER_ERROR = color("border.error", 0xfffca5a5);
@@ -68,14 +71,17 @@ public final class ThemeTokens {
     public static final ThemeToken<Boolean> BACKDROP = key("effect.backdrop", TokenType.BOOLEAN, true);
     public static final ThemeToken<Transform> TRANSFORM = key("effect.transform", TRANSFORM_TYPE, Transform.IDENTITY);
     public static final ThemeToken<Boolean> LIGHT = key("appearance.light", TokenType.BOOLEAN, false);
+    public static final ThemeToken<Boolean> LIQUID_GLASS = key("appearance.liquidGlass", TokenType.BOOLEAN, false);
+    public static final ThemeToken<Boolean> HUD_GLASS = key("appearance.hudGlass", TokenType.BOOLEAN, false);
 
     private static final List<ThemeToken<?>> ALL = List.of(PRIMARY, ON_PRIMARY, SECONDARY, ACCENT, BACKGROUND, SURFACE,
             SURFACE_SECONDARY, SURFACE_ELEVATED, SURFACE_OVERLAY, TEXT, TEXT_SECONDARY, TEXT_DISABLED,
+            TEXT_ADAPTIVE_COLOR, TEXT_FOREGROUND_PROTECTION,
             BORDER, BORDER_FOCUSED, BORDER_ERROR, BORDER_WIDTH, HOVER, PRESSED, SELECTED, DISABLED,
             SUCCESS, WARNING, ERROR, INFO, RADIUS_NONE, RADIUS_SMALL, RADIUS_MEDIUM, RADIUS_LARGE,
             RADIUS_FULL, SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG, SPACING_XL, FONT, FONT_SIZE,
             FONT_WEIGHT, LINE_HEIGHT, FAST, NORMAL, SLOW, STANDARD, EMPHASIZED, SPRING, OPACITY, BLUR,
-            GLOW, PULSE, SHADOW, BACKDROP, TRANSFORM, LIGHT);
+            GLOW, PULSE, SHADOW, BACKDROP, TRANSFORM, LIGHT, LIQUID_GLASS, HUD_GLASS);
 
     private ThemeTokens() {}
 

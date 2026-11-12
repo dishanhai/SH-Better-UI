@@ -1,6 +1,14 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.blur.GaussBlur.RevealDirection;
 import com.dishanhai.sh_better_ui.client.glass.GlassBlur;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
+import com.dishanhai.sh_better_ui.client.visual.VisualEffectResult;
+import net.minecraft.client.Minecraft;
+
+import java.util.Objects;
+
+import static com.dishanhai.sh_better_ui.client.visual.VisualEffectResult.*;
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.config.GlassBackdropSettings;
 import net.minecraft.client.gui.GuiGraphics;
@@ -30,6 +38,47 @@ public final class VisualReveal {
         float radius = settings.enabled() && settings.strength() > 0.01f
                 ? profile.maxRadius() * settings.blurRadiusScale() * settings.strength() : 0f;
         VisualRevealRenderer.drawTexture(graphics, texture, x, y, width, height, profile, radius);
+    }
+
+    /** Checked RGBA rendering in the caller's current GUI pose. Resource IDs are resolved each draw. */
+    public static VisualEffectResult drawTextureChecked(GuiGraphics graphics, ResourceLocation texture, Rect area,
+                                                        RevealProfile profile, RevealDirection direction,
+                                                        GlassBackdropSettings settings, boolean useBlur) {
+        Objects.requireNonNull(texture);
+        Objects.requireNonNull(profile);
+        Objects.requireNonNull(direction);
+        Objects.requireNonNull(settings);
+        if (area.empty()) return EMPTY_REGION;
+        var client = Minecraft.getInstance();
+        if (client.getTextureManager().getTexture(texture, null) == null
+                && client.getResourceManager().getResource(texture).isEmpty()) return INVALID_TEXTURE;
+        float radius = useBlur && settings.enabled() && settings.strength() > 0.01f
+                ? profile.maxRadius() * settings.blurRadiusScale() * settings.strength() : 0f;
+        int width = (int) Math.ceil(area.width()), height = (int) Math.ceil(area.height());
+        graphics.pose().pushPose();
+        try {
+            graphics.pose().translate(area.x(), area.y(), 0);
+            graphics.pose().scale((float) (area.width() / width), (float) (area.height() / height), 1);
+            return VisualRevealRenderer.drawTexture(graphics, texture, 0, 0, width, height, profile, radius, direction);
+        } finally {
+            graphics.pose().popPose();
+        }
+    }
+
+    public static void validateGradient(float originU, float originV, float radius) {
+        if (!(originU >= 0f && originU <= 1f && originV >= 0f && originV <= 1f)
+                || !Float.isFinite(radius) || radius <= 0f) {
+            throw new IllegalArgumentException("Expected gradient origin in [0, 1] and a positive radius");
+        }
+    }
+
+    /** Radius is relative to the distance to the farthest corner, in the current GUI pose. */
+    public static VisualEffectResult drawRadialGradient(GuiGraphics graphics, Rect area, float originU, float originV,
+                                                        float radius, int innerArgb, int outerArgb) {
+        validateGradient(originU, originV, radius);
+        if (area.empty()) return EMPTY_REGION;
+        return VisualRevealRenderer.drawRadialGradient(graphics, (float) area.x(), (float) area.y(),
+                (float) area.width(), (float) area.height(), originU, originV, radius, innerArgb, outerArgb);
     }
 
     /** 绘制右下暖橙、向外过渡到灰绿的柔和渐变。 */

@@ -1,6 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
-import com.dishanhai.sh_better_ui.client.audio.SystemAudioCapture;
+import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
@@ -9,6 +9,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.TabScrollSettings;
+import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.mojang.blaze3d.platform.InputConstants;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -26,7 +27,29 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：主控面板切页时移除前一页的输入控件，并保留草稿。 */
 class ControlPanelScreenTest {
     @Test
-    void backgroundMusicStartsOffAndReleasesItsSessionWhenSuspendedOrRemoved() throws ReflectiveOperationException {
+    void projectFeedbackTabShowsThreeLinksAndRetainsConfigurationDraft() {
+        var screen = compactScreen();
+        switchTab(screen, "feedback");
+        button(screen, "hover_animation").onPress();
+        var navigation = mainNavigation(screen);
+        screen.setFocused(navigation);
+        assertTrue(screen.keyPressed(GLFW.GLFW_KEY_END, 0, 0));
+        assertSame(button(screen, "section.links"), navigation.focusedButton());
+        assertTrue(navigation.scrollOffset() > 0);
+        assertTrue(button(screen, "links.github").active);
+        assertTrue(button(screen, "links.issues").active);
+        assertTrue(button(screen, "links.afdian").active);
+        assertNull(findButton(screen, "hover_animation"));
+
+        switchTab(screen, "configuration");
+        assertNull(findButton(screen, "links.github"));
+        assertTrue(button(screen, "apply").active);
+        assertNotNull(button(screen, "hover_animation"));
+    }
+
+    @Test
+    void musicPulseCanBeToggledAcrossPanelInstancesAndTurnedOffWhileMotionIsReduced() {
+        var pulse = ClientMusicPulse.global();
         var screen = compactScreen();
         switchTab(screen, "display");
         var music = button(screen, "background_music");
@@ -34,36 +57,35 @@ class ControlPanelScreenTest {
         var motion = button(screen, "motion");
         if (contrast.isSelected()) contrast.onPress();
         if (motion.isSelected()) motion.onPress();
-        var capture = ControlPanelScreen.class.getDeclaredField("backgroundAudio");
-        capture.setAccessible(true);
         assertTrue(music.active);
         assertFalse(music.isSelected());
-        assertNull(capture.get(screen));
 
-        var suspended = new SystemAudioCapture();
-        capture.set(screen, suspended);
-        motion.onPress();
-        assertFalse(music.active);
-        assertEquals(SystemAudioCapture.Status.CLOSED, suspended.status());
-        assertNull(capture.get(screen));
-        motion.onPress();
-        assertTrue(music.active);
-        assertFalse(music.isSelected());
-        assertNull(capture.get(screen));
+        try {
+            music.onPress();
+            assertTrue(pulse.enabled());
+            screen.removed();
+            assertTrue(pulse.enabled());
 
-        var removed = new SystemAudioCapture();
-        capture.set(screen, removed);
-        screen.removed();
-        assertEquals(SystemAudioCapture.Status.CLOSED, removed.status());
-        assertNull(capture.get(screen));
+            var reopened = compactScreen();
+            switchTab(reopened, "display");
+            var globalToggle = button(reopened, "background_music");
+            var reducedMotion = button(reopened, "motion");
+            if (!reducedMotion.isSelected()) reducedMotion.onPress();
+            assertTrue(globalToggle.isSelected());
+            assertTrue(globalToggle.active);
+            globalToggle.onPress();
+            assertFalse(pulse.enabled());
+            assertFalse(globalToggle.active);
+        } finally {
+            pulse.close();
+        }
     }
 
     @Test
     void primaryNavigationSeparatesSettingsDeveloperConfigurationAndOverview() {
         var screen = compactScreen();
-        var navigation = screen.children().stream().filter(UiScrollableSectionBar.class::isInstance)
-                .map(UiScrollableSectionBar.class::cast).filter(value -> value.buttons().size() == 3).findFirst().orElseThrow();
-        assertEquals(3, navigation.buttons().size());
+        var navigation = mainNavigation(screen);
+        assertEquals(4, navigation.buttons().size());
         assertNotNull(findButton(screen, "section.configuration"));
         switchTab(screen, "developer_config");
         assertNull(findButton(screen, "enabled"));
@@ -175,7 +197,7 @@ class ControlPanelScreenTest {
         var backdrop = button(screen, "enabled");
         boolean initialBlur = ClientUiSettings.current().backdrop().enabled();
         boolean initialDense = ClientUiSettings.current().backdrop().denseSampling();
-        assertEquals(8, sliders(screen));
+        assertEquals(8, visibleSliders(screen));
         backdrop.onPress();
         assertEquals(!initialBlur, backdrop.isSelected());
         switchTab(screen, "developer_config");
@@ -189,7 +211,8 @@ class ControlPanelScreenTest {
         switchTab(screen, "display");
         assertFalse(screen.children().contains(backdrop));
         assertFalse(screen.children().contains(sampling));
-        assertEquals(0, sliders(screen));
+        assertEquals(ClientUiSettings.current().theme().mode() == ThemeSettings.Mode.HUD_GLASS ? 1 : 0,
+                visibleSliders(screen));
         assertNull(findButton(screen, "shortcut.binding"));
         var contrast = button(screen, "contrast");
         boolean initialContrast = ClientUiSettings.current().highContrast();
@@ -199,10 +222,10 @@ class ControlPanelScreenTest {
         switchTab(screen, "shortcut");
         assertNotNull(findButton(screen, "shortcut.binding"));
         assertFalse(screen.children().contains(contrast));
-        assertEquals(0, sliders(screen));
+        assertEquals(0, visibleSliders(screen));
 
         switchTab(screen, "glass");
-        assertEquals(8, sliders(screen));
+        assertEquals(8, visibleSliders(screen));
         assertEquals(!initialBlur, button(screen, "enabled").isSelected());
         assertTrue(button(screen, "apply").active);
         switchTab(screen, "developer_config");
@@ -212,8 +235,9 @@ class ControlPanelScreenTest {
         assertEquals(!initialContrast, button(screen, "contrast").isSelected());
     }
 
-    private static long sliders(ControlPanelScreen screen) {
-        return screen.children().stream().filter(UiSlider.class::isInstance).count();
+    private static long visibleSliders(ControlPanelScreen screen) {
+        return screen.children().stream().filter(UiSlider.class::isInstance).map(UiSlider.class::cast)
+                .filter(slider -> slider.visible).count();
     }
 
     private static void switchTab(ControlPanelScreen screen, String section) {
@@ -226,6 +250,13 @@ class ControlPanelScreenTest {
 
     private static UiButton button(ControlPanelScreen screen, String key) {
         return assertInstanceOf(UiButton.class, findButton(screen, key));
+    }
+
+    private static UiScrollableSectionBar mainNavigation(ControlPanelScreen screen) {
+        var configuration = button(screen, "section.configuration");
+        return screen.children().stream().filter(UiScrollableSectionBar.class::isInstance)
+                .map(UiScrollableSectionBar.class::cast).filter(value -> value.buttons().contains(configuration))
+                .findFirst().orElseThrow();
     }
 
     private static UiButton findButton(ControlPanelScreen screen, String key) {
@@ -250,11 +281,11 @@ class ControlPanelScreenTest {
             screen.height = 210;
             screen.init();
             switchTab(screen, "feedback");
-            assertEquals(1, sliders(screen));
+            assertEquals(1, visibleSliders(screen));
             button(screen, "hover_animation").onPress();
             button(screen, "press_animation").onPress();
             switchTab(screen, "tabs");
-            assertEquals(1, sliders(screen));
+            assertEquals(1, visibleSliders(screen));
             button(screen, "tab_wheel").onPress();
             button(screen, "tab_drag").onPress();
             assertEquals(ClientUiSettings.DEFAULT, ClientUiSettings.current());

@@ -653,7 +653,14 @@ enum DeveloperSamples {
     RESET_ICON("reset_icon", 7, GraphicIcon.RESET, "RESET"),
     SETTINGS_ICON("settings_icon", 8, GraphicIcon.SETTINGS, "SETTINGS"),
     COPY_ICON("copy_icon", 9, GraphicIcon.COPY, "COPY"),
-    STATUS_ICON("status_icon", 10, GraphicIcon.STATUS_PENDING, "STATUS_PENDING"),
+    STATUS_ICON("status_icon", MATERIALS, 10, MaterialPreviewScenes.IconMotion::new, """
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicIconMotion;
+
+            GraphicIcon.STATUS_PENDING.withMotion(GraphicIconMotion.SPIN).draw(graphics, x, y, 2, 0xFFFFFFFF);
+            GraphicIcon.STATUS_PENDING.withMotion(GraphicIconMotion.FLOAT).draw(graphics, x + 40, y, 2, 0xFFFFFFFF);
+            GraphicIcon.STATUS_PENDING.withMotion(GraphicIconMotion.BOUNCE).draw(graphics, x + 80, y, 2, 0xFFFFFFFF);
+            """),
     CODE_RAIN("code_rain", MATERIALS, 16, MaterialPreviewScenes.EFFECT_HEIGHT, 0,
             MaterialPreviewScenes.CodeRainPreview::new, """
             import com.dishanhai.sh_better_ui.client.gui.scaled.CodeRain;

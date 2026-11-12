@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextFit;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.StringSplitter;
 import net.minecraft.client.gui.Font;
@@ -20,6 +22,11 @@ class UiTextDetailsTest {
         @Override
         public StringSplitter getSplitter() {
             return SPLITTER;
+        }
+
+        @Override
+        public int width(FormattedCharSequence line) {
+            return (int) Math.ceil(SPLITTER.stringWidth(line));
         }
     };
 
@@ -66,6 +73,33 @@ class UiTextDetailsTest {
 
         assertTrue(layout.truncated());
         assertTrue(SPLITTER.stringWidth(layout.lines().getFirst()) <= 1f);
+    }
+
+    @Test
+    void adaptiveLineShrinksBeforeTruncatingAndPreservesStyledCodePoints() {
+        var text = Component.literal("甲😀乙丙丁戊").withStyle(ChatFormatting.BLUE);
+        var layout = ShBetterUiApi.layout();
+        var scale = new TextFit.Scale(2, 1, 2);
+        var smaller = layout.fitText(FONT, text, 10, 2 * FONT.lineHeight, scale);
+        assertEquals(1.5f, smaller.scale());
+        assertFalse(smaller.truncated());
+        assertEquals(text.getString(), textOf(smaller.glyphs()));
+
+        int markerWidth = (int) Math.ceil(SPLITTER.stringWidth(CommonComponents.ELLIPSIS));
+        var cropped = layout.fitText(FONT, text, markerWidth + 2, FONT.lineHeight, scale);
+        assertTrue(cropped.truncated());
+        assertEquals(1f, cropped.scale());
+        assertEquals("甲😀" + CommonComponents.ELLIPSIS.getString(), textOf(cropped.glyphs()));
+        assertTrue(cropped.width() <= markerWidth + 2);
+        cropped.glyphs().accept((index, style, codePoint) -> {
+            if (codePoint == '甲' || codePoint == 0x1f600) {
+                assertNotNull(style.getColor());
+                assertEquals(ChatFormatting.BLUE.getColor().intValue(), style.getColor().getValue());
+            }
+            return true;
+        });
+        assertEquals(0f, layout.fitText(FONT, text, 100, FONT.lineHeight - 1, scale).scale());
+        assertEquals(0f, layout.fitText(FONT, text, markerWidth - 1, FONT.lineHeight, scale).scale());
     }
 
     @Test

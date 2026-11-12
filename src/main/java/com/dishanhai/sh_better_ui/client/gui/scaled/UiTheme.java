@@ -1,31 +1,38 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.dishanhai.sh_better_ui.theme.BuiltinThemes;
 import com.dishanhai.sh_better_ui.theme.ThemeScope;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
+import com.dishanhai.sh_better_ui.theme.token.TokenLookup;
 
 /** 山海：解析共用材质色，并为设置界面提供作用域内的草稿预览。 */
 public record UiTheme(boolean light, int background, int surface, int border, int text, int accent,
                       int overrides) {
     private static final int BACKGROUND = 1, SURFACE = 2, BORDER = 4, TEXT = 8, ACCENT = 16;
+    private static final int LIQUID_GLASS = 32;
+    private static final int HUD_GLASS = 64;
     private static final ThreadLocal<UiTheme> PREVIEW = new ThreadLocal<>();
     private static final UiTheme DARK = new UiTheme(false, DarkModeTheme.BACKGROUND, DarkModeTheme.SURFACE,
             DarkModeTheme.BORDER, DarkModeTheme.TEXT, DarkModeTheme.ACCENT, 0);
     private static final UiTheme LIGHT = new UiTheme(true, 0xFFE8EEF5, 0xFFF8FAFC,
             0xFF64748B, 0xFF172334, 0xFF1755AA, 0);
+    private static final UiTheme GLASS = fromTokens(BuiltinThemes.liquidGlassSnapshot());
+    private static final UiTheme CLEAR_GLASS = fromTokens(BuiltinThemes.hudGlassSnapshot());
     private static ThemeSettings cachedSettings;
     private static UiTheme cachedTheme;
 
     public static UiTheme current() {
         UiTheme preview = PREVIEW.get();
-        return preview == null ? configured() : preview;
+        return preview == null ? MinecraftThemes.resolvePalette(configured()) : preview;
     }
 
     private static UiTheme configured() {
         var settings = ClientUiSettings.current().theme();
-        if (settings.mode() != ThemeSettings.Mode.CUSTOM) return settings.light() ? LIGHT : DARK;
+        if (settings.mode() != ThemeSettings.Mode.CUSTOM) return resolve(settings);
         // 绘制只在客户端渲染线程进行。配置线程通过不可变快照发布变更。
         return resolveCustom(settings);
     }
@@ -39,6 +46,8 @@ public record UiTheme(boolean light, int background, int surface, int border, in
     }
 
     public static UiTheme resolve(ThemeSettings settings) {
+        if (settings.mode() == ThemeSettings.Mode.LIQUID_GLASS) return GLASS;
+        if (settings.mode() == ThemeSettings.Mode.HUD_GLASS) return CLEAR_GLASS;
         UiTheme base = settings.light() ? LIGHT : DARK;
         if (settings.mode() != ThemeSettings.Mode.CUSTOM) return base;
         int mask = (settings.background().isEmpty() ? 0 : BACKGROUND)
@@ -64,10 +73,18 @@ public record UiTheme(boolean light, int background, int surface, int border, in
 
     /** Adapts semantic colors for existing renderers while a dynamic screen is being painted. */
     public static UiTheme fromScope(ThemeScope scope) {
-        return new UiTheme(scope.resolve(ThemeTokens.LIGHT), scope.resolve(ThemeTokens.BACKGROUND).argb(),
-                scope.resolve(ThemeTokens.SURFACE).argb(), scope.resolve(ThemeTokens.BORDER).argb(),
-                scope.resolve(ThemeTokens.TEXT).argb(), scope.resolve(ThemeTokens.ACCENT).argb(),
-                BACKGROUND | SURFACE | BORDER | TEXT | ACCENT);
+        return fromTokens(scope);
+    }
+
+    /** Adapts semantic colors from a displayed theme snapshot or a local scope. */
+    public static UiTheme fromTokens(TokenLookup tokens) {
+        int mask = BACKGROUND | SURFACE | BORDER | TEXT | ACCENT;
+        if (tokens.resolve(ThemeTokens.LIQUID_GLASS)) mask |= LIQUID_GLASS;
+        if (tokens.resolve(ThemeTokens.HUD_GLASS)) mask |= HUD_GLASS;
+        return new UiTheme(tokens.resolve(ThemeTokens.LIGHT), tokens.resolve(ThemeTokens.BACKGROUND).argb(),
+                tokens.resolve(ThemeTokens.SURFACE).argb(), tokens.resolve(ThemeTokens.BORDER).argb(),
+                tokens.resolve(ThemeTokens.TEXT).argb(), tokens.resolve(ThemeTokens.ACCENT).argb(),
+                mask);
     }
 
     public static GraphicIcon icon(ThemeSettings.Mode mode) {
@@ -75,8 +92,13 @@ public record UiTheme(boolean light, int background, int surface, int border, in
             case DARK -> GraphicIcon.DARK_MODE;
             case LIGHT -> GraphicIcon.LIGHT_MODE;
             case CUSTOM -> GraphicIcon.CUSTOM_THEME;
+            case LIQUID_GLASS -> GraphicIcon.BLUR;
+            case HUD_GLASS -> GraphicIcon.BLUR;
         };
     }
+
+    public boolean liquidGlass() { return (overrides & LIQUID_GLASS) != 0; }
+    public boolean hudGlass() { return (overrides & HUD_GLASS) != 0; }
 
     public int background(int dark) { return tint(dark, background, BACKGROUND); }
     public int surface(int dark) { return tint(dark, surface, SURFACE); }

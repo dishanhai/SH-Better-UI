@@ -20,6 +20,7 @@ public final class UiScreenBuilder {
     private Supplier<? extends GuiEventListener> returnFocus;
     private boolean pausesGame;
     private boolean backButton = true;
+    private BackgroundMode backgroundMode = BackgroundMode.AUTO;
     private Consumer<UiScreen> onInit = screen -> {};
     private UiScreen.Draw onRender;
     private UiScreen.Draw onForeground = (screen, frame) -> {};
@@ -62,6 +63,18 @@ public final class UiScreenBuilder {
         return this;
     }
 
+    /** Draws the full-screen dot matrix before the content viewport is clipped. */
+    public UiScreenBuilder dotMatrixBackground() {
+        backgroundMode = BackgroundMode.DOTS;
+        return this;
+    }
+
+    /** Draws the user's themed backdrop before the content viewport is clipped. */
+    public UiScreenBuilder themeBackground() {
+        backgroundMode = BackgroundMode.THEME;
+        return this;
+    }
+
     /** Opts into global dynamic themes with a screen-local override draft. */
     public UiScreenBuilder dynamicTheme(Consumer<ScopeOverride.Builder> theme) {
         this.theme = Objects.requireNonNull(theme);
@@ -77,7 +90,7 @@ public final class UiScreenBuilder {
         return this;
     }
 
-    /** 在原生控件之前绘制，设置后由回调负责界面背景。 */
+    /** 在原生控件之前绘制。可由回调绘制背景，也可使用 themeBackground() 或 dotMatrixBackground()。 */
     public UiScreenBuilder onRender(UiScreen.Draw onRender) {
         this.onRender = Objects.requireNonNull(onRender);
         return this;
@@ -109,7 +122,7 @@ public final class UiScreenBuilder {
     /** 只创建界面，不读取 Minecraft。直接 setScreen 时请按需先设置 parent。 */
     public UiScreen build() {
         var screen = new UiScreen(new Definition(title.copy(), contexts, parent, parentSpecified, returnFocus, pausesGame,
-                backButton, onInit, onRender, onForeground, onTick, onRemoved, onError, theme));
+                backButton, backgroundMode, onInit, onRender, onForeground, onTick, onRemoved, onError, theme));
         onBuilt.accept(screen);
         return screen;
     }
@@ -121,8 +134,11 @@ public final class UiScreenBuilder {
         return screen;
     }
 
+    enum BackgroundMode { AUTO, DOTS, THEME }
+
     record Definition(Component title, Supplier<UiApiContext> contexts, Screen parent, boolean parentSpecified,
                       Supplier<? extends GuiEventListener> returnFocus, boolean pausesGame, boolean backButton,
+                      BackgroundMode backgroundMode,
                       Consumer<UiScreen> onInit, UiScreen.Draw onRender, UiScreen.Draw onForeground,
                       Consumer<UiScreen> onTick, Consumer<UiScreen> onRemoved,
                       BiConsumer<UiScreen, Throwable> onError, Consumer<ScopeOverride.Builder> theme) {}

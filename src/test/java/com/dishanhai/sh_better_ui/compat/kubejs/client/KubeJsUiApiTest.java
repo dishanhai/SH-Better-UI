@@ -74,6 +74,24 @@ class KubeJsUiApiTest {
     }
 
     @Test
+    void declarativePagesAndSubscriptionsBelongToOneScriptGeneration() {
+        String id = "kubejs:generation_example";
+        var source = KubeJsPageSchemaTest.source();
+        var old = new KubeJsUiApi();
+        old.registerPage(id, source);
+        var listener = old.on("pageOpened", event -> {});
+        assertThrows(IllegalArgumentException.class, () -> old.registerPage(id, source));
+        assertThrows(IllegalArgumentException.class, () -> old.on("networkAction", event -> {}));
+        old.close();
+        assertDoesNotThrow(listener::close);
+        assertThrows(IllegalStateException.class, () -> old.registerPage(id, source));
+        assertThrows(IllegalStateException.class, () -> old.on("pageOpened", event -> {}));
+        try (var current = new KubeJsUiApi()) {
+            assertDoesNotThrow(() -> current.registerPage(id, source));
+        }
+    }
+
+    @Test
     void closingGenerationRemovesItsDeveloperPreviews() {
         var oldGeneration = new KubeJsUiApi();
         var replacement = new KubeJsUiApi();

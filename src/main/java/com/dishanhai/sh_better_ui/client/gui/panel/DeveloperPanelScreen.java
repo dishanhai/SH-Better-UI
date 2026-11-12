@@ -2,12 +2,12 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec.Category;
 import com.dishanhai.sh_better_ui.kernel.api.RenderService;
+import com.dishanhai.sh_better_ui.kernel.api.material.MaterialEntry;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffects;
 
 import com.dishanhai.sh_better_ui.client.blur.GaussBlur;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
-import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.LiquidGlassTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiCapsuleReveal;
@@ -15,6 +15,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiConfirmation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTextDetails;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
@@ -73,6 +74,7 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
 
     private final Screen parent;
     private final UiPreferences preferences;
+    private final UiDotBackground backdrop = new UiDotBackground();
     private final UiCapsuleReveal entrance = new UiCapsuleReveal();
     private final UiScreenReturn returning = new UiScreenReturn(this);
     private boolean entered;
@@ -85,6 +87,7 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
     private UiButton dialogExample;
     private UiButton toastExample;
     private UiButton diagnostics;
+    private UiButton pageStudio;
     private int panelWidth;
     private int panelHeight;
     private int left;
@@ -139,6 +142,7 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
         dialogExample = null;
         toastExample = null;
         diagnostics = null;
+        pageStudio = null;
         compact = width < 212 || height < SHORT_PANEL_HEIGHT + 8;
         if (compact) {
             entrance.finish();
@@ -165,8 +169,12 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
         int rightWidth = contentWidth - columnWidth - GAP;
         controls = addButton(contentX, top + 34, columnWidth, label("gallery.controls"), GraphicIcon.INTERACTION,
                 () -> openGallery(Category.CONTROLS, null, () -> controls));
+        String featuredMaterial = NativeMaterialRoute.catalogService()
+                .flatMap(catalog -> catalog.find(LiquidGlassPreview.ID))
+                .map(MaterialEntry::nativePreviewId).orElse(null);
         materials = addButton(rightX, top + 34, rightWidth, label("gallery.materials"), GraphicIcon.TEMPLATE,
-                () -> openGallery(Category.MATERIALS, null, () -> materials));
+                () -> openGallery(Category.MATERIALS, featuredMaterial, () -> materials));
+        if (featuredMaterial != null) materials.setPreview(label("gallery.materials_hint"));
         int demoY = top + DEMOS_Y + 13;
         addRenderableWidget(button(contentX, demoY, columnWidth, BUTTON_HEIGHT,
                 label("demo.dialog"), GraphicIcon.WARNING, preferences,
@@ -186,6 +194,13 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
         int backX = contentX + contentWidth - 60;
         diagnostics = addButton(backX - GAP - 24, top + 7, 24, label("diagnostics"), null, this::openDiagnostics);
         diagnostics.setIcon(GraphicIcon.INFO);
+        var studioTitle = Component.translatable("sh_better_ui.pages.studio.title");
+        pageStudio = addButton(diagnostics.getX() - GAP - 24, top + 7, 24, studioTitle, null, () -> {
+            returnEntry = () -> pageStudio;
+            com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.openPageStudio(minecraft);
+        });
+        pageStudio.setIcon(GraphicIcon.CODE);
+        pageStudio.setPreview(studioTitle);
         addButton(backX, top + 7, 60, BACK, GraphicIcon.BACK, this::onClose);
     }
 
@@ -250,10 +265,8 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
     private void renderScreen(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (entrance.closing()) {
             returning.renderBackdrop(graphics, width, height, partialTick);
-        } else if (minecraft.level == null) {
-            DarkModeTheme.background(graphics, 0, 0, width, height);
         } else {
-            graphics.fill(0, 0, width, height, 0x6020252E);
+            backdrop.render(this, graphics, width, height, preferences, !entrance.active());
         }
         if (compact) {
             int y = PADDING;
@@ -277,7 +290,7 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
 
     private void renderContent(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int x = left + PADDING;
-        drawLabel(graphics, getTitle(), x, top + 14, diagnostics.getX() - GAP - x, LiquidGlassTheme.textColor());
+        drawLabel(graphics, getTitle(), x, top + 14, pageStudio.getX() - GAP - x, LiquidGlassTheme.textColor());
         graphics.drawString(font, label("demos"), x, top + DEMOS_Y, LiquidGlassTheme.accentColor(), false);
         graphics.drawString(font, label("examples"), x, top + EXAMPLES_Y, LiquidGlassTheme.accentColor(), false);
         if (panelHeight == FULL_PANEL_HEIGHT) {

@@ -30,6 +30,9 @@ public final class UiSlider extends AbstractSliderButton {
     private int keyDirection;
     private int messageValue;
     private Tooltip valueTooltip;
+    private IntConsumer onCommit;
+    private IntConsumer onCancel;
+    private Integer pressedValue;
 
     /**
      * min 必须小于 max，step 必须为正数。各档从 min 起按 step 递增，max 始终可到达。
@@ -66,12 +69,57 @@ public final class UiSlider extends AbstractSliderButton {
         PlatformUiApi.setTooltipDelay(this, preferences.feedback().tooltipDelayMs());
     }
 
+    /** Optional final-value callback for pointer releases and keyboard edits. */
+    public void setOnCommit(IntConsumer commit, IntConsumer cancel) {
+        onCommit = Objects.requireNonNull(commit, "commit");
+        onCancel = Objects.requireNonNull(cancel, "cancel");
+    }
+
+    @Override
+    public void onClick(double x, double y) {
+        if (onCommit != null) pressedValue = currentValue;
+        super.onClick(x, y);
+    }
+
+    @Override
+    public void onRelease(double x, double y) {
+        super.onRelease(x, y);
+        Integer previous = pressedValue;
+        pressedValue = null;
+        if (previous != null && active && visible && previous != currentValue) onCommit.accept(currentValue);
+    }
+
+    @Override
+    public void setFocused(boolean focused) {
+        super.setFocused(focused);
+        if (!focused) cancelEdit();
+    }
+
+    /** Cancels a drag that lost its capture before release. */
+    public void cancelEdit() {
+        if (pressedValue != null) {
+            int previous = pressedValue;
+            pressedValue = null;
+            if (previous != currentValue) {
+                setValue(previous);
+                onCancel.accept(previous);
+            }
+        }
+    }
+
+    public void refreshLabel() {
+        refreshTooltip(true);
+    }
+
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
         if (!active || !visible) return false;
         keyDirection = key == GLFW.GLFW_KEY_LEFT ? -1 : key == GLFW.GLFW_KEY_RIGHT ? 1 : 0;
+        int previous = currentValue;
         try {
-            return super.keyPressed(key, scanCode, modifiers);
+            boolean handled = super.keyPressed(key, scanCode, modifiers);
+            if (handled && onCommit != null && previous != currentValue) onCommit.accept(currentValue);
+            return handled;
         } finally {
             keyDirection = 0;
         }
@@ -87,7 +135,11 @@ public final class UiSlider extends AbstractSliderButton {
 
     @Override
     protected void updateMessage() {
-        if (valueTooltip != null && messageValue == currentValue) return;
+        refreshTooltip(false);
+    }
+
+    private void refreshTooltip(boolean force) {
+        if (!force && valueTooltip != null && messageValue == currentValue) return;
         Component message = Objects.requireNonNull(label.apply(currentValue));
         setMessage(message);
         messageValue = currentValue;

@@ -17,9 +17,12 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.WeakHashMap;
+import java.util.concurrent.CompletionStage;
+import java.util.function.Consumer;
 import java.util.function.Function;
 
 /** 山海：每代客户端脚本独立持有的门面，重载时撤销注册并释放仍存活的界面与上下文。 */
@@ -28,11 +31,59 @@ public final class KubeJsUiApi extends UiClientApi implements AutoCloseable {
     private final Set<UiApiContext> contexts = new LinkedHashSet<>();
     private final Set<UiScreen> screens = Collections.newSetFromMap(new WeakHashMap<>());
     private final KubeJsTextApi text = new KubeJsTextApi(this);
+    private final KubeJsRichTextApi richText = new KubeJsRichTextApi(this);
+    private final KubeJsTextReadabilityApi readability = new KubeJsTextReadabilityApi(this);
+    private final KubeJsPageBindings pages = new KubeJsPageBindings();
     private volatile boolean closed;
 
     public KubeJsTextApi text() {
         requireOpen();
         return text;
+    }
+
+    /** Bounded passive documents rendered by the native rich text view. */
+    public KubeJsRichTextApi richText() {
+        requireOpen();
+        return richText;
+    }
+
+    public KubeJsTextReadabilityApi textReadability() {
+        requireOpen();
+        return readability;
+    }
+
+    synchronized boolean owns(UiScreen screen) {
+        return !closed && screens.contains(screen);
+    }
+
+    public void registerPage(String id, Map<?, ?> definition) {
+        requireOpen();
+        pages.register(id, definition);
+    }
+
+    public CompletionStage<Boolean> open(String id, Map<?, ?> data) {
+        requireOpen();
+        return pages.open(id, data);
+    }
+
+    public CompletionStage<Boolean> update(String instanceId, Map<?, ?> updates) {
+        requireOpen();
+        return pages.update(instanceId, updates);
+    }
+
+    public CompletionStage<Boolean> closePage(String instanceId) {
+        requireOpen();
+        return pages.closePage(instanceId);
+    }
+
+    public PageSubscription on(String event, Consumer<KubeJsPageEvent> listener) {
+        requireOpen();
+        return pages.on(event, listener);
+    }
+
+    public interface PageSubscription extends AutoCloseable {
+        @Override
+        void close();
     }
 
     synchronized void registerTextPalette(ResourceLocation id, boolean body, UiTextEffects.PaletteAnimation animation,
@@ -114,6 +165,8 @@ public final class KubeJsUiApi extends UiClientApi implements AutoCloseable {
         synchronized (this) {
             if (closed) return;
             closed = true;
+            var pageScope = pages.retire();
+            if (pageScope != null) cleanup.add(pageScope);
             unregister.forEach(Runnable::run);
             unregister.clear();
             var screenSnapshot = screens.stream().filter(screen -> !screen.isDisposed()).toList();
@@ -141,7 +194,7 @@ public final class KubeJsUiApi extends UiClientApi implements AutoCloseable {
         });
     }
 
-    private void requireOpen() {
+    void requireOpen() {
         if (closed) throw new IllegalStateException("KubeJS UI script generation is closed");
     }
 }

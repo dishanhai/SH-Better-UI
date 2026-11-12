@@ -1,0 +1,24 @@
+SH-Better-UI Snell bevel optics
+
+The initial bevel deflection and per-channel refraction adapted LiquidGlassMC (MIT),
+revision 2fac994db801802f34f64390d819d5859f5cb503.
+https://github.com/okil6dev/LiquidGlassMC/blob/2fac994db801802f34f64390d819d5859f5cb503/src/main/resources/assets/reglass/shaders/program/liquid_glass_gui.fsh
+
+The corresponding reference implementation and visual comparison are from
+Liquid Glass Studio (MIT), revision f7b28c36305a862f5cffed3ddd51511cf1204f56.
+https://github.com/iyinchao/liquid-glass-studio/blob/f7b28c36305a862f5cffed3ddd51511cf1204f56/src/shaders/fragment-main.glsl
+
+The sharp/frosted mix and thin two-sided rim reference LumaGlass (MIT),
+revision f1d5717305d287b857cf364b2670f52882868358.
+https://github.com/Sunny5349/LumaGlass/blob/f1d5717305d287b857cf364b2670f52882868358/src/main/resources/assets/lumaglass/shaders/core/glass.fsh
+
+Adaptations use the Unified UI Kernel backdrop, GUI geometry and quality levels.
+See LICENSE-MIT in this distribution for the upstream notices.
+
+The convex-squircle surface profile and ray projection follow the public derivation
+in Liquid Glass in the Browser: Refraction with CSS and SVG by kube.
+https://kube.io/blog/liquid-glass-css-svg/
+
+The corner-weighted dispersion and two-sided outline highlight were informed by
+AndroidLiquidGlass (Apache-2.0), revision 65ab177e90e5c1d8c62e70cf7755841982da65f6.
+https://github.com/Kyant0/AndroidLiquidGlass/blob/65ab177e90e5c1d8c62e70cf7755841982da65f6/backdrop/src/commonMain/kotlin/com/kyant/backdrop/internal/Shaders.kt

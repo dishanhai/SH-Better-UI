@@ -59,6 +59,24 @@ class UiSliderTest {
     }
 
     @Test
+    void dragPreviewCanBeCancelledAndKeyboardEditCommitsOnlyTheFinalValue() {
+        var preview = new ArrayList<Integer>();
+        var committed = new ArrayList<Integer>();
+        var cancelled = new ArrayList<Integer>();
+        var slider = slider(0, 100, 1, 0, preview);
+        slider.setOnCommit(committed::add, cancelled::add);
+        slider.onClick(114, 25);
+        assertEquals(List.of(50), preview);
+        assertTrue(committed.isEmpty());
+        slider.cancelEdit();
+        assertEquals(List.of(0), cancelled);
+        assertEquals(0, slider.value());
+        assertTrue(slider.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0));
+        assertTrue(slider.keyPressed(GLFW.GLFW_KEY_RIGHT, 0, 0));
+        assertEquals(List.of(1), committed);
+    }
+
+    @Test
     void fullIntegerSpanDoesNotOverflow() {
         var changed = new ArrayList<Integer>();
         var slider = slider(Integer.MIN_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, 0, changed);

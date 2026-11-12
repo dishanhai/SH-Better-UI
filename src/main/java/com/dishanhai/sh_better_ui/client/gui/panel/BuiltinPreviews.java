@@ -4,6 +4,7 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.theme.DynamicThemePreview;
+import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -19,6 +20,23 @@ public final class BuiltinPreviews {
         DeveloperAnimationPreview.registerInto(registry);
         VisualAlignmentPreview.registerInto(registry);
         AppearanceGalleryPreview.registerInto(registry);
+        NativeEffectPreviews.registerInto(registry);
+        GestureEffectPreviews.registerInto(registry);
+        registry.register(new PreviewSpec("sh_better_ui:live_activity", PreviewSpec.Category.CONTROLS, 26,
+                "sh_better_ui.live.preview.title", () -> host -> {
+                    var area = host.viewport();
+                    if (area.width() < 40 || area.height() < 22) return;
+                    int width = Math.min(180, area.width());
+                    var button = new UiButton(area.x() + (area.width() - width) / 2, area.y() + (area.height() - 22) / 2,
+                            width, 22, Component.translatable("sh_better_ui.live.preview.open"),
+                            ignored -> ClientUiKernel.openLiveActivityPreview(Minecraft.getInstance()),
+                            host.preferences(), false);
+                    if (!ClientUiKernel.liveActivityPreviewAvailable()) {
+                        button.active = false;
+                        button.setPreview(Component.translatable("sh_better_ui.live.preview.unavailable"));
+                    }
+                    host.add(button);
+                }));
         registry.register(new PreviewSpec(LiquidGlassPreview.ID, PreviewSpec.Category.MATERIALS, 0,
                 "sh_better_ui.panel.developer.gallery.sample.liquid_glass", 140, 0, "", LiquidGlassPreview::new));
         registry.register(new PreviewSpec("sh_better_ui:dynamic_theme", PreviewSpec.Category.MATERIALS, 260,

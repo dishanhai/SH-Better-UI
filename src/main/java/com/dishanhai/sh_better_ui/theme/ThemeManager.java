@@ -12,6 +12,7 @@ import com.dishanhai.sh_better_ui.theme.event.ThemeEventDispatcher;
 import com.dishanhai.sh_better_ui.theme.event.ThemeObserver;
 import com.dishanhai.sh_better_ui.theme.token.ThemeToken;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
+import com.dishanhai.sh_better_ui.theme.token.TokenExpression;
 import com.dishanhai.sh_better_ui.theme.token.TokenRegistry;
 import com.dishanhai.sh_better_ui.theme.transition.InterruptPolicy;
 import com.dishanhai.sh_better_ui.theme.transition.TransitionManager;
@@ -55,6 +56,7 @@ public final class ThemeManager implements AutoCloseable {
     private volatile ThemeRegistry registry = BuiltinThemes.registry();
     private volatile ThemeSnapshot displayed;
     private ThemePreferences preferences = ThemePreferences.DEFAULT;
+    private Map<ThemeToken<?>, ThemeResolver.Definition> environmentDefaults = Map.of();
     private ContextSnapshot captured = ContextSnapshot.empty();
     private ThemeRuleResolver.Selection selection;
     private ThemeSnapshot requested;
@@ -92,6 +94,34 @@ public final class ThemeManager implements AutoCloseable {
 
     public ThemePreferences preferences() { requireOpen(); return preferences; }
     public long resourceVersion() { requireOpen(); return resourceVersion; }
+
+    /** Supplies the palette used in Follow Environment before an environment rule selects a theme. */
+    public void environmentDefaults(Map<ThemeToken<?>, TokenExpression<?>> defaults) {
+        var copied = Map.copyOf(defaults);
+        execute(() -> {
+            var definitions = new LinkedHashMap<ThemeToken<?>, ThemeResolver.Definition>();
+            var catalog = tokens.snapshot();
+            copied.forEach((token, expression) -> {
+                ThemeResolver.requireRegistered(catalog, token);
+                definitions.put(token, new ThemeResolver.Definition(expression, "environment-default"));
+            });
+            if (environmentDefaults.equals(definitions)) return;
+            var before = environmentDefaults;
+            environmentDefaults = Map.copyOf(definitions);
+            if (isEnvironmentDefault(preferences, themeIds(registry, preferences))) {
+                try {
+                    refreshTarget(registry, TransitionSpec.immediate(), true);
+                } catch (RuntimeException failure) {
+                    environmentDefaults = before;
+                    throw failure;
+                }
+            }
+        });
+    }
+
+    public boolean showingEnvironmentDefault() {
+        return displayed == requested && isEnvironmentDefault(preferences, displayed.themeIds());
+    }
 
     /** Adds a token to the immutable catalog and makes its fallback available to existing scopes. */
     public <T> ThemeToken<T> registerToken(ThemeToken<T> token) {
@@ -206,7 +236,7 @@ public final class ThemeManager implements AutoCloseable {
     private void requestTheme(String id, TransitionSpec spec) {
         if (registry.find(id).isEmpty()) throw new ThemeResolutionException("Unknown theme: " + id);
         var ids = List.of(id);
-        var target = resolveTarget(registry, ids);
+        var target = resolveTarget(registry, ids, ThemePreferences.Mode.FIXED);
         scopes.validate(target);
         preferences = preferences.withFixedTheme(id);
         emit(ThemeEvent.Kind.REQUESTED, ids, null, Set.of(), null, null);
@@ -221,7 +251,7 @@ public final class ThemeManager implements AutoCloseable {
         Objects.requireNonNull(next);
         execute(() -> {
             if (preferences.equals(next)) return;
-            var target = resolveTarget(registry, themeIds(registry, next));
+            var target = resolveTarget(registry, themeIds(registry, next), next.mode());
             scopes.validate(target);
             preferences = next;
             scopes.preferences(next);
@@ -302,13 +332,25 @@ public final class ThemeManager implements AutoCloseable {
     }
 
     private ThemeSnapshot resolveTarget(ThemeRegistry source, List<String> ids) {
-        var next = resolver.resolve(source, tokens.snapshot(), ids, requested);
+        return resolveTarget(source, ids, preferences.mode());
+    }
+
+    private ThemeSnapshot resolveTarget(ThemeRegistry source, List<String> ids, ThemePreferences.Mode mode) {
+        var plan = resolver.plan(source, ids);
+        if (mode == ThemePreferences.Mode.FOLLOW_ENVIRONMENT && ids.equals(List.of(BuiltinThemes.DARK))) {
+            plan = plan.overlay(environmentDefaults);
+        }
+        var next = resolver.evaluate(plan, tokens.snapshot(), requested);
         if (next != requested) {
             resolutions++;
             evaluatedTokens += next.evaluatedTokens();
             next.diagnostics().forEach(this::remember);
         }
         return next;
+    }
+
+    private static boolean isEnvironmentDefault(ThemePreferences preferences, List<String> ids) {
+        return preferences.mode() == ThemePreferences.Mode.FOLLOW_ENVIRONMENT && ids.equals(List.of(BuiltinThemes.DARK));
     }
 
     private static TransitionSpec transitionFor(ThemeSnapshot target) {

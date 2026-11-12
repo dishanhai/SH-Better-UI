@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.theme.ThemeBinding;
+import com.dishanhai.sh_better_ui.theme.BuiltinThemes;
 import com.dishanhai.sh_better_ui.theme.ThemeManager;
 import com.dishanhai.sh_better_ui.theme.token.ColorValue;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
@@ -11,6 +12,25 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class UiButtonThemeBindingTest {
+    @Test
+    void defaultButtonFollowsLiquidGlassPresetAndScopedOverrides() {
+        try (var manager = new ThemeManager()) {
+            var scope = manager.global().child("liquid_glass");
+            var button = new UiButton(0, 0, 60, 20, Component.empty(), ignored -> {});
+            button.bindTheme(scope);
+            var idle = new DarkModeTheme.State(0, 0, 0, false, true, false);
+            assertFalse(button.themePaint(idle, false).glass());
+            manager.setTheme(BuiltinThemes.LIQUID_GLASS);
+            var paint = button.themePaint(idle, false);
+            assertTrue(paint.glass());
+            assertEquals(12f, paint.radius());
+            assertTrue((paint.fill() >>> 24) < 255);
+            assertFalse(button.isCapsule());
+            scope.configure(local -> local.override(ThemeTokens.LIQUID_GLASS, false));
+            assertFalse(button.themePaint(idle, false).glass());
+        }
+    }
+
     @Test
     void translucentMaterialsShareStateTokensWhileKeepingTheirSurfaceAndRadius() {
         try (var manager = new ThemeManager()) {

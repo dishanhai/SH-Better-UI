@@ -24,6 +24,7 @@ import net.minecraftforge.api.distmarker.Dist;
 import net.minecraftforge.client.ConfigScreenHandler;
 import net.minecraftforge.client.settings.KeyConflictContext;
 import net.minecraftforge.client.event.ClientPlayerNetworkEvent;
+import net.minecraftforge.client.event.InputEvent;
 import net.minecraftforge.client.event.RegisterKeyMappingsEvent;
 import net.minecraftforge.client.event.CustomizeGuiOverlayEvent;
 import net.minecraftforge.client.event.RegisterClientReloadListenersEvent;
@@ -69,8 +70,21 @@ public final class UiClient {
     }
 
     @SubscribeEvent
+    public static void onLiveActivityKey(InputEvent.Key event) {
+        ClientUiKernel.onLiveActivityKey(Minecraft.getInstance(), event.getKey(), event.getAction(), event.getModifiers());
+    }
+
+    @SubscribeEvent
     public static void onLyricCommands(RegisterClientCommandsEvent event) {
         LyricClient.registerCommands(event.getDispatcher());
+        NativeClientBridge.registerVisualCommand(event.getDispatcher());
+    }
+
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void onPageInteraction(InputEvent.InteractionKeyMappingTriggered event) {
+        if (event.isUseItem() && event.getHand() == net.minecraft.world.InteractionHand.MAIN_HAND) {
+            ClientUiKernel.observePageInteraction(Minecraft.getInstance());
+        }
     }
 
     private static Screen createControlPanel(Screen parent) {
@@ -91,12 +105,14 @@ public final class UiClient {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onScreenRenderPre(ScreenEvent.Render.Pre event) {
+        NativeClientBridge.beginScreen(event.getScreen(), event.getGuiGraphics(), event.getPartialTick());
         UiClientRendering.prepareScreenOverlays(event.getScreen());
     }
 
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onScreenRenderPost(ScreenEvent.Render.Post event) {
-        GaussBlur.onScreenRenderPost(event);
+        NativeClientBridge.composeScreenPost(event.getScreen(), event.getGuiGraphics(),
+                () -> GaussBlur.onScreenRenderPost(event));
         UiClientRendering.renderScreenOverlays(event.getScreen(), event.getGuiGraphics(), event.getMouseX(),
                 event.getMouseY(), event.getPartialTick());
         NativeClientBridge.render(event.getScreen(), event.getGuiGraphics(), event.getPartialTick());

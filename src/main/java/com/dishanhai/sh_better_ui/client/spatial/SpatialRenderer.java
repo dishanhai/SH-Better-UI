@@ -7,6 +7,10 @@ import com.dishanhai.sh_better_ui.client.blur.GlassStyle;
 import com.dishanhai.sh_better_ui.client.glass.GlassBlur;
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.FilledGeometry;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Local;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Point;
+import com.dishanhai.sh_better_ui.spatial.SpatialGeometry.ShadowPath;
 import com.dishanhai.sh_better_ui.spatial.SpatialScene.Node;
 import com.dishanhai.sh_better_ui.spatial.SpatialUI.Support;
 import com.dishanhai.sh_better_ui.spatial.internal.Scene;
@@ -14,8 +18,10 @@ import com.dishanhai.sh_better_ui.spatial.internal.Scene.Backdrop;
 import com.dishanhai.sh_better_ui.spatial.internal.Scene.Paint;
 import com.dishanhai.sh_better_ui.spatial.internal.SpatialMesh.Vertex;
 import com.mojang.blaze3d.platform.GlStateManager;
+import com.mojang.blaze3d.shaders.Uniform;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
+import com.mojang.blaze3d.vertex.VertexConsumer;
 import com.mojang.blaze3d.vertex.VertexFormat;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.GameRenderer;
@@ -23,6 +29,7 @@ import net.minecraft.client.renderer.RenderType;
 import net.minecraft.client.renderer.ShaderInstance;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceProvider;
+import org.joml.Matrix4f;
 import org.lwjgl.opengl.GL11;
 import org.lwjgl.opengl.GL14;
 import org.lwjgl.opengl.GL20;
@@ -30,12 +37,15 @@ import org.lwjgl.system.MemoryStack;
 
 import java.io.IOException;
 import java.util.List;
+import java.util.Objects;
 import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 
 /** The game owns the shader and immediate vertex buffers. Only adjacent equivalent commands share a draw. */
 public final class SpatialRenderer extends RenderType {
     private static final VertexFormat FORMAT = DefaultVertexFormat.POSITION_TEX_COLOR;
+    // Each contour contributes its vertex count followed by its interleaved coordinates.
+    private static final int PATH_FLOATS = 2 * ShadowPath.MAX_EDGES + ShadowPath.MAX_EDGES / 3;
     private static volatile ShaderInstance shader;
     private static final RenderType SDF = type("sh_better_ui_spatial", FORMAT, () -> shader);
     private static final RenderType FLAT = type("sh_better_ui_spatial_flat", DefaultVertexFormat.POSITION_COLOR,
@@ -74,6 +84,15 @@ public final class SpatialRenderer extends RenderType {
 
     public static boolean ready() { return shader != null; }
 
+    public static boolean arbitraryPathReady() { return pathUniform(shader) != null; }
+
+    private static Uniform pathUniform(ShaderInstance program) {
+        if (program == null) return null;
+        var uniform = program.getUniform("PathVertices");
+        return uniform != null && uniform.getCount() == PATH_FLOATS
+                && uniform.getType() == Uniform.getTypeFromString("float") ? uniform : null;
+    }
+
     public static Support gpuTimingSupport() { return SpatialGpuTiming.support(); }
 
     public static void releaseTiming() { SpatialGpuTiming.release(); }
@@ -95,7 +114,8 @@ public final class SpatialRenderer extends RenderType {
             var batch = new Batch(graphics, shader, content);
             try (var timer = scene.settings().profiling() ? SpatialGpuTiming.begin(scene) : null) {
                 try {
-                    scene.draw(width, height, guiScale, batch.program != null, batch, content != null);
+                    scene.draw(width, height, guiScale, batch.program != null, batch.pathUniform != null,
+                            batch, content != null);
                 } finally {
                     batch.flush();
                 }
@@ -104,9 +124,45 @@ public final class SpatialRenderer extends RenderType {
         }
     }
 
+    /** Draws a filled mesh in the current GUI pose and scissor using the native position-color shader. */
+    public static void drawFlatGeometry(GuiGraphics graphics, FilledGeometry<Local> geometry, int argb) {
+        RenderSystem.assertOnRenderThread();
+        if (geometry.triangles().isEmpty() || (argb >>> 24) == 0) return;
+        if (GameRenderer.getPositionColorShader() == null) {
+            throw new IllegalStateException("Native position-color shader is unavailable");
+        }
+        try (var state = new RenderState()) {
+            graphics.flush();
+            var color = RenderSystem.getShaderColor().clone();
+            try {
+                RenderSystem.setShaderColor(1, 1, 1, 1);
+                RenderSystem.blendEquation(GL14.GL_FUNC_ADD);
+                var buffers = graphics.bufferSource();
+                var out = buffers.getBuffer(FLAT);
+                var matrix = graphics.pose().last().pose();
+                try {
+                    for (var triangle : geometry.triangles()) {
+                        emitFlat(out, matrix, triangle.a(), argb);
+                        emitFlat(out, matrix, triangle.b(), argb);
+                        emitFlat(out, matrix, triangle.c(), argb);
+                    }
+                } finally {
+                    buffers.endBatch(FLAT);
+                }
+            } finally {
+                RenderSystem.setShaderColor(color[0], color[1], color[2], color[3]);
+            }
+        }
+    }
+
+    private static void emitFlat(VertexConsumer out, Matrix4f pose, Point<Local> point, int color) {
+        PlatformSpatialVertices.emit(out, pose, new Vertex(point.x(), point.y(), 0, 0), color, false);
+    }
+
     private static final class Batch implements Scene.Sink {
         private final GuiGraphics graphics;
         private final ShaderInstance program;
+        private final Uniform pathUniform;
         private final RenderType type;
         private final Consumer<Node> content;
         private Paint current;
@@ -114,10 +170,12 @@ public final class SpatialRenderer extends RenderType {
         private int batches;
         private boolean attemptedBlur;
         private boolean blurred;
+        private float[] pathValues;
 
         Batch(GuiGraphics graphics, ShaderInstance program, Consumer<Node> content) {
             this.graphics = graphics;
             this.program = program;
+            pathUniform = pathUniform(program);
             this.content = content;
             type = program == null ? FLAT : SDF;
         }
@@ -169,15 +227,32 @@ public final class SpatialRenderer extends RenderType {
                         (float) current.blur(), (float) current.spread());
                 program.safeGetUniform("Surface").set(current.highlight(), current.border(), current.depth(),
                         current.roughness());
-                program.safeGetUniform("Light").set(current.lightX(), current.lightY(), current.soft() ? 1 : 0, 0);
+                program.safeGetUniform("Light").set(current.lightX(), current.lightY(), current.soft() ? 1 : 0,
+                        setPath(current.shadowPath()));
             }
             vertices = 0;
             graphics.bufferSource().endBatch(type);
             batches++;
         }
 
+        private int setPath(ShadowPath path) {
+            if (path == null) return 0;
+            if (pathValues == null) pathValues = new float[PATH_FLOATS];
+            int cursor = 0;
+            for (var contour : path.contours()) {
+                pathValues[cursor++] = contour.size();
+                for (var point : contour) {
+                    pathValues[cursor++] = (float) point.x();
+                    pathValues[cursor++] = (float) point.y();
+                }
+            }
+            pathUniform.set(pathValues);
+            return cursor;
+        }
+
         private static boolean equivalent(Paint first, Paint second) {
             return first != null && first.shape().equals(second.shape()) && first.type() == second.type()
+                    && Objects.equals(first.shadowPath(), second.shadowPath())
                     && first.x() == second.x() && first.y() == second.y() && first.blur() == second.blur()
                     && first.spread() == second.spread() && first.soft() == second.soft()
                     && first.clipNode() == second.clipNode() && first.highlight() == second.highlight()

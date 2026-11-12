@@ -9,8 +9,38 @@ uniform vec4 Radii;
 uniform vec4 Shadow;
 uniform vec4 Surface;
 uniform vec4 Light;
+uniform float PathVertices[149];
+
+vec2 pathPoint(int i) {
+    return vec2(PathVertices[i], PathVertices[i + 1]);
+}
+
+// Contours have implicit closure. A horizontal ray applies even-odd fill across all contours.
+float distanceToPath(vec2 p, int length) {
+    float nearest = 1e30;
+    bool inside = false;
+    int cursor = 0;
+    while (cursor < length) {
+        int end = cursor + 1 + 2 * int(PathVertices[cursor]);
+        vec2 a = pathPoint(end - 2);
+        for (int i = cursor + 1; i < end; i += 2) {
+            vec2 b = pathPoint(i);
+            vec2 edge = b - a;
+            vec2 delta = p - a;
+            vec2 offset = delta - edge * clamp(dot(delta, edge) / max(dot(edge, edge), 1e-30), 0.0, 1.0);
+            nearest = min(nearest, dot(offset, offset));
+            if ((a.y > p.y) != (b.y > p.y)) {
+                inside = inside != (p.x < a.x + edge.x * (delta.y / edge.y));
+            }
+            a = b;
+        }
+        cursor = end;
+    }
+    return sqrt(nearest) * (inside ? -1.0 : 1.0);
+}
 
 float distanceToShape(vec2 p) {
+    if (Light.w > 0.0) return distanceToPath(p, int(Light.w));
     vec2 halfSize = SizeMode.xy * 0.5;
     p -= halfSize;
     if (SizeMode.w > 0.5) {
@@ -63,7 +93,8 @@ void main() {
         alpha = mask;
     } else {
         bool inner = mode > 1.5 && mode < 2.5;
-        float d = distanceToShape(local - Shadow.xy) + (inner ? Shadow.w : -Shadow.w);
+        float shifted = all(equal(Shadow.xy, vec2(0.0))) ? base : distanceToShape(local - Shadow.xy);
+        float d = shifted + (inner ? Shadow.w : -Shadow.w);
         float blur = Shadow.z;
         float shiftedAA = max(fwidth(d) * 0.5, 0.00001);
         float softMask = Light.z > 0.5 && blur > 0.0

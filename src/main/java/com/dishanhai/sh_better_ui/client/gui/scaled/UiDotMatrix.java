@@ -28,6 +28,8 @@ public final class UiDotMatrix {
     private long selectedCycle;
 
     private boolean themed;
+    private UiTheme theme;
+    private DotMatrixProfile themedDefault;
 
     public UiDotMatrix() {
         this(DotMatrixProfile.VIOLET);
@@ -66,6 +68,11 @@ public final class UiDotMatrix {
      */
     public void render(GuiGraphics graphics, Bounds area, UiPointerTracker.Frame pointer,
                        long nowMs, UiPreferences preferences) {
+        render(graphics, area, pointer, nowMs, preferences, 0f);
+    }
+
+    void render(GuiGraphics graphics, Bounds area, UiPointerTracker.Frame pointer,
+                long nowMs, UiPreferences preferences, float musicPulse) {
         int width = area.width(), height = area.height();
         if (width == 0 || height == 0) {
             lens.reset();
@@ -83,7 +90,7 @@ public final class UiDotMatrix {
             DotSink points = profile.interaction().pointerLens().radius() > 0
                     ? (x, y, radius, feather, color) -> disc(vertices, width, height, x, y, radius, feather, color)
                     : (x, y, radius, feather, color) -> square(quads, width, height, x, y, radius, color);
-            forEachDot(area, pointer, nowMs, preferences, quads, points);
+            forEachDot(area, pointer, nowMs, preferences, musicPulse, quads, points);
         } finally {
             graphics.flush();
         }
@@ -104,6 +111,11 @@ public final class UiDotMatrix {
     /** 宿主失焦或打开模态覆层时可立即收掉反馈。 */
     public void clearPulse() {
         click.clear();
+    }
+
+    void resetPointer() {
+        clearPulse();
+        lens.reset();
     }
 
     @FunctionalInterface
@@ -130,13 +142,23 @@ public final class UiDotMatrix {
 
     void forEachDot(Bounds area, UiPointerTracker.Frame pointer, long nowMs, UiPreferences preferences,
                     QuadSink background, DotSink sink) {
+        forEachDot(area, pointer, nowMs, preferences, 0f, background, sink);
+    }
+
+    void forEachDot(Bounds area, UiPointerTracker.Frame pointer, long nowMs, UiPreferences preferences,
+                    float musicPulse, QuadSink background, DotSink sink) {
         int width = area.width(), height = area.height();
         if (width == 0 || height == 0) {
             lens.reset();
             return;
         }
         if (themed) {
-            var resolved = ThemeEffects.profile("dotMatrix", DotMatrixProfile.VIOLET);
+            var current = UiTheme.current();
+            if (!current.equals(theme)) {
+                theme = current;
+                themedDefault = DotMatrixProfile.VIOLET.withTheme(current);
+            }
+            var resolved = ThemeEffects.profile("dotMatrix", themedDefault);
             if (!resolved.equals(profile)) setProfile(resolved);
             themed = true;
         }
@@ -160,6 +182,7 @@ public final class UiDotMatrix {
         DotMatrixProfile.Fade fade = style.fade();
         DotMatrixProfile.Gradient gradient = style.gradient();
         boolean reducedMotion = preferences.reducedMotion();
+        float beat = reducedMotion ? 0f : musicPulse;
         boolean canFloat = !reducedMotion && motion.floatProbability() > 0f && motion.maxFloatingDots() > 0
                 && motion.floatDistance() > 0f;
         boolean canFade = !reducedMotion && fade.probability() > 0f;
@@ -210,6 +233,10 @@ public final class UiDotMatrix {
             float anchorX = Math.min(1f, dot.x() / width), anchorY = Math.min(1f, dot.y() / height);
             float animated = reducedMotion ? 0f : motion.effect().brightness(
                     anchorX, anchorY, phase, dot.variation());
+            if (beat > 0f) {
+                animated += beat * (0.28f + DotMatrixProfile.Effect.WAVE.brightness(
+                        anchorX, anchorY, phase, dot.variation()));
+            }
             float light = 0.27f * dot.variation() + lift * 0.32f + 0.85f * wave;
             if (Float.isFinite(animated)) light += GuiMotion.clamp01(animated);
             if (hovering) light += 0.64f * localLight(x - localX, y - localY, interaction.hoverRadius());

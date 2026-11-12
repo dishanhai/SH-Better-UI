@@ -101,7 +101,7 @@ final class BuiltinBackgrounds {
                 int size = Math.min(w, h) * 2 / 3;
                 if (prefs.useBackdropBlur() && size > 0) {
                     VisualReveal.drawTexture(g, icon.texture(), area.x() + (w - size) / 2,
-                            area.y() + (h - size) / 2, size, size, RevealProfile.DEFAULT);
+                            area.y() + (h - size) / 2, size, size, ThemeEffects.profile("reveal", RevealProfile.DEFAULT));
                 } else {
                     fallback(g, area, icon, prefs);
                 }

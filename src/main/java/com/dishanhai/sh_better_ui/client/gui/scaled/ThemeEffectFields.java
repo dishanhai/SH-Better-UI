@@ -66,7 +66,7 @@ final class ThemeEffectFields {
         try {
             return ThemeEffects.resolveEditor(settings, group, inherited, local);
         } catch (IllegalArgumentException invalid) {
-            return ThemeEffects.template(group);
+            return ThemeEffects.resolveEditor(settings, group, new JsonObject(), new JsonObject());
         }
     }
 

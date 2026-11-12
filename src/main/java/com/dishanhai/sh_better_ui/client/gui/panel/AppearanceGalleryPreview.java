@@ -7,8 +7,10 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewScene;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
+import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.client.gui.scaled.RevealProfile;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.kernel.api.AppearanceService;
@@ -22,6 +24,8 @@ import net.minecraft.network.chat.Component;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.function.Supplier;
+
+import static com.dishanhai.sh_better_ui.client.gui.panel.GalleryPreviewLayout.drawCentered;
 
 /** Compares the native effect and its shared UUK settings in a gallery-owned draft. */
 final class AppearanceGalleryPreview implements PreviewScene {
@@ -51,11 +55,21 @@ final class AppearanceGalleryPreview implements PreviewScene {
         register(registry, "ascii_field", "ascii", "sh_better_ui.panel.theme.group.ascii", 20);
         register(registry, "shape_waves", "shapeWaves", "sh_better_ui.panel.theme.group.shapeWaves", 21);
         register(registry, "visual_reveal", "reveal", "sh_better_ui.panel.theme.group.reveal", 22);
+        registerEffect(registry, "click_ripple", "clickRipple", 301);
+        registerEffect(registry, "flow_border", "flowBorder", 302);
+        registerEffect(registry, "breathing_glow", "breathingGlow", 303);
+        registerEffect(registry, "capsule_reveal", "capsule", 304);
+    }
+
+    private static void registerEffect(PreviewRegistry registry, String id, String group, int order) {
+        register(registry, id, group, "sh_better_ui.panel.theme.group." + group, order);
     }
 
     private static void register(PreviewRegistry registry, String id, String group, String titleKey, int order) {
         registry.register(new PreviewSpec("sh_better_ui:" + id, PreviewSpec.Category.MATERIALS, order, titleKey,
-                96, 0, example(group == null ? "dotMatrix" : group), () -> new AppearanceGalleryPreview(group)));
+                96, 0, group == null || ThemeEffectPreview.background(group) != null
+                        ? example(group == null ? "dotMatrix" : group) : "",
+                () -> new AppearanceGalleryPreview(group)));
     }
 
     @Override
@@ -108,8 +122,32 @@ final class AppearanceGalleryPreview implements PreviewScene {
         if (canvas.height() <= 0) return;
         var mouse = frame.mouse();
         boolean pointer = mouse != null && mouse.available() && host.interactive();
-        appearance.preview(draft, () -> preview.draw(group, frame.graphics(), host.font(), canvas, name(group),
-                pointer ? (int) mouse.x() : -1, pointer ? (int) mouse.y() : -1, frame.preferences()));
+        appearance.preview(draft, () -> {
+            if ("reveal".equals(fixedGroup) && canvas.width() >= 84 && canvas.height() >= 48) {
+                drawReveal(frame, pointer ? (int) mouse.x() : -1, pointer ? (int) mouse.y() : -1);
+            } else {
+                preview.draw(group, frame.graphics(), host.font(), canvas, name(group),
+                        pointer ? (int) mouse.x() : -1, pointer ? (int) mouse.y() : -1, frame.preferences());
+            }
+        });
+    }
+
+    private void drawReveal(UiFrame frame, int mouseX, int mouseY) {
+        int width = (canvas.width() - 6) / 2;
+        int height = canvas.height() - 22;
+        var region = new Bounds(canvas.x(), canvas.y(), width, height);
+        var texture = new Bounds(region.right() + 6, canvas.y(), width, height);
+        var graphics = frame.graphics();
+        NativeEffectPreviews.drawPattern(graphics, region);
+        var rect = new GuiRect(region.x(), region.y(), region.width(), region.height());
+        boolean drawn = frame.preferences().useBackdropBlur()
+                && ShBetterUiApi.blur().revealRegion(graphics, rect, RevealProfile.DEFAULT);
+        preview.draw(group, graphics, host.font(), texture, name(group), mouseX, mouseY, frame.preferences());
+        String label = "sh_better_ui.panel.developer.gallery.";
+        drawCentered(graphics, host.font(), Component.translatable(label + (drawn ? "reveal_region" : "blur_unavailable")),
+                region.x(), region.bottom() + 2, region.width());
+        drawCentered(graphics, host.font(), Component.translatable(label + "reveal_texture"),
+                texture.x(), texture.bottom() + 2, texture.width());
     }
 
     @Override

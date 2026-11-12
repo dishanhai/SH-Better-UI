@@ -8,6 +8,7 @@ import com.dishanhai.sh_better_ui.client.glass.GlassBlur;
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicIconMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.CodeRain;
 import com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects;
 import com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainProfile;
@@ -22,6 +23,9 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 
+import java.util.Arrays;
+import java.util.List;
+import java.util.Locale;
 import java.util.function.Supplier;
 
 import static com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen.label;
@@ -213,6 +217,35 @@ final class MaterialPreviewScenes {
             if (!sampled) {
                 graphics.fill(x, y, x + width, y + height, 0x9020252E);
                 drawCentered(graphics, font, label("gallery.blur_unavailable"), x + 3, y + 7, width - 6);
+            }
+        }
+    }
+
+    static final class IconMotion implements PreviewScene {
+        private static final GraphicIconMotion[] MODES = GraphicIconMotion.values();
+        private static final List<GraphicIcon> ICONS = Arrays.stream(MODES).map(GraphicIcon.STATUS_PENDING::withMotion).toList();
+        private Font font;
+
+        @Override
+        public void layout(PreviewContext host) {
+            font = host.font();
+        }
+
+        @Override
+        public void render(UiFrame frame) {
+            var area = frame.viewport();
+            int width = area.width() / MODES.length;
+            int scale = width >= 40 && area.height() >= 58 ? 2 : 1;
+            int size = GraphicIcon.size(scale);
+            if (width < size || area.height() < size + 24) return;
+            int y = area.y() + (area.height() - size - 24) / 2;
+            for (int i = 0; i < MODES.length; i++) {
+                var motion = MODES[i];
+                int x = area.x() + i * width;
+                ICONS.get(i).draw(frame.graphics(), x + (width - size) / 2, y,
+                        scale, DarkModeTheme.textColor(), frame.preferences());
+                drawCentered(frame.graphics(), font, label("gallery.icon_motion." + motion.name().toLowerCase(Locale.ROOT)),
+                        x, y + size + 4, width);
             }
         }
     }

@@ -1,6 +1,10 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.ShBetterUi;
+import com.dishanhai.sh_better_ui.client.blur.GaussBlur.RevealDirection;
+import com.dishanhai.sh_better_ui.client.visual.VisualEffectResult;
+
+import static com.dishanhai.sh_better_ui.client.visual.VisualEffectResult.*;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -73,23 +77,30 @@ public final class VisualRevealRenderer extends RenderType {
 
     static void drawTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width, int height,
                             RevealProfile profile, float radius) {
+        drawTexture(graphics, texture, x, y, width, height, profile, radius, RevealDirection.LEFT_TO_RIGHT);
+    }
+
+    static VisualEffectResult drawTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width,
+                                          int height, RevealProfile profile, float radius, RevealDirection direction) {
         graphics.flush();
         if (shader == null) {
             // 归一化纹理范围是整张图，源尺寸与绘制尺寸彼此独立。
             graphics.blit(texture, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
-            return;
+            return FALLBACK;
         }
 
         shader.safeGetUniform("Reveal").set(radius, profile.fullBlurUntil(), profile.sharpFrom());
         AbstractTexture source = Minecraft.getInstance().getTextureManager().getTexture(texture);
+        shader.safeGetUniform("Direction").set(direction.ordinal());
         shader.setSampler("TextureSampler", source);
         try {
             boolean blurred = radius > 0f && horizontalShader != null
-                    && blurHorizontally(graphics, source, width, height, profile, radius);
+                    && blurHorizontally(graphics, source, width, height, profile, radius, direction);
             shader.safeGetUniform("EffectMode").set(blurred ? 0 : 3);
             shader.setSampler("ScratchSampler", blurred ? scratch : null);
             shader.safeGetUniform("Size").set((float) width, (float) height);
             quad(graphics, TYPE, x, y, width, height, graphics.pose().last().pose());
+            return blurred ? DRAWN : FALLBACK;
         } finally {
             shader.setSampler("ScratchSampler", null);
             shader.setSampler("TextureSampler", null);
@@ -98,15 +109,23 @@ public final class VisualRevealRenderer extends RenderType {
 
     static void drawRadialGradient(GuiGraphics graphics, int x, int y, int width, int height,
                                    float originU, float originV, int innerArgb, int outerArgb) {
-        if (shader == null) return;
+        drawRadialGradient(graphics, x, y, width, height, originU, originV, 1f, innerArgb, outerArgb);
+    }
+
+    static VisualEffectResult drawRadialGradient(GuiGraphics graphics, float x, float y, float width, float height,
+                                                 float originU, float originV, float radius,
+                                                 int innerArgb, int outerArgb) {
+        if (shader == null) return UNAVAILABLE;
 
         graphics.flush();
         shader.safeGetUniform("EffectMode").set(1);
         shader.safeGetUniform("Origin").set(originU, originV);
+        shader.safeGetUniform("GradientRadius").set(radius);
         shader.safeGetUniform("Size").set((float) width, (float) height);
         color("InnerColor", innerArgb);
         color("OuterColor", outerArgb);
         quad(graphics, TYPE, x, y, width, height, graphics.pose().last().pose());
+        return DRAWN;
     }
 
     private static com.dishanhai.sh_better_ui.kernel.api.OwnershipLease scratchLease;
@@ -142,7 +161,7 @@ public final class VisualRevealRenderer extends RenderType {
     }
 
     private static boolean blurHorizontally(GuiGraphics graphics, AbstractTexture source, int width, int height,
-                                            RevealProfile profile, float radius) {
+                                            RevealProfile profile, float radius, RevealDirection direction) {
         int boundTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int sourceWidth;
         int sourceHeight;
@@ -180,6 +199,7 @@ public final class VisualRevealRenderer extends RenderType {
             RenderSystem.viewport(0, 0, sourceWidth, sourceHeight);
             horizontalShader.safeGetUniform("Size").set((float) width, (float) height);
             horizontalShader.safeGetUniform("Reveal").set(radius, profile.fullBlurUntil(), profile.sharpFrom());
+            horizontalShader.safeGetUniform("Direction").set(direction.ordinal());
             horizontalShader.setSampler("TextureSampler", source);
             quad(graphics, HORIZONTAL, -1, -1, 2, 2, IDENTITY);
             return true;

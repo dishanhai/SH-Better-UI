@@ -8,6 +8,37 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：后台采集生命周期与失败清理；单元测试不打开真实设备。 */
 class SystemAudioCaptureTest {
     @Test
+    void globalPulseKeepsOneCaptureAcrossFramesAndRestartsAfterSuspension() throws Exception {
+        var first = new FakeSource();
+        var second = new FakeSource();
+        var firstCapture = new SystemAudioCapture(first);
+        var captures = new java.util.ArrayDeque<>(java.util.List.of(firstCapture, new SystemAudioCapture(second)));
+        try (var pulse = new ClientMusicPulse(captures::removeFirst)) {
+            pulse.update(0L, true);
+            assertEquals(2, captures.size());
+            pulse.setEnabled(true);
+            pulse.update(16L, true);
+            assertTrue(first.polled.await(2, TimeUnit.SECONDS));
+            pulse.update(32L, true);
+            assertEquals(SystemAudioCapture.Status.RUNNING, pulse.status());
+            assertEquals(1, captures.size());
+
+            pulse.update(48L, false);
+            assertEquals(0f, pulse.level());
+            assertTrue(pulse.enabled());
+            assertTrue(first.released.await(2, TimeUnit.SECONDS));
+            firstCapture.close();
+            pulse.update(64L, true);
+            assertTrue(second.polled.await(2, TimeUnit.SECONDS));
+
+            pulse.setEnabled(false);
+            assertFalse(pulse.enabled());
+            assertEquals(0f, pulse.level());
+            assertTrue(second.released.await(2, TimeUnit.SECONDS));
+        }
+    }
+
+    @Test
     void captureIsOptInAndAllNativeOperationsStayOnOneWorker() throws Exception {
         var source = new FakeSource();
         var capture = new SystemAudioCapture(source);

@@ -9,7 +9,6 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.locale.Language;
-import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Style;
@@ -126,11 +125,7 @@ public final class UiTextDetails {
 
     static List<FormattedText> truncate(StringSplitter splitter, List<FormattedText> lines, int width, int limit) {
         var visible = new ArrayList<>(lines.subList(0, limit));
-        // 保留逻辑顺序及样式，合并省略号之后再走 Minecraft 的视觉顺序转换。
-        var marker = splitter.headByWidth(CommonComponents.ELLIPSIS, width, Style.EMPTY);
-        int available = width - (int) Math.ceil(splitter.stringWidth(marker));
-        var last = splitter.headByWidth(visible.get(visible.size() - 1), available, Style.EMPTY);
-        visible.set(limit - 1, FormattedText.composite(last, marker));
+        visible.set(limit - 1, UiFormattedText.ellipsize(splitter, visible.get(limit - 1), width));
         return visible;
     }
 

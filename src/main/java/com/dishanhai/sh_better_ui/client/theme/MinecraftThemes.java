@@ -2,11 +2,13 @@
 package com.dishanhai.sh_better_ui.client.theme;
 
 import com.dishanhai.sh_better_ui.client.UiFrameScheduler;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.client.music.ClientMusic;
 import com.dishanhai.sh_better_ui.client.music.MusicSnapshot;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.theme.BuiltinThemes;
 import com.dishanhai.sh_better_ui.theme.ThemeManager;
+import com.dishanhai.sh_better_ui.theme.ThemeSnapshot;
 import com.dishanhai.sh_better_ui.theme.accessibility.ThemePreferences;
 import com.dishanhai.sh_better_ui.theme.context.ContextKey;
 import com.dishanhai.sh_better_ui.theme.context.ContextSnapshot;
@@ -19,6 +21,7 @@ import com.dishanhai.sh_better_ui.theme.resource.ThemeJsonParser;
 import com.dishanhai.sh_better_ui.theme.resource.ThemeReloadManager;
 import com.dishanhai.sh_better_ui.theme.resource.ThemeResourceLoader;
 import com.dishanhai.sh_better_ui.theme.token.ColorValue;
+import com.dishanhai.sh_better_ui.theme.token.TokenExpression;
 import com.dishanhai.sh_better_ui.theme.token.ThemeToken;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
 import com.dishanhai.sh_better_ui.theme.token.TokenType;
@@ -33,6 +36,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
@@ -57,6 +61,8 @@ public final class MinecraftThemes {
     private final Map<ContextKey<?>, Object> external = new LinkedHashMap<>();
     private ContextSnapshot environment = ContextSnapshot.empty();
     private ClientUiSettings previousSettings;
+    private ThemeSnapshot paletteSnapshot;
+    private UiTheme palette;
     private String skyDimension;
     private long nextSkySample;
     private int skyColor;
@@ -75,6 +81,43 @@ public final class MinecraftThemes {
 
     /** Returns the client manager for registration and opt-in screen scopes. Call from the client thread. */
     public static ThemeManager manager() { return get().manager; }
+
+    /** Resolves the palette shared by native renderers using the current transition frame. */
+    public static UiTheme resolvePalette(UiTheme fallback) {
+        var instance = runtime;
+        if (instance == null || stopped) return fallback;
+        var minecraft = Minecraft.getInstance();
+        if (minecraft == null || !minecraft.isSameThread()) return fallback;
+        if (instance.manager.showingEnvironmentDefault()) return fallback;
+        var snapshot = instance.manager.snapshot();
+        if (snapshot != instance.paletteSnapshot) {
+            instance.palette = UiTheme.fromTokens(snapshot);
+            instance.paletteSnapshot = snapshot;
+        }
+        return instance.palette;
+    }
+
+    static void configureEnvironmentPalette(ThemeManager manager, UiTheme classic) {
+        var defaults = new LinkedHashMap<ThemeToken<?>, TokenExpression<?>>();
+        if (classic.light()) {
+            defaults.putAll(manager.registry().find(BuiltinThemes.LIGHT_ID).orElseThrow().tokens());
+        }
+        defaults.putAll(Map.of(
+                ThemeTokens.BACKGROUND, new TokenExpression.Literal<>(ColorValue.argb(classic.background())),
+                ThemeTokens.SURFACE, new TokenExpression.Literal<>(ColorValue.argb(classic.surface())),
+                ThemeTokens.BORDER, new TokenExpression.Literal<>(ColorValue.argb(classic.border())),
+                ThemeTokens.TEXT, new TokenExpression.Literal<>(ColorValue.argb(classic.text())),
+                ThemeTokens.ACCENT, new TokenExpression.Literal<>(ColorValue.argb(classic.accent()))));
+        manager.environmentDefaults(defaults);
+    }
+
+    /** Previews the draft preset without changing the published theme or its selection. */
+    public static UiTheme previewPalette(ClientUiSettings draft, UiTheme fallback) {
+        var preset = draft.theme().mode().fixedThemeId();
+        var applied = ClientUiSettings.current().theme().mode().fixedThemeId();
+        if (!Objects.equals(preset, applied)) return fallback;
+        return resolvePalette(fallback);
+    }
 
     /** Captured world, player, window and local preferences. Absent game data uses typed key defaults. */
     public static ContextSnapshot environment() { return get().environment; }
@@ -194,7 +237,10 @@ public final class MinecraftThemes {
     /** Frame adapter. Called after the shared frame clock is initialized. */
     public static void frame() {
         var instance = runtime;
-        if (instance != null && !stopped) instance.manager.frame();
+        if (instance != null && !stopped) {
+            instance.syncPreferences();
+            instance.manager.frame();
+        }
     }
 
     public static void disconnect(Minecraft minecraft) {
@@ -217,8 +263,14 @@ public final class MinecraftThemes {
         var settings = ClientUiSettings.current();
         var preferences = manager.preferences();
         if (settings == previousSettings) return preferences;
-        if (previousSettings == null || !previousSettings.dynamicTheme().equals(settings.dynamicTheme())) {
+        if (previousSettings == null || !settings.theme().equals(previousSettings.theme())) {
+            configureEnvironmentPalette(manager, UiTheme.resolve(settings.theme()));
+        }
+        var preset = settings.theme().mode().fixedThemeId();
+        if (previousSettings == null || !previousSettings.dynamicTheme().equals(settings.dynamicTheme())
+                || !Objects.equals(preset, previousSettings.theme().mode().fixedThemeId())) {
             preferences = settings.dynamicTheme().applyTo(preferences);
+            if (preset != null) preferences = preferences.withFixedTheme(preset);
         }
         if (previousSettings == null || previousSettings.highContrast() != settings.highContrast()) {
             preferences = preferences.withHighContrast(settings.highContrast());

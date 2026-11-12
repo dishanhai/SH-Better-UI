@@ -63,6 +63,8 @@ public final class AlignmentLayout {
     private boolean graphDirty;
     private long lastNowMs = Long.MIN_VALUE;
     private boolean lastReducedMotion;
+    private Map<Node, PublishedNode> publishedNodes;
+    private PixelAlignment publishedGrid;
 
     public AlignmentLayout(Rect screen) { this.screen = Objects.requireNonNull(screen); }
 
@@ -76,6 +78,7 @@ public final class AlignmentLayout {
         if (parent != null) requireOwned(parent);
         Node node = new Node(name, parent, Objects.requireNonNull(frame));
         nodes.put(name, node);
+        publishedNodes = null;
         graphDirty = true;
         mark(node, Reason.INITIAL);
         return node;
@@ -120,6 +123,7 @@ public final class AlignmentLayout {
             lastReducedMotion = reducedMotion;
         }
         if (dirty.isEmpty()) return new Stats(0, nodes.size(), rebuild);
+        publishedNodes = null;
         var pending = new PriorityQueue<>(Comparator.comparingInt((Node node) -> node.order));
         pending.addAll(dirty);
         int solved = 0;
@@ -143,6 +147,22 @@ public final class AlignmentLayout {
 
     /** 所有已登记节点按创建顺序的快照，适用于调试绘制。 */
     public List<Node> nodes() { return List.copyOf(nodes.values()); }
+
+    /** Immutable presentation and original local render rectangle from the same solver result. */
+    public record PublishedNode(View view, Rect localRender, Rect localVisual) {}
+
+    public Map<Node, PublishedNode> snapshot(PixelAlignment grid) {
+        Objects.requireNonNull(grid);
+        if (publishedNodes != null && grid.equals(publishedGrid)) return publishedNodes;
+        var snapshot = new LinkedHashMap<Node, PublishedNode>();
+        for (var node : nodes.values()) {
+            var frame = node.resolved().current().frame();
+            snapshot.put(node, new PublishedNode(node.current(grid), frame.render(), frame.visual().ink()));
+        }
+        publishedGrid = grid;
+        publishedNodes = Map.copyOf(snapshot);
+        return publishedNodes;
+    }
 
     private boolean mark(Node node, Reason reason) {
         node.reasons.add(reason);
@@ -281,6 +301,7 @@ public final class AlignmentLayout {
             requireOwned(this);
             if (snap != Objects.requireNonNull(value)) {
                 snap = value;
+                publishedNodes = null;
                 viewed = null;
             }
             return this;
@@ -327,6 +348,7 @@ public final class AlignmentLayout {
                 }
             }
             nodes.remove(name);
+            publishedNodes = null;
             dirty.remove(this);
             animating.remove(this);
             if (targetMotion != null) targetMotion.close();

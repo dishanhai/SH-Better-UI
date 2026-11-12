@@ -9,6 +9,9 @@ import com.dishanhai.sh_better_ui.config.TabScrollSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeOverrides;
 import com.dishanhai.sh_better_ui.kernel.internal.live.network.PlatformLiveActivityNetwork;
+import com.dishanhai.sh_better_ui.kernel.internal.page.network.PlatformPageNetwork;
+import com.dishanhai.sh_better_ui.kernel.internal.page.container.PlatformPageMenus;
+import com.dishanhai.sh_better_ui.kernel.internal.richtext.network.PlatformRichSyncNetwork;
 import com.electronwill.nightconfig.core.CommentedConfig;
 import com.electronwill.nightconfig.core.io.WritingException;
 import com.mojang.logging.LogUtils;
@@ -32,6 +35,9 @@ public final class ShBetterUi {
 
     public ShBetterUi(FMLJavaModLoadingContext context) {
         PlatformLiveActivityNetwork.register();
+        PlatformPageNetwork.register();
+        PlatformPageMenus.register(context.getModEventBus());
+        PlatformRichSyncNetwork.register();
         var defaults = ClientUiSettings.DEFAULT;
         var backdrop = defaults.backdrop();
         var builder = new ForgeConfigSpec.Builder().push(BACKDROP_SECTION);
@@ -69,6 +75,11 @@ public final class ShBetterUi {
         var themeText = builder.define("themeCustomText", "", ThemeSettings::validColor);
         var themeAccent = builder.define("themeCustomAccent", "", ThemeSettings::validColor);
         var themeEffects = builder.define("themeCustomEffects", "{}", ThemeOverrides::valid);
+        var themeBackgroundEffect = builder.define("themeBackgroundEffect", ThemeSettings.DEFAULT_BACKGROUND_EFFECT,
+                ThemeSettings::validBackgroundEffect);
+        var hudBackgroundEffect = builder.define("hudBackgroundEffect", "", ThemeSettings::validHudBackgroundEffect);
+        var hudBlurRadius = builder.defineInRange("hudBlurRadius", defaults.theme().hudBlurRadius().intValue(),
+                0, ThemeSettings.MAX_HUD_BLUR_RADIUS);
         var dynamicTheme = builder.define("dynamicFixedTheme", "", DynamicThemeSettings::validFixedTheme);
         var dynamicSpeed = builder.defineInRange("dynamicAnimationPercent", defaults.dynamicTheme().animationPercent(),
                 0, DynamicThemeSettings.MAX_ANIMATION_PERCENT);
@@ -96,7 +107,8 @@ public final class ShBetterUi {
                                 new TabScrollSettings(tabWheel.get(), tabDrag.get(), tabAutoReveal.get(), tabStep.get()),
                                 new ThemeSettings(themeMode.get(), themeBase.get(), themeBackground.get(),
                                         themeSurface.get(), themeBorder.get(), themeText.get(), themeAccent.get(),
-                                        new ThemeOverrides(themeEffects.get())),
+                                        new ThemeOverrides(themeEffects.get()), themeBackgroundEffect.get(),
+                                        hudBackgroundEffect.get(), hudBlurRadius.get()),
                                 new DynamicThemeSettings(dynamicTheme.get(), dynamicSpeed.get(), dynamicLowPerformance.get()),
                                 new SpatialStyle.Settings(spatialEnabled.get(), spatialShadows.get(), spatialLighting.get(),
                                         spatialBlur.get(), spatialQuality.get(), spatialProfiling.get()))
@@ -111,6 +123,9 @@ public final class ShBetterUi {
     }
 
     public static synchronized boolean saveClientUiSettings(ClientUiSettings settings) {
+        if (com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.hasNativeAuthority()) {
+            return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.saveClientSettings(settings);
+        }
         ModConfig config = clientConfig;
         if (config == null) return false;
         CommentedConfig data = config.getConfigData();
@@ -154,6 +169,9 @@ public final class ShBetterUi {
         updatedUi.set("themeCustomText", theme.text());
         updatedUi.set("themeCustomAccent", theme.accent());
         updatedUi.set("themeCustomEffects", theme.effects().json());
+        updatedUi.set("themeBackgroundEffect", theme.backgroundEffect());
+        updatedUi.set("hudBackgroundEffect", theme.hudBackgroundEffect());
+        updatedUi.set("hudBlurRadius", theme.hudBlurRadius());
         var dynamic = settings.dynamicTheme();
         updatedUi.set("dynamicFixedTheme", dynamic.fixedTheme());
         updatedUi.set("dynamicAnimationPercent", dynamic.animationPercent());

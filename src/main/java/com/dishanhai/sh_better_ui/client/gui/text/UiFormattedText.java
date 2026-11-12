@@ -4,11 +4,14 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiMath;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.lyrics.common.style.ColorMath;
+import net.minecraft.client.StringSplitter;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.LightTexture;
 import net.minecraft.client.renderer.MultiBufferSource;
+import net.minecraft.network.chat.CommonComponents;
 import net.minecraft.network.chat.Component;
+import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Style;
 import net.minecraft.util.FormattedCharSequence;
 import org.joml.Matrix4f;
@@ -21,6 +24,14 @@ import java.util.function.IntToDoubleFunction;
 /** 山海：在 GUI 中绘制带有 {@link UiTextEffects} 标记的原版文字。 */
 public final class UiFormattedText {
     private UiFormattedText() {}
+
+    /** Fits the prefix and an omission marker before converting the line to visual order. */
+    public static FormattedText ellipsize(StringSplitter splitter, FormattedText line, int width) {
+        var marker = splitter.headByWidth(CommonComponents.ELLIPSIS, width, Style.EMPTY);
+        int available = width - (int) Math.ceil(splitter.stringWidth(marker));
+        var prefix = splitter.headByWidth(line, available, Style.EMPTY);
+        return FormattedText.composite(prefix, marker);
+    }
 
     /** 输入可以是翻译组件，也可以是已按视觉顺序排列的一行文字。 */
     public static int draw(GuiGraphics graphics, Font font, Component text, float x, float y,

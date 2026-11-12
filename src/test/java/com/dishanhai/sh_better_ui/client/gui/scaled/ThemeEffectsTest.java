@@ -4,6 +4,7 @@ import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.GlassBackdropSettings;
 import com.dishanhai.sh_better_ui.config.ThemeOverrides;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.google.gson.JsonParser;
 import org.junit.jupiter.api.Test;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -44,6 +45,29 @@ class ThemeEffectsTest {
             throw new IllegalStateException();
         }));
         assertSame(before, ThemeEffects.settings());
+    }
+
+    @Test
+    void hudBackgroundReadsOnlyItsOwnEffectAndKeepsThemeInEditorPreview() {
+        var overrides = new ThemeOverrides("""
+                {"dotMatrix":{"grid":{"spacing":12}},"codeRain":{"density":0.25},"glass":{"strength":0.65}}
+                """);
+        var hud = ThemeSettings.DEFAULT.withMode(ThemeSettings.Mode.HUD_GLASS)
+                .withHudBackgroundEffect("dotMatrix").withEffects(overrides);
+        var original = DotMatrixProfile.VIOLET;
+        assertEquals(12, ThemeEffects.profile(hud, "dotMatrix", original).grid().spacing());
+        assertSame(CodeRainProfile.DEFAULT, ThemeEffects.profile(hud, "codeRain", CodeRainProfile.DEFAULT));
+        assertSame(GlassBackdropSettings.DEFAULT, ThemeEffects.profile(hud, "glass", GlassBackdropSettings.DEFAULT));
+        assertSame(original, ThemeEffects.profile(hud.withHudBackgroundEffect(""), "dotMatrix", original));
+        assertEquals(0.25f, ThemeEffects.profile(hud.withHudBackgroundEffect("codeRain"),
+                "codeRain", CodeRainProfile.DEFAULT).density());
+
+        var draft = ThemeEffects.previewSettings(ClientUiSettings.DEFAULT.withTheme(hud), "dotMatrix",
+                overrides.group("dotMatrix"), JsonParser.parseString("{\"grid\":{\"spacing\":16}}").getAsJsonObject());
+        assertEquals(ThemeSettings.Mode.HUD_GLASS, draft.theme().mode());
+        assertEquals("dotMatrix", draft.theme().hudBackgroundEffect());
+        assertEquals(16, ThemeEffects.profile(draft.theme(), "dotMatrix", original).grid().spacing());
+        assertEquals(12, ThemeEffects.profile(hud, "dotMatrix", original).grid().spacing());
     }
 
     @Test

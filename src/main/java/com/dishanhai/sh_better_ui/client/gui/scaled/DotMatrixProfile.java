@@ -30,6 +30,11 @@ public record DotMatrixProfile(Palette palette, Grid grid, Motion motion, Intera
         return new DotMatrixProfile(value, grid, motion, interaction, fade, gradient);
     }
 
+    DotMatrixProfile withTheme(UiTheme theme) {
+        return withPalette(new Palette(theme.background(palette.backgroundArgb()), theme.text(palette.dotArgb()),
+                theme.text(palette.highlightArgb()), palette.glow()));
+    }
+
     public DotMatrixProfile withGrid(Grid value) {
         return new DotMatrixProfile(palette, value, motion, interaction, fade, gradient);
     }

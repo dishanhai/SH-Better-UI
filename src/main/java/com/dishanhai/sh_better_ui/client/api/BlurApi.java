@@ -103,6 +103,13 @@ public final class BlurApi {
                 innerArgb, outerArgb);
     }
 
+    /** Registers one current native Screen primary. Pixels are top-left framebuffer coordinates. */
+    public com.dishanhai.sh_better_ui.client.visual.VisualEffectResult requestManagedPixels(
+            GuiGraphics graphics, PixelRect area, float strength, float radiusPixels, GlassStyle style) {
+        return com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator.requestPixels(
+                graphics, area, strength, radiusPixels, style);
+    }
+
     /** 帧末请求每帧重交。没有挖空区域时传入 {@link PixelRect#EMPTY}。 */
     public void requestPixels(PixelRect area, float strength, float radiusPixels, PixelRect hole, GlassStyle style) {
         GaussBlur.request(area.getX(), area.getY(), area.getW(), area.getH(), strength, radiusPixels,

@@ -2,8 +2,7 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiMath;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
-import com.dishanhai.sh_better_ui.client.audio.AudioBand;
-import com.dishanhai.sh_better_ui.client.audio.MusicMotion;
+import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
 import com.dishanhai.sh_better_ui.client.audio.SystemAudioCapture;
 import com.dishanhai.sh_better_ui.client.blur.GaussBlur;
 import com.dishanhai.sh_better_ui.client.blur.GlassStyle;
@@ -12,7 +11,6 @@ import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
-import com.dishanhai.sh_better_ui.client.gui.scaled.DotMatrixProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.FluidMorph;
 import com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.GuiRenderUtil;
@@ -22,21 +20,22 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
-import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotMatrix;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiFrameHandoff;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiCapsuleReveal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiConfirmation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
-import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerTracker;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffects;
+import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSkeleton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToggleButton;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.DynamicThemeSettings;
@@ -88,7 +87,6 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private static final List<UiSectionBar.Section> TABS = SECTIONS.stream().map(section -> section.tab).toList();
     private static final List<Area> AREAS = List.of(Area.values());
     private static final List<UiSectionBar.Section> MAIN_TABS = AREAS.stream().map(area -> area.tab).toList();
-    private static final DotMatrixProfile.Motion BACKGROUND_MOTION = DotMatrixProfile.VIOLET.motion();
 
     static {
         GaussBlur.allowScreen(screen -> screen instanceof ControlPanelScreen);
@@ -104,19 +102,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private final List<ModOverviewGroup> overviewGroups = new ArrayList<>();
     private final int[] sectionScroll = new int[SECTIONS.size()];
     private final int[] areaScroll = new int[AREAS.size()];
-    private final MusicMotion musicMotion = ShBetterUiApi.motion().musicMotion(AudioBand.BEAT, 28f, 125f);
-    private SystemAudioCapture backgroundAudio;
-    private float backgroundBeat;
-    private final UiPointerTracker backgroundPointer = ShBetterUiApi.interactions().pointerTracker();
-    private final DotMatrixProfile backgroundProfile = DotMatrixProfile.VIOLET
-            .withPalette(new DotMatrixProfile.Palette(0xFF0B101B, 0x72FFFFFF, 0xFFFFFFFF, 0f))
-            .withGrid(new DotMatrixProfile.Grid(8, 2, 1f, 27L))
-            .withMotion(new DotMatrixProfile.Motion(this::backgroundBrightness, BACKGROUND_MOTION.periodMs(),
-                    0f, 0, 0f))
-            .withInteraction(new DotMatrixProfile.Interaction(0, DotMatrixProfile.VIOLET.interaction().rippleRadius()))
-            .withPointerLens(DotMatrixProfile.PointerLens.DEFAULT)
-            .withGradient(DotMatrixProfile.Gradient.RAINBOW);
-    private final UiDotMatrix background = ShBetterUiApi.graphics().dotMatrix(backgroundProfile);
+    private final UiDotBackground background = new UiDotBackground();
     private final UiCapsuleReveal entrance = ShBetterUiApi.motion().capsuleReveal();
     private final UiScreenReturn returning;
     private final UiFrameHandoff pageHandoff = new UiFrameHandoff();
@@ -175,8 +161,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private boolean restoreThemeConfigureFocus;
     private EditBox dynamicThemeId;
     private UiButton themeMode;
+    private UiButton hudBackground;
+    private UiSlider hudBlur;
     private UiTheme previewTheme;
-    private DotMatrixProfile themedBackgroundProfile;
     private int layoutWidth;
     private int layoutHeight;
 
@@ -213,7 +200,6 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         clearPage();
         fits = width >= 240 && height >= 186;
         if (!fits) {
-            stopBackgroundMusic();
             entrance.finish();
             returning.clearHandoff();
             if (width >= 32 && height >= 34) {
@@ -237,7 +223,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         bodyBottom = top + panelHeight - FOOTER_HEIGHT;
         int x = left + PADDING;
         int innerWidth = panelWidth - 2 * PADDING;
-        int mainTabWidth = Math.max(80, (innerWidth - 8) / 3);
+        int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
         navigation = addRenderableWidget(new UiScrollableSectionBar(new Bounds(x, top + 35, innerWidth, BUTTON_HEIGHT),
                 preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
                 draft.settings().tabs(), mainTabWidth));
@@ -272,6 +258,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         themeMode = null;
         themeGroup = null;
         themeConfigure = null;
+        hudBackground = null;
+        hudBlur = null;
         dynamicThemeId = null;
         displayedAudioStatus = null;
         widgetBlur = null;
@@ -289,17 +277,23 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         int retainedScroll = configuration ? sectionScroll[selectedSection.ordinal()] : areaScroll[selectedArea.ordinal()];
         sections.visible = sections.active = configuration;
         bodyTop = top + (configuration ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
-        contentHeight = !configuration ? selectedArea == Area.DEVELOPER ? 120 : 0 : switch (selectedSection) {
-            case GLASS -> sidePreview ? GLASS_SIDE_HEIGHT : GLASS_STACK_HEIGHT;
-            case DISPLAY -> 250;
-            case FEEDBACK, TABS, DYNAMIC_THEME -> 120;
-            case SHORTCUT -> 42;
+        contentHeight = switch (selectedArea) {
+            case CONFIGURATION -> switch (selectedSection) {
+                case GLASS -> sidePreview ? GLASS_SIDE_HEIGHT : GLASS_STACK_HEIGHT;
+                case DISPLAY -> 250;
+                case FEEDBACK, TABS, DYNAMIC_THEME -> 120;
+                case SHORTCUT -> 42;
+            };
+            case DEVELOPER -> 120;
+            case OVERVIEW -> 0;
+            case LINKS -> 16 + FeedbackLink.values().length * (BUTTON_HEIGHT + GAP);
         };
         contentWidth = panelWidth - 2 * PADDING
                 - (selectedArea != Area.OVERVIEW && maxScroll() == 0 ? 0 : SCROLLBAR_WIDTH + GAP);
         glassWidth = sidePreview ? contentWidth * 5 / 8 : contentWidth;
         if (selectedArea == Area.DEVELOPER) addDeveloperControls(x);
         else if (selectedArea == Area.OVERVIEW) refreshOverview(PageTransition.nowMs());
+        else if (selectedArea == Area.LINKS) addFeedbackLinks(x);
         else switch (selectedSection) {
             case GLASS -> addGlassControls(x);
             case DISPLAY -> addDisplayControls(x);
@@ -353,12 +347,44 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             var next = switch (settings.theme().mode()) {
                 case DARK -> ThemeSettings.Mode.LIGHT;
                 case LIGHT -> ThemeSettings.Mode.CUSTOM;
-                case CUSTOM -> ThemeSettings.Mode.DARK;
+                case CUSTOM -> ThemeSettings.Mode.LIQUID_GLASS;
+                case LIQUID_GLASS -> ThemeSettings.Mode.HUD_GLASS;
+                case HUD_GLASS -> ThemeSettings.Mode.DARK;
             };
             edit(new Draft(settings.withTheme(settings.theme().withMode(next)), draft.shortcut()));
         }));
         themeMode.setPreview(label("theme.tooltip"));
         addThemeEditor(x);
+        hudBackground = row(button(x, 94, (contentWidth - GAP) / 2, hudBackgroundLabel(), GraphicIcon.CUSTOM_THEME,
+                false, this::nextHudBackground));
+        hudBackground.setPreview(label("theme.hud_background.tooltip"));
+        hudBlur = optionSlider(x, 120, "theme.hud_blur", 0, ThemeSettings.MAX_HUD_BLUR_RADIUS, 1,
+                () -> draft.settings().theme().hudBlurRadius(), value -> {
+                    var settings = draft.settings();
+                    edit(new Draft(settings.withTheme(settings.theme().withHudBlurRadius(value)), draft.shortcut()));
+                });
+    }
+
+    private Component hudBackgroundLabel() {
+        var effect = draft.settings().theme().hudBackgroundEffect();
+        var name = effect.isEmpty() ? label("theme.hud_background.off")
+                : ShBetterUiApi.backgrounds().find(effect).<Component>map(spec -> Component.translatable(spec.titleKey()))
+                        .orElseGet(() -> effect.equals(ThemeSettings.DEFAULT_BACKGROUND_EFFECT)
+                                ? label("theme.group.dotMatrix") : label("theme.hud_background.unavailable", effect));
+        return label("theme.hud_background", name);
+    }
+
+    private void nextHudBackground() {
+        var choices = new ArrayList<String>();
+        choices.add("");
+        choices.add(ThemeSettings.DEFAULT_BACKGROUND_EFFECT);
+        for (var spec : ShBetterUiApi.backgrounds().entries()) {
+            if (!spec.id().equals(ThemeSettings.DEFAULT_BACKGROUND_EFFECT)) choices.add(spec.id());
+        }
+        var settings = draft.settings();
+        var theme = settings.theme();
+        int next = (choices.indexOf(theme.hudBackgroundEffect()) + 1) % choices.size();
+        edit(new Draft(settings.withTheme(theme.withHudBackgroundEffect(choices.get(next))), draft.shortcut()));
     }
 
     private void addThemeEditor(int x) {
@@ -426,8 +452,14 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void syncThemeEditor() {
+        var background = ThemeEffectPreview.background(themeGroupId());
         themeGroup.setMessage(themeGroupName());
-        themeConfigure.setMessage(themeConfigureLabel());
+        var theme = draft.settings().theme();
+        boolean hud = theme.mode() == ThemeSettings.Mode.HUD_GLASS;
+        themeConfigure.setMessage(hud ? label("theme.hud_background.configure") : themeConfigureLabel());
+        themeConfigure.setPreview(hud || background != null ? label("theme.background.tooltip") : null);
+        themeConfigure.active = hud ? ThemeEffects.hudBackgroundGroup(theme) != null
+                : theme.mode() == ThemeSettings.Mode.CUSTOM;
     }
 
     private Component themeConfigureLabel() {
@@ -435,13 +467,20 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void configureThemeGroup() {
-        String group = themeGroupId();
         var settings = draft.settings();
+        boolean hud = settings.theme().mode() == ThemeSettings.Mode.HUD_GLASS;
+        String group = hud ? ThemeEffects.hudBackgroundGroup(settings.theme()) : themeGroupId();
+        if (group == null) return;
+        var background = hud ? null : ThemeEffectPreview.background(group);
         var form = UnifiedUI.get().require(UIApis.APPEARANCE).edit(this, settings, group, new JsonObject(),
                 settings.theme().effects().group(group), values -> {
-                    var next = settings.theme().effects().withGroup(group, values);
-                    edit(new Draft(settings.withTheme(settings.theme().withEffects(next)), draft.shortcut()));
-                    status = label("theme.staged");
+                    var theme = draft.settings().theme();
+                    var next = theme.withEffects(theme.effects().withGroup(group, values));
+                    if (background != null) next = next.withBackgroundEffect(background.id());
+                    if (!next.equals(theme)) {
+                        edit(new Draft(draft.settings().withTheme(next), draft.shortcut()));
+                        status = label("theme.staged");
+                    }
                 });
         restoreThemeConfigureFocus = true;
         minecraft.setScreen(form);
@@ -452,6 +491,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             case DARK -> "theme.dark";
             case LIGHT -> "theme.light";
             case CUSTOM -> "theme.custom";
+            case LIQUID_GLASS -> "theme.liquid_glass";
+            case HUD_GLASS -> "theme.hud_glass";
         });
     }
 
@@ -460,32 +501,22 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void setBackgroundMusic(boolean enabled) {
-        stopBackgroundMusic();
-        if (enabled && musicMotionAllowed()) {
-            backgroundAudio = ShBetterUiApi.audio().systemOutput();
-            backgroundAudio.start();
-        }
+        if (!enabled || musicMotionAllowed()) ClientMusicPulse.global().setEnabled(enabled);
         refreshMusicToggle();
-    }
-
-    private void stopBackgroundMusic() {
-        if (backgroundAudio != null) {
-            backgroundAudio.close();
-            backgroundAudio = null;
-        }
-        backgroundBeat = 0f;
-        musicMotion.reset();
     }
 
     private void refreshMusicToggle() {
         if (musicToggle == null) return;
-        var audioStatus = backgroundAudio == null ? SystemAudioCapture.Status.READY : backgroundAudio.status();
+        var pulse = ClientMusicPulse.global();
         boolean allowed = musicMotionAllowed();
-        if (audioStatus == displayedAudioStatus && musicToggle.button().active == allowed) return;
+        boolean enabled = pulse.enabled();
+        boolean active = allowed || enabled;
+        var audioStatus = allowed ? pulse.status() : null;
+        if (audioStatus == displayedAudioStatus && musicToggle.button().active == active
+                && musicToggle.value() == enabled) return;
         displayedAudioStatus = audioStatus;
-        musicToggle.button().active = allowed;
-        musicToggle.setValue(audioStatus == SystemAudioCapture.Status.STARTING
-                || audioStatus == SystemAudioCapture.Status.RUNNING);
+        musicToggle.button().active = active;
+        musicToggle.setValue(enabled);
         musicToggle.button().setPreview(allowed ? Component.translatable(audioStatus.translationKey())
                 .append(CommonComponents.NEW_LINE).append(label("background_music.tooltip"))
                 : label("background_music.suspended"));
@@ -505,6 +536,22 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             minecraft.setScreen(new DeveloperPanelScreen(this, preferences, () -> developer));
         }));
         developer.setPreview(label("developer_config.tools.tooltip"));
+    }
+
+    private void addFeedbackLinks(int x) {
+        int y = 16;
+        for (var link : FeedbackLink.values()) {
+            var message = label(link.key);
+            var entry = row(button(x, y, contentWidth, message, link.icon, false, () -> {
+                if (!ShBetterUiApi.links().open(this, link.url, () -> rows.keySet().stream()
+                        .filter(widget -> widget.getMessage().equals(message)).findFirst().orElse(null))) {
+                    ShBetterUiApi.interactions().toast(UiToast.Kind.ERROR,
+                            label("links.unavailable"), label("links.unavailable.details"));
+                }
+            }));
+            entry.setPreview(label(link.key + ".tooltip"));
+            y += BUTTON_HEIGHT + GAP;
+        }
     }
 
     private void refreshOverview(long now) {
@@ -589,11 +636,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         options.add(new ToggleOption(control, read));
     }
 
-    private void optionSlider(int x, int y, String key, int min, int max, int step, IntSupplier read, IntConsumer write) {
+    private UiSlider optionSlider(int x, int y, String key, int min, int max, int step, IntSupplier read, IntConsumer write) {
         var slider = new UiSlider(new Bounds(x, y, contentWidth, BUTTON_HEIGHT), min, max, step, read.getAsInt(),
                 preferences, value -> label(key, value), write);
         slider.setTooltip(Tooltip.create(label(key + ".tooltip")));
         optionSliders.add(new SliderOption(row(slider), read));
+        return slider;
     }
 
     private void addFooter(int x, int width) {
@@ -679,13 +727,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void updateThemePreview(ThemeSettings settings) {
-        UiTheme next = UiTheme.resolve(settings);
-        if (next.equals(previewTheme)) return;
-        previewTheme = next;
-        var palette = backgroundProfile.palette();
-        themedBackgroundProfile = backgroundProfile.withPalette(new DotMatrixProfile.Palette(
-                next.background(palette.backgroundArgb()), next.text(palette.dotArgb()),
-                next.text(palette.highlightArgb()), palette.glow()));
+        previewTheme = UiTheme.resolve(settings);
     }
 
     private void refreshActions() {
@@ -696,7 +738,6 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         navigation.setSettings(settings.tabs());
         if (!preferences.equals(nextPreferences)) {
             preferences = nextPreferences;
-            if (!musicMotionAllowed()) stopBackgroundMusic();
             for (GuiEventListener listener : children()) {
                 if (listener instanceof UiButton button) button.setPreferences(preferences);
                 else if (listener instanceof UiSlider slider) slider.setPreferences(preferences);
@@ -722,8 +763,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 themeMode.setMessage(themeLabel(mode));
                 themeMode.setLeadingIcon(UiTheme.icon(mode));
                 boolean custom = mode == ThemeSettings.Mode.CUSTOM;
+                boolean hud = mode == ThemeSettings.Mode.HUD_GLASS;
                 themeGroup.active = custom;
-                themeConfigure.active = custom;
+                themeGroup.visible = !hud;
+                hudBackground.visible = hudBackground.active = hud;
+                hudBackground.setMessage(hudBackgroundLabel());
+                hudBlur.visible = hudBlur.active = hud;
+                syncThemeEditor();
             }
             case SHORTCUT -> {
                 shortcut.setMessage(capturingShortcut ? label("shortcut.capture") : label("shortcut.binding",
@@ -928,7 +974,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             return true;
         }
         if (fits && !entrance.allowsPointer(x, y)) return false;
-        background.pulse(new Bounds(0, 0, width, height), x, y);
+        background.pulse(width, height, x, y);
         if (capturingShortcut) {
             finishShortcut(new Shortcut(InputConstants.Type.MOUSE.getOrCreate(button),
                     modifierName(hasControlDown(), hasShiftDown(), hasAltDown())));
@@ -1079,8 +1125,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         themeEffectPreview.close();
         pageHandoff.clear();
         returning.clearHandoff();
-        stopBackgroundMusic();
-        background.clearPulse();
+        background.reset();
         super.removed();
     }
 
@@ -1095,13 +1140,14 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        var palette = MinecraftThemes.previewPalette(draft.settings(), previewTheme);
         ThemeEffects.preview(draft.settings(),
-                () -> UiTheme.preview(previewTheme, () -> renderWithTheme(graphics, mouseX, mouseY, partialTick)));
+                () -> UiTheme.preview(palette, () -> renderWithTheme(graphics, mouseX, mouseY, partialTick)));
     }
 
     private void renderWithTheme(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (!fits) {
-            renderDotBackground(graphics, true);
+            renderPanelBackdrop(graphics, true);
             var lines = font.split(Component.translatable("sh_better_ui.picker.too_small"), Math.max(1, width - 8));
             int y = 6;
             for (var line : lines) {
@@ -1113,10 +1159,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             var panel = new Bounds(left, top, panelWidth, panelHeight);
             if (entrance.render(graphics, panel, preferences,
                     progress -> returning.renderCrossfade(parent, graphics, partialTick, preferences, progress,
-                            () -> renderDotBackground(graphics, false)),
+                            () -> renderPanelBackdrop(graphics, false)),
                     () -> renderContent(graphics, -1, -1, partialTick))) return;
             returning.clearHandoff();
-            renderDotBackground(graphics, true);
+            renderPanelBackdrop(graphics, true);
             LiquidGlassTheme.popover(graphics, left, top, panelWidth, panelHeight, preferences);
             renderContent(graphics, mouseX, mouseY, partialTick);
             return;
@@ -1124,32 +1170,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
-    private void renderDotBackground(GuiGraphics graphics, boolean allowPointer) {
-        long now = PageTransition.nowMs();
-        var overlay = UiOverlayHost.current(this);
-        boolean interactive = minecraft != null && minecraft.screen == this && minecraft.isWindowActive()
-                && (overlay == null || !overlay.isModalOpen());
-        if (!interactive) background.clearPulse();
-        backgroundBeat = backgroundAudio == null ? 0f
-                : musicMotion.sample(backgroundAudio.sample(), now, !interactive || !musicMotionAllowed());
+    private void renderPanelBackdrop(GuiGraphics graphics, boolean allowPointer) {
         refreshMusicToggle();
-        var bounds = new Bounds(0, 0, width, height);
-        var mouse = interactive && allowPointer && !preferences.highContrast()
-                ? ShBetterUiApi.interactions().mouseState() : null;
-        UiPointerTracker.Frame pointer = null;
-        if (mouse != null && mouse.focused() && !mouse.grabbed()) {
-            pointer = backgroundPointer.update(bounds, graphics.pose().last().pose(), mouse, true, now);
-        } else {
-            backgroundPointer.reset();
+        if (!fits && UiTheme.current().hudGlass()) {
+            DarkModeTheme.background(graphics, 0, 0, width, height);
+            return;
         }
-        background.setProfile(ThemeEffects.profile("dotMatrix", themedBackgroundProfile));
-        background.render(graphics, bounds, pointer, now, preferences);
-    }
-
-    private float backgroundBrightness(float x, float y, float phase, float variation) {
-        float ambient = BACKGROUND_MOTION.effect().brightness(x, y, phase, variation);
-        if (backgroundBeat == 0f) return ambient;
-        return ambient + backgroundBeat * (0.28f + DotMatrixProfile.Effect.WAVE.brightness(x, y, phase, variation));
+        background.renderThemed(this, graphics, width, height, preferences, allowPointer);
     }
 
     private void renderContent(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
@@ -1176,6 +1203,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         var rect = frame.rect();
         int edge = preferences.highContrast() ? LiquidGlassTheme.textColor()
                 : GuiMotion.lerpColor(0xA0000000 | (LiquidGlassTheme.accentColor() & 0xFFFFFF), DarkModeTheme.borderColor(), progress);
+        if (UiTheme.current().hudGlass() && !preferences.highContrast()) {
+            surface = (surface & 0xFFFFFF) | 0x18000000;
+            edge = (edge & 0xFFFFFF) | 0x40000000;
+        }
 
         graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
         try {
@@ -1232,6 +1263,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         var blocks = new ArrayList<UiSkeleton.Block>();
         blocks.add(new UiSkeleton.Block(new Bounds(x, bodyTop - scroll + 5, 48, 5)));
         for (AbstractWidget widget : rows.keySet()) {
+            if (!widget.visible) continue;
             blocks.add(new UiSkeleton.Block(new Bounds(widget.getX() + 2, widget.getY() + 3,
                     widget.getWidth() - 4, widget.getHeight() - 6), 8f));
         }
@@ -1314,12 +1346,29 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private enum Area {
         CONFIGURATION("configuration", GraphicIcon.SETTINGS),
         DEVELOPER("developer_config", GraphicIcon.CODE),
-        OVERVIEW("overview", GraphicIcon.INFO);
+        OVERVIEW("overview", GraphicIcon.INFO),
+        LINKS("links", GraphicIcon.CHAT);
 
         private final UiSectionBar.Section tab;
 
         Area(String key, GraphicIcon icon) {
             tab = new UiSectionBar.Section(label("section." + key), icon);
+        }
+    }
+
+    private enum FeedbackLink {
+        GITHUB("github", GraphicIcon.GITHUB, "https://github.com/dishanhai/SH-Better-UI"),
+        ISSUES("issues", GraphicIcon.GITHUB_ISSUE, "https://github.com/dishanhai/SH-Better-UI/issues"),
+        AFDIAN("afdian", GraphicIcon.AFDIAN, "https://afdian.com/a/dishanhai?utm_source=copylink&utm_medium=link");
+
+        private final String key;
+        private final GraphicIcon icon;
+        private final String url;
+
+        FeedbackLink(String key, GraphicIcon icon, String url) {
+            this.key = "links." + key;
+            this.icon = icon;
+            this.url = url;
         }
     }
 

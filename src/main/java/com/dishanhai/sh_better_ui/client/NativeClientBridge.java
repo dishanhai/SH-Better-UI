@@ -1,12 +1,15 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client;
 
+import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeToast;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
+import com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator;
+import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.kernel.api.NativeInput;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraft.client.Minecraft;
@@ -33,6 +36,9 @@ public final class NativeClientBridge {
                 UiFrameScheduler.beginFrame();
                 if (!ClientUiKernel.hasNativeAuthority()) MinecraftThemes.frame();
             }
+            var settings = ClientUiSettings.current();
+            ClientMusicPulse.global().update(UiFrameScheduler.nowMs(),
+                    !settings.reducedMotion() && !settings.highContrast());
         } catch (RuntimeException | Error failure) {
             frameDepth = 0;
             kernelFrame = false;
@@ -52,6 +58,99 @@ public final class NativeClientBridge {
             frameDepth = 0;
             kernelFrame = false;
             UiClientRendering.endFrame();
+        }
+    }
+
+    static void registerVisualCommand(com.mojang.brigadier.CommandDispatcher<net.minecraft.commands.CommandSourceStack> dispatcher) {
+        var pages = net.minecraft.commands.Commands.literal("shbetterpages")
+                .executes(context -> pagePermission(com.dishanhai.sh_better_ui.kernel.api.page.UiPageType.SCREEN));
+        for (var type : java.util.List.of(com.dishanhai.sh_better_ui.kernel.api.page.UiPageType.SCREEN,
+                com.dishanhai.sh_better_ui.kernel.api.page.UiPageType.MODAL,
+                com.dishanhai.sh_better_ui.kernel.api.page.UiPageType.HUD,
+                com.dishanhai.sh_better_ui.kernel.api.page.UiPageType.NOTIFICATION)) {
+            pages.then(net.minecraft.commands.Commands.literal(type.name().toLowerCase(java.util.Locale.ROOT))
+                    .executes(context -> pagePermission(type)));
+        }
+        pages.then(net.minecraft.commands.Commands.literal("priority_modal").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openPriorityPagePermissions(client));
+            return 1;
+        }));
+        pages.then(net.minecraft.commands.Commands.literal("interaction").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openInteractionPagePermissions(client));
+            return 1;
+        }));
+        pages.then(net.minecraft.commands.Commands.literal("request").then(net.minecraft.commands.Commands.argument(
+                "page", net.minecraft.commands.arguments.ResourceLocationArgument.id()).executes(context -> {
+                    var id = net.minecraft.commands.arguments.ResourceLocationArgument.getId(context, "page");
+                    var page = com.dishanhai.sh_better_ui.kernel.api.UiId.parse(id.toString());
+                    var client = Minecraft.getInstance();
+                    client.tell(() -> ClientUiKernel.requestServerPage(client, page));
+                    return 1;
+                })));
+        if (Boolean.getBoolean("shb.pages.trace")) {
+            pages.then(net.minecraft.commands.Commands.literal("trace").executes(context -> {
+                var client = Minecraft.getInstance();
+                client.tell(() -> ClientUiKernel.showPageTrace(client));
+                return 1;
+            }));
+        }
+        dispatcher.register(pages);
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbetterdock").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openDockExample(client));
+            return 1;
+        }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbettervisual").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openVisualCompositionExample(client));
+            return 1;
+        }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbetterrichtext").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openRichTextExample(client));
+            return 1;
+        }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbetterrichsync").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.openRichTextPipeline(client));
+            return 1;
+        }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbettertextreadability").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> ClientUiKernel.toggleTextReadabilityOverlay(client));
+            return 1;
+        }));
+        if (ClientUiKernel.richTextEditorEnabled()) {
+            dispatcher.register(net.minecraft.commands.Commands.literal("shbetterricheditor").executes(context -> {
+                var client = Minecraft.getInstance();
+                client.tell(() -> ClientUiKernel.openRichTextEditor(client));
+                return 1;
+            }));
+        }
+    }
+
+    private static int pagePermission(com.dishanhai.sh_better_ui.kernel.api.page.UiPageType type) {
+        var client = Minecraft.getInstance();
+        client.tell(() -> ClientUiKernel.openPagePermissions(client, type));
+        return 1;
+    }
+
+    static void beginScreen(Screen owner, GuiGraphics graphics, float partialTick) {
+        if (frameDepth == 1) VisualFrameCoordinator.begin(owner, graphics, partialTick);
+    }
+
+    static void composeScreenPost(Screen owner, GuiGraphics graphics, Runnable legacyBlur) {
+        if (frameDepth != 1) {
+            legacyBlur.run();
+            return;
+        }
+        try {
+            VisualFrameCoordinator.prepareBlur(owner, graphics);
+            legacyBlur.run();
+        } finally {
+            VisualFrameCoordinator.drawForeground(owner, graphics);
         }
     }
 

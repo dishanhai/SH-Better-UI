@@ -4,10 +4,12 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
+import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import com.dishanhai.sh_better_ui.theme.ThemeScope;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,8 +23,10 @@ import java.util.Collection;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Supplier;
 
 /** 山海：通过回调组合现有 API 的原生界面，每次打开独立持有并释放上下文。 */
 public final class UiScreen extends Screen {
@@ -31,7 +35,13 @@ public final class UiScreen extends Screen {
         void draw(UiScreen screen, UiFrame frame);
     }
 
+    @FunctionalInterface
+    public interface WidgetScroll {
+        boolean scroll(double mouseX, double mouseY, double horizontal, double vertical);
+    }
+
     private final UiScreenBuilder.Definition definition;
+    private UiDotBackground backdrop;
     private Screen parent;
     private boolean parentResolved;
     private GuiEventListener returnFocus;
@@ -41,6 +51,12 @@ public final class UiScreen extends Screen {
     private boolean handlingFailure;
     private UiButton back;
     private ThemeScope widgetThemes;
+    private Bounds widgetViewport;
+    private WidgetScroll widgetScroll;
+    private UiFrame drawingFrame;
+    private final Map<GuiEventListener, Supplier<Bounds>> widgetClips = new IdentityHashMap<>();
+    private final Map<GuiEventListener, String> widgetStacks = new IdentityHashMap<>();
+    private GuiEventListener hoveredStackWidget;
 
     UiScreen(UiScreenBuilder.Definition definition) {
         super(definition.title());
@@ -65,10 +81,55 @@ public final class UiScreen extends Screen {
         return new Bounds(0, top, Math.max(0, width), Math.max(0, height - top));
     }
 
+    /** True only during this Screen's native draw callbacks for the exact frame. */
+    public boolean isDrawing(UiFrame frame) {
+        return frame != null && drawingFrame == frame && !disposed && !removed;
+    }
+
+    /** Clips native widgets and their pointer targets to a content area for this layout. */
+    public void widgetViewport(Bounds area, WidgetScroll scrolling) {
+        var content = viewport();
+        Objects.requireNonNull(area, "area");
+        if (area.x() < content.x() || area.y() < content.y() || area.right() > content.right()
+                || area.bottom() > content.bottom() || area.width() < 0 || area.height() < 0) {
+            throw new IllegalArgumentException("Widget viewport must be inside the screen content");
+        }
+        widgetViewport = area;
+        widgetScroll = Objects.requireNonNull(scrolling, "scrolling");
+    }
+
     public <T extends AbstractWidget> T add(T widget) {
         if (disposed) throw new IllegalStateException("Disposed UI screen");
         bindTheme(widget);
         return addRenderableWidget(Objects.requireNonNull(widget));
+    }
+
+    /** Adds a native widget under a moving nested viewport while keeping native keyboard focus. */
+    public <T extends AbstractWidget> T addClipped(T widget, Supplier<Bounds> clip) {
+        return addClipped(widget, clip, null);
+    }
+
+    /** Widgets sharing a stack ID are picked in reverse paint order within their stack. */
+    public <T extends AbstractWidget> T addClipped(T widget, Supplier<Bounds> clip, String stackId) {
+        if (disposed) throw new IllegalStateException("Disposed UI screen");
+        Objects.requireNonNull(widget, "widget");
+        Objects.requireNonNull(clip, "clip");
+        bindTheme(widget);
+        addWidget(widget);
+        widgetClips.put(widget, clip);
+        if (stackId != null) widgetStacks.put(widget, stackId);
+        addRenderableOnly((graphics, mouseX, mouseY, partialTick) -> {
+            Bounds bounds = clip.get();
+            if (bounds.width() <= 0 || bounds.height() <= 0) return;
+            graphics.enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom());
+            try {
+                boolean inside = bounds.contains(mouseX, mouseY) && (stackId == null || hoveredStackWidget == widget);
+                widget.render(graphics, inside ? mouseX : -1, inside ? mouseY : -1, partialTick);
+            } finally {
+                graphics.disableScissor();
+            }
+        });
+        return widget;
     }
 
     /** Theme parent for widgets and containers created during this init/resize. */
@@ -127,6 +188,10 @@ public final class UiScreen extends Screen {
                 widgetThemes = theme.child("widgets");
             }
             back = null;
+            widgetViewport = null;
+            widgetScroll = null;
+            widgetClips.clear();
+            widgetStacks.clear();
             if (definition.backButton()) {
                 int inset = inset();
                 var area = new Bounds(inset, inset, Math.min(100, Math.max(0, width - 2 * inset)),
@@ -238,9 +303,12 @@ public final class UiScreen extends Screen {
     public void removed() {
         if (removed) return;
         removed = true;
+        var previousBackdrop = backdrop;
+        backdrop = null;
         try {
             Throwable failure = null;
             try {
+                if (previousBackdrop != null) previousBackdrop.reset();
                 if (context != null) definition.onRemoved().accept(this);
             } catch (RuntimeException | Error error) {
                 failure = error;
@@ -266,7 +334,26 @@ public final class UiScreen extends Screen {
     @Override
     public Optional<GuiEventListener> getChildAt(double mouseX, double mouseY) {
         if (disposed || removed) return Optional.empty();
-        if (viewport().contains(mouseX, mouseY)) return super.getChildAt(mouseX, mouseY);
+        if (viewport().contains(mouseX, mouseY)) {
+            if (widgetViewport != null && !widgetViewport.contains(mouseX, mouseY)) return Optional.empty();
+            if (widgetClips.isEmpty()) return super.getChildAt(mouseX, mouseY);
+            var widgets = children();
+            for (int i = 0; i < widgets.size(); i++) {
+                var child = widgets.get(i);
+                if (!isWidgetTarget(child, mouseX, mouseY)) continue;
+                String stack = widgetStacks.get(child);
+                if (stack != null) {
+                    for (int layer = widgets.size() - 1; layer > i; layer--) {
+                        var candidate = widgets.get(layer);
+                        if (stack.equals(widgetStacks.get(candidate)) && isWidgetTarget(candidate, mouseX, mouseY)) {
+                            return Optional.of(candidate);
+                        }
+                    }
+                }
+                return Optional.of(child);
+            }
+            return Optional.empty();
+        }
         if (back != null && back.isMouseOver(mouseX, mouseY)) return Optional.of(back);
         return Optional.empty();
     }
@@ -274,13 +361,53 @@ public final class UiScreen extends Screen {
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (disposed || removed) return false;
-        if (viewport().contains(mouseX, mouseY)) return super.mouseClicked(mouseX, mouseY, button);
+        if (viewport().contains(mouseX, mouseY)) {
+            if (widgetViewport != null && !widgetViewport.contains(mouseX, mouseY)) return false;
+            if (widgetClips.isEmpty()) return super.mouseClicked(mouseX, mouseY, button);
+            for (var child : children()) {
+                if (!inWidgetClip(child, mouseX, mouseY) || !child.mouseClicked(mouseX, mouseY, button)) continue;
+                if (!disposed && !removed) {
+                    setFocused(child);
+                    if (button == 0) setDragging(true);
+                }
+                return true;
+            }
+            return false;
+        }
         if (back == null || !back.mouseClicked(mouseX, mouseY, button)) return false;
         if (!disposed && !removed) {
             setFocused(back);
             if (button == 0) setDragging(true);
         }
         return true;
+    }
+
+    private boolean inWidgetClip(GuiEventListener child, double x, double y) {
+        var clip = widgetClips.get(child);
+        return clip == null || clip.get().contains(x, y);
+    }
+
+    private boolean isWidgetTarget(GuiEventListener child, double x, double y) {
+        if (!inWidgetClip(child, x, y)) return false;
+        if (widgetStacks.containsKey(child) && child instanceof AbstractWidget widget) {
+            return widget.visible && x >= widget.getX() && x < widget.getX() + widget.getWidth()
+                    && y >= widget.getY() && y < widget.getY() + widget.getHeight();
+        }
+        return child.isMouseOver(x, y);
+    }
+
+    public boolean mouseScrolled(double mouseX, double mouseY, double vertical) {
+        return mouseScrolled(mouseX, mouseY, 0, vertical);
+    }
+
+    public boolean mouseScrolled(double mouseX, double mouseY, double horizontal, double vertical) {
+        if (disposed || removed) return false;
+        var child = getChildAt(mouseX, mouseY);
+        if (child.isPresent() && PlatformUiApi.scrollWidget(child.get(), mouseX, mouseY, horizontal, vertical)) {
+            return true;
+        }
+        return widgetViewport != null && widgetViewport.contains(mouseX, mouseY)
+                && widgetScroll.scroll(mouseX, mouseY, horizontal, vertical);
     }
 
     @Override
@@ -308,18 +435,38 @@ public final class UiScreen extends Screen {
         var frame = mouse == original.mouse() ? original
                 : new UiFrame(graphics, original.viewport(), mouse, original.preferences(), original.nowMs(), partialTick);
         boolean blocked = modal != null && modal.blocksPointer(mouseX, mouseY);
-        if (definition.onRender() == null) {
+        var backgroundMode = definition.backgroundMode();
+        if (backgroundMode == UiScreenBuilder.BackgroundMode.DOTS) {
+            if (backdrop == null) backdrop = new UiDotBackground();
+            backdrop.render(this, graphics, width, height, frame.preferences());
+        } else if (backgroundMode == UiScreenBuilder.BackgroundMode.THEME
+                || definition.onRender() == null && ClientUiKernel.hasNativeAuthority()) {
+            if (backdrop == null) backdrop = new UiDotBackground();
+            backdrop.renderThemed(this, graphics, width, height, frame.preferences(), true);
+        } else if (definition.onRender() == null) {
             DarkModeTheme.background(graphics, 0, 0, width, height);
         }
         var viewport = frame.viewport();
         graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
+        drawingFrame = frame;
         try {
             if (definition.onRender() != null) runCallback(() -> definition.onRender().draw(this, frame));
             if (disposed || removed) return;
-            boolean overContent = !blocked && viewport.contains(mouseX, mouseY);
-            super.render(graphics, overContent ? mouseX : -1, overContent ? mouseY : -1, partialTick);
+            var widgetArea = widgetViewport == null ? viewport : widgetViewport;
+            boolean overContent = !blocked && widgetArea.contains(mouseX, mouseY);
+            if (widgetViewport != null) {
+                graphics.enableScissor(widgetArea.x(), widgetArea.y(), widgetArea.right(), widgetArea.bottom());
+            }
+            try {
+                if (overContent && !widgetStacks.isEmpty()) hoveredStackWidget = getChildAt(mouseX, mouseY).orElse(null);
+                super.render(graphics, overContent ? mouseX : -1, overContent ? mouseY : -1, partialTick);
+            } finally {
+                hoveredStackWidget = null;
+                if (widgetViewport != null) graphics.disableScissor();
+            }
             runCallback(() -> definition.onForeground().draw(this, frame));
         } finally {
+            drawingFrame = null;
             graphics.disableScissor();
         }
         if (disposed || removed) return;

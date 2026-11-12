@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
+import com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -37,6 +38,7 @@ final class UiClientRendering {
     }
 
     static void screenClosing(Screen owner) {
+        VisualFrameCoordinator.cancel(owner);
         UiFrameScheduler.ownerClosing(owner, () -> {
             try {
                 ClientUiKernel.screenClosing(owner);
@@ -61,6 +63,7 @@ final class UiClientRendering {
     }
 
     static void endFrame() {
+        VisualFrameCoordinator.end();
         // Screen Pre 被取消时没有 Screen Post，未消费的绘制请求仍应在帧尾清理。
         clearBlur();
         UiFrameScheduler.endFrame();

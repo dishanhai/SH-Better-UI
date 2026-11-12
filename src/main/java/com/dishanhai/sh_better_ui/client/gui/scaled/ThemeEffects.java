@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.api.BackgroundSpec;
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.ElectricLogoProfile;
 import com.dishanhai.sh_better_ui.config.*;
 import com.dishanhai.sh_better_ui.theme.ThemeId;
@@ -131,8 +133,16 @@ public final class ThemeEffects {
                                                    JsonObject inherited, JsonObject local) {
         var combined = ThemeOverrides.EMPTY.withGroup(group, inherited)
                 .overlay(ThemeOverrides.EMPTY.withGroup(group, local));
-        var theme = settings.theme().overlayEffects(combined);
+        var theme = settings.theme();
+        if (!group.equals(hudBackgroundGroup(theme))) theme = theme.overlayEffects(combined);
         return settings.withTheme(theme.withEffects(theme.effects().withGroup(group, combined.group(group))));
+    }
+
+    /** Returns the editable profile group for the current HUD background, if it has one. */
+    public static String hudBackgroundGroup(ThemeSettings theme) {
+        if (theme.mode() != ThemeSettings.Mode.HUD_GLASS || theme.hudBackgroundEffect().isEmpty()) return null;
+        return ShBetterUiApi.backgrounds().find(theme.hudBackgroundEffect())
+                .map(BackgroundSpec::settingsGroup).orElse(null);
     }
 
     public static GlassBackdropSettings glass() {
@@ -152,7 +162,8 @@ public final class ThemeEffects {
     }
 
     public static <T extends Record> T profile(ThemeSettings theme, String group, T fallback) {
-        if (theme.mode() != ThemeSettings.Mode.CUSTOM || !theme.effects().contains(group)) return fallback;
+        if (!theme.effects().contains(group)
+                || (theme.mode() != ThemeSettings.Mode.CUSTOM && !group.equals(hudBackgroundGroup(theme)))) return fallback;
         return resolve(theme.effects(), group, fallback);
     }
 
@@ -233,6 +244,7 @@ public final class ThemeEffects {
         var merged = ThemeOverrides.EMPTY.withGroup(group, inherited)
                 .overlay(ThemeOverrides.EMPTY.withGroup(group, local)).group(group);
         Record fallback = switch (group) {
+            case "dotMatrix" -> UiDotBackground.defaultProfile(UiTheme.resolve(base.theme()));
             case "glass" -> base.backdrop();
             case "tabs" -> base.tabs();
             case "feedback" -> base.feedback();

@@ -35,6 +35,29 @@ public class ThemeEffectFieldsTest {
     }
 
     @Test
+    void dotMatrixFormDefaultsMatchTheFullscreenBackground() {
+        var settings = ClientUiSettings.DEFAULT;
+        var inherited = new JsonObject();
+        var local = new JsonObject();
+        var values = ThemeEffectFields.values(settings, "dotMatrix", inherited, local);
+
+        assertEquals(1f, values.getAsJsonObject("grid").get("density").getAsFloat());
+        assertEquals(2, values.getAsJsonObject("grid").get("dotSize").getAsInt());
+        assertEquals(96, values.getAsJsonObject("interaction").getAsJsonObject("pointerLens")
+                .get("radius").getAsInt());
+        assertTrue(ThemeEffectPresets.forGroup("dotMatrix").stream()
+                .anyMatch(preset -> preset.name().equals("rainbow") && preset.matches(values)));
+
+        var edited = ThemeEffectFields.edit(settings, "dotMatrix", inherited, local,
+                List.of("grid", "density"), new JsonPrimitive(0.5f));
+        var draft = ThemeEffects.previewSettings(settings, "dotMatrix", inherited, edited);
+        var backdrop = UiDotBackground.defaultProfile(UiTheme.resolve(settings.theme()));
+        assertEquals(0.5f, ThemeEffects.profile(draft.theme(), "dotMatrix", backdrop).grid().density());
+        assertEquals(1f, ThemeEffectFields.values(settings, "dotMatrix", inherited, local)
+                .getAsJsonObject("grid").get("density").getAsFloat());
+    }
+
+    @Test
     void partialEditPreservesInheritedAndUnrelatedValues() {
         var inherited = new JsonObject();
         var grid = new JsonObject();

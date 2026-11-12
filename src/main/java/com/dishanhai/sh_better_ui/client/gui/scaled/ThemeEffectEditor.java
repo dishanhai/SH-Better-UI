@@ -37,7 +37,8 @@ public final class ThemeEffectEditor extends Screen {
     private final Consumer<JsonObject> apply;
     private final List<ThemeEffectFields.Field> fields;
     private final List<ThemeEffectPresets.Preset> presets;
-    private final ThemeEffectPreview preview = new ThemeEffectPreview();
+    private final ThemeEffectPreview preview;
+    private final UiDotBackground backdrop;
     private JsonObject local;
     private JsonObject values;
     private ClientUiSettings previewSettings;
@@ -61,6 +62,8 @@ public final class ThemeEffectEditor extends Screen {
         this.settings = settings;
         this.preferences = UiPreferences.fromSettings(settings);
         this.group = group;
+        backdrop = "dotMatrix".equals(group) ? new UiDotBackground() : null;
+        preview = backdrop == null ? new ThemeEffectPreview() : null;
         this.inherited = inherited.deepCopy();
         this.local = local.deepCopy();
         this.apply = apply;
@@ -79,7 +82,8 @@ public final class ThemeEffectEditor extends Screen {
         left = (width - panelWidth) / 2;
         right = left + panelWidth;
         footer = height - 26;
-        int columnX = ThemeEffectPreview.supports(group) && width >= 350 ? left + panelWidth / 3 + 6 : left;
+        int columnX = preview != null && ThemeEffectPreview.supports(group) && width >= 350
+                ? left + panelWidth / 3 + 6 : left;
         int columnWidth = right - columnX;
         canvas = columnX > left ? new Bounds(left, 28, columnX - left - 6, Math.max(0, footer - 48)) : null;
 
@@ -414,6 +418,7 @@ public final class ThemeEffectEditor extends Screen {
         }
         var previousPreset = presetButton;
         boolean handled = super.mouseClicked(x, y, button);
+        if (!handled && button == 0 && backdrop != null) backdrop.pulse(width, height, x, y);
         if (previousPreset != null && previousPreset != presetButton && getFocused() == previousPreset) {
             setFocused(presetButton);
         }
@@ -430,6 +435,11 @@ public final class ThemeEffectEditor extends Screen {
 
     private void renderForm(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
         g.fill(0, 0, width, height, preferences.highContrast() ? 0xFF121723 : 0xF0121723);
+        if (backdrop != null) {
+            UiTheme.preview(UiTheme.resolve(settings.theme()), () -> backdrop.render(this, g, width, height, preferences));
+            g.fill(0, 0, width, 24, 0xE0121723);
+            g.fill(left - 3, Math.max(24, footer - 40), right + 3, height, 0xE0121723);
+        }
         Component heading = detail == null ? title : fieldLabel(detail);
         if (detail != null) {
             JsonElement color = current(detail);
@@ -460,7 +470,8 @@ public final class ThemeEffectEditor extends Screen {
 
     @Override
     public void removed() {
-        preview.close();
+        if (backdrop != null) backdrop.reset();
+        else preview.close();
         super.removed();
     }
 

@@ -54,7 +54,9 @@ class NetworkIconTest {
     void compactHudIconsHaveBothTextureSizes() throws IOException {
         assertIconTextures(List.of(GraphicIcon.COMPACT_SIGNAL, GraphicIcon.COMPACT_CLOCK, GraphicIcon.COMPACT_CALENDAR,
                 GraphicIcon.COMPACT_WORLD, GraphicIcon.COMPACT_BIOME, GraphicIcon.COMPACT_LOCATION,
-                GraphicIcon.COMPACT_CHUNK, GraphicIcon.COMPACT_TORCH));
+                GraphicIcon.COMPACT_CHUNK, GraphicIcon.COMPACT_TORCH, GraphicIcon.COMPACT_TPS,
+                GraphicIcon.COMPACT_MSPT, GraphicIcon.COMPACT_MEMORY, GraphicIcon.COMPACT_CPU,
+                GraphicIcon.COMPACT_GPU, GraphicIcon.COMPACT_DISK));
     }
 
     @Test
@@ -189,6 +191,22 @@ class NetworkIconTest {
     }
 
     @Test
+    void patternRecipeAndBookmarkIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.VIRTUAL_ITEM_PROVIDER, GraphicIcon.VIRTUAL_ITEM, GraphicIcon.VIRTUAL,
+                GraphicIcon.QUICK_PATTERN_ENCODE, GraphicIcon.QUICK, GraphicIcon.CLOUD_PATTERN_LIBRARY,
+                GraphicIcon.CLOUD, GraphicIcon.RECIPE_TYPE, GraphicIcon.RECIPE, GraphicIcon.BOOKMARK_FAVORITE,
+                GraphicIcon.BOOKMARK, GraphicIcon.RECIPE_ID, GraphicIcon.ID));
+    }
+
+    @Test
+    void encodingStateIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.PATTERN_WRAP_AUTO, GraphicIcon.PATTERN_WRAP_ON,
+                GraphicIcon.PATTERN_WRAP_OFF, GraphicIcon.PATTERN_RECIPE_ID_ON, GraphicIcon.PATTERN_RECIPE_ID_OFF,
+                GraphicIcon.PATTERN_BYPRODUCT_ON, GraphicIcon.PATTERN_BYPRODUCT_OFF,
+                GraphicIcon.PATTERN_VIRTUAL_PROVIDER_ON, GraphicIcon.PATTERN_VIRTUAL_PROVIDER_OFF));
+    }
+
+    @Test
     void planningMathAndAccessIconsHaveBothTextureSizes() throws IOException {
         assertIconTextures(List.of(GraphicIcon.PLAN, GraphicIcon.GOAL, GraphicIcon.EQUATION,
                 GraphicIcon.FUNCTION, GraphicIcon.UNDO, GraphicIcon.ACCESS_DENIED));
@@ -210,6 +228,15 @@ class NetworkIconTest {
     void dataFlowGuideAndInterfaceIconsHaveBothTextureSizes() throws IOException {
         assertIconTextures(List.of(GraphicIcon.INPUT, GraphicIcon.OUTPUT, GraphicIcon.GUIDEME,
                 GraphicIcon.GUIDE, GraphicIcon.GUI, GraphicIcon.UI));
+    }
+
+    @Test
+    void shopAndToolIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.RENDER, GraphicIcon.PRODUCT_CARD, GraphicIcon.PRODUCT,
+                GraphicIcon.TOOL, GraphicIcon.TOOLBAR, GraphicIcon.HIDE, GraphicIcon.MY_PROFILE,
+                GraphicIcon.MY_FAVORITES, GraphicIcon.PRODUCT_OUTPUT, GraphicIcon.PRODUCT_INPUT,
+                GraphicIcon.INSTALL, GraphicIcon.COMPATIBILITY, GraphicIcon.QUANTUM,
+                GraphicIcon.SELECT_ALL, GraphicIcon.SELECT_PARTIAL));
     }
 
     private static void assertIconTextures(List<GraphicIcon> icons) throws IOException {

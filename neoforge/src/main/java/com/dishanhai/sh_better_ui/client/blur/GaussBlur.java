@@ -414,7 +414,31 @@ public final class GaussBlur {
         extraRequested = true;
     }
 
+    /** Internal arbitration hook for the native visual composition bridge. */
+    public static boolean hasPrimaryRequest() { return requested; }
+
+    /** Install a validated managed primary without touching existing extras, waves or top layers. */
+    public static void installManagedPrimary(com.dishanhai.sh_better_ui.client.glass.PixelRect area,
+                                             float strength, float radius, GlassStyle style) {
+        if (requested) return;
+        var target = Minecraft.getInstance().getMainRenderTarget();
+        if (target == null) return;
+        requestRect = toUvRect(area.getX(), area.getY(), area.getW(), area.getH(), target.width, target.height);
+        requestHole = null;
+        requestGlass = style;
+        requestStrength = strength;
+        requestRadius = radius;
+        requestAxisX = requestAxisY = 1f;
+        requestSmooth = false;
+        cellCount = 0;
+        requested = true;
+        managedPrimary = true;
+    }
+
+    private static boolean managedPrimary;
+
     public static void clear() {
+        managedPrimary = false;
         requested = false;
         requestSmooth = false;
         requestStrength = 0f;
@@ -495,6 +519,7 @@ public final class GaussBlur {
      * 后处理读到的是不完整的画面。
      */
     private static void runBlurPasses(ScreenEvent.Render.Post event) {
+        boolean managed = managedPrimary;
         boolean hadRequest = requested;
         boolean smooth = requestSmooth;
         float strength = requestStrength;
@@ -530,9 +555,11 @@ public final class GaussBlur {
         float partialTick = event.getPartialTick();
         Minecraft mc = Minecraft.getInstance();
         if (primary) {
-            render(mc, strength, radius, rect,
+            Runnable primaryPass = () -> render(mc, strength, radius, rect,
                     hole == null ? new float[]{0f, 0f, 0f, 0f} : hole, smooth, cells, cellUvSnapshot,
                     NO_WAVE, axisX, axisY, glass, partialTick, 0f, GlassBackdropSettings.DEFAULT);
+            if (managed) com.dishanhai.sh_better_ui.client.gui.scaled.GuiStateGuard.draw(primaryPass);
+            else primaryPass.run();
         }
         if (extra && isReady()) {
             render(mc, strength2, radius2, rect2,

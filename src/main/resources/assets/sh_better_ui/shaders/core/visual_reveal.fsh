@@ -8,6 +8,8 @@ uniform int EffectMode;
 uniform vec2 Size;
 uniform vec3 Reveal;
 uniform vec2 Origin;
+uniform int Direction;
+uniform float GradientRadius;
 uniform vec4 InnerColor;
 uniform vec4 OuterColor;
 in vec2 localUv;
@@ -38,7 +40,11 @@ vec4 sampleScratch(vec2 pixel, ivec2 dimensions) {
 }
 
 float blurRadius() {
-    return Reveal.x * (1.0 - smoothstep(Reveal.y, Reveal.z, localUv.x));
+    float axis = localUv.x;
+    if (Direction == 1) axis = 1.0 - localUv.x;
+    else if (Direction == 2) axis = localUv.y;
+    else if (Direction == 3) axis = 1.0 - localUv.y;
+    return Reveal.x * (1.0 - smoothstep(Reveal.y, Reveal.z, axis));
 }
 
 // 每轴逐 texel 取样。核在端点降到零，跨过整数半径时权重连续。
@@ -87,7 +93,7 @@ vec4 revealTexture() {
 
 vec4 radialColor() {
     vec2 farCorner = max(abs(Origin), abs(vec2(1.0) - Origin));
-    float reach = length(farCorner * Size);
+    float reach = max(0.00001, length(farCorner * Size) * GradientRadius);
     float distance = length((localUv - Origin) * Size);
     float progress = smoothstep(0.0, reach, distance);
     return straightColor(mix(premultiply(InnerColor), premultiply(OuterColor), progress));

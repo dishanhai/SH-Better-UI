@@ -29,6 +29,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiRecipePageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTimeline;
+import com.dishanhai.sh_better_ui.client.gui.text.TextLayoutMotion;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 
@@ -51,6 +52,11 @@ public final class MotionApi {
 
     public long nowMs() {
         return PageTransition.nowMs();
+    }
+
+    /** Each adaptive label or text block keeps its own transition state. */
+    public TextLayoutMotion textLayout() {
+        return new TextLayoutMotion();
     }
 
     public PageTransition pageTransition() {

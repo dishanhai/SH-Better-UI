@@ -2,8 +2,14 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.api.PlatformUiApi;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.client.gui.text.TextLayoutMotion;
 import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
+import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
+import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
+import com.dishanhai.sh_better_ui.kernel.api.UiId;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability;
 import com.dishanhai.sh_better_ui.theme.ThemeBinding;
 import com.dishanhai.sh_better_ui.theme.ThemeScope;
 import com.dishanhai.sh_better_ui.theme.token.ColorValue;
@@ -16,7 +22,9 @@ import net.minecraft.client.gui.narration.NarratedElementType;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 
+import java.util.ArrayList;
 import java.util.Objects;
+import java.util.function.Supplier;
 
 /** 山海：保留原生输入、焦点、功能提示和旁白的共用按钮。 */
 public final class UiButton extends Button {
@@ -42,9 +50,25 @@ public final class UiButton extends Button {
     private boolean sampleBackground = true;
     private float backgroundBlurRadius = LiquidGlassTheme.DEFAULT_BUTTON_BLUR_RADIUS;
     private ThemeButtonStyle themeBinding;
+    private NativeTextReadability.Label readableLabel;
+    private final TextLayoutMotion labelMotion = new TextLayoutMotion();
 
     public UiButton(int x, int y, int width, int height, Component label, OnPress onPress) {
         this(x, y, width, height, label, onPress, UiPreferences.configured(), false);
+    }
+
+    /** Binds the native page's positioned label to its owned text scope. */
+    public void bindTextReadability(NativeTextReadability.Label label) {
+        readableLabel = label;
+        labelMotion.reset();
+    }
+
+    /** Applies the owned text scope's policy to this label under the supplied effective GUI clip. */
+    public void bindTextReadability(ModuleContext module, ScopeHandle scope, UiId textId, Supplier<Bounds> clip) {
+        var mount = new NativeTextReadability.Mount(module, scope);
+        mount.service().policy(module, scope);
+        bindTextReadability(new NativeTextReadability.Label(mount, Objects.requireNonNull(textId, "textId"),
+                NativeTextReadability.Options.INHERIT, Objects.requireNonNull(clip, "clip")));
     }
 
     public UiButton(int x, int y, int width, int height, Component label, OnPress onPress,
@@ -93,7 +117,8 @@ public final class UiButton extends Button {
     }
 
     ThemeButtonStyle.Paint themePaint(DarkModeTheme.State state, boolean pressed) {
-        return hasThemeBinding() ? themeBinding.sample(state, isHovered(), pressed, selected) : null;
+        return hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
+                state.highContrast(), selected, state.hover(), state.press()) : null;
     }
 
     /** 位于已有玻璃工具列内时可跳过液态玻璃的重复背景取样。 */
@@ -211,13 +236,15 @@ public final class UiButton extends Button {
         boolean network = style == UiStyle.NETWORK;
         if (network && (width <= 2 || height <= 2)) return;
         var modeLayout = modeIndicatorLayout();
-        int textColor = paint != null ? paint.text() : switch (style) {
+        UiStyle renderStyle = style == UiStyle.DEFAULT && (paint == null ? UiTheme.current().liquidGlass() : paint.glass())
+                ? UiStyle.LIQUID_GLASS : style;
+        int textColor = paint != null ? paint.text() : switch (renderStyle) {
             case DEFAULT -> state.controlText();
             case LIQUID_GLASS -> LiquidGlassTheme.controlText(state.enabled());
             case NETWORK -> NetworkTheme.controlText(state, selected);
         };
-        int indicator = modeLayout == null ? 0 : paint == null ? materialAccent(state) : paint.accent();
-        Runnable content = () -> drawContent(graphics, x, y, width, height, textColor, state, modeLayout, indicator, effective);
+        int indicator = modeLayout == null ? 0 : paint == null ? materialAccent(renderStyle, state) : paint.accent();
+        Runnable content = () -> drawContent(graphics, x, y, width, height, textColor, state, modeLayout, indicator, effective, now);
         if (network) {
             NetworkTheme.drawTab(graphics, x, y, width, height, state, selected, paint);
             graphics.enableScissor(x + 1, y + 1, x + width - 1, y + height - 1);
@@ -230,7 +257,7 @@ public final class UiButton extends Button {
         }
         float emphasis = selectionEmphasis(now, effective);
         boolean showSelectionMarker = modeLayout == null;
-        if (style == UiStyle.LIQUID_GLASS) {
+        if (renderStyle == UiStyle.LIQUID_GLASS) {
             LiquidGlassTheme.button(graphics, x, y, width, height, state, effective, sampleBackground,
                     backgroundBlurRadius, primary, selected, emphasis, showSelectionMarker, paint, content);
         } else {
@@ -289,7 +316,7 @@ public final class UiButton extends Button {
                             }
                             int text = paint == null ? LiquidGlassTheme.controlText(state.enabled()) : paint.text();
                             drawContent(graphics, x, y, width, height, text, state, modeLayout,
-                                    paint == null ? LiquidGlassTheme.accentColor() : paint.accent(), effective);
+                                    paint == null ? LiquidGlassTheme.accentColor() : paint.accent(), effective, now);
                         }));
             } finally {
                 graphics.pose().popPose();
@@ -320,9 +347,9 @@ public final class UiButton extends Button {
 
     private void drawContent(GuiGraphics graphics, int x, int y, int width, int height, int textColor,
                              DarkModeTheme.State state, ModeIndicatorLayout modeLayout, int indicator,
-                             UiPreferences effective) {
+                             UiPreferences effective, long now) {
         int contentHeight = modeLayout == null ? height : height - MODE_INDICATOR_RESERVE;
-        drawContent(graphics, x, y, width, contentHeight, textColor, effective);
+        drawContent(graphics, x, y, width, contentHeight, textColor, effective, now);
         if (modeLayout != null) drawModeIndicators(graphics, modeLayout, state, textColor, indicator);
     }
 
@@ -342,8 +369,8 @@ public final class UiButton extends Button {
                 barWidth, barWidth + gap);
     }
 
-    private int materialAccent(DarkModeTheme.State state) {
-        return switch (style) {
+    private static int materialAccent(UiStyle renderStyle, DarkModeTheme.State state) {
+        return switch (renderStyle) {
             case DEFAULT -> state.focusColor();
             case LIQUID_GLASS -> LiquidGlassTheme.accentColor();
             case NETWORK -> NetworkTheme.outline(true);
@@ -367,9 +394,10 @@ public final class UiButton extends Button {
     record ModeIndicatorLayout(int firstX, int bottomY, int barWidth, int step) {}
 
     private void drawContent(GuiGraphics graphics, int x, int y, int width, int height, int textColor,
-                             UiPreferences effective) {
+                             UiPreferences effective, long now) {
         int iconSize = GraphicIcon.PIXELS;
         if (!iconWithLabel && icon != null && width >= iconSize && height >= iconSize) {
+            labelMotion.reset();
             drawIcon(graphics, x + (width - iconSize) / 2, y, height, textColor, effective);
             return;
         }
@@ -385,11 +413,23 @@ public final class UiButton extends Button {
             drawIcon(graphics, contentX, y, height, textColor, effective);
         }
         int textY = y + (height - count * font.lineHeight) / 2;
+        var target = readableLabel == null ? new ArrayList<TextLayoutMotion.Line>(count) : null;
         for (int i = 0; i < count; i++) {
             var line = lines.get(i);
             int textX = inset > 0 ? contentX + inset : x + (width - font.width(line)) / 2;
-            UiFormattedText.draw(graphics, font, line, textX, textY + i * font.lineHeight,
-                    textColor, false, effective);
+            int lineY = textY + i * font.lineHeight;
+            if (target != null) {
+                target.add(new TextLayoutMotion.Line(line, textX - x, lineY - y, 1));
+            } else if (!readableLabel.draw(graphics, font, line, textX, lineY, textColor,
+                    false, i, isHovered, isFocused())) {
+                UiFormattedText.draw(graphics, font, line, textX, lineY, textColor, false, effective);
+            }
+        }
+        if (target != null) {
+            var frame = labelMotion.update(getMessage(), target, now, effective.reducedMotion() || effective.highContrast());
+            int left = inset > 0 ? contentX + inset : x + LABEL_PADDING;
+            var clip = new Bounds(left, y, Math.max(0, x + width - LABEL_PADDING - left), height);
+            TextLayoutMotion.draw(graphics, font, frame, x, y, clip, textColor, false, effective);
         }
     }
 

@@ -19,6 +19,7 @@ import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassQuality;
+import com.dishanhai.sh_better_ui.kernel.api.glass.GlassRegion;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant;
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalog;
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialEntry;
@@ -42,8 +43,10 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.function.BiFunction;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import java.util.function.IntUnaryOperator;
 import java.util.function.Supplier;
 
 import static com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen.label;
@@ -52,14 +55,23 @@ import static com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen.l
 final class LiquidGlassPreview implements PreviewScene {
     static final String ID = "sh_better_ui:liquid_glass";
     private static final String FIXTURE = "material_catalog/fixtures/";
+    private static final ResourceLocation PANORAMA = ResourceLocation.fromNamespaceAndPath(
+            "minecraft", "textures/gui/title/background/panorama_0.png");
     private static final int ROW = 20;
     private static final int GAP = 3;
     private static final List<Integer> SPEEDS = List.of(25, 50, 100, 200);
     private static final Component PLAY = text("play");
     private static final Component PAUSE = text("pause");
     private static final Component SOLID = text("fallback");
+    private static final Component CAPTION = text("view.caption");
+    private static final Component BACKDROP_TEXT = text("tuning.scene");
 
-    private enum Section { PLAYBACK, PARAMETERS, COMPARE, PRESETS }
+    private enum Section { OPTICS, PLAYBACK, PARAMETERS, COMPARE, PRESETS }
+    private enum ViewMode {
+        SNELL, OPTICS_COMPARE, CALIBRATION;
+
+        Component label() { return text("view." + name().toLowerCase(Locale.ROOT)); }
+    }
 
     private final Saved saved;
     private MaterialCatalog catalog;
@@ -70,8 +82,10 @@ final class LiquidGlassPreview implements PreviewScene {
     private UiTimeline timeline;
     private long resourceVersion = Long.MIN_VALUE;
     private boolean textureAvailable;
+    private boolean panoramaAvailable;
 
-    private Section section = Section.PLAYBACK;
+    private Section section = Section.OPTICS;
+    private ViewMode viewMode = ViewMode.SNELL;
     private boolean editingB;
     private boolean comparing;
     private boolean wipe;
@@ -89,6 +103,7 @@ final class LiquidGlassPreview implements PreviewScene {
     private UiButton sectionButton;
     private UiButton compareButton;
     private UiButton targetButton;
+    private UiButton viewButton;
     private UiButton play;
     private UiButton step;
     private UiButton difference;
@@ -96,7 +111,8 @@ final class LiquidGlassPreview implements PreviewScene {
     private UiSlider seek;
     private UiSlider divider;
     private final List<List<AbstractWidget>> controls = List.of(new ArrayList<>(), new ArrayList<>(),
-            new ArrayList<>(), new ArrayList<>());
+            new ArrayList<>(), new ArrayList<>(), new ArrayList<>());
+    private final List<Field> tuning = new ArrayList<>();
     private final List<Field> fields = new ArrayList<>();
     private Consumer<RenderService.Context> pending;
 
@@ -116,6 +132,7 @@ final class LiquidGlassPreview implements PreviewScene {
         if (area.width() < 184 || area.height() < 112) return;
 
         controls.forEach(List::clear);
+        tuning.clear();
         fields.clear();
         int left = area.x() + GAP;
         int width = area.width() - 2 * GAP;
@@ -123,21 +140,26 @@ final class LiquidGlassPreview implements PreviewScene {
         statusY = navY - font.lineHeight - GAP;
         canvas = new Bounds(left, area.y() + GAP, width, statusY - area.y() - 2 * GAP);
 
-        sectionButton = button(host, cell(left, navY, width, 0, 3), sectionLabel(), () -> {
+        sectionButton = button(host, cell(left, navY, width, 0, 4), sectionLabel(), () -> {
             section = Section.values()[(section.ordinal() + 1) % Section.values().length];
-            sectionButton.setMessage(sectionLabel());
             syncControls();
         });
         sectionButton.setPreview(text("section_hint"));
-        compareButton = button(host, cell(left, navY, width, 1, 3), text("compare"), () -> {
+        compareButton = button(host, cell(left, navY, width, 1, 4), text("compare"), () -> {
             comparing = !comparing;
             syncControls();
         });
-        targetButton = button(host, cell(left, navY, width, 2, 3), text("target", draftName(editingB)), () -> {
+        targetButton = button(host, cell(left, navY, width, 2, 4), text("target", draftName(editingB)), () -> {
             editingB = !editingB;
             syncControls();
         });
+        viewButton = button(host, cell(left, navY, width, 3, 4), viewMode.label(), () -> {
+            viewMode = ViewMode.values()[(viewMode.ordinal() + 1) % ViewMode.values().length];
+            syncControls();
+        });
+        viewButton.setPreview(text("view.hint"));
         int row = navY + ROW + GAP;
+        optics(host, left, row, width);
         playback(host, left, row, width);
         parameters(host, left, row, width);
         comparison(host, left, row, width);
@@ -172,6 +194,7 @@ final class LiquidGlassPreview implements PreviewScene {
             }
             timeline.seek(saved.frame());
             section = saved.section();
+            viewMode = saved.viewMode();
             field = saved.field();
             editingB = saved.editingB();
             comparing = saved.comparing();
@@ -193,10 +216,12 @@ final class LiquidGlassPreview implements PreviewScene {
         var resources = UnifiedUI.get().require(UIApis.RESOURCES);
         long version = resources.version();
         if (version != resourceVersion) {
-            textureAvailable = Minecraft.getInstance().getResourceManager().getResource(texture).isPresent();
+            var manager = Minecraft.getInstance().getResourceManager();
+            textureAvailable = manager.getResource(texture).isPresent();
+            panoramaAvailable = manager.getResource(PANORAMA).isPresent();
             resourceVersion = version;
         }
-        return textureAvailable;
+        return textureAvailable || (viewMode != ViewMode.CALIBRATION && panoramaAvailable);
     }
 
     private void playback(PreviewContext host, int x, int y, int width) {
@@ -236,6 +261,23 @@ final class LiquidGlassPreview implements PreviewScene {
         return (long) (virtualAnchor + Math.max(0, now - realAnchor) * (speed / 100d));
     }
 
+    private void optics(PreviewContext host, int x, int y, int width) {
+        tuning.add(slider(host, new Bounds(x, y, width, ROW), "transmission", material.parameters().get("transmission"),
+                true, (value, places) -> text("tuning.tint", value)));
+        int lower = y + ROW + GAP;
+        int columns = width >= 255 ? 3 : 2;
+        tuning.add(slider(host, cell(x, lower, width, 0, columns), "scattering", material.parameters().get("scattering"),
+                false, (value, places) -> text("tuning.blur", value)));
+        tuning.add(slider(host, cell(x, lower, width, 1, columns), "refraction", material.parameters().get("refraction"),
+                false, (value, places) -> text("tuning.warp", decimal(value, places))));
+        if (columns == 3) {
+            tuning.add(slider(host, cell(x, lower, width, 2, columns), "blurRadius", material.parameters().get("blurRadius"),
+                    false, (value, places) -> text("tuning.radius", decimal(value, places))));
+        }
+        var list = controls.get(Section.OPTICS.ordinal());
+        for (var control : tuning) list.add(control.widget());
+    }
+
     private void parameters(PreviewContext host, int x, int y, int width) {
         var list = controls.get(Section.PARAMETERS.ordinal());
         var entries = material.parameters().entrySet().stream().filter(entry -> entry.getValue().editable()).toList();
@@ -252,23 +294,31 @@ final class LiquidGlassPreview implements PreviewScene {
     }
 
     private Field field(PreviewContext host, Bounds bounds, String id, MaterialParameter parameter) {
-        Object value = draft.values(editingB).get(id);
         if (parameter.type().equals("enum")) {
-            var widget = cycle(host, bounds, parameterName(id), parameter.choices(), (String) value,
+            var widget = cycle(host, bounds, parameterName(id), parameter.choices(), (String) draft.values(editingB).get(id),
                     option -> text("choice." + option), next -> edit(id, next));
             return new Field(id, widget, next -> widget.setValue((String) next));
         }
+        return slider(host, bounds, id, parameter, false, (value, places) -> text(
+                parameter.unit().equals("gui") ? "value_gui" : "value", parameterName(id), decimal(value, places)));
+    }
+
+    private Field slider(PreviewContext host, Bounds bounds, String id, MaterialParameter parameter, boolean inverted,
+                         BiFunction<Integer, Integer, Component> label) {
         var min = BigDecimal.valueOf(parameter.minimum()).stripTrailingZeros();
         var max = BigDecimal.valueOf(parameter.maximum()).stripTrailingZeros();
         var stepSize = BigDecimal.valueOf(parameter.step()).stripTrailingZeros();
         int places = Math.max(0, Math.max(min.scale(), Math.max(max.scale(), stepSize.scale())));
-        int initial = sliderValue((Number) value, places);
-        var widget = host.add(new UiSlider(bounds, sliderValue(min, places), sliderValue(max, places),
-                sliderValue(stepSize, places), initial, preferences,
-                next -> text(parameter.unit().equals("gui") ? "value_gui" : "value", parameterName(id),
-                        BigDecimal.valueOf(next, places).stripTrailingZeros().toPlainString()),
-                next -> edit(id, BigDecimal.valueOf(next, places).doubleValue())));
-        return new Field(id, widget, next -> widget.setValue(sliderValue((Number) next, places)));
+        int lower = sliderValue(min, places), upper = sliderValue(max, places);
+        IntUnaryOperator position = inverted ? value -> lower + upper - value : value -> value;
+        int initial = position.applyAsInt(sliderValue((Number) draft.values(editingB).get(id), places));
+        var widget = host.add(new UiSlider(bounds, lower, upper, sliderValue(stepSize, places), initial, preferences,
+                next -> label.apply(next, places), next -> edit(id, BigDecimal.valueOf(position.applyAsInt(next), places).doubleValue())));
+        return new Field(id, widget, next -> widget.setValue(position.applyAsInt(sliderValue((Number) next, places))));
+    }
+
+    private static String decimal(int value, int places) {
+        return BigDecimal.valueOf(value, places).stripTrailingZeros().toPlainString();
     }
 
     private static int sliderValue(Number value, int places) {
@@ -292,7 +342,7 @@ final class LiquidGlassPreview implements PreviewScene {
         list.add(cycle(host, cell(x, y, width, 0, 3), text("layout"), List.of(false, true), wipe,
                 value -> text(value ? "wipe" : "side_by_side"), value -> {
                     wipe = value;
-                    comparing = true;
+                    if (viewMode != ViewMode.OPTICS_COMPARE) comparing = true;
                     syncControls();
                 }));
         list.add(button(host, cell(x, y, width, 1, 3), text("copy_other"), () -> {
@@ -380,11 +430,14 @@ final class LiquidGlassPreview implements PreviewScene {
     }
 
     private void syncControls() {
+        if (section == Section.OPTICS && viewMode == ViewMode.CALIBRATION) section = Section.PLAYBACK;
+        sectionButton.setMessage(sectionLabel());
         for (var pane : Section.values()) {
             boolean visible = section == pane;
             for (var widget : controls.get(pane.ordinal())) widget.visible = widget.active = visible;
         }
         var values = draft.values(editingB);
+        for (var control : tuning) control.set().accept(values.get(control.id()));
         for (int i = 0; i < fields.size(); i++) {
             var control = fields.get(i);
             control.widget().visible = control.widget().active = section == Section.PARAMETERS && field == i;
@@ -392,9 +445,12 @@ final class LiquidGlassPreview implements PreviewScene {
         }
         compareButton.setSelected(comparing);
         compareButton.setMessage(text(comparing ? "compare_on" : "compare_off"));
+        compareButton.active = viewMode != ViewMode.OPTICS_COMPARE;
+        viewButton.setMessage(viewMode.label());
+        viewButton.setSelected(viewMode == ViewMode.OPTICS_COMPARE);
         targetButton.setMessage(text("target", draftName(editingB)));
         undo.active &= draft.canUndo();
-        divider.active &= comparing && wipe;
+        divider.active &= isComparing() && wipe;
         long count = material.parameters().keySet().stream()
                 .filter(id -> !Objects.equals(draft.values(false).get(id), draft.values(true).get(id))).count();
         difference.setMessage(text("difference", count));
@@ -428,7 +484,7 @@ final class LiquidGlassPreview implements PreviewScene {
         long now = virtualTime(frame.nowMs());
         if (preferences.reducedMotion()) timeline.pause(now);
         var sample = fixture.sample(syncPlayback(now).seconds() * 1000);
-        if (comparing && !wipe) {
+        if (isComparing() && !wipe) {
             int half = (canvas.width() - GAP) / 2;
             var a = paintBackdrop(frame.graphics(), new Bounds(canvas.x(), canvas.y(), half, canvas.height()), sample);
             var b = paintBackdrop(frame.graphics(), new Bounds(canvas.right() - half, canvas.y(), half, canvas.height()), sample);
@@ -437,7 +493,7 @@ final class LiquidGlassPreview implements PreviewScene {
             }
         } else {
             var view = paintBackdrop(frame.graphics(), canvas, sample);
-            if (view != null) pending = comparing ? wipe(view, sample) : draw(view, view.area(), sample, editingB);
+            if (view != null) pending = isComparing() ? wipe(view, sample) : draw(view, view.area(), sample, editingB);
         }
         var message = status == null && !preferences.useBackdropBlur() ? SOLID : status;
         if (message != null) {
@@ -447,6 +503,8 @@ final class LiquidGlassPreview implements PreviewScene {
         }
     }
 
+    private boolean isComparing() { return comparing || viewMode == ViewMode.OPTICS_COMPARE; }
+
     private View paintBackdrop(GuiGraphics graphics, Bounds slot, LiquidGlassFixture.Sample sample) {
         float scale = Math.min(slot.width() / (float) fixture.width(), slot.height() / (float) fixture.height());
         if (!(scale > 0)) return null;
@@ -454,11 +512,25 @@ final class LiquidGlassPreview implements PreviewScene {
         int height = Math.round(fixture.height() * scale);
         int x = slot.x() + (slot.width() - width) / 2;
         int y = slot.y() + (slot.height() - height) / 2;
-        graphics.blit(texture, x, y, width, height, 0f, 0f, fixture.width(), fixture.height(), fixture.width(), fixture.height());
-        var object = fixture.movingObject();
-        graphics.fill(x + Math.round(sample.objectX() * scale), y + Math.round(sample.objectY() * scale),
-                x + Math.round((sample.objectX() + object.width()) * scale),
-                y + Math.round((sample.objectY() + object.height()) * scale), object.argb());
+        if (viewMode != ViewMode.CALIBRATION && panoramaAvailable) {
+            // Sample the vanilla panorama in normalized proportions so resource-pack sizes can vary.
+            float pan = 24f + 80f * sample.objectX() / fixture.width();
+            graphics.blit(PANORAMA, x, y, width, height, pan, 240f, 896, 538, 1024, 1024);
+            int textWidth = font.width(BACKDROP_TEXT);
+            if (textWidth + 8 <= width) {
+                int bevelY = y + Math.round(fixture.surface().y() * scale);
+                // Leave the lower strokes in the bevel's sample range so the two optics can be compared on text.
+                graphics.drawString(font, BACKDROP_TEXT, x + (width - textWidth) / 2,
+                        bevelY - font.lineHeight / 4, 0xfff5f7ff, false);
+            }
+        } else {
+            graphics.blit(texture, x, y, width, height, 0f, 0f, fixture.width(), fixture.height(),
+                    fixture.width(), fixture.height());
+            var object = fixture.movingObject();
+            graphics.fill(x + Math.round(sample.objectX() * scale), y + Math.round(sample.objectY() * scale),
+                    x + Math.round((sample.objectX() + object.width()) * scale),
+                    y + Math.round((sample.objectY() + object.height()) * scale), object.argb());
+        }
         return new View(new Bounds(x, y, width, height), scale);
     }
 
@@ -487,14 +559,34 @@ final class LiquidGlassPreview implements PreviewScene {
     }
 
     private OpticalDraw draw(View view, Bounds clip, LiquidGlassFixture.Sample sample, boolean second) {
-        var values = draft.values(second);
+        boolean comparingOptics = viewMode == ViewMode.OPTICS_COMPARE;
+        boolean calibration = viewMode == ViewMode.CALIBRATION;
+        var values = draft.values(comparingOptics ? editingB : second);
         var optics = new GlassOptics(number(values, "transmission"), number(values, "refraction"), number(values, "lensing"),
                 number(values, "scattering"), number(values, "edgeHighlight"), number(values, "thickness"), number(values, "blurRadius"));
         var quality = preferences.useBackdropBlur() ? GlassQuality.valueOf((String) values.get("quality")) : GlassQuality.FALLBACK;
         var glass = new GlassMaterial(GlassVariant.REGULAR, optics, quality,
                 GlassMaterial.Foreground.valueOf((String) values.get("foreground")));
-        var draw = new GlassDraw(fixture.surface(), glass, sample.lightX(), sample.lightY(), sample.lightStrength());
-        return new OpticalDraw(view, clip, draw, comparing ? draftName(second) : null);
+        var profile = calibration || (comparingOptics && !second) ? GlassDraw.Profile.LEGACY : GlassDraw.Profile.SNELL;
+        var region = fixture.surface();
+        Caption caption = null;
+        GlassDraw.ForegroundBounds foreground = null;
+        if (!calibration) {
+            float scale = view.scale();
+            region = new GlassRegion(view.area().x() + region.x() * scale, view.area().y() + region.y() * scale,
+                    region.width() * scale, region.height() * scale, region.radius() * scale, region.shape());
+            int width = font.width(CAPTION);
+            if (region.width() >= width + 14 && region.height() >= font.lineHeight + 10) {
+                int x = Math.round(region.x() + (region.width() - width) / 2);
+                int y = Math.round(region.y() + (region.height() - font.lineHeight) / 2);
+                caption = new Caption(x, y);
+                foreground = new GlassDraw.ForegroundBounds(x - 3, y - 2, width + 6, font.lineHeight + 4);
+            }
+        }
+        var draw = new GlassDraw(region, glass, sample.lightX(), sample.lightY(), sample.lightStrength(), profile, foreground);
+        Component marker = comparingOptics ? text(second ? "view.new_profile" : "view.old_profile")
+                : comparing ? draftName(second) : null;
+        return new OpticalDraw(calibration ? view : null, clip, draw, caption, marker, marker == null ? 0 : font.width(marker));
     }
 
     Consumer<RenderService.Context> takeDraw() {
@@ -507,6 +599,7 @@ final class LiquidGlassPreview implements PreviewScene {
     public void suspend() {
         pending = null;
         if (timeline != null) timeline.pause(virtualTime(PageTransition.nowMs()));
+        tuning.clear();
         fields.clear();
         controls.forEach(List::clear);
     }
@@ -515,7 +608,7 @@ final class LiquidGlassPreview implements PreviewScene {
     public Supplier<? extends PreviewScene> saveForRemount() {
         if (draft == null || !active()) return null;
         var snapshot = new Saved(draft.snapshot(), timeline.sample(virtualTime(PageTransition.nowMs())).index(),
-                section, field, editingB, comparing, wipe, split, speed);
+                section, viewMode, field, editingB, comparing, wipe, split, speed);
         return () -> new LiquidGlassPreview(snapshot);
     }
 
@@ -555,22 +648,30 @@ final class LiquidGlassPreview implements PreviewScene {
 
     private record View(Bounds area, float scale) {}
 
-    private record OpticalDraw(View view, Bounds clip, GlassDraw glass, Component marker)
+    private record Caption(int x, int y) {}
+
+    private record OpticalDraw(View calibration, Bounds clip, GlassDraw glass, Caption caption, Component marker, int markerWidth)
             implements Consumer<RenderService.Context> {
         boolean isFallback() { return glass.material().quality() == GlassQuality.FALLBACK; }
 
         @Override public void accept(RenderService.Context pass) {
             if (clip.width() == 0) return;
             pass.clip(clip.x(), clip.y(), clip.right(), clip.bottom(), () -> {
-                pass.transform(view.area().x(), view.area().y(), view.scale(), () -> pass.glass(List.of(glass)));
-                if (marker != null && clip.width() >= 18 && clip.height() >= 14) {
-                    pass.fill(clip.x() + 2, clip.y() + 2, clip.x() + 15, clip.y() + 14, 0xff20252c);
+                if (calibration == null) {
+                    pass.glass(List.of(glass));
+                } else {
+                    pass.transform(calibration.area().x(), calibration.area().y(), calibration.scale(),
+                            () -> pass.glass(List.of(glass)));
+                }
+                if (caption != null) pass.text(CAPTION, caption.x(), caption.y(), glass.material().foreground().argb());
+                if (marker != null && clip.width() >= markerWidth + 10 && clip.height() >= 14) {
+                    pass.fill(clip.x() + 2, clip.y() + 2, clip.x() + markerWidth + 8, clip.y() + 14, 0xff20252c);
                     pass.text(marker, clip.x() + 5, clip.y() + 4, 0xffffffff);
                 }
             });
         }
     }
 
-    private record Saved(MaterialPreviewDraft.Snapshot draft, int frame, Section section, int field,
+    private record Saved(MaterialPreviewDraft.Snapshot draft, int frame, Section section, ViewMode viewMode, int field,
                          boolean editingB, boolean comparing, boolean wipe, int split, int speed) {}
 }

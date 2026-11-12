@@ -20,6 +20,20 @@ class UiDotMatrixTest {
             new DotMatrixProfile.Interaction(20, 40));
 
     @Test
+    void sharedBeatBrightensTheFieldAndHonorsReducedMotion() {
+        var matrix = new UiDotMatrix(PROFILE);
+        assertNotEquals(colors(matrix, UiPreferences.DEFAULT, 0f), colors(matrix, UiPreferences.DEFAULT, 0.75f));
+        assertEquals(colors(matrix, REDUCED, 0f), colors(matrix, REDUCED, 0.75f));
+    }
+
+    private static List<Integer> colors(UiDotMatrix matrix, UiPreferences preferences, float beat) {
+        var colors = new ArrayList<Integer>();
+        matrix.forEachDot(AREA, null, 200L, preferences, beat, (left, top, right, bottom, argb) -> {},
+                (x, y, radius, feather, argb) -> colors.add(argb));
+        return colors;
+    }
+
+    @Test
     void floatingHasAHardCapAndReturnsToTheGridBetweenCycles() {
         DotMatrixProfile profile = PROFILE.withMotion(new DotMatrixProfile.Motion(
                 DotMatrixProfile.Effect.STEADY, 2000, 1f, 7, 2f));

@@ -78,15 +78,33 @@ public final class GlassSurface {
 
     /** 同上，保留消费端已经排版的富文本与双向文字。 */
     public static void drawString(GuiGraphics g, Font font, FormattedCharSequence text, int x, int y, int color) {
+        g.flush();
+        drawTextHaloInBatch(g, font, text, x, y, color);
+        g.flush();
+        g.drawString(font, text, x, y, color, false);
+        g.flush();
+    }
+
+    /** Adds softly edged glyphs to the current text batch. The caller owns flushing and draw order. */
+    public static void drawStringInBatch(GuiGraphics g, Font font, FormattedCharSequence text, int x, int y, int color) {
+        drawTextHaloInBatch(g, font, text, x, y, color);
+        g.drawString(font, text, x, y, color, false);
+    }
+
+    /** Queues only the decoration so a group of labels can paint every fill after the halo batch. */
+    public static void drawTextHaloInBatch(GuiGraphics g, Font font, FormattedCharSequence text, int x, int y, int color) {
         int glow = textGlowColor(color);
-        if (glow == 0) {
-            g.drawString(font, text, x, y, color, false);
-            return;
-        }
-        g.flush();
-        font.drawInBatch8xOutline(text, x, y, color, glow,
-                g.pose().last().pose(), g.bufferSource(), LightTexture.FULL_BRIGHT);
-        g.flush();
+        if (glow == 0) return;
+        FormattedCharSequence halo = sink -> text.accept((index, style, glyph) ->
+                sink.accept(index, style.withColor(glow & 0xffffff), glyph));
+        var matrix = g.pose().last().pose();
+        var buffers = g.bufferSource();
+        // Use the same GUI text layer as the fill. The entity outline path uses a polygon-offset
+        // render type for the fill, which can be rejected by depth already written by glass.
+        font.drawInBatch(halo, x - .5f, y, glow, false, matrix, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
+        font.drawInBatch(halo, x + .5f, y, glow, false, matrix, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
+        font.drawInBatch(halo, x, y - .5f, glow, false, matrix, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
+        font.drawInBatch(halo, x, y + .5f, glow, false, matrix, buffers, Font.DisplayMode.NORMAL, 0, LightTexture.FULL_BRIGHT);
     }
 
     static int textGlowColor(int color) {
