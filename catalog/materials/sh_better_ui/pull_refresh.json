@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:pull_refresh",
+  "materialRevision": "1.0.0",
+  "name": "Pull to Refresh Indicator",
+  "localizedNames": {
+    "zh_cn": "下拉刷新指示",
+    "zh_tw": "下拉重新整理指示"
+  },
+  "aliases": [
+    "pull_refresh",
+    "pull to refresh",
+    "下拉刷新"
+  ],
+  "category": "feedback",
+  "tags": [
+    "feedback",
+    "animation"
+  ],
+  "description": "The refresh indicator reveals with drag progress and displays armed, pending and completion states.",
+  "visualCharacteristics": [
+    "下拉刷新指示"
+  ],
+  "useCases": [
+    "下拉刷新指示预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiPullRefresh.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/GestureEffectPreviews.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#pullRefresh",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.UiPullRefresh#render"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#pullRefresh",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:pull_refresh",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "UiPullRefresh.java",
+    "InteractionApi.java",
+    "GestureEffectPreviews.PullRefresh"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

@@ -72,10 +72,10 @@
       "choices": []
     }
   },
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:glass_panel_shadow",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "three-gui-shadow-fills"
   ],
@@ -83,7 +83,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "GlassTheme.rootShadow called by glass host and skips high contrast",

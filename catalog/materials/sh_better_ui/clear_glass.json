@@ -98,9 +98,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:clear_glass",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "main-to-swap-horizontal-blur",
     "swap-to-main-vertical-composite"
@@ -109,7 +109,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "MaterialPreviewScenes.Glass uses strength=1, radius=12 GUI, corner=4 GUI",

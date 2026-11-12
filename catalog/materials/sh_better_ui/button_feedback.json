@@ -1,0 +1,61 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:button_feedback",
+  "materialRevision": "1.0.0",
+  "name": "Button Feedback Motion",
+  "localizedNames": {
+    "zh_cn": "按钮回弹、抖动和闪色",
+    "zh_tw": "按鈕回彈、抖動和閃色"
+  },
+  "aliases": [
+    "button_feedback",
+    "button shake",
+    "press bounce",
+    "结果闪色",
+    "失败抖动"
+  ],
+  "category": "feedback",
+  "tags": [
+    "feedback",
+    "animation"
+  ],
+  "description": "Reusable button feedback samples press scale, failed-action shake and status tint.",
+  "visualCharacteristics": [
+    "按钮回弹、抖动和闪色"
+  ],
+  "useCases": [
+    "按钮回弹、抖动和闪色预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/ButtonFeedback.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#buttonFeedback",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.ButtonFeedback#visual",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.ButtonFeedback#tint"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#buttonFeedback",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:button_feedback",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "ButtonFeedback.java",
+    "InteractionApi.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

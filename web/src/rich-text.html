@@ -1,0 +1,96 @@
+<!doctype html>
+<!-- Author: dishanhai -->
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; connect-src 'none'; base-uri 'none'; object-src 'none'; form-action 'none'">
+  <title>富文本工作台 · SH-Better-UI</title>
+  <link rel="stylesheet" href="./styles.css">
+  <link rel="stylesheet" href="./rich-text.css">
+  <script type="module" src="./rich-text.mjs"></script>
+</head>
+<body>
+  <a class="skip" href="#rich-preview">跳到文档预览</a>
+  <header class="masthead">
+    <div class="identity">
+      <div class="mark" aria-hidden="true"></div>
+      <div><p class="eyebrow">SH-BETTER-UI</p><h1>富文本工作台</h1></div>
+    </div>
+    <nav aria-label="工作台导航"><a href="./index.html">材质实验室</a></nav>
+  </header>
+  <noscript><p class="noscript">启用 JavaScript 后可编辑本机 RichDocument JSON。</p></noscript>
+  <main class="rich-workbench">
+    <div class="rich-toolbar">
+      <div class="actions">
+        <button id="rich-undo" type="button" aria-keyshortcuts="Control+Z Meta+Z" disabled>撤销</button>
+        <button id="rich-redo" type="button" aria-keyshortcuts="Control+Shift+Z Meta+Shift+Z Control+Y" disabled>重做</button>
+      </div>
+      <p id="rich-status" role="status"></p>
+      <button id="rich-download" class="rich-primary" type="button">下载 JSON</button>
+    </div>
+
+    <details class="panel rich-exchange">
+      <summary>导入 JSON</summary>
+      <div class="rich-exchange-grid">
+        <div>
+          <label for="rich-file">本机文件</label>
+          <input id="rich-file" type="file" accept=".json,application/json">
+        </div>
+        <div>
+          <label for="rich-json">粘贴 RichDocument v1 JSON</label>
+          <textarea id="rich-json" rows="5" spellcheck="false" autocomplete="off"></textarea>
+          <button id="rich-import" type="button">导入文本</button>
+        </div>
+      </div>
+      <p id="rich-import-status" class="rich-message" role="status"></p>
+    </details>
+
+    <div class="rich-grid">
+      <section class="panel rich-outline" aria-labelledby="rich-outline-heading">
+        <div class="rich-heading">
+          <h2 id="rich-outline-heading">节点</h2>
+          <span id="rich-node-count"></span>
+        </div>
+        <div class="rich-insert">
+          <label for="rich-add-type" class="sr-only">节点类型</label>
+          <select id="rich-add-type">
+            <option value="text">文字</option><option value="localized">翻译</option>
+            <option value="paragraph">段落分隔</option><option value="image">本地图片</option>
+          </select>
+          <button id="rich-add" type="button">插入</button>
+        </div>
+        <ol id="rich-nodes" class="rich-nodes"></ol>
+        <div class="actions rich-order">
+          <button id="rich-up" type="button" disabled>上移</button>
+          <button id="rich-down" type="button" disabled>下移</button>
+          <button id="rich-delete" type="button" disabled>移除</button>
+        </div>
+      </section>
+
+      <section class="panel rich-stage" aria-labelledby="rich-preview">
+        <div class="rich-heading">
+          <h2 id="rich-preview" tabindex="-1">浏览器预览</h2>
+          <label class="check"><input id="rich-contrast" type="checkbox">高对比文字</label>
+        </div>
+        <div class="rich-preview-frame">
+          <div id="rich-content" class="rich-content" dir="auto"></div>
+        </div>
+        <p id="rich-compatibility" class="rich-compatibility"></p>
+        <details>
+          <summary>与 Minecraft 原生渲染的差异</summary>
+          <p>浏览器使用本机字体和浏览器排版，以翻译回退文本及静态占位显示文档。图片、原生字体和扩展资源仅显示其标识或替代文本。字体度量、换行、基线、GUI 缩放、动画和交互以游戏内预览为准。</p>
+          <p>此页只处理本机文件或粘贴文本。文档内的地址和扩展内容作为数据保留。</p>
+        </details>
+      </section>
+
+      <section class="panel rich-properties" aria-labelledby="rich-properties-heading">
+        <div class="rich-heading"><h2 id="rich-properties-heading">属性</h2></div>
+        <form id="rich-properties"></form>
+      </section>
+    </div>
+
+  </main>
+</body>
+</html>

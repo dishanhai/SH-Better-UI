@@ -98,10 +98,10 @@
       "choices": []
     }
   },
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:screen_crossfade",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "previous-main-framebuffer-copy",
     "snapshot-crossfade",
@@ -111,7 +111,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "docs/API_REFERENCE.md 旧页淡出",

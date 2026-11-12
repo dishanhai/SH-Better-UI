@@ -90,9 +90,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:gradient_card",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "surface-gradient",
     "control-state-border",
@@ -102,7 +102,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "DeveloperSamples gradient_card and dark_button",

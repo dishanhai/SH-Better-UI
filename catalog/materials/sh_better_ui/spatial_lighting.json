@@ -75,10 +75,10 @@
       "choices": []
     }
   },
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:spatial_lighting",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "spatial-light-index",
     "per-node-light-sampling",
@@ -88,7 +88,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "SpatialLightCacheTest",

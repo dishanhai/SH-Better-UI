@@ -1,0 +1,72 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:music_reactive",
+  "materialRevision": "1.0.0",
+  "name": "Music Reactive Visuals",
+  "localizedNames": {
+    "zh_cn": "音乐响应动效",
+    "zh_tw": "音樂響應動效"
+  },
+  "aliases": [
+    "music_hud",
+    "music_island",
+    "music rhythm",
+    "音乐波形",
+    "节拍辉光"
+  ],
+  "category": "lighting",
+  "tags": [
+    "lighting",
+    "animation"
+  ],
+  "description": "Sample audio bands and onsets for waveform, edge glow, beat pulses and theme glow. The native HUD and island both use the shared rhythm sampler.",
+  "visualCharacteristics": [
+    "音乐响应动效"
+  ],
+  "useCases": [
+    "音乐响应动效预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/MotionApi.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/audio/MusicRhythm.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/audio/MusicMotion.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/MusicHud.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/MusicIsland.java",
+    "src/main/java/com/dishanhai/sh_better_ui/theme/palette/AudioReactiveTheme.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.MotionApi#musicRhythm",
+    "com.dishanhai.sh_better_ui.client.api.MotionApi#musicMotion",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.MusicHud#drawScope",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.MusicHud#drawPanel",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.MusicIsland#drawWaveform",
+    "com.dishanhai.sh_better_ui.theme.palette.AudioReactiveTheme#sample"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.MotionApi#musicRhythm",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:music_hud",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "MotionApi.java",
+    "MusicRhythm.java",
+    "MusicMotion.java",
+    "MusicHud.java",
+    "MusicIsland.java",
+    "AudioReactiveTheme.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

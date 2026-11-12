@@ -8,6 +8,8 @@
     "zh_tw": "雷射流背景"
   },
   "aliases": [
+    "laser texture reveal",
+    "激光贴图显现",
     "laserFlow",
     "laser_flow",
     "laser beam",
@@ -41,6 +43,9 @@
     "src/main/java/com/dishanhai/sh_better_ui/client/api/BuiltinBackgrounds.java"
   ],
   "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#radius",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#opacity",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#texture",
     "com.dishanhai.sh_better_ui.client.api.GraphicsApi#laserFlow",
     "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlow#draw",
     "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowProfile#DEFAULT"
@@ -53,6 +58,26 @@
     "sh_better_ui:shaders/core/laser_flow.json"
   ],
   "parameters": {
+    "pointerReveal": {
+      "type": "object",
+      "defaultValue": {
+        "optional": true,
+        "radius": 220,
+        "opacity": 0.6,
+        "texture": "caller-supplied"
+      },
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": false,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": []
+    },
     "beamPosition": {
       "type": "float",
       "defaultValue": 0.6,
@@ -340,17 +365,18 @@
     }
   },
   "nativePreviewId": "sh_better_ui:laser_flow",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
+    "pointer-texture-reveal",
     "procedural-laser-with-surface-mask"
   ],
   "loaderCompatibility": {
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "BuiltinBackgrounds registers laserFlow",

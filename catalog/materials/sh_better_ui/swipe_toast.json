@@ -1,0 +1,84 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:swipe_toast",
+  "materialRevision": "1.0.0",
+  "name": "Swipe Toast Motion",
+  "localizedNames": {
+    "zh_cn": "滑动通知与回弹",
+    "zh_tw": "滑動通知與回彈"
+  },
+  "aliases": [
+    "swipe_toast",
+    "swipe toast",
+    "滑动通知",
+    "倒计时进度条"
+  ],
+  "category": "feedback",
+  "tags": [
+    "feedback",
+    "animation"
+  ],
+  "description": "A notification follows vertical drag, settles back or dismisses, and can show a pausable countdown fuse.",
+  "visualCharacteristics": [
+    "滑动通知与回弹"
+  ],
+  "useCases": [
+    "滑动通知与回弹预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiSwipeToast.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/SwipeToastTimeline.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/ControlPreviewScenes.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperSamples.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#swipeToast",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeToast#setOpen"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#swipeToast",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {
+    "fuse": {
+      "type": "enum",
+      "defaultValue": "BOTTOM",
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": false,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": [
+        "TOP",
+        "BOTTOM",
+        "NONE"
+      ]
+    }
+  },
+  "nativePreviewId": "sh_better_ui:toast",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "UiSwipeToast.java",
+    "SwipeToastTimeline.java",
+    "InteractionApi.java",
+    "ControlPreviewScenes.Toast shows floating and inline swipe toasts"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

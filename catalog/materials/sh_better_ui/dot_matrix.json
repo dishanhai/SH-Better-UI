@@ -370,9 +370,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:dot_matrix",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "seeded-grid",
     "gui-dot-fill"
@@ -381,7 +381,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "BuiltinBackgrounds registers dotMatrix",

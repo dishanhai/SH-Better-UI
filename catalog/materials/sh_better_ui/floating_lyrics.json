@@ -8,6 +8,10 @@
     "zh_tw": "浮動歌詞算繪"
   },
   "aliases": [
+    "lyric wave lift",
+    "lyric emphasis glow",
+    "逐字抬升",
+    "强调辉光",
     "lyrics",
     "floating lyrics",
     "karaoke text",
@@ -34,12 +38,19 @@
   "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
   "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
   "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/LyricEffectEngine.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/WaveLiftEffect.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/EmphasizeGlowEffect.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/api/LyricApi.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/FloatingLyricRenderer.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/style/LyricStyleConfig.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/render/LyricView.java"
   ],
   "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.lyrics.common.hud.FloatingLyricRenderer#effects",
+    "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.LyricEffectEngine#setEffects",
+    "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.WaveLiftEffect#apply",
+    "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.EmphasizeGlowEffect#apply",
     "com.dishanhai.sh_better_ui.client.api.LyricApi#renderer",
     "com.dishanhai.sh_better_ui.client.api.LyricApi#draw",
     "com.dishanhai.sh_better_ui.client.api.LyricApi#localFeed",
@@ -54,6 +65,29 @@
     "sh_better_ui:shaders/core/lyric_sdf_text.vsh"
   ],
   "parameters": {
+    "supportedUnitEffects": {
+      "type": "object",
+      "defaultValue": {
+        "defaultChain": [
+          "EmphasizeGlowEffect"
+        ],
+        "available": [
+          "WaveLiftEffect",
+          "EmphasizeGlowEffect"
+        ]
+      },
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": false,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": []
+    },
     "sungColor": {
       "type": "color",
       "defaultValue": "#FF7FD4FF",
@@ -371,10 +405,11 @@
     }
   },
   "nativePreviewId": "sh_better_ui:lyrics",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
+    "lyric-unit-effects",
     "lyric-feed-and-timing",
     "glyph-and-line-layout",
     "font-or-sdf-draw"
@@ -383,7 +418,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "DeveloperSamples lyrics example builds a LocalLyricFeed and calls LyricApi.draw",

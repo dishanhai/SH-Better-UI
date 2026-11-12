@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:live_activity",
+  "materialRevision": "1.0.0",
+  "name": "Activity Island",
+  "localizedNames": {
+    "zh_cn": "活动岛",
+    "zh_tw": "活動島"
+  },
+  "aliases": ["live activities", "live surface", "dynamic island", "活动岛", "实时活动", "灵动岛"],
+  "category": "feedback",
+  "tags": ["animation", "feedback", "progress"],
+  "description": "A live activity switches between a compact capsule and an expanded progress surface.",
+  "visualCharacteristics": ["顶部胶囊", "展开面板", "进度条"],
+  "useCases": ["展示任务进度"],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "worktree",
+  "sourceFiles": [
+    "src/kernel/java/com/dishanhai/sh_better_ui/kernel/api/live/ActivityService.java",
+    "src/main/java/com/dishanhai/sh_better_ui/kernel/internal/LiveActivityScreen.java",
+    "src/main/java/com/dishanhai/sh_better_ui/kernel/internal/live/LiveSurfacePainter.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.kernel.api.live.ActivityService#publish"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.live.ActivityService#publish",
+  "requiredCapabilities": ["sh_better_ui:live_activities"],
+  "requiredResources": [],
+  "parameters": {
+    "presentation": {
+      "type": "enum",
+      "defaultValue": "AUTO",
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": true,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": ["AUTO", "COMPACT", "EXPANDED"]
+    }
+  },
+  "nativePreviewId": "sh_better_ui:live_activity",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": ["ActivityService.java", "LiveActivityScreen.java", "LiveSurfacePainter.java"],
+  "deprecated": false,
+  "replacementId": null
+}

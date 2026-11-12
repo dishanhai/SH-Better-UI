@@ -104,6 +104,9 @@ summary::marker { color: var(--accent); }
 .stage canvas { display: block; width: 100%; height: auto; }
 .stage-mark { position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); color: var(--mark-a, #fff); pointer-events: none; font: 600 clamp(0.62rem, 1.3vw, 1.08rem)/1.2 var(--mono); letter-spacing: 0.1em; white-space: nowrap; }
 .stage-mark-b { display: none; color: var(--mark-b, #fff); }
+.stage[data-renderer='material-effects'] .stage-mark { top: auto; bottom: .5rem; text-shadow: 0 1px 3px #000; }
+.stage[data-renderer='material-effects'][data-mode='single'] .stage-mark { display: none; }
+#previewCanvas[data-manual='true'] { touch-action: none; }
 .stage-divider { display: none; position: absolute; pointer-events: none; inset: 0 auto 0 50%; border-left: 1px solid #fff5e8; box-shadow: 0 0 0 1px #16242f; }
 .stage[data-mode='split'] .stage-mark-a { left: 25%; }
 .stage[data-mode='split'] .stage-mark-b { display: block; left: 75%; }

@@ -29,6 +29,12 @@ test('stable IDs, old short IDs and alias collisions are deterministic', () => {
   assert.equal(resolveMaterial(catalog, 'Ｌｉｑｕｉｄ＿Ｇｌａｓｓ'), liquid);
   assert.equal(resolveMaterial(catalog, ' liquidGlass '), liquid);
   assert.equal(resolveMaterial(catalog, 'clear_glass').id, 'sh_better_ui:clear_glass');
+  assert.equal(resolveMaterial(catalog, 'toast').id, 'sh_better_ui:toast_motion');
+  assert.equal(resolveMaterial(catalog, 'swipe_toast').nativePreviewId, 'sh_better_ui:toast');
+  assert.equal(resolveMaterial(catalog, 'elastic_collision').nativePreviewId, 'sh_better_ui:elastic_collision');
+  assert.equal(resolveMaterial(catalog, 'pull_refresh').nativePreviewId, 'sh_better_ui:pull_refresh');
+  assert.equal(resolveMaterial(catalog, '活动岛').nativePreviewId, 'sh_better_ui:live_activity');
+  assert.equal(resolveMaterial(catalog, 'arbitrary path shadow').id, 'sh_better_ui:spatial_shadow');
   assert.equal(resolveMaterial(catalog, 'imaginary_material'), undefined);
   assert.throws(() => resolveMaterial({ materials: [liquid, { ...liquid, id: 'other:glass' }] }, 'liquid_glass'), /Conflicting alias/);
 });
@@ -38,8 +44,24 @@ test('offline search explains natural-language and API matches', () => {
   assert.equal(results[0].entry, liquid);
   assert.ok(results[0].reasons.some(reason => reason.kind === 'name'));
   assert.equal(searchMaterials(catalog, 'GlassOptics')[0].entry, liquid);
-  assert.deepEqual(searchMaterials(catalog, '', { webOnly: true }).map(({ entry }) => entry.id), [liquid.id]);
+  assert.deepEqual(searchMaterials(catalog, '', { webOnly: true }).map(({ entry }) => entry.id).sort(),
+    catalog.materials.map(entry => entry.id).sort());
   assert.equal(searchMaterials(catalog, 'quasar999999')[0].reasons[0].kind, 'fallback');
+});
+
+test('subeffects resolve through their parent material and older presets fill new defaults', () => {
+  for (const [query, parent, field] of [
+    ['click burst', 'code_rain', 'supportedEffects'],
+    ['ascii cursor scramble', 'ascii_field', 'supportedEffects'],
+    ['laser texture reveal', 'laser_flow', 'pointerReveal'],
+    ['lyric wave lift', 'floating_lyrics', 'supportedUnitEffects'],
+  ]) {
+    const entry = resolveMaterial(catalog, query);
+    assert.equal(entry.id, 'sh_better_ui:' + parent);
+    const preset = createPreset(catalog, entry.id);
+    delete preset.parameters[field];
+    assert.deepEqual(importPreset(catalog, JSON.stringify(preset)).parameters[field], entry.defaultValues[field]);
+  }
 });
 
 test('presets round trip and migrate legacy keys before replacing drafts', () => {

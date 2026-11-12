@@ -12,7 +12,9 @@
     "SDF shadow",
     "inner shadow",
     "drop shadow",
-    "elevation"
+    "elevation",
+    "arbitrary path shadow",
+    "任意路径阴影"
   ],
   "category": "shadow",
   "tags": [
@@ -21,11 +23,12 @@
     "shadow",
     "elevation"
   ],
-  "description": "Scope-owned node shadows with elevation tokens, clipping, and independently configurable outer and inner layers.",
+  "description": "Scope-owned node shadows with elevation tokens, clipping, configurable outer and inner layers, and optional native path contours.",
   "visualCharacteristics": [
     "外投影",
     "内阴影",
-    "接触阴影"
+    "接触阴影",
+    "凹路径与带孔轮廓阴影"
   ],
   "useCases": [
     "悬浮卡片",
@@ -35,6 +38,7 @@
   "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
   "sourceFiles": [
     "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialStyle.java",
+    "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialGeometry.java",
     "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialScene.java",
     "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialUI.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/spatial/SpatialRenderer.java",
@@ -44,6 +48,8 @@
     "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadows",
     "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#elevation",
     "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadowClip",
+    "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadowPath",
+    "com.dishanhai.sh_better_ui.spatial.SpatialGeometry.ShadowPath",
     "com.dishanhai.sh_better_ui.spatial.SpatialStyle.Theme#DEFAULT",
     "com.dishanhai.sh_better_ui.kernel.api.RenderService.Context#spatial",
     "com.dishanhai.sh_better_ui.spatial.SpatialUI#mount"
@@ -99,10 +105,10 @@
       "choices": []
     }
   },
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:spatial_shadow",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "spatial-order-and-clip",
     "outer-sdf-shadow",
@@ -113,7 +119,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "SpatialSceneTest",

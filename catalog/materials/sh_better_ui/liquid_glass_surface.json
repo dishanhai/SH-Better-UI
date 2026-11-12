@@ -97,9 +97,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:liquid_button",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "optional-backdrop-sample",
     "rounded-fill-and-border",
@@ -109,7 +109,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "DeveloperSamples liquid_button uses UiStyle.LIQUID_GLASS",

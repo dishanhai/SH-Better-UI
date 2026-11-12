@@ -63,14 +63,26 @@ function sample(points, timeMs) {
   return { x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t };
 }
 
-export function replayFrame(scene, timeMs, livePointer) {
+export function replayFrame(scene, timeMs, livePointer, liveAction) {
   const { surface, movingObject } = scene;
   const point = livePointer ?? sample(scene.pointer, timeMs);
   const moved = sample(movingObject.points, timeMs);
   const latestBoundary = scene.inputEvents.findLast(event => event.timeMs <= timeMs
     && (event.type === 'pointerenter' || event.type === 'pointerleave'));
+  const down = scene.inputEvents.findLast(event => event.timeMs <= timeMs && event.type === 'pointerdown');
+  const up = scene.inputEvents.findLast(event => event.timeMs <= timeMs && event.type === 'pointerup');
+  const start = down && Number.isFinite(down.x) ? down : down ? sample(scene.pointer, down.timeMs) : point;
+  const end = up && Number.isFinite(up.x) ? up : up ? sample(scene.pointer, up.timeMs) : point;
   return {
     timeMs,
+    pointer: [point.x, point.y],
+    action: livePointer ? { ...liveAction, manual: true } : {
+      pressed: !!down && (!up || up.timeMs < down.timeMs),
+      origin: [start.x, start.y],
+      end: [end.x, end.y],
+      sincePress: down ? (timeMs - down.timeMs) / 1000 : 100,
+      sinceRelease: up ? (timeMs - up.timeMs) / 1000 : 100,
+    },
     light: {
       x: clamp((point.x * scene.width - surface.x) / surface.width * 2 - 1, -1, 1),
       y: clamp((point.y * scene.height - surface.y) / surface.height * 2 - 1, -1, 1),

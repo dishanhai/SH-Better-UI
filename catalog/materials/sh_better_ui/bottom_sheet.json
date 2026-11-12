@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:bottom_sheet",
+  "materialRevision": "1.0.0",
+  "name": "Bottom Sheet Snap Motion",
+  "localizedNames": {
+    "zh_cn": "底部抽屉吸附",
+    "zh_tw": "底部抽屜吸附"
+  },
+  "aliases": [
+    "bottom_sheet",
+    "drawer snap",
+    "拖拽吸附"
+  ],
+  "category": "animation",
+  "tags": [
+    "animation",
+    "motion"
+  ],
+  "description": "The bottom sheet follows pointer movement and settles to configurable anchor heights.",
+  "visualCharacteristics": [
+    "底部抽屉吸附"
+  ],
+  "useCases": [
+    "底部抽屉吸附预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiBottomSheet.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperBottomSheetPreview.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#bottomSheet",
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#capsuleSheet"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#bottomSheet",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:bottom_sheet",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "UiBottomSheet.java",
+    "InteractionApi.java",
+    "DeveloperBottomSheetPreview.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

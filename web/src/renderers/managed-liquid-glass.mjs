@@ -1,8 +1,10 @@
 // Author: dishanhai
+import { linkProgram } from './webgl-program.mjs';
 const FIXTURES = new URL('../fixtures/', import.meta.url);
 const SHADERS = new URL('../shaders/', import.meta.url);
 const QUALITY = Object.freeze({ FALLBACK: 0, PERFORMANCE: 1, BALANCED: 2, ULTRA: 3 });
 const SHAPES = Object.freeze({ ROUNDED: 0, CAPSULE: 0, ELLIPSE: 2, CONTINUOUS: 3 });
+const OPTICAL_PROFILES = Object.freeze({ legacy: 0, snell: 1, snellClear: 2 });
 const CAPTURE_BUDGET = 32 * 1024 * 1024;
 
 // The scene pass authors the deterministic color attachment sampled by the native shader.
@@ -57,36 +59,6 @@ export async function openManagedGlass(canvas, { signal } = {}) {
   }
 }
 
-function link(gl, label, vertex, fragment) {
-  const program = gl.createProgram();
-  if (!program) throw new Error(`无法分配 ${label} 程序`);
-  const shaders = [];
-  try {
-    for (const [kind, source] of [[gl.VERTEX_SHADER, vertex], [gl.FRAGMENT_SHADER, fragment]]) {
-      const shader = gl.createShader(kind);
-      if (!shader) throw new Error(`无法分配 ${label} 着色器`);
-      shaders.push(shader);
-      gl.shaderSource(shader, source);
-      gl.compileShader(shader);
-      if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
-        throw new Error(`${label} 着色器编译失败。${gl.getShaderInfoLog(shader)}`);
-      }
-      gl.attachShader(program, shader);
-    }
-    gl.linkProgram(program);
-    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
-      throw new Error(`${label} 着色器链接失败。${gl.getProgramInfoLog(program)}`);
-    }
-    for (const shader of shaders) gl.detachShader(program, shader);
-    return program;
-  } catch (error) {
-    gl.deleteProgram(program);
-    throw error;
-  } finally {
-    for (const shader of shaders) gl.deleteShader(shader);
-  }
-}
-
 function uniforms(gl, program, names) {
   return Object.fromEntries(names.map(name => {
     const location = gl.getUniformLocation(program, name);
@@ -127,11 +99,13 @@ class ManagedGlassRenderer {
     this.closed = false;
     try {
       const start = performance.now();
-      this.sceneProgram = link(gl, '场景', SCENE_VERTEX, SCENE_FRAGMENT);
-      this.glassProgram = link(gl, 'Liquid Glass', vertex, fragment);
+      this.sceneProgram = linkProgram(gl, '场景', SCENE_VERTEX, SCENE_FRAGMENT);
+      this.glassProgram = linkProgram(gl, 'Liquid Glass', vertex, fragment);
       this.metrics.shaderCompileMs = performance.now() - start;
       this.sceneUniforms = uniforms(gl, this.sceneProgram, ['Source', 'Size', 'MovingRect', 'MovingColor', 'Crop']);
-      this.glassUniforms = uniforms(gl, this.glassProgram, ['Backdrop', 'Viewport', 'Quad', 'Geometry', 'Radius', 'Optics', 'Material', 'Light', 'FlatColor', 'Mode']);
+      this.glassUniforms = uniforms(gl, this.glassProgram,
+        ['Backdrop', 'Viewport', 'Quad', 'Geometry', 'Radius', 'Optics', 'Material', 'Light', 'FlatColor', 'Mode',
+          'OpticalProfile', 'BlurMaxLod']);
       this.vertexArray = gl.createVertexArray();
       if (!this.vertexArray) throw new Error('无法分配 WebGL 2 顶点状态');
       gl.activeTexture(gl.TEXTURE0);
@@ -204,6 +178,38 @@ class ManagedGlassRenderer {
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
   }
 
+  prepareBlur() {
+    const gl = this.gl;
+    const target = this.capture;
+    if (target.blurLevels === 0) return 0;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+    gl.bindTexture(gl.TEXTURE_2D, target.texture);
+    if (target.blurLevels === undefined) {
+      let { width, height } = target;
+      let bytes = width * height * 4;
+      // Reserve space for split mode when this size can support it.
+      const budget = CAPTURE_BUDGET - (2 * bytes <= CAPTURE_BUDGET ? bytes : 0);
+      let levels = 0;
+      while (width > 1 || height > 1) {
+        width = Math.max(1, Math.floor(width / 2));
+        height = Math.max(1, Math.floor(height / 2));
+        const next = width * height * 4;
+        if (bytes + next > budget) break;
+        bytes += next;
+        levels++;
+      }
+      target.blurLevels = levels;
+      if (levels === 0) return 0;
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAX_LEVEL, levels);
+      gl.generateMipmap(gl.TEXTURE_2D);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+      this.metrics.captureBytes = bytes;
+    } else {
+      gl.generateMipmap(gl.TEXTURE_2D);
+    }
+    return target.blurLevels;
+  }
+
   paintSurface(width, height, material, light, highContrast) {
     const gl = this.gl;
     const u = this.glassUniforms;
@@ -235,8 +241,10 @@ class ManagedGlassRenderer {
   }
 
   render({ frame, a, b, mode = 'single', divider = 50, dpi = this.fixture.dpi, zoomed = false,
-    highContrast = false, layerOnly = false, measureGpu = false }) {
+    highContrast = false, layerOnly = false, measureGpu = false, opticalProfile = 'legacy' }) {
     if (this.closed || this.gl.isContextLost()) throw new Error('WebGL 2 预览上下文已关闭');
+    if (!Object.hasOwn(OPTICAL_PROFILES, opticalProfile)) throw new RangeError('未知的玻璃光学模型');
+    const profile = OPTICAL_PROFILES[opticalProfile];
     const start = performance.now();
     const gl = this.gl;
     const split = mode === 'split';
@@ -260,15 +268,19 @@ class ManagedGlassRenderer {
     gl.bindVertexArray(this.vertexArray);
     gl.activeTexture(gl.TEXTURE0);
     this.paintBackdrop(width, height, frame.movingRect, zoomed);
+    const unit = Math.min(width / this.fixture.width, height / this.fixture.height);
+    const wideBlur = material => material && QUALITY[material.quality] > 1
+      && material.scattering > 0 && material.blurRadius * unit > 2;
+    const blurLevel = profile !== 0 && (wideBlur(a) || (mode !== 'single' && wideBlur(b))) ? this.prepareBlur() : 0;
 
     if (split) {
       // Render both sides in the same origin so float rounding cannot depend on placement.
-      this.paintComposite(width, height, frame, a, null, 0, highContrast, layerOnly, this.splitTarget.framebuffer);
+      this.paintComposite(width, height, frame, a, null, 0, highContrast, layerOnly, profile, blurLevel, this.splitTarget.framebuffer);
       this.blitSplit(width, height, 0);
-      this.paintComposite(width, height, frame, b, null, 0, highContrast, layerOnly, this.splitTarget.framebuffer);
+      this.paintComposite(width, height, frame, b, null, 0, highContrast, layerOnly, profile, blurLevel, this.splitTarget.framebuffer);
       this.blitSplit(width, height, width);
     } else {
-      this.paintComposite(width, height, frame, a, mode === 'wipe' ? b : null, divider, highContrast, layerOnly, null);
+      this.paintComposite(width, height, frame, a, mode === 'wipe' ? b : null, divider, highContrast, layerOnly, profile, blurLevel, null);
     }
     if (query) {
       gl.endQuery(this.timerExtension.TIME_ELAPSED_EXT);
@@ -278,7 +290,7 @@ class ManagedGlassRenderer {
     this.metrics.cpuFrameMs = performance.now() - start;
   }
 
-  paintComposite(width, height, frame, a, b, divider, highContrast, layerOnly, destination) {
+  paintComposite(width, height, frame, a, b, divider, highContrast, layerOnly, profile, blurLevel, destination) {
     const gl = this.gl;
     gl.bindFramebuffer(gl.READ_FRAMEBUFFER, this.capture.framebuffer);
     gl.bindFramebuffer(gl.DRAW_FRAMEBUFFER, destination);
@@ -292,6 +304,8 @@ class ManagedGlassRenderer {
     gl.useProgram(this.glassProgram);
     gl.bindTexture(gl.TEXTURE_2D, this.capture.texture);
     gl.uniform1i(this.glassUniforms.Backdrop, 0);
+    gl.uniform1i(this.glassUniforms.OpticalProfile, profile);
+    gl.uniform1f(this.glassUniforms.BlurMaxLod, blurLevel);
     if (!layerOnly) {
       gl.enable(gl.BLEND);
       gl.blendFuncSeparate(gl.SRC_ALPHA, gl.ONE_MINUS_SRC_ALPHA, gl.ONE, gl.ONE_MINUS_SRC_ALPHA);

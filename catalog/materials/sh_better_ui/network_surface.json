@@ -87,9 +87,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:network_tab",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "network-panel-fill",
     "network-border",
@@ -99,7 +99,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "DeveloperSamples network_tab",

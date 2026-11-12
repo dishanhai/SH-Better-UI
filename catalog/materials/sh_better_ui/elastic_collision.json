@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:elastic_collision",
+  "materialRevision": "1.0.0",
+  "name": "Elastic Collision Layout",
+  "localizedNames": {
+    "zh_cn": "弹性碰撞与回弹",
+    "zh_tw": "彈性碰撞與回彈"
+  },
+  "aliases": [
+    "elastic_collision",
+    "collision layout",
+    "碰撞挤压"
+  ],
+  "category": "layout",
+  "tags": [
+    "layout",
+    "animation"
+  ],
+  "description": "Layout bodies can compress, displace and settle to their targets while hit testing follows presented bounds.",
+  "visualCharacteristics": [
+    "弹性碰撞与回弹"
+  ],
+  "useCases": [
+    "弹性碰撞与回弹预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/kernel/api/CollisionService.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/UiCollisionLayout.java",
+    "src/kernel/java/com/dishanhai/sh_better_ui/client/gui/collision/SpringMotion.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/GestureEffectPreviews.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.kernel.api.UIApis#COLLISION",
+    "com.dishanhai.sh_better_ui.client.api.UiApiContext#collisionLayout"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.UIApis#COLLISION",
+  "requiredCapabilities": [
+    "sh_better_ui:collision"
+  ],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:elastic_collision",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "CollisionService.java",
+    "UiCollisionLayout.java",
+    "SpringMotion.java",
+    "GestureEffectPreviews.ElasticCollision"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

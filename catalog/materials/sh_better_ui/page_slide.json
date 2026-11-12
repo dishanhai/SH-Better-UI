@@ -180,9 +180,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:page_slide",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "viewport-scissor",
     "translated-page",
@@ -192,7 +192,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "DeveloperSamples page_slide",

@@ -52,10 +52,10 @@
     "sh_better_ui:shaders/program/shop_gauss_blur.vsh"
   ],
   "parameters": {},
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:refraction_wave",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "native-frame-end-wave-slot",
     "gaussian-wave-composite"
@@ -64,7 +64,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "GaussBlur.requestWave stores origin, radius, thickness and refraction in a single pending slot",

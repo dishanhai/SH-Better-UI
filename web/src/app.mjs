@@ -14,6 +14,8 @@ const storedKey = 'sh-better-ui:material-presets:v1';
 const state = { catalog: null, entry: null, drafts: new Map(), results: [], renderer: null, request: null, clock: null };
 let raf = 0;
 let benchVisible = true;
+let liveAction = null;
+let previewPointerId = null;
 
 const categories = { glass: '玻璃', surface: '表面', lighting: '光效', spatial: '空间', distortion: '扭曲',
   particle: '粒子', animation: '动画', masking: '遮罩', composition: '合成', background: '动态背景' };
@@ -168,6 +170,12 @@ function closeRenderer() {
   state.renderer?.dispose();
   state.renderer = null;
   state.clock = null;
+  liveAction = null;
+  if (previewPointerId !== null && canvas.hasPointerCapture(previewPointerId)) canvas.releasePointerCapture(previewPointerId);
+  previewPointerId = null;
+  canvas.dataset.manual = 'false';
+  get('previewPress').setAttribute('aria-pressed', 'false');
+  get('previewPress').textContent = '按住预览指针';
   stopFrames();
   canvas.dataset.ready = 'false';
   get('previewControls').disabled = true;
@@ -197,7 +205,7 @@ async function mountRenderer(entry) {
   const request = new AbortController();
   state.request = request;
   try {
-    const renderer = await openRenderer(entry.webRendererId, canvas, { signal: request.signal });
+    const renderer = await openRenderer(entry.webRendererId, canvas, { entry, signal: request.signal });
     if (request.signal.aborted) {
       renderer.dispose();
       return;
@@ -207,10 +215,12 @@ async function mountRenderer(entry) {
     state.clock = new PreviewClock(renderer.fixture.durationMs, renderer.fixture.fps);
     state.clock.setPlaybackSpeed(Number(get('playbackSpeed').value));
     if (!motion.matches) state.clock.resume();
+    else if (renderer.fixture.stillTimeMs) state.clock.seek(renderer.fixture.stillTimeMs);
     get('time').max = renderer.fixture.durationMs;
     get('previewControls').disabled = false;
     get('fallback').hidden = true;
     stage.hidden = false;
+    syncInputControls();
     syncClock();
     requestFrame();
   } catch (error) {
@@ -226,6 +236,8 @@ function selectMaterial(entry, focus = false) {
   get('materialDescription').textContent = entry.description;
   get('webBadge').textContent = webStatus[entry.webCompatibility] ?? 'Web 待验证';
   get('webBadge').hidden = false;
+  get('opticalControl').hidden = entry.webRendererId !== 'managed-liquid-glass';
+  canvas.setAttribute('aria-label', `${entry.localizedNames.zh_cn ?? entry.name}预览，可用控件调整指针和时间`);
   for (const button of get('results').querySelectorAll('button')) {
     button.setAttribute('aria-current', String(button.dataset.material === entry.id));
   }
@@ -263,7 +275,15 @@ function renderFrame(realTimeMs) {
   if (!state.renderer || !benchVisible || document.hidden) return;
   const clock = state.clock;
   const renderer = state.renderer;
-  const pointer = get('inputMode').value === 'manual' ? { x: Number(get('pointerX').value), y: Number(get('pointerY').value) } : null;
+  const pointer = get('inputMode').value === 'manual' ? manualPointer() : null;
+  const action = liveAction ? {
+    origin: liveAction.origin,
+    end: liveAction.end,
+    pressed: liveAction.releasedAt === null,
+    sincePress: Math.max(motion.matches ? .12 : 0, (realTimeMs - liveAction.pressedAt) / 1000),
+    sinceRelease: liveAction.releasedAt === null ? 100 :
+      Math.max(motion.matches ? .65 : 0, (realTimeMs - liveAction.releasedAt) / 1000),
+  } : undefined;
   const mode = get('compareMode').value;
   const parameters = draft();
   const a = mode === 'single' ? parameters[side()] : parameters.a;
@@ -271,8 +291,9 @@ function renderFrame(realTimeMs) {
   const dpi = Number(get('density').value);
   clock.tick(realTimeMs);
   try {
-    renderer.render({ frame: replayFrame(renderer.fixture, clock.timeMs, pointer), a, b: parameters.b, mode,
-      divider, dpi, zoomed: get('sceneMode').value === 'zoom', highContrast: get('highContrast').checked });
+    renderer.render({ frame: replayFrame(renderer.fixture, clock.timeMs, pointer, action), a, b: parameters.b, mode,
+      divider, dpi, zoomed: get('sceneMode').value === 'zoom', highContrast: get('highContrast').checked,
+      opticalProfile: get('opticalProfile').value });
     canvas.dataset.ready = 'true';
   } catch (error) {
     if (error instanceof RangeError && dpi > 1) {
@@ -289,9 +310,51 @@ function renderFrame(realTimeMs) {
   stage.style.setProperty('--divider', `${divider}%`);
   stage.style.setProperty('--mark-a', a.foreground === 'DARK' ? '#000' : '#fff');
   stage.style.setProperty('--mark-b', parameters.b.foreground === 'DARK' ? '#000' : '#fff');
-  stage.querySelector('.stage-mark-a').textContent = `GLASS / ${mode === 'single' ? side().toUpperCase() : 'A'}`;
+  const prefix = state.entry.id === glassId ? 'GLASS / ' : '';
+  stage.dataset.renderer = state.entry.webRendererId;
+  stage.querySelector('.stage-mark-a').textContent = prefix + (mode === 'single' ? side().toUpperCase() : 'A');
+  stage.querySelector('.stage-mark-b').textContent = prefix + 'B';
   get('stageSize').textContent = `${canvas.width} × ${canvas.height} · sRGB`;
-  if (clock.playing) requestFrame();
+  if (clock.playing || (pointer && action && !motion.matches && Math.min(action.sincePress, action.sinceRelease) < 1.85)) requestFrame();
+}
+
+function manualPointer() { return { x: Number(get('pointerX').value), y: Number(get('pointerY').value) }; }
+
+function syncInputControls() {
+  const manual = get('inputMode').value === 'manual';
+  const effect = !!state.renderer?.acceptsPress;
+  get('pointerX').disabled = get('pointerY').disabled = !manual;
+  get('previewPress').hidden = !manual || !effect;
+  canvas.dataset.manual = String(manual && effect);
+}
+
+function pressPreview() {
+  const { x, y } = manualPointer();
+  liveAction = { origin: [x, y], pressedAt: performance.now(), releasedAt: null };
+  get('previewPress').setAttribute('aria-pressed', 'true');
+  get('previewPress').textContent = '松开预览指针';
+  requestFrame();
+}
+
+function releasePreview(cancelled = false) {
+  if (cancelled) liveAction = null;
+  else if (liveAction?.releasedAt === null) {
+    const { x, y } = manualPointer();
+    liveAction.end = [x,y];
+    liveAction.releasedAt = performance.now();
+  }
+  get('previewPress').setAttribute('aria-pressed', 'false');
+  get('previewPress').textContent = '按住预览指针';
+  requestFrame();
+}
+
+function movePreviewPointer(event) {
+  const bounds = canvas.getBoundingClientRect();
+  let x = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+  if (get('compareMode').value === 'split') x = x < .5 ? x * 2 : x * 2 - 1;
+  get('pointerX').value = x;
+  get('pointerY').value = Math.max(0, Math.min(1, (event.clientY - bounds.top) / bounds.height));
+  requestFrame();
 }
 
 function applyPreset(text) {
@@ -407,15 +470,17 @@ function setupPresetEvents() {
 }
 
 function setupPreviewEvents() {
-  for (const id of ['sceneMode', 'density', 'compareMode', 'highContrast']) get(id).addEventListener('change', requestFrame);
+  for (const id of ['sceneMode', 'density', 'compareMode', 'highContrast', 'opticalProfile']) {
+    get(id).addEventListener('change', requestFrame);
+  }
   get('compareMode').addEventListener('change', () => { get('dividerControl').hidden = get('compareMode').value !== 'wipe'; });
   get('divider').addEventListener('input', () => {
     get('dividerValue').textContent = `${get('divider').value}%`;
     requestFrame();
   });
   get('inputMode').addEventListener('change', () => {
-    get('pointerX').disabled = get('pointerY').disabled = get('inputMode').value === 'replay';
-    requestFrame();
+    releasePreview(true);
+    syncInputControls();
   });
   for (const id of ['pointerX', 'pointerY']) get(id).addEventListener('input', requestFrame);
   get('playbackSpeed').addEventListener('change', () => state.clock?.setPlaybackSpeed(Number(get('playbackSpeed').value)));
@@ -435,12 +500,30 @@ function setupPreviewEvents() {
   get('resetTime').addEventListener('click', () => { state.clock?.resetTime(); requestFrame(); });
   canvas.addEventListener('pointermove', event => {
     if (get('inputMode').value !== 'manual') return;
-    const bounds = canvas.getBoundingClientRect();
-    let x = (event.clientX - bounds.left) / bounds.width;
-    if (get('compareMode').value === 'split') x = (x * 2) % 1;
-    get('pointerX').value = x;
-    get('pointerY').value = (event.clientY - bounds.top) / bounds.height;
-    requestFrame();
+    if (previewPointerId === null || previewPointerId === event.pointerId) movePreviewPointer(event);
+  });
+  canvas.addEventListener('pointerdown', event => {
+    if (canvas.dataset.manual !== 'true' || event.button !== 0 || previewPointerId !== null) return;
+    movePreviewPointer(event);
+    previewPointerId = event.pointerId;
+    canvas.setPointerCapture(event.pointerId);
+    pressPreview();
+  });
+  for (const type of ['pointerup', 'pointercancel', 'lostpointercapture']) canvas.addEventListener(type, event => {
+    if (event.pointerId !== previewPointerId) return;
+    previewPointerId = null;
+    if (type === 'pointerup') movePreviewPointer(event);
+    releasePreview(type !== 'pointerup');
+  });
+  get('previewPress').addEventListener('click', () => {
+    if (liveAction?.releasedAt === null) releasePreview();
+    else pressPreview();
+  });
+  get('previewControls').addEventListener('keydown', event => {
+    if (event.key !== 'Escape' || !liveAction) return;
+    if (previewPointerId !== null && canvas.hasPointerCapture(previewPointerId)) canvas.releasePointerCapture(previewPointerId);
+    previewPointerId = null;
+    releasePreview(true);
   });
   canvas.addEventListener('webglcontextlost', event => {
     event.preventDefault();

@@ -49,9 +49,9 @@
   ],
   "parameters": {},
   "nativePreviewId": "sh_better_ui:dynamic_theme",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "theme-rule-resolution",
     "token-transition",
@@ -61,7 +61,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "BuiltinPreviews dynamic_theme",

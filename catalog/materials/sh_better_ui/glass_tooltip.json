@@ -1,0 +1,60 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:glass_tooltip",
+  "materialRevision": "1.0.0",
+  "name": "Glass Tooltip",
+  "localizedNames": {
+    "zh_cn": "玻璃提示框",
+    "zh_tw": "玻璃提示框"
+  },
+  "aliases": [
+    "glass_tooltip",
+    "glass tooltip",
+    "玻璃 tooltip"
+  ],
+  "category": "surface",
+  "tags": [
+    "surface",
+    "animation"
+  ],
+  "description": "A blurred and tinted tooltip panel with an opaque foreground and a contrasting edge.",
+  "visualCharacteristics": [
+    "玻璃提示框"
+  ],
+  "useCases": [
+    "玻璃提示框预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTheme.java",
+    "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.glass.GlassTooltip#render",
+    "com.dishanhai.sh_better_ui.client.glass.GlassTheme#tooltipPanel"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.glass.GlassTooltip#render",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:glass_tooltip",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "GlassTooltip.java",
+    "GlassTheme.java",
+    "NeoForge GlassTooltip.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

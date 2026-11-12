@@ -56,7 +56,7 @@
       <div class="bench" id="bench">
         <div class="stage-bar"><span>固定场景</span><span id="stageSize">sRGB</span></div>
         <div id="stage" class="stage" data-mode="single" hidden>
-          <canvas id="previewCanvas" aria-label="Liquid Glass 光学场景，指针、时间和参数可在预览控件中调整" role="img" width="640" height="384"></canvas>
+          <canvas id="previewCanvas" aria-label="材质预览场景，指针、时间和参数可在预览控件中调整" role="img" width="640" height="384"></canvas>
           <div class="stage-mark stage-mark-a" aria-hidden="true">GLASS / A</div>
           <div class="stage-mark stage-mark-b" aria-hidden="true">GLASS / B</div>
           <div class="stage-divider" aria-hidden="true"></div>
@@ -84,12 +84,14 @@
           <label class="timeline"><span class="sr-only">模拟时间（毫秒）</span><input id="time" type="range" min="0" max="2400" value="0" step="1"><output id="timeValue" for="time" aria-live="off">0.000 s</output></label>
         </div>
         <details>
-          <summary>指针与对比度</summary>
+          <summary>光学、指针与对比度</summary>
           <div class="control-grid scene-options">
+            <label id="opticalControl">光学模型<select id="opticalProfile"><option value="snell">新折射</option><option value="legacy">原版校准</option></select></label>
             <label>输入<select id="inputMode"><option value="replay">固定轨迹回放</option><option value="manual">指针或键盘调节</option></select></label>
             <label class="check"><input id="highContrast" type="checkbox">高对比前景</label>
             <label>指针横向<input id="pointerX" type="range" min="0" max="1" value="0.5" step="0.01" disabled></label>
             <label>指针纵向<input id="pointerY" type="range" min="0" max="1" value="0.5" step="0.01" disabled></label>
+            <button id="previewPress" type="button" aria-pressed="false" hidden>按住预览指针</button>
           </div>
         </details>
       </fieldset>
@@ -123,6 +125,6 @@
       <details id="evidence" class="evidence"><summary>公开 API 与验证记录</summary><div id="evidenceBody"></div></details>
     </aside>
   </main>
-  <footer><span>SH-Better-UI · UUK Material Catalog</span><span>本地渲染 · 离线目录 · 可移植预设</span></footer>
+  <footer><span>SH-Better-UI · UUK Material Catalog</span><a href="./rich-text.html">富文本工作台</a><span>本地渲染 · 离线目录 · 可移植预设</span></footer>
 </body>
 </html>

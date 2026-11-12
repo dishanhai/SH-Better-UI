@@ -1,0 +1,80 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:toast_motion",
+  "materialRevision": "1.0.0",
+  "name": "Toast Motion",
+  "localizedNames": {
+    "zh_cn": "通知入退场",
+    "zh_tw": "通知進退場"
+  },
+  "aliases": [
+    "toast",
+    "toast_motion",
+    "通知动画"
+  ],
+  "category": "animation",
+  "tags": [
+    "animation",
+    "motion"
+  ],
+  "description": "Notifications can slide from the right, drop from the top, fade, or pop with scale and opacity.",
+  "visualCharacteristics": [
+    "通知入退场"
+  ],
+  "useCases": [
+    "通知入退场预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiToast.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.api.InteractionApi#toast",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.UiToast#show"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#toast",
+  "requiredCapabilities": [],
+  "requiredResources": [],
+  "parameters": {
+    "effect": {
+      "type": "enum",
+      "defaultValue": "SLIDE_FROM_RIGHT",
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": false,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": [
+        "SLIDE_FROM_RIGHT",
+        "DROP_FROM_TOP",
+        "FADE",
+        "POP",
+        "NONE"
+      ]
+    }
+  },
+  "nativePreviewId": "sh_better_ui:toast",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "UiToast.java",
+    "InteractionApi.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}

@@ -36,7 +36,8 @@
   "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
   "sourceFiles": [
     "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIcon.java",
-    "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconMotion.java"
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconMotion.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/MaterialPreviewScenes.java"
   ],
   "publicSymbols": [
     "com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon#withMotion",
@@ -68,9 +69,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:status_icon",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "sample-icon-motion",
     "icon-transform-and-draw"
@@ -79,10 +80,10 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
-    "DeveloperSamples status_icon uses STATUS_PENDING with SPIN",
+    "The status_icon scene uses SPIN, FLOAT, and BOUNCE",
     "GraphicIconMotionTest",
     "docs/effects.md 图标动作"
   ],

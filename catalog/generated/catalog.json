@@ -431,9 +431,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:antigravity",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "particle-simulation",
         "particle-shader"
@@ -442,7 +442,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers antigravity",
@@ -494,6 +494,13 @@
         "zh_tw": "ASCII 字元場"
       },
       "aliases": [
+        "ascii character gradient",
+        "ascii glyph glow",
+        "ascii glyph flicker",
+        "ascii glyph shape mask",
+        "ascii cursor scramble",
+        "ascii click wave",
+        "ascii click burst",
         "ascii",
         "asciiField",
         "ascii_field",
@@ -524,6 +531,13 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/api/BuiltinBackgrounds.java"
       ],
       "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#shape",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#gradient",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#glow",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#dotMatrix",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#intro",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#flicker",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#interaction",
         "com.dishanhai.sh_better_ui.client.api.GraphicsApi#asciiField",
         "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRain#draw",
         "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainProfile#builder"
@@ -532,6 +546,53 @@
       "requiredCapabilities": [],
       "requiredResources": [],
       "parameters": {
+        "supportedEffects": {
+          "type": "object",
+          "defaultValue": {
+            "shape": [
+              "HORIZON",
+              "PINCH",
+              "RISE",
+              "ECLIPSE"
+            ],
+            "gradient": [
+              "colors"
+            ],
+            "glow": [
+              "strength"
+            ],
+            "dotMatrix": [
+              "size",
+              "coverage"
+            ],
+            "intro": [
+              "duration"
+            ],
+            "flicker": [
+              "strength"
+            ],
+            "interaction": {
+              "cursorScramble": true,
+              "click": [
+                "NONE",
+                "WAVE",
+                "BURST"
+              ],
+              "radius": "canvas fraction"
+            }
+          },
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": []
+        },
         "mode": {
           "type": "enum",
           "defaultValue": "ASCII",
@@ -659,10 +720,11 @@
         }
       },
       "nativePreviewId": "sh_better_ui:ascii_field",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
+        "glyph-effects",
         "glyph-grid-update",
         "minecraft-font-draw"
       ],
@@ -670,7 +732,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers ascii",
@@ -681,6 +743,39 @@
       "deprecated": false,
       "replacementId": null,
       "defaultValues": {
+        "supportedEffects": {
+          "shape": [
+            "HORIZON",
+            "PINCH",
+            "RISE",
+            "ECLIPSE"
+          ],
+          "gradient": [
+            "colors"
+          ],
+          "glow": [
+            "strength"
+          ],
+          "dotMatrix": [
+            "size",
+            "coverage"
+          ],
+          "intro": [
+            "duration"
+          ],
+          "flicker": [
+            "strength"
+          ],
+          "interaction": {
+            "cursorScramble": true,
+            "click": [
+              "NONE",
+              "WAVE",
+              "BURST"
+            ],
+            "radius": "canvas fraction"
+          }
+        },
         "mode": "ASCII",
         "glyphs": {
           "characters": ".:+=xX0S8#@"
@@ -761,10 +856,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:attention_indicator",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "sample-attention-frame",
         "selection-and-target-paint"
@@ -773,7 +868,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "UiAttentionTest",
@@ -1039,10 +1134,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:backdrop_blur",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "main-to-swap-horizontal-blur",
         "swap-to-main-vertical-composite"
@@ -1051,7 +1146,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "docs/effects.md GlassBlur.tryBackdrop",
@@ -1075,6 +1170,67 @@
         "denseSampling": true,
         "radiusVirtual": 9
       }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:bottom_sheet",
+      "materialRevision": "1.0.0",
+      "name": "Bottom Sheet Snap Motion",
+      "localizedNames": {
+        "zh_cn": "底部抽屉吸附",
+        "zh_tw": "底部抽屜吸附"
+      },
+      "aliases": [
+        "bottom_sheet",
+        "drawer snap",
+        "拖拽吸附"
+      ],
+      "category": "animation",
+      "tags": [
+        "animation",
+        "motion"
+      ],
+      "description": "The bottom sheet follows pointer movement and settles to configurable anchor heights.",
+      "visualCharacteristics": [
+        "底部抽屉吸附"
+      ],
+      "useCases": [
+        "底部抽屉吸附预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiBottomSheet.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperBottomSheetPreview.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#bottomSheet",
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#capsuleSheet"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#bottomSheet",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:bottom_sheet",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "UiBottomSheet.java",
+        "InteractionApi.java",
+        "DeveloperBottomSheetPreview.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
     },
     {
       "schemaVersion": "1.0.0",
@@ -1198,10 +1354,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:breathing_glow",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "outer-halo-fill"
       ],
@@ -1209,7 +1365,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "ThemeEffectPreview breathingGlow",
@@ -1226,6 +1382,68 @@
         "basePeriodMs": 2400,
         "haloMargin": 3
       }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:button_feedback",
+      "materialRevision": "1.0.0",
+      "name": "Button Feedback Motion",
+      "localizedNames": {
+        "zh_cn": "按钮回弹、抖动和闪色",
+        "zh_tw": "按鈕回彈、抖動和閃色"
+      },
+      "aliases": [
+        "button_feedback",
+        "button shake",
+        "press bounce",
+        "结果闪色",
+        "失败抖动"
+      ],
+      "category": "feedback",
+      "tags": [
+        "feedback",
+        "animation"
+      ],
+      "description": "Reusable button feedback samples press scale, failed-action shake and status tint.",
+      "visualCharacteristics": [
+        "按钮回弹、抖动和闪色"
+      ],
+      "useCases": [
+        "按钮回弹、抖动和闪色预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/ButtonFeedback.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#buttonFeedback",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.ButtonFeedback#visual",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.ButtonFeedback#tint"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#buttonFeedback",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:button_feedback",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "ButtonFeedback.java",
+        "InteractionApi.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
     },
     {
       "schemaVersion": "1.0.0",
@@ -1333,10 +1551,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:capsule_reveal",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "compute-current-morph",
         "rounded-material",
@@ -1346,7 +1564,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "ThemeEffectPreview capsule uses renderInset",
@@ -1490,10 +1708,10 @@
           ]
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:classic_glass_themes",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "optional-backdrop",
         "panel-and-region-fill",
@@ -1503,7 +1721,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "MaterialsApi built-in ThemeChoice presets",
@@ -1624,9 +1842,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:clear_glass",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "main-to-swap-horizontal-blur",
         "swap-to-main-vertical-composite"
@@ -1635,7 +1853,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "MaterialPreviewScenes.Glass uses strength=1, radius=12 GUI, corner=4 GUI",
@@ -1744,10 +1962,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:click_ripple",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "clipped-local-ripple-fill"
       ],
@@ -1755,7 +1973,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "ThemeEffectPreview clickRipple",
@@ -1781,6 +1999,13 @@
         "zh_tw": "程式碼雨"
       },
       "aliases": [
+        "character gradient",
+        "glyph glow",
+        "glyph flicker",
+        "glyph shape mask",
+        "cursor scramble",
+        "click wave",
+        "click burst",
         "codeRain",
         "code_rain",
         "matrix rain",
@@ -1811,6 +2036,13 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/api/BuiltinBackgrounds.java"
       ],
       "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#shape",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#gradient",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#glow",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#dotMatrix",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#intro",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#flicker",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#interaction",
         "com.dishanhai.sh_better_ui.client.api.GraphicsApi#codeRain",
         "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRain#draw",
         "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainProfile#builder"
@@ -1819,6 +2051,53 @@
       "requiredCapabilities": [],
       "requiredResources": [],
       "parameters": {
+        "supportedEffects": {
+          "type": "object",
+          "defaultValue": {
+            "shape": [
+              "HORIZON",
+              "PINCH",
+              "RISE",
+              "ECLIPSE"
+            ],
+            "gradient": [
+              "colors"
+            ],
+            "glow": [
+              "strength"
+            ],
+            "dotMatrix": [
+              "size",
+              "coverage"
+            ],
+            "intro": [
+              "duration"
+            ],
+            "flicker": [
+              "strength"
+            ],
+            "interaction": {
+              "cursorScramble": true,
+              "click": [
+                "NONE",
+                "WAVE",
+                "BURST"
+              ],
+              "radius": "canvas fraction"
+            }
+          },
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": []
+        },
         "mode": {
           "type": "enum",
           "defaultValue": "RAIN",
@@ -1946,10 +2225,11 @@
         }
       },
       "nativePreviewId": "sh_better_ui:code_rain",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
+        "glyph-effects",
         "glyph-grid-update",
         "minecraft-font-draw"
       ],
@@ -1957,7 +2237,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers codeRain",
@@ -1968,6 +2248,39 @@
       "deprecated": false,
       "replacementId": null,
       "defaultValues": {
+        "supportedEffects": {
+          "shape": [
+            "HORIZON",
+            "PINCH",
+            "RISE",
+            "ECLIPSE"
+          ],
+          "gradient": [
+            "colors"
+          ],
+          "glow": [
+            "strength"
+          ],
+          "dotMatrix": [
+            "size",
+            "coverage"
+          ],
+          "intro": [
+            "duration"
+          ],
+          "flicker": [
+            "strength"
+          ],
+          "interaction": {
+            "cursorScramble": true,
+            "click": [
+              "NONE",
+              "WAVE",
+              "BURST"
+            ],
+            "radius": "canvas fraction"
+          }
+        },
         "mode": "RAIN",
         "glyphs": {
           "characters": ".:+=xX0S8#@"
@@ -2030,10 +2343,10 @@
         "sh_better_ui:shaders/program/shop_gauss_blur.vsh"
       ],
       "parameters": {},
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:directional_blur",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "framebuffer-sample",
         "directional-gaussian-composite"
@@ -2042,7 +2355,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BlurApi forwards axisX/axisY to GaussBlur",
@@ -2425,9 +2738,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:dot_matrix",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "seeded-grid",
         "gui-dot-fill"
@@ -2436,7 +2749,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers dotMatrix",
@@ -2538,9 +2851,9 @@
       ],
       "parameters": {},
       "nativePreviewId": "sh_better_ui:dynamic_theme",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "theme-rule-resolution",
         "token-transition",
@@ -2550,13 +2863,78 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinPreviews dynamic_theme",
         "ThemeManagerTest",
         "ThemeResourcesTest",
         "docs/DYNAMIC_THEMES.md"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:elastic_collision",
+      "materialRevision": "1.0.0",
+      "name": "Elastic Collision Layout",
+      "localizedNames": {
+        "zh_cn": "弹性碰撞与回弹",
+        "zh_tw": "彈性碰撞與回彈"
+      },
+      "aliases": [
+        "elastic_collision",
+        "collision layout",
+        "碰撞挤压"
+      ],
+      "category": "layout",
+      "tags": [
+        "layout",
+        "animation"
+      ],
+      "description": "Layout bodies can compress, displace and settle to their targets while hit testing follows presented bounds.",
+      "visualCharacteristics": [
+        "弹性碰撞与回弹"
+      ],
+      "useCases": [
+        "弹性碰撞与回弹预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/kernel/api/CollisionService.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/UiCollisionLayout.java",
+        "src/kernel/java/com/dishanhai/sh_better_ui/client/gui/collision/SpringMotion.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/GestureEffectPreviews.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.kernel.api.UIApis#COLLISION",
+        "com.dishanhai.sh_better_ui.client.api.UiApiContext#collisionLayout"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.UIApis#COLLISION",
+      "requiredCapabilities": [
+        "sh_better_ui:collision"
+      ],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:elastic_collision",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "CollisionService.java",
+        "UiCollisionLayout.java",
+        "SpringMotion.java",
+        "GestureEffectPreviews.ElasticCollision"
       ],
       "deprecated": false,
       "replacementId": null,
@@ -2886,9 +3264,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:electric_logo",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "alpha-field-texture",
         "electric-outline-composite"
@@ -2897,7 +3275,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers electricLogo",
@@ -2939,6 +3317,10 @@
         "zh_tw": "浮動歌詞算繪"
       },
       "aliases": [
+        "lyric wave lift",
+        "lyric emphasis glow",
+        "逐字抬升",
+        "强调辉光",
         "lyrics",
         "floating lyrics",
         "karaoke text",
@@ -2965,12 +3347,19 @@
       "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
       "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
       "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/LyricEffectEngine.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/WaveLiftEffect.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/effect/EmphasizeGlowEffect.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/api/LyricApi.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/hud/FloatingLyricRenderer.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/common/style/LyricStyleConfig.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/lyrics/render/LyricView.java"
       ],
       "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.lyrics.common.hud.FloatingLyricRenderer#effects",
+        "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.LyricEffectEngine#setEffects",
+        "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.WaveLiftEffect#apply",
+        "com.dishanhai.sh_better_ui.client.lyrics.common.hud.effect.EmphasizeGlowEffect#apply",
         "com.dishanhai.sh_better_ui.client.api.LyricApi#renderer",
         "com.dishanhai.sh_better_ui.client.api.LyricApi#draw",
         "com.dishanhai.sh_better_ui.client.api.LyricApi#localFeed",
@@ -2985,6 +3374,29 @@
         "sh_better_ui:shaders/core/lyric_sdf_text.vsh"
       ],
       "parameters": {
+        "supportedUnitEffects": {
+          "type": "object",
+          "defaultValue": {
+            "defaultChain": [
+              "EmphasizeGlowEffect"
+            ],
+            "available": [
+              "WaveLiftEffect",
+              "EmphasizeGlowEffect"
+            ]
+          },
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": []
+        },
         "sungColor": {
           "type": "color",
           "defaultValue": "#FF7FD4FF",
@@ -3302,10 +3714,11 @@
         }
       },
       "nativePreviewId": "sh_better_ui:lyrics",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
+        "lyric-unit-effects",
         "lyric-feed-and-timing",
         "glyph-and-line-layout",
         "font-or-sdf-draw"
@@ -3314,7 +3727,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples lyrics example builds a LocalLyricFeed and calls LyricApi.draw",
@@ -3324,6 +3737,15 @@
       "deprecated": false,
       "replacementId": null,
       "defaultValues": {
+        "supportedUnitEffects": {
+          "defaultChain": [
+            "EmphasizeGlowEffect"
+          ],
+          "available": [
+            "WaveLiftEffect",
+            "EmphasizeGlowEffect"
+          ]
+        },
         "sungColor": "#FF7FD4FF",
         "unsungColor": "#FFD8D8D8",
         "translationColor": "#FF9A9A9A",
@@ -3452,10 +3874,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:flow_border",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "perimeter-fill"
       ],
@@ -3463,7 +3885,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "ThemeEffectPreview flowBorder",
@@ -3556,10 +3978,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:formatted_text_effects",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "parse-formatting",
         "sample-glyph-effects",
@@ -3569,7 +3991,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "UiTextEffectsTest",
@@ -3685,9 +4107,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:frosted_glass",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "main-to-swap-horizontal-blur",
         "swap-to-main-vertical-composite"
@@ -3696,7 +4118,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "MaterialPreviewScenes.Glass uses strength=1, radius=12 GUI, corner=4 GUI",
@@ -3785,10 +4207,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:glass_panel_shadow",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "three-gui-shadow-fills"
       ],
@@ -3796,7 +4218,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "GlassTheme.rootShadow called by glass host and skips high contrast",
@@ -3853,10 +4275,10 @@
       "requiredCapabilities": [],
       "requiredResources": [],
       "parameters": {},
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:glass_text_glow",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "glyph-fringe",
         "foreground-glyphs"
@@ -3865,11 +4287,72 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "GlassTextGlowTest",
         "docs/previews/2026-11-07-text-glow-detail.png"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:glass_tooltip",
+      "materialRevision": "1.0.0",
+      "name": "Glass Tooltip",
+      "localizedNames": {
+        "zh_cn": "玻璃提示框",
+        "zh_tw": "玻璃提示框"
+      },
+      "aliases": [
+        "glass_tooltip",
+        "glass tooltip",
+        "玻璃 tooltip"
+      ],
+      "category": "surface",
+      "tags": [
+        "surface",
+        "animation"
+      ],
+      "description": "A blurred and tinted tooltip panel with an opaque foreground and a contrasting edge.",
+      "visualCharacteristics": [
+        "玻璃提示框"
+      ],
+      "useCases": [
+        "玻璃提示框预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTheme.java",
+        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.glass.GlassTooltip#render",
+        "com.dishanhai.sh_better_ui.client.glass.GlassTheme#tooltipPanel"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.glass.GlassTooltip#render",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:glass_tooltip",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "GlassTooltip.java",
+        "GlassTheme.java",
+        "NeoForge GlassTooltip.java"
       ],
       "deprecated": false,
       "replacementId": null,
@@ -3913,7 +4396,8 @@
       "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
       "sourceFiles": [
         "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIcon.java",
-        "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconMotion.java"
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconMotion.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/MaterialPreviewScenes.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon#withMotion",
@@ -3945,9 +4429,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:status_icon",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "sample-icon-motion",
         "icon-transform-and-draw"
@@ -3956,10 +4440,10 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
-        "DeveloperSamples status_icon uses STATUS_PENDING with SPIN",
+        "The status_icon scene uses SPIN, FLOAT, and BOUNCE",
         "GraphicIconMotionTest",
         "docs/effects.md 图标动作"
       ],
@@ -4062,10 +4546,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:icon_shader",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "icon-texture-sample",
         "alpha-preserving-shader-composite"
@@ -4074,7 +4558,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "GraphicIconShaderTest",
@@ -4094,6 +4578,71 @@
     },
     {
       "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:interruptible_animation",
+      "materialRevision": "1.0.0",
+      "name": "Interruptible Spring Animation",
+      "localizedNames": {
+        "zh_cn": "可中断弹簧动效",
+        "zh_tw": "可中斷彈簧動效"
+      },
+      "aliases": [
+        "interruptible_animation",
+        "interruptible spring",
+        "弹簧回弹"
+      ],
+      "category": "animation",
+      "tags": [
+        "animation",
+        "motion"
+      ],
+      "description": "Retarget a running spring while retaining velocity. The native capsule demo supports reversing during a transition.",
+      "visualCharacteristics": [
+        "可中断弹簧动效"
+      ],
+      "useCases": [
+        "可中断弹簧动效预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/kernel/api/AnimationService.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/MotionApi.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/InterruptibleAnimation.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperAnimationPreview.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.kernel.api.UIApis#ANIMATION",
+        "com.dishanhai.sh_better_ui.client.api.MotionApi#animation"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.UIApis#ANIMATION",
+      "requiredCapabilities": [
+        "sh_better_ui:animation"
+      ],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:interruptible_animation",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "AnimationService.java",
+        "MotionApi.java",
+        "InterruptibleAnimation.java",
+        "DeveloperAnimationPreview.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
+    },
+    {
+      "schemaVersion": "1.0.0",
       "id": "sh_better_ui:laser_flow",
       "materialRevision": "1.0.0",
       "name": "Laser Flow",
@@ -4102,6 +4651,8 @@
         "zh_tw": "雷射流背景"
       },
       "aliases": [
+        "laser texture reveal",
+        "激光贴图显现",
         "laserFlow",
         "laser_flow",
         "laser beam",
@@ -4135,6 +4686,9 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/api/BuiltinBackgrounds.java"
       ],
       "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#radius",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#opacity",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowReveal#texture",
         "com.dishanhai.sh_better_ui.client.api.GraphicsApi#laserFlow",
         "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlow#draw",
         "com.dishanhai.sh_better_ui.client.gui.scaled.LaserFlowProfile#DEFAULT"
@@ -4147,6 +4701,26 @@
         "sh_better_ui:shaders/core/laser_flow.json"
       ],
       "parameters": {
+        "pointerReveal": {
+          "type": "object",
+          "defaultValue": {
+            "optional": true,
+            "radius": 220,
+            "opacity": 0.6,
+            "texture": "caller-supplied"
+          },
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": []
+        },
         "beamPosition": {
           "type": "float",
           "defaultValue": 0.6,
@@ -4434,17 +5008,18 @@
         }
       },
       "nativePreviewId": "sh_better_ui:laser_flow",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
+        "pointer-texture-reveal",
         "procedural-laser-with-surface-mask"
       ],
       "loaderCompatibility": {
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers laserFlow",
@@ -4455,6 +5030,12 @@
       "deprecated": false,
       "replacementId": null,
       "defaultValues": {
+        "pointerReveal": {
+          "optional": true,
+          "radius": 220,
+          "opacity": 0.6,
+          "texture": "caller-supplied"
+        },
         "beamPosition": 0.6,
         "surfaceLevel": 1,
         "color": "#FF3847FF",
@@ -4901,9 +5482,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:light_rays",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "procedural-light-rays"
       ],
@@ -4911,7 +5492,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers lightRays",
@@ -5297,9 +5878,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:liquid_button",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "optional-backdrop-sample",
         "rounded-fill-and-border",
@@ -5309,7 +5890,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples liquid_button uses UiStyle.LIQUID_GLASS",
@@ -5326,6 +5907,96 @@
           "accent": ""
         },
         "opacity": 1
+      }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:live_activity",
+      "materialRevision": "1.0.0",
+      "name": "Activity Island",
+      "localizedNames": {
+        "zh_cn": "活动岛",
+        "zh_tw": "活動島"
+      },
+      "aliases": [
+        "live activities",
+        "live surface",
+        "dynamic island",
+        "活动岛",
+        "实时活动",
+        "灵动岛"
+      ],
+      "category": "feedback",
+      "tags": [
+        "animation",
+        "feedback",
+        "progress"
+      ],
+      "description": "A live activity switches between a compact capsule and an expanded progress surface.",
+      "visualCharacteristics": [
+        "顶部胶囊",
+        "展开面板",
+        "进度条"
+      ],
+      "useCases": [
+        "展示任务进度"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "worktree",
+      "sourceFiles": [
+        "src/kernel/java/com/dishanhai/sh_better_ui/kernel/api/live/ActivityService.java",
+        "src/main/java/com/dishanhai/sh_better_ui/kernel/internal/LiveActivityScreen.java",
+        "src/main/java/com/dishanhai/sh_better_ui/kernel/internal/live/LiveSurfacePainter.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.kernel.api.live.ActivityService#publish"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.live.ActivityService#publish",
+      "requiredCapabilities": [
+        "sh_better_ui:live_activities"
+      ],
+      "requiredResources": [],
+      "parameters": {
+        "presentation": {
+          "type": "enum",
+          "defaultValue": "AUTO",
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": true,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": [
+            "AUTO",
+            "COMPACT",
+            "EXPANDED"
+          ]
+        }
+      },
+      "nativePreviewId": "sh_better_ui:live_activity",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "ActivityService.java",
+        "LiveActivityScreen.java",
+        "LiveSurfacePainter.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {
+        "presentation": "AUTO"
       }
     },
     {
@@ -5402,9 +6073,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:loading_progress",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "progress-track-and-fill"
       ],
@@ -5412,7 +6083,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "UiLoadingTest",
@@ -5506,9 +6177,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:loading_skeleton",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "placeholder-layout",
         "rounded-skeleton-paint"
@@ -5517,7 +6188,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples loading_skeleton",
@@ -5605,9 +6276,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:loading_spinner",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "loading-ring-fill"
       ],
@@ -5615,7 +6286,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "UiLoadingTest",
@@ -5628,6 +6299,79 @@
         "spinPeriodMs": 900,
         "edgeDiameter": 12
       }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:music_reactive",
+      "materialRevision": "1.0.0",
+      "name": "Music Reactive Visuals",
+      "localizedNames": {
+        "zh_cn": "音乐响应动效",
+        "zh_tw": "音樂響應動效"
+      },
+      "aliases": [
+        "music_hud",
+        "music_island",
+        "music rhythm",
+        "音乐波形",
+        "节拍辉光"
+      ],
+      "category": "lighting",
+      "tags": [
+        "lighting",
+        "animation"
+      ],
+      "description": "Sample audio bands and onsets for waveform, edge glow, beat pulses and theme glow. The native HUD and island both use the shared rhythm sampler.",
+      "visualCharacteristics": [
+        "音乐响应动效"
+      ],
+      "useCases": [
+        "音乐响应动效预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/MotionApi.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/audio/MusicRhythm.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/audio/MusicMotion.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/MusicHud.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/MusicIsland.java",
+        "src/main/java/com/dishanhai/sh_better_ui/theme/palette/AudioReactiveTheme.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.MotionApi#musicRhythm",
+        "com.dishanhai.sh_better_ui.client.api.MotionApi#musicMotion",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.MusicHud#drawScope",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.MusicHud#drawPanel",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.MusicIsland#drawWaveform",
+        "com.dishanhai.sh_better_ui.theme.palette.AudioReactiveTheme#sample"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.MotionApi#musicRhythm",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:music_hud",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "MotionApi.java",
+        "MusicRhythm.java",
+        "MusicMotion.java",
+        "MusicHud.java",
+        "MusicIsland.java",
+        "AudioReactiveTheme.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
     },
     {
       "schemaVersion": "1.0.0",
@@ -5718,9 +6462,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:network_tab",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "network-panel-fill",
         "network-border",
@@ -5730,7 +6474,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples network_tab",
@@ -5931,9 +6675,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:page_slide",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "viewport-scissor",
         "translated-page",
@@ -5943,7 +6687,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples page_slide",
@@ -6354,9 +7098,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:pattern_waves",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "wave-field-texture-target",
         "mark-composite"
@@ -6365,7 +7109,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers patternWaves",
@@ -6401,6 +7145,67 @@
         "cursorStrength": 0.6,
         "intro": true
       }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:pull_refresh",
+      "materialRevision": "1.0.0",
+      "name": "Pull to Refresh Indicator",
+      "localizedNames": {
+        "zh_cn": "下拉刷新指示",
+        "zh_tw": "下拉重新整理指示"
+      },
+      "aliases": [
+        "pull_refresh",
+        "pull to refresh",
+        "下拉刷新"
+      ],
+      "category": "feedback",
+      "tags": [
+        "feedback",
+        "animation"
+      ],
+      "description": "The refresh indicator reveals with drag progress and displays armed, pending and completion states.",
+      "visualCharacteristics": [
+        "下拉刷新指示"
+      ],
+      "useCases": [
+        "下拉刷新指示预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiPullRefresh.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/GestureEffectPreviews.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#pullRefresh",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.UiPullRefresh#render"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#pullRefresh",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {},
+      "nativePreviewId": "sh_better_ui:pull_refresh",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "UiPullRefresh.java",
+        "InteractionApi.java",
+        "GestureEffectPreviews.PullRefresh"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {}
     },
     {
       "schemaVersion": "1.0.0",
@@ -6511,10 +7316,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:radial_gradient",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "radial-color-shader"
       ],
@@ -6522,7 +7327,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "VisualReveal.drawRadialGradient overload defaults",
@@ -6638,9 +7443,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:recipe_transition",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "viewport-scissor",
         "incoming-and-outgoing-content",
@@ -6650,7 +7455,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples recipe_transition",
@@ -6719,10 +7524,10 @@
         "sh_better_ui:shaders/program/shop_gauss_blur.vsh"
       ],
       "parameters": {},
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:refraction_wave",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "native-frame-end-wave-slot",
         "gaussian-wave-composite"
@@ -6731,7 +7536,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "GaussBlur.requestWave stores origin, radius, thickness and refraction in a single pending slot",
@@ -6842,10 +7647,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:screen_crossfade",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "previous-main-framebuffer-copy",
         "snapshot-crossfade",
@@ -6855,7 +7660,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "docs/API_REFERENCE.md 旧页淡出",
@@ -7249,9 +8054,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:shape_waves",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "generate-glyph-mask",
         "shape-wave-composite"
@@ -7260,7 +8065,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "BuiltinBackgrounds registers shapeWaves",
@@ -7391,9 +8196,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:gradient_card",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "surface-gradient",
         "control-state-border",
@@ -7403,7 +8208,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "DeveloperSamples gradient_card and dark_button",
@@ -7499,10 +8304,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:spatial_lighting",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "spatial-light-index",
         "per-node-light-sampling",
@@ -7512,7 +8317,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "SpatialLightCacheTest",
@@ -7540,7 +8345,9 @@
         "SDF shadow",
         "inner shadow",
         "drop shadow",
-        "elevation"
+        "elevation",
+        "arbitrary path shadow",
+        "任意路径阴影"
       ],
       "category": "shadow",
       "tags": [
@@ -7549,11 +8356,12 @@
         "shadow",
         "elevation"
       ],
-      "description": "Scope-owned node shadows with elevation tokens, clipping, and independently configurable outer and inner layers.",
+      "description": "Scope-owned node shadows with elevation tokens, clipping, configurable outer and inner layers, and optional native path contours.",
       "visualCharacteristics": [
         "外投影",
         "内阴影",
-        "接触阴影"
+        "接触阴影",
+        "凹路径与带孔轮廓阴影"
       ],
       "useCases": [
         "悬浮卡片",
@@ -7563,6 +8371,7 @@
       "sourceRevision": "d87e31ebe5cafd39b2c7dd48111e21327a943b17+worktree",
       "sourceFiles": [
         "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialStyle.java",
+        "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialGeometry.java",
         "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialScene.java",
         "src/kernel/java/com/dishanhai/sh_better_ui/spatial/SpatialUI.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/spatial/SpatialRenderer.java",
@@ -7572,6 +8381,8 @@
         "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadows",
         "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#elevation",
         "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadowClip",
+        "com.dishanhai.sh_better_ui.spatial.SpatialScene.Node#shadowPath",
+        "com.dishanhai.sh_better_ui.spatial.SpatialGeometry.ShadowPath",
         "com.dishanhai.sh_better_ui.spatial.SpatialStyle.Theme#DEFAULT",
         "com.dishanhai.sh_better_ui.kernel.api.RenderService.Context#spatial",
         "com.dishanhai.sh_better_ui.spatial.SpatialUI#mount"
@@ -7627,10 +8438,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:spatial_shadow",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "spatial-order-and-clip",
         "outer-sdf-shadow",
@@ -7641,7 +8452,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "SpatialSceneTest",
@@ -7855,10 +8666,10 @@
           "choices": []
         }
       },
-      "nativePreviewId": null,
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "nativePreviewId": "sh_better_ui:spatial_surface",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "spatial-order-and-clip",
         "optional-gaussian-backdrop",
@@ -7868,7 +8679,7 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
         "SpatialSceneTest",
@@ -7887,6 +8698,176 @@
         "border": 0,
         "depth": 0,
         "blur": 0
+      }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:swipe_toast",
+      "materialRevision": "1.0.0",
+      "name": "Swipe Toast Motion",
+      "localizedNames": {
+        "zh_cn": "滑动通知与回弹",
+        "zh_tw": "滑動通知與回彈"
+      },
+      "aliases": [
+        "swipe_toast",
+        "swipe toast",
+        "滑动通知",
+        "倒计时进度条"
+      ],
+      "category": "feedback",
+      "tags": [
+        "feedback",
+        "animation"
+      ],
+      "description": "A notification follows vertical drag, settles back or dismisses, and can show a pausable countdown fuse.",
+      "visualCharacteristics": [
+        "滑动通知与回弹"
+      ],
+      "useCases": [
+        "滑动通知与回弹预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiSwipeToast.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/SwipeToastTimeline.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/ControlPreviewScenes.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperSamples.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#swipeToast",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeToast#setOpen"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#swipeToast",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {
+        "fuse": {
+          "type": "enum",
+          "defaultValue": "BOTTOM",
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": [
+            "TOP",
+            "BOTTOM",
+            "NONE"
+          ]
+        }
+      },
+      "nativePreviewId": "sh_better_ui:toast",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "UiSwipeToast.java",
+        "SwipeToastTimeline.java",
+        "InteractionApi.java",
+        "ControlPreviewScenes.Toast shows floating and inline swipe toasts"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {
+        "fuse": "BOTTOM"
+      }
+    },
+    {
+      "schemaVersion": "1.0.0",
+      "id": "sh_better_ui:toast_motion",
+      "materialRevision": "1.0.0",
+      "name": "Toast Motion",
+      "localizedNames": {
+        "zh_cn": "通知入退场",
+        "zh_tw": "通知進退場"
+      },
+      "aliases": [
+        "toast",
+        "toast_motion",
+        "通知动画"
+      ],
+      "category": "animation",
+      "tags": [
+        "animation",
+        "motion"
+      ],
+      "description": "Notifications can slide from the right, drop from the top, fade, or pop with scale and opacity.",
+      "visualCharacteristics": [
+        "通知入退场"
+      ],
+      "useCases": [
+        "通知入退场预览与界面接入"
+      ],
+      "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+      "sourceRevision": "ab5a80b+worktree",
+      "sourceFiles": [
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiToast.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/api/InteractionApi.java"
+      ],
+      "publicSymbols": [
+        "com.dishanhai.sh_better_ui.client.api.InteractionApi#toast",
+        "com.dishanhai.sh_better_ui.client.gui.scaled.UiToast#show"
+      ],
+      "publicEntrypoint": "com.dishanhai.sh_better_ui.client.api.InteractionApi#toast",
+      "requiredCapabilities": [],
+      "requiredResources": [],
+      "parameters": {
+        "effect": {
+          "type": "enum",
+          "defaultValue": "SLIDE_FROM_RIGHT",
+          "minimum": null,
+          "maximum": null,
+          "step": null,
+          "unit": "",
+          "editable": false,
+          "requiresResourceRebuild": false,
+          "runtimeUpdate": true,
+          "animatable": false,
+          "dependsOn": [],
+          "constraints": [],
+          "choices": [
+            "SLIDE_FROM_RIGHT",
+            "DROP_FROM_TOP",
+            "FADE",
+            "POP",
+            "NONE"
+          ]
+        }
+      },
+      "nativePreviewId": "sh_better_ui:toast",
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
+      "renderPassDependencies": [],
+      "loaderCompatibility": {
+        "forge": "source-verified",
+        "neoforge": "source-verified"
+      },
+      "webCompatibility": "web-approximation",
+      "validationStatus": "source-verified",
+      "validationEvidence": [
+        "UiToast.java",
+        "InteractionApi.java"
+      ],
+      "deprecated": false,
+      "replacementId": null,
+      "defaultValues": {
+        "effect": "SLIDE_FROM_RIGHT"
       }
     },
     {
@@ -7933,7 +8914,8 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
+        "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/AppearanceGalleryPreview.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#revealRegion",
@@ -8028,9 +9010,9 @@
         }
       },
       "nativePreviewId": "sh_better_ui:visual_reveal",
-      "webRendererId": null,
-      "rendererVersion": null,
-      "previewScene": null,
+      "webRendererId": "material-effects",
+      "rendererVersion": "1.0.0",
+      "previewScene": "material-effects",
       "renderPassDependencies": [
         "framebuffer-region-optional",
         "texture-horizontal-scratch",
@@ -8040,10 +9022,10 @@
         "forge": "source-verified",
         "neoforge": "source-verified"
       },
-      "webCompatibility": "native-only",
+      "webCompatibility": "web-approximation",
       "validationStatus": "source-verified",
       "validationEvidence": [
-        "AppearanceGalleryPreview visual_reveal uses BuiltinBackgrounds reveal (texture plus gradient)",
+        "AppearanceGalleryPreview visual_reveal compares framebuffer region blur with texture reveal",
         "docs/effects.md two modes",
         "RevealProfile constructor and ThemeEffectRanges"
       ],
@@ -8069,5 +9051,5 @@
       }
     }
   ],
-  "contentHash": "sha256:e763abf9e03f6860ec56d1e3b0d239cb8517f90a208c65842e118b120f892a2e"
+  "contentHash": "sha256:922933bf5462008756af96d3a1d64f7c8dd9e4f37fd75de782493e54eeac8a5e"
 }

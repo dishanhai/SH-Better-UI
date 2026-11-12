@@ -48,10 +48,10 @@
     "sh_better_ui:shaders/program/shop_gauss_blur.vsh"
   ],
   "parameters": {},
-  "nativePreviewId": null,
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "nativePreviewId": "sh_better_ui:directional_blur",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "framebuffer-sample",
     "directional-gaussian-composite"
@@ -60,7 +60,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "BlurApi forwards axisX/axisY to GaussBlur",

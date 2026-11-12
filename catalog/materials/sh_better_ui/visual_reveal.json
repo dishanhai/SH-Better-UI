@@ -42,7 +42,8 @@
     "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
     "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-    "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+    "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/AppearanceGalleryPreview.java"
   ],
   "publicSymbols": [
     "com.dishanhai.sh_better_ui.client.api.BlurApi#revealRegion",
@@ -137,9 +138,9 @@
     }
   },
   "nativePreviewId": "sh_better_ui:visual_reveal",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
     "framebuffer-region-optional",
     "texture-horizontal-scratch",
@@ -149,10 +150,10 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
-    "AppearanceGalleryPreview visual_reveal uses BuiltinBackgrounds reveal (texture plus gradient)",
+    "AppearanceGalleryPreview visual_reveal compares framebuffer region blur with texture reveal",
     "docs/effects.md two modes",
     "RevealProfile constructor and ThemeEffectRanges"
   ],

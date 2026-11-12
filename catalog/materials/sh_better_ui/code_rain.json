@@ -8,6 +8,13 @@
     "zh_tw": "程式碼雨"
   },
   "aliases": [
+    "character gradient",
+    "glyph glow",
+    "glyph flicker",
+    "glyph shape mask",
+    "cursor scramble",
+    "click wave",
+    "click burst",
     "codeRain",
     "code_rain",
     "matrix rain",
@@ -38,6 +45,13 @@
     "src/main/java/com/dishanhai/sh_better_ui/client/api/BuiltinBackgrounds.java"
   ],
   "publicSymbols": [
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#shape",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#gradient",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#glow",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#dotMatrix",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#intro",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#flicker",
+    "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainEffects#interaction",
     "com.dishanhai.sh_better_ui.client.api.GraphicsApi#codeRain",
     "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRain#draw",
     "com.dishanhai.sh_better_ui.client.gui.scaled.CodeRainProfile#builder"
@@ -46,6 +60,53 @@
   "requiredCapabilities": [],
   "requiredResources": [],
   "parameters": {
+    "supportedEffects": {
+      "type": "object",
+      "defaultValue": {
+        "shape": [
+          "HORIZON",
+          "PINCH",
+          "RISE",
+          "ECLIPSE"
+        ],
+        "gradient": [
+          "colors"
+        ],
+        "glow": [
+          "strength"
+        ],
+        "dotMatrix": [
+          "size",
+          "coverage"
+        ],
+        "intro": [
+          "duration"
+        ],
+        "flicker": [
+          "strength"
+        ],
+        "interaction": {
+          "cursorScramble": true,
+          "click": [
+            "NONE",
+            "WAVE",
+            "BURST"
+          ],
+          "radius": "canvas fraction"
+        }
+      },
+      "minimum": null,
+      "maximum": null,
+      "step": null,
+      "unit": "",
+      "editable": false,
+      "requiresResourceRebuild": false,
+      "runtimeUpdate": true,
+      "animatable": false,
+      "dependsOn": [],
+      "constraints": [],
+      "choices": []
+    },
     "mode": {
       "type": "enum",
       "defaultValue": "RAIN",
@@ -173,10 +234,11 @@
     }
   },
   "nativePreviewId": "sh_better_ui:code_rain",
-  "webRendererId": null,
-  "rendererVersion": null,
-  "previewScene": null,
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
   "renderPassDependencies": [
+    "glyph-effects",
     "glyph-grid-update",
     "minecraft-font-draw"
   ],
@@ -184,7 +246,7 @@
     "forge": "source-verified",
     "neoforge": "source-verified"
   },
-  "webCompatibility": "native-only",
+  "webCompatibility": "web-approximation",
   "validationStatus": "source-verified",
   "validationEvidence": [
     "BuiltinBackgrounds registers codeRain",

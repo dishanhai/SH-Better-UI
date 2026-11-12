@@ -1,6 +1,6 @@
 // Author: dishanhai
 const labels = {
-  transmission: '透射率', refraction: '折射位移', lensing: '透镜强度', scattering: '散射强度',
+  transmission: '通透度', refraction: '扭曲强度', lensing: '透镜强度', scattering: '模糊强度',
   edgeHighlight: '边缘高光', thickness: '边缘厚度', blurRadius: '模糊半径', quality: '采样质量', foreground: '前景文字',
 };
 const choices = {

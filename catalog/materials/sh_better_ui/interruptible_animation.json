@@ -1,0 +1,64 @@
+{
+  "schemaVersion": "1.0.0",
+  "id": "sh_better_ui:interruptible_animation",
+  "materialRevision": "1.0.0",
+  "name": "Interruptible Spring Animation",
+  "localizedNames": {
+    "zh_cn": "可中断弹簧动效",
+    "zh_tw": "可中斷彈簧動效"
+  },
+  "aliases": [
+    "interruptible_animation",
+    "interruptible spring",
+    "弹簧回弹"
+  ],
+  "category": "animation",
+  "tags": [
+    "animation",
+    "motion"
+  ],
+  "description": "Retarget a running spring while retaining velocity. The native capsule demo supports reversing during a transition.",
+  "visualCharacteristics": [
+    "可中断弹簧动效"
+  ],
+  "useCases": [
+    "可中断弹簧动效预览与界面接入"
+  ],
+  "sourceRepository": "https://github.com/dishanhai/SH-Better-UI",
+  "sourceRevision": "ab5a80b+worktree",
+  "sourceFiles": [
+    "src/main/java/com/dishanhai/sh_better_ui/kernel/api/AnimationService.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/api/MotionApi.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/InterruptibleAnimation.java",
+    "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperAnimationPreview.java"
+  ],
+  "publicSymbols": [
+    "com.dishanhai.sh_better_ui.kernel.api.UIApis#ANIMATION",
+    "com.dishanhai.sh_better_ui.client.api.MotionApi#animation"
+  ],
+  "publicEntrypoint": "com.dishanhai.sh_better_ui.kernel.api.UIApis#ANIMATION",
+  "requiredCapabilities": [
+    "sh_better_ui:animation"
+  ],
+  "requiredResources": [],
+  "parameters": {},
+  "nativePreviewId": "sh_better_ui:interruptible_animation",
+  "webRendererId": "material-effects",
+  "rendererVersion": "1.0.0",
+  "previewScene": "material-effects",
+  "renderPassDependencies": [],
+  "loaderCompatibility": {
+    "forge": "source-verified",
+    "neoforge": "source-verified"
+  },
+  "webCompatibility": "web-approximation",
+  "validationStatus": "source-verified",
+  "validationEvidence": [
+    "AnimationService.java",
+    "MotionApi.java",
+    "InterruptibleAnimation.java",
+    "DeveloperAnimationPreview.java"
+  ],
+  "deprecated": false,
+  "replacementId": null
+}
