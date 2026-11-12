@@ -15,6 +15,7 @@ import java.util.function.Consumer;
 
 final class ExampleClient {
     private static ConnectionExample connection;
+    private static ExampleUiModule module;
 
     private ExampleClient() {}
 
@@ -29,9 +30,23 @@ final class ExampleClient {
                 ui.require(CounterService.KEY).open(screen, () -> titleEntry(screen).orElse(null));
             }
         }).bounds(Math.max(0, screen.width - width - 8), 8, width, 20).build());
+        add.accept(Button.builder(ExampleUiModule.label("rich_text.title"), button -> {
+            if (module != null) module.openRichText(screen, () -> richTextEntry(screen).orElse(null));
+        }).bounds(Math.max(0, screen.width - width - 8), 32, width, 20).build());
+        if (module != null && module.hasDeclarativePages()) {
+            add.accept(Button.builder(ExampleUiModule.label("pages.entry"), button -> {
+                if (module != null) module.openDeclarativePages();
+            }).bounds(Math.max(0, screen.width - width - 8), 56, width, 20).build());
+        }
+        if (module != null && module.hasTextReadability()) {
+            add.accept(Button.builder(ExampleUiModule.label("readability.title"), button -> {
+                if (module != null) module.openTextReadability(screen, () -> readabilityEntry(screen).orElse(null));
+            }).bounds(Math.max(0, screen.width - width - 8), 80, width, 20).build());
+        }
     }
 
     static void connection(ConnectionExample example) { connection = example; }
+    static void module(ExampleUiModule example) { module = example; }
 
     static void joined(Connection network) {
         Minecraft.getInstance().execute(() -> {
@@ -46,10 +61,22 @@ final class ExampleClient {
     }
 
     static Optional<Button> titleEntry(Screen screen) {
+        return entry(screen, "title");
+    }
+
+    static Optional<Button> richTextEntry(Screen screen) {
+        return entry(screen, "rich_text.title");
+    }
+
+    static Optional<Button> readabilityEntry(Screen screen) {
+        return entry(screen, "readability.title");
+    }
+
+    private static Optional<Button> entry(Screen screen, String label) {
         return screen.children().stream()
                 .filter(Button.class::isInstance)
                 .map(Button.class::cast)
-                .filter(button -> button.getMessage().equals(ExampleUiModule.label("title")))
+                .filter(button -> button.getMessage().equals(ExampleUiModule.label(label)))
                 .findFirst();
     }
 }

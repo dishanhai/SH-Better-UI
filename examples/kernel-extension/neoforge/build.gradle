@@ -2,9 +2,14 @@
 plugins {
     id 'java'
     id 'net.neoforged.moddev' version '2.0.148'
+    id 'org.jetbrains.kotlin.jvm' version '2.2.21'
 }
 
 java { toolchain.languageVersion = JavaLanguageVersion.of(21) }
+kotlin {
+    jvmToolchain(21)
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_21 }
+}
 repositories {
     mavenCentral()
     maven {
@@ -15,12 +20,13 @@ repositories {
 
 def workspace = file('../../..')
 ext.uiLibrary = file(providers.gradleProperty('shBetterUiJar')
-        .orElse(new File(workspace, 'neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.6.jar').path).get())
+        .orElse(new File(workspace, 'neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.7.jar').path).get())
 ext.loaderMetadata = 'META-INF/neoforge.mods.toml'
 ext.exampleLaunchArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 apply from: '../example.gradle'
 
 dependencies {
+    compileOnly 'thedarkcolour:kotlinforforge-neoforge:5.10.0'
     // ModDevGradle supplies the full KotlinForForge dependency to the loader's JVM layers.
     launcherImplementation 'thedarkcolour:kotlinforforge-neoforge:5.10.0'
 }

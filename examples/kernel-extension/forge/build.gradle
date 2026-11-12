@@ -3,15 +3,20 @@ plugins {
     id 'java'
     id 'net.minecraftforge.gradle' version '6.0.54'
     id 'org.parchmentmc.librarian.forgegradle' version '1.2.0.7-dev-SNAPSHOT'
+    id 'org.jetbrains.kotlin.jvm' version '2.2.21'
 }
 
 java { toolchain.languageVersion = JavaLanguageVersion.of(21) }
+kotlin {
+    jvmToolchain(21)
+    compilerOptions { jvmTarget = org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17 }
+}
 tasks.withType(JavaCompile).configureEach { options.release = 17 }
 repositories { mavenCentral() }
 
 def workspace = file('../../..')
 ext.uiLibrary = file(providers.gradleProperty('shBetterUiJar')
-        .orElse(new File(workspace, 'build/libs/sh_better_ui-1.0.6-dev.jar').path).get())
+        .orElse(new File(workspace, 'build/libs/sh_better_ui-1.0.7-dev.jar').path).get())
 ext.kotlinMod = file(providers.gradleProperty('kotlinForForgeJar')
         .orElse(new File(workspace, 'libs/kotlinforforge-4.12.0-all.jar').path).get())
 ext.loaderMetadata = 'META-INF/mods.toml'
@@ -23,7 +28,10 @@ def devJar = tasks.register('devJar', Jar) {
 ext.exampleLaunchArchive = devJar.flatMap { it.archiveFile }
 apply from: '../example.gradle'
 
-dependencies { minecraft 'net.minecraftforge:forge:1.20.1-47.4.16' }
+dependencies {
+    minecraft 'net.minecraftforge:forge:1.20.1-47.4.16'
+    compileOnly files(kotlinMod)
+}
 // Forge's naming service reads the mapping CSVs from the JVM classpath. Keep the
 // Minecraft dependencies in the launcher classpath without the example's class directories.
 sourceSets.launcher.runtimeClasspath += configurations.runtimeClasspath
@@ -44,6 +52,12 @@ minecraft {
                 args '--width', '800', '--height', '480'
             }
         }
+    }
+}
+
+if (smoke) {
+    tasks.matching { it.name == 'runClient' }.configureEach {
+        javaLauncher = javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(17) }
     }
 }
 

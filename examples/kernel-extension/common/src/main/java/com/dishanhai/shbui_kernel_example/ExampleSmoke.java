@@ -28,6 +28,7 @@ final class ExampleSmoke {
     private static ExampleUiModule module;
     private static Screen title;
     private static LiveExamplesSmoke live;
+    private static RichTextSdkSmoke richText;
     private static Stage stage = Stage.START;
     private static long startedAt;
     private static long closedGeneration;
@@ -35,7 +36,7 @@ final class ExampleSmoke {
     private static boolean done;
     private static boolean passed;
 
-    private enum Stage { START, ACT, LIVE, CAPTURE_AND_CLOSE, REOPEN }
+    private enum Stage { START, ACT, LIVE, CAPTURE_AND_CLOSE, REOPEN, RICH_TEXT, TEXT_READABILITY }
 
     private ExampleSmoke() {}
 
@@ -82,6 +83,28 @@ final class ExampleSmoke {
                 }
                 case REOPEN -> {
                     verifyReopenAndClose(client);
+                    richText = new RichTextSdkSmoke(title, Path.of(OUTPUT));
+                    stage = Stage.RICH_TEXT;
+                }
+                case RICH_TEXT -> {
+                    if (richText.advance(client)) {
+                        press(title, ExampleClient.readabilityEntry(title).orElseThrow());
+                        stage = Stage.TEXT_READABILITY;
+                    }
+                }
+                case TEXT_READABILITY -> {
+                    require(client.screen instanceof TextReadabilitySdkScreen,
+                            "The packaged readability Screen did not open");
+                    var screen = (TextReadabilitySdkScreen) client.screen;
+                    if (!screen.drawn()) return;
+                    try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                        image.writeToFile(Path.of(OUTPUT, "text-readability.png").toFile());
+                    }
+                    require(screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0) && client.screen == title
+                                    && title.getFocused() == ExampleClient.readabilityEntry(title).orElseThrow()
+                                    && screen.closed(),
+                            "The readability Screen did not restore focus or release its scope");
+                    writeSuccess();
                     passed = true;
                     done = true;
                     client.stop();
@@ -153,18 +176,24 @@ final class ExampleSmoke {
         press(title, ExampleClient.titleEntry(title).orElseThrow());
     }
 
-    private static void verifyReopenAndClose(Minecraft client) throws IOException {
+    private static void verifyReopenAndClose(Minecraft client) {
         var reopened = module.page();
         require(reopened != null && client.screen == reopened.screen && reopened.counter.isOpen()
                 && reopened.count == 0 && reopened.tree.generation() != closedGeneration, "The screen reused closed state");
         live.verifyReopened(reopened.screen);
         reopened.screen.onClose();
         require(!reopened.counter.isOpen() && UnifiedUI.isAvailable(), "Closing a screen changed the engine lifetime");
+    }
+
+    private static void writeSuccess() throws IOException {
         Files.writeString(Path.of(OUTPUT, "success.txt"),
                 "Named extension and library JARs, custom service, optional fallback, scoped config, keyboard, undo, and screen cleanup passed.\n"
                         + "The mounted status row drew Liquid Glass through the public RenderService.\n"
                         + "Live examples passed: music publication/pause/resume, local crafting cancellation/completion notification, "
                         + "machine energy/progress, priority preemption/restoration, screen scope cleanup, and connection watch toggle across reopen.\n"
+                        + "Rich Text SDK passed: packaged JSON, diamond texture, item tooltip hit, updated meter pixels with unchanged layout, and scope cleanup.\n"
+                        + "Text readability SDK passed: packaged third-party Screen submitted a shaped run, drew immediately in a live foreground callback, and released its scope on Escape.\n"
+                        + "P9/P10 guide checks passed: project revision advanced on reload, vector pixels matched hits before and after resize, a failed renderer discarded queued drawing and old hits, and close released the project.\n"
                         + "External multiplayer connection and listening to the music remain manual checks.\n"
                         + "extension=" + jarLocation(ExampleUiModule.class) + "\nlibrary=" + jarLocation(UnifiedUI.class) + "\n");
     }

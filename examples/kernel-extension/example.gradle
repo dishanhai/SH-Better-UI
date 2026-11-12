@@ -11,6 +11,7 @@ sourceSets {
     // The client loads both mods from JARs in its own mods folder.
     launcher
 }
+kotlin.sourceSets.main.kotlin.srcDir('../common/src/main/kotlin')
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
 tasks.withType(Jar).configureEach {
     preserveFileTimestamps = false
@@ -27,10 +28,19 @@ def checkLibrary = tasks.register('verifyExampleDependency') {
             throw new GradleException("Build SH-Better-UI first or set -PshBetterUiJar to the corresponding JAR. Missing: ${library}")
         }
         new java.util.zip.ZipFile(library).withCloseable { zip ->
-            def required = [metadata, 'com/dishanhai/sh_better_ui/kernel/api/UnifiedUI.class']
+            def required = [metadata, 'com/dishanhai/sh_better_ui/kernel/api/UnifiedUI.class',
+                            'com/dishanhai/sh_better_ui/kernel/api/page/PageService.class',
+                            'com/dishanhai/sh_better_ui/kernel/api/page/ServerPages.class']
             required += ['ActivityService', 'NotificationService', 'LiveSurfaceService'].collect {
                 "com/dishanhai/sh_better_ui/kernel/api/live/${it}.class"
             }
+            required += ['com/dishanhai/sh_better_ui/client/visual/RichTextView.class',
+                         'com/dishanhai/sh_better_ui/client/visual/RichTextExtensions.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/richtext/RichDocumentCodec.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/project/ProjectEdits.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/render/RenderGraph.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/geometry/FilledGeometry.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.class']
             if (required.any { zip.getEntry(it) == null }) {
                 throw new GradleException("Incompatible SH-Better-UI JAR: ${library}")
             }
@@ -38,6 +48,7 @@ def checkLibrary = tasks.register('verifyExampleDependency') {
     }
 }
 tasks.named('compileJava') { dependsOn checkLibrary }
+tasks.named('compileKotlin') { dependsOn checkLibrary }
 
 project.ext.verifyArchive = { File archive ->
     new java.util.zip.ZipFile(archive).withCloseable { zip ->
@@ -47,7 +58,16 @@ project.ext.verifyArchive = { File archive ->
                         'com/dishanhai/shbui_kernel_example/LiveExamplesSmoke.class',
                         'com/dishanhai/shbui_kernel_example/ConnectionExample.class',
                         'com/dishanhai/shbui_kernel_example/CraftingBackend.class']
-        required += ['com/dishanhai/shbui_kernel_example/CorrectnessExamples.class']
+        required += ['com/dishanhai/shbui_kernel_example/CorrectnessExamples.class',
+                     'com/dishanhai/shbui_kernel_example/RichTextSdkScreen.class',
+                     'com/dishanhai/shbui_kernel_example/RichTextSdkSmoke.class',
+                     'com/dishanhai/shbui_kernel_example/TextReadabilitySdkScreen.class',
+                     'com/dishanhai/shbui_kernel_example/TextReadabilityKotlinExample.class',
+                     'assets/shbui_kernel_example/rich_text/guide.json',
+                     'com/dishanhai/shbui_kernel_example/ClientPageExamples.class',
+                     'com/dishanhai/shbui_kernel_example/ExampleServerPages.class',
+                     'com/dishanhai/shbui_kernel_example/ExchangePage.class',
+                     'com/dishanhai/shbui_kernel_example/exchange.properties']
         required += ['en_us', 'zh_cn', 'zh_tw'].collect { "assets/shbui_kernel_example/lang/${it}.json" }
         def missing = required.findAll { zip.getEntry(it) == null }
         if (missing) throw new GradleException("Example JAR missing ${missing}")
@@ -80,12 +100,14 @@ def stageMods = tasks.register('stageExampleMods', Copy) {
 tasks.matching { it.name == 'runClient' }.configureEach {
     dependsOn stageMods
     if (smoke) {
+        def outputs = ['success.txt', 'stopped.txt', 'screen.png', 'rich-text.png', 'rich-text-reloaded.png',
+                       'text-readability.png']
         doFirst {
-            ['success.txt', 'stopped.txt', 'screen.png'].each { java.nio.file.Files.deleteIfExists(new File(run, it).toPath()) }
+            outputs.each { java.nio.file.Files.deleteIfExists(new File(run, it).toPath()) }
             new File(run, 'options.txt').setText('onboardAccessibility:false\nguiScale:2\n', 'UTF-8')
         }
         doLast {
-            if (!['success.txt', 'stopped.txt', 'screen.png'].every { new File(run, it).isFile() }) {
+            if (!outputs.every { new File(run, it).isFile() }) {
                 throw new GradleException("The packaged extension did not finish its smoke checks. See ${run}")
             }
         }

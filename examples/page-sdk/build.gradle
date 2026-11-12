@@ -1,0 +1,46 @@
+// Author: dishanhai
+plugins {
+    id 'application'
+    id 'org.jetbrains.kotlin.jvm' version '2.2.21'
+}
+
+repositories {
+    mavenCentral()
+    mavenLocal()
+    providers.gradleProperty('shBetterUiSdkRepository').orNull?.with { repositoryUrl ->
+        maven { url = uri(repositoryUrl) }
+    }
+}
+
+def sdkJar = providers.gradleProperty('shBetterUiSdkJar')
+def sdkCoordinate = providers.gradleProperty('shBetterUiSdk')
+if (!sdkJar.isPresent() && !sdkCoordinate.isPresent()) {
+    throw new GradleException('Set -PshBetterUiSdk=<Maven coordinate> or -PshBetterUiSdkJar=<packaged SDK JAR>')
+}
+dependencies {
+    implementation(sdkJar.isPresent() ? files(sdkJar.get()) : sdkCoordinate.get())
+}
+
+def javaVersion = providers.gradleProperty('exampleJava').getOrElse('17').toInteger()
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(javaVersion)
+}
+kotlin {
+    jvmToolchain(javaVersion)
+}
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
+}
+application {
+    mainClass = 'com.example.shbui.KotlinExchangeKt'
+}
+
+tasks.register('runJavaExample', JavaExec) {
+    group = 'application'
+    description = 'Validates and serializes the Java page definition.'
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = 'com.example.shbui.ExchangePage'
+    javaLauncher = javaToolchains.launcherFor {
+        languageVersion = JavaLanguageVersion.of(javaVersion)
+    }
+}

@@ -1,0 +1,33 @@
+{
+  "version": 1,
+  "nodes": [
+    {
+      "id": "shbui_kernel_example:export/intro",
+      "type": "localized",
+      "key": "shbui_kernel_example.rich_text.intro",
+      "fallback": "Found a diamond ",
+      "arguments": [],
+      "style": { "bold": true }
+    },
+    {
+      "id": "shbui_kernel_example:export/diamond",
+      "type": "image",
+      "texture": "minecraft:textures/item/diamond.png",
+      "width": 16,
+      "height": 16,
+      "alt": ""
+    },
+    {
+      "id": "shbui_kernel_example:export/paragraph",
+      "type": "paragraph",
+      "spacing": 6
+    },
+    {
+      "id": "shbui_kernel_example:export/body",
+      "type": "localized",
+      "key": "shbui_kernel_example.rich_text.body",
+      "fallback": "This guide uses the passive JSON format shared by the editor and the game. The native Screen adds an item and a live energy meter below.",
+      "arguments": []
+    }
+  ]
+}

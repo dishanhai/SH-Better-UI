@@ -8,7 +8,7 @@ version="1.0.0"
 displayName="SH-Better-UI Kernel Example"
 authors="dishanhai"
 displayTest="IGNORE_ALL_VERSION"
-description="Standalone client-side UI Kernel example."
+description="Standalone UI Kernel example with an optional server-owned exchange page."
 
 [[dependencies.shbui_kernel_example]]
 modId="minecraft"
@@ -27,6 +27,6 @@ side="BOTH"
 [[dependencies.shbui_kernel_example]]
 modId="sh_better_ui"
 mandatory=true
-versionRange="[1.0.6,)"
+versionRange="[1.0.7,)"
 ordering="AFTER"
 side="CLIENT"

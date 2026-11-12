@@ -38,6 +38,7 @@ import com.dishanhai.sh_better_ui.kernel.api.live.ActivityService;
 import com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceService;
 import com.dishanhai.sh_better_ui.kernel.api.live.NotificationService;
 import com.dishanhai.sh_better_ui.kernel.api.live.SurfacePlacement;
+import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.components.events.GuiEventListener;
@@ -76,6 +77,7 @@ public final class ExampleUiModule implements UIModule {
     private NotificationService notifications;
     private LiveSurfaceService liveSurfaces;
     private ConnectionExample connection;
+    private ClientPageExamples declarativePages;
 
     /** Installs an optional public crafting adapter for future jobs. */
     public static void installCraftingBackend(CraftingBackend backend) {
@@ -116,7 +118,9 @@ public final class ExampleUiModule implements UIModule {
         activities = ui.find(ActivityService.KEY).orElse(null);
         notifications = ui.find(NotificationService.KEY).orElse(null);
         liveSurfaces = ui.find(LiveSurfaceService.KEY).orElse(null);
+        declarativePages = ui.find(PageService.KEY).map(pages -> new ClientPageExamples(context, pages)).orElse(null);
         module = context;
+        ExampleClient.module(this);
         if (activities != null && notifications != null && liveSurfaces != null) {
             connection = new ConnectionExample(context, activities, notifications);
             ExampleClient.connection(connection);
@@ -130,6 +134,7 @@ public final class ExampleUiModule implements UIModule {
             if (page != null) page.screen.dispose();
         } finally {
             var watch = connection;
+            ExampleClient.module(null);
             ExampleClient.connection(null);
             connection = null;
             page = null;
@@ -139,6 +144,7 @@ public final class ExampleUiModule implements UIModule {
             activities = null;
             notifications = null;
             liveSurfaces = null;
+            declarativePages = null;
             if (watch != null) watch.close();
         }
     }
@@ -155,6 +161,22 @@ public final class ExampleUiModule implements UIModule {
         next.screen = screens.create(module, builder);
         page = next;
         next.screen.open();
+    }
+
+    void openRichText(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
+        if (module != null) Minecraft.getInstance().setScreen(new RichTextSdkScreen(module, parent, returnFocus));
+    }
+
+    boolean hasTextReadability() { return module != null && module.engine().find(UIApis.TEXT_READABILITY).isPresent(); }
+
+    void openTextReadability(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
+        if (hasTextReadability()) Minecraft.getInstance().setScreen(new TextReadabilitySdkScreen(module, parent, returnFocus));
+    }
+
+    boolean hasDeclarativePages() { return declarativePages != null; }
+
+    void openDeclarativePages() {
+        if (declarativePages != null) declarativePages.open(Minecraft.getInstance().level != null);
     }
 
     static UiId id(String path) {
