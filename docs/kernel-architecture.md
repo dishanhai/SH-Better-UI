@@ -60,10 +60,18 @@ flowchart TD
 
 髒工作依節點世代和旗標合併。同一旗標每個節點一幀最多出列一次。各服務使用各自的資料和回呼，例如 layout drain 呼叫已登記的 measure 與 arrange，動畫循環使用活動軌道，碰撞服務更新有變更的呈現幾何。 [局部失效規則](scheduler.md#局部失效)
 
+## Screen 視覺組合
+
+`LayoutService.bindVisual` 驗證呼叫模組及其原生 Screen 範圍，並以該範圍追蹤綁定。`AlignmentLayout` 保留原本的增量測量、約束、動畫與姿態求解。綁定在原生 Screen 繪製時以同一幀時鐘取樣一次，發布 `FrameViewSnapshot`。同一個 Screen 幀只接受一次發布。輸入、即時效果、像素投影與延遲前景讀取該快照。畫面切換、範圍關閉、重新掛載及重載會阻止舊幀的工作。
+
+兩個 Loader 的 Screen Pre／Post 事件都委託共用 `NativeClientBridge`。Pre 開啟階段，Post 封存受管請求並交給既有 GaussBlur，依序畫舊頂層與受管清晰前景，再執行既有畫面疊層與 Kernel `RENDER`。幀尾清除取消、換頁或未到達 Post 的工作。CPU 的 `RENDER_PREPARATION` 與原生 Widget 輸入仍沿用原有調度。 [公開呼叫契約](API_REFERENCE.md#visual-layout--render-composition)
+
+停靠視窗於 `ANIMATION` 取樣收合軌道，`GEOMETRY_UPDATE` 由 `ClientLayout` 更新同一表面的停靠快照。陰影、玻璃、裁剪和指標命中共用該次呈現的視窗邊界。PUSH 內邊距由受管兄弟節點選擇使用。HUD 視窗掛載於客戶端會話，離開世界時隨會話清理。 [停靠視窗](ADAPTIVE_DOCK.md)
+
 ## 狀態、設定與命令
 
 - `StateKey<T>` 與 `ConfigKey<T>` 含 ID、型別與 schema。以登記的鍵實例取值。狀態依模組或目標作用域保留。派生狀態依輸入圖重算，輸入可為同一所有者的全域或同範圍值。鍵值可用不可變型別，或由 schema 提供純且可並行呼叫的防禦性複製。
-- 設定由低到高為 Engine Defaults、Module Defaults、資源／主題、使用者全域、Screen、Component、Runtime Override。設定鍵宣告預設、驗證器、允許層、可變性、持久化分類、版本、描述與遷移。內建 `CLIENT_SETTINGS` 於 User Global 鏡像既有 TOML 的已發布設定。第三方鍵可透過 `UIConfigCenter.persist` 登記編解碼器，由兩端宿主共用的背景持久化管線保存至實例設定目錄，並提供落盤回執和錯誤狀態。
+- 設定由低到高為 Engine Defaults、Module Defaults、資源／主題、使用者全域、Screen、Component、Runtime Override。設定鍵宣告預設、驗證器、允許層、可變性、持久化分類、版本、描述與遷移。控制面板透過 User Global 交易寫入 `CLIENT_SETTINGS`，主題引擎與共用控件從該鍵取得已生效的設定。內建和第三方鍵共用 `UIConfigCenter.persist` 的持久化管線及落盤回執。
 - `ThemeService.snapshot()` 與既有主題入口共用 `ThemeManager`。`ThemeService.scope(context, node)` 提供該 UI 樹節點的繼承式 token 分支，`configure` 只修改這個分支。節點關閉後會釋放分支。`LayoutService.styles` 可將既有 `ThemeScope` 的批量 `StyleInvalidation` 接到中央量測、佈局和繪製失效。
 - 配置和狀態交易以各自的基線版本驗證型別、權限、所有權和範圍，再一次發布。過期交易或驗證錯誤保留原版本。監聽器回寫可提交下一版本，通知在當前批次完成後送出，依因果鏈與批次上限診斷 A→B→C→A。更新函式、驗證器與命令準備只能暫存意圖。
 - `UICommandBus` 讓具型別的處理器以呼叫者權限準備命令。提交同時驗證狀態版本、失效旗標與後續工作容量。後續工作有獨立的 `TaskHandle`，可設逾時，須無依賴與替換鍵。副作用執行失敗可從回執查看，已發布的狀態版本繼續有效。 [設定、狀態與命令](configuration.md)

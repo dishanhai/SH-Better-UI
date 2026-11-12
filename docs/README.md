@@ -10,6 +10,7 @@
 - [SH-Better-UI API 总览](API_REFERENCE.md)
 - [按钮与界面切换反馈](attention-feedback.md)
 - [动态主题](DYNAMIC_THEMES.md)
+- [自适应停靠与折叠窗口](ADAPTIVE_DOCK.md)
 - [可选玻璃效果](effects.md)
 - [帧时间轴](FRAME_TIMELINE.md)
 - [可打斷動畫](interruptible-animation.md)
@@ -35,6 +36,15 @@
 - [權限與資源所有權](permissions.md)
 - [中央調度與失效](scheduler.md)
 
+## 第三方声明式页面
+
+- [第三方接入与架构审计](third-party-integration.md)
+- [页面 Schema 与离线验证](page-schema.md)
+- [页面协议](protocol.md) · [权限与安全](security.md)
+- [KubeJS 声明式页面](kubejs-api.md) · [Paper／Spigot Bridge](paper-spigot-bridge.md)
+- [物品与容器](container-integration.md) · [SDK 迁移](sdk-migration.md)
+- [验证记录](third-party-verification.md)
+
 ## 材质目录
 
 - [用目录生成 Liquid Glass 接入补丁](integration-guide.md)
@@ -50,6 +60,18 @@
 - [UMIVP 仓库与材质审计](material-catalog-audit.md)
 - [UMIVP 材质覆盖报告](material-coverage-report.md)
 - [材质预设交换格式](preset-format.md)
+
+## 富文字与行内内容
+
+- [文件、布局、渲染和交互 API](RICH_TEXT_API.md)
+- [Minecraft 编辑器、Web 工作台和发布检查](RICH_TEXT_RELEASE.md)
+- [第三方 SDK 与双端示例工程](RICH_TEXT_SDK.md)
+- [架构和生命周期](RICH_TEXT_ARCHITECTURE.md)
+- [排版、选择和命中](RICH_TEXT_LAYOUT.md)
+- [媒体、缓存和资源权限](RICH_TEXT_MEDIA.md)
+- [扩展 SPI 与 KubeJS](RICH_TEXT_EXTENSION.md)
+- [服务端权威同步](RICH_TEXT_NETWORK.md)
+- [阶段进度](RICH_TEXT_PROGRESS.md) · [验证记录和基准](RICH_TEXT_TESTING.md)
 
 ## 空间 UI
 

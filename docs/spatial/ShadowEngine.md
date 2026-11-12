@@ -17,4 +17,21 @@ field.shadows(List.of(new SpatialStyle.Shadow(SpatialStyle.ShadowType.INNER,
         0, 2, 3, 0, .55, 0xff090e19, true)));
 ```
 
-复杂路径、复合形状和蒙版纹理当前由能力查询报告为 `UNSUPPORTED`。
+## 自定义阴影轮廓
+
+`SpatialUI.capability(SpatialUI.Capability.ARBITRARY_PATH_SHADOWS)` 可查询原生路径阴影。关闭 Spatial 或阴影设置时返回 `DISABLED`，所需着色器不可用时返回 `DEGRADED`。降级时保留节点表面并跳过路径阴影。
+
+```java
+var outline = List.of(
+        new Geometry2.Point<Geometry2.Local>(0, 0),
+        new Geometry2.Point<Geometry2.Local>(52, 0),
+        new Geometry2.Point<Geometry2.Local>(30, 18),
+        new Geometry2.Point<Geometry2.Local>(52, 36),
+        new Geometry2.Point<Geometry2.Local>(0, 36));
+node.shadowPath(new SpatialGeometry.ShadowPath(List.of(outline)));
+node.elevation(SpatialStyle.Elevation.RAISED);
+```
+
+轮廓使用节点局部 GUI 坐标，自动连接首尾顶点。每个路径合计最多 64 条边，坐标范围为 ±32768，以单精度处理。允许凹轮廓、分离区域和嵌套孔洞，填充采用奇偶规则。每个轮廓至少有三个顶点，相邻边应形成转角，轮廓边界不能相交或接触。曲线由调用方展平为折线。
+
+路径随节点变换，适用于主题阴影和显式阴影层。内阴影和 `ShadowClip.NODE` 以路径轮廓为遮罩。其他裁剪策略仍遵循场景的父级和视口边界。节点表面、命中测试和子节点裁剪继续使用节点形状。传入 `null` 恢复默认阴影轮廓。

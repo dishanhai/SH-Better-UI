@@ -9,6 +9,8 @@
 
 需要发现模块与能力、调度作用域任务或挂载 Screen 时，可以从 `UnifiedUI.get()` 取得中央引擎。参阅 [公共 API](public-api.md) 和 [迁移指南](migration-guide.md)。
 
+`UIApis.COLLAPSE`、`UIApis.WINDOWS` 和 `UIApis.DOCK` 提供受作用域管理的折叠动画、迷你窗口与停靠布局。通过 `/shbetterdock` 可打开系统监控示例。参阅 [自适应停靠与折叠窗口](ADAPTIVE_DOCK.md)。
+
 **工作区新增（1.0.4）**：`GlassTheme.AURORA`、`AMETHYST`、`ROSE`、`EMBER` 是完整的染色玻璃配色，消费端可直接使用或通过受保护复制构造保留全部结构色。`GlassColors.tintedDark(int accent, int surface)` 接受 RGB／ARGB 的颜色值，生成深色底板、按钮、行、边框及文字色；交易成功和失败语义色保持一致。四套配色沿用 `clearGlass` 参数组，局部覆写仍通过 `ThemeEffects` 作用域提供，不读取消费方配置。
 
 **工作区新增** `com.dishanhai.sh_better_ui.client.api.ShBetterUiApi` 是 Forge 与 NeoForge 的共同入口。每个分组是无状态单例，工厂返回现有组件类型。界面持有自己的控件、动画和手势状态，并按下文对应的绘制、输入与释放约定调用。[统一入口源码](../src/main/java/com/dishanhai/sh_better_ui/client/api/ShBetterUiApi.java)
@@ -20,6 +22,7 @@
 | `backgrounds()` | 全页背景目录、参数注册及页面实例。与控制面板的自定义效果预览共用。 |
 | `controls()` | 按钮、滑块、开关、分区、详情、状态、骨架与进度 |
 | `interactions()` | 覆层、全屏预览、确认、抽屉、刷新、滑动确认、鼠标快照、指针捕获、视口、历史和轻提示 |
+| `links()`、`markdown()` | 打开外部网页和将 Markdown 转成原生 `Component` |
 | `search()` | `index()`、`field()`、`jeiPanel()`，以及 JEI 查询、打开和侧栏避让 |
 | `ingredients()` | 素材来源、筛选、物品包装、选取草稿与 `openPicker()` |
 | `materials()` | `themeChoices()`、`findTheme(id)`，以及玻璃、Slate、液态玻璃、槽位和圆角绘制 |
@@ -30,6 +33,14 @@
 | `audio()` | `systemOutput()` 显式开启 Windows 输出回环，`analyzer()` 独立分析 PCM。`motion().musicMotion()` 映射单个频段，`motion().musicRhythm()` 提供多层律动帧，可配合 `MusicHud` 绘制像素面板，或配合 `MusicIsland` 绘制可展开的音乐胶囊。见 [音乐律动](music-rhythm.md) |
 | `lyrics()` | `localFeed()`、`saltPlayer()`、`renderer()`、`draw()`、`settings()` 与 `position()`。支持逐字同步、译文与多行排版。见 [同步歌词](lyrics.md) |
 | `platform()` | 当前加载器的 `fluid()`、`renderTooltip()` 与可选 `ldlib()` 桥接 |
+
+### 外部链接与 Markdown
+
+`ShBetterUiApi.links().open(owner, url)` 从当前客户端画面的按钮或其他用户操作打开 HTTP(S) 链接，遵循 Minecraft 聊天设置中的网页链接和确认选项。返回值表示请求是否被接受。父页会重建控件时，用 `open(owner, url, () -> linkButton)` 在关闭确认框后恢复焦点。
+
+`ShBetterUiApi.markdown().parse(source)` 返回可绘制的原生 `MutableComponent`，适合说明与更新日志。支持 `#` 标题、列表、引用、粗体、斜体、删除线、行内代码、围栏代码块、行内链接与尖括号包裹的 HTTP(S) 链接。标题用粗体显示，图片显示替代文字，输入上限为 65,536 个 UTF-16 代码单元。行内格式支持交替使用分隔符的嵌套，例如 `**粗体 _斜体_**`。
+
+自绘界面用字体布局取得点击位置对应的 `Style`，再交给 `Screen.handleComponentClicked(style)`。普通按钮可直接调用 `links().open(owner, url)`。
 
 ### 共享主题与背景（1.0.5）
 
@@ -174,6 +185,172 @@ KubeJS 客户端脚本使用自动绑定的 `SHUI`，提供同一套分组和构
 | 渐进模糊、贴图与径向渐变 | `VisualReveal.blurRegion()/drawTexture()/drawRadialGradient()` 与 `RevealProfile` 控制模糊半径和清晰区间。已画区域可用 `GlassBlur.revealRegion()`，贴图可独立绘制渐进清晰效果。 |
 
 [玻璃 Java 接口](../src/main/java/com/dishanhai/sh_better_ui/client/glass/) · [玻璃 Kotlin 接口](../src/main/kotlin/com/dishanhai/sh_better_ui/client/glass/) · [模糊源码](../src/main/java/com/dishanhai/sh_better_ui/client/blur/) · [可选效果与渐进模糊](effects.md)
+
+## Visual Layout & Render Composition
+
+通过 `UnifiedUI.get().require(UIApis.LAYOUT).bindVisual(module, scope, layout, sampler)` 将一个 `AlignmentLayout` 绑定到当前模块拥有的 Screen 树或组件范围。首次渲染前在原生 `Screen.init()` 挂载，调整尺寸时复用同一个开放范围，移除再打开时重新挂载。提前释放可调用 `binding.close()`。范围或 Screen 关闭会自动失效。
+
+### 帧与输入
+
+- 在活动 `Screen.render` 或 `UiScreenBuilder.onRender` 中调用 `binding.renderScreen(frame, pass -> ...)`。先画供 backdrop 取样的背景。每次 Screen 挂载只允许一个活动绑定，每帧只允许进入一次，重复或递归进入会报错。所有入口在客户端线程使用。
+- 帧首沿用 Kernel 帧时钟。绑定先调用一次 `sampler`，然后增量求解和发布。`FrameTime` 提供 `frameId()`、`nowMs()` 和 `reducedMotion()`。可以在同一次采样更新位置、尺寸、透明度或姿态，也可以把同一个进度用于 `RevealProfile`。需要主题驱动的重新量测时继续使用 `LayoutService.bind/styles`。
+- `pass.snapshot()` 和 `visual.view()` 共用已发布的几何。输入通过 `binding.currentSnapshot()` 或 `binding.hitTest(node, guiX, guiY)` 查询最近的呈现。首次绘制前没有命中。输入事件可以改变动画目标或标脏，下一次 Screen 绘制会发布新几何。
+- `FrameViewSnapshot` 提供帧、物理 Screen 挂载世代、范围 ID 与范围世代。旧快照可用于诊断，`isCurrent()` 表示仍是输入所用的快照，`isValid()` 表示其绑定仍在同一活动挂载。`LayoutPass`、`VisualNodePass` 与前景 `graphics()` 只在各自回调期间使用。
+- 普通原生控件仍由 Screen 注册、导航和旁白。对未裁剪的整数平移控件，可在本帧画控件之前调用 `snapshot.placeWidget(node, widget)`。该适配要求原尺寸交互矩形完整落在视口。对旋转、缩放或部分裁剪的自绘内容，绘制用 `visual.draw`，鼠标判断用快照的 `hitTest`。
+
+### 坐标与效果
+
+`View.renderBounds()` 是渲染主体的屏幕 GUI 包围盒。`View.visualBounds()` 是光学内容与效果外扩的屏幕 GUI 包围盒，沿用对齐布局的继承裁剪。`view.transform()` 把节点局部 GUI 坐标映射到屏幕。`visual.draw`、贴图、渐变和前景自动应用一次局部变换。`visual.project(RENDER / VISUAL)` 使用已经位于屏幕空间的边界，计算可见 GUI 区域与物理像素；按最小边向下、最大边向上取整，然后限制在实际主渲染目标内。
+
+| 调用 | 阶段 | 参数与结果 |
+| --- | --- | --- |
+| `visual.backdrop([boundsMode,] strength, style, radiusGui, cornerGui)` | 即时 | 默认使用渲染主体。强度为 0–1，半径和圆角为节点局部 GUI 单位。模糊停用或不可用时，宿主可继续绘制实色圆角底板。 |
+| `visual.revealRegion([boundsMode,] profile, direction)` | 即时 | 取样已画区域，继承原始矩形内的过渡位置。用原矩形投影计算过渡，裁剪只限制写入。 |
+| `visual.revealTexture(id, localRect, profile, direction)` | 即时 | 局部 GUI 矩形，可旋转、缩放与裁剪。按当前资源管理器解析 RGBA；禁用模糊或 shader 缺席时返回 `FALLBACK` 并画原图。 |
+| `visual.radialGradient(u, v, radius, innerArgb, outerArgb)` | 即时 | 中心 UV 左上为 (0,0)，右下为 (1,1)。半径以中心到最远角的局部距离为 1，按局部 GUI 距离插值 ARGB，可与模糊分别启用。shader 缺席返回 `UNAVAILABLE`。 |
+| `visual.requestBlur([boundsMode,] strength, radiusPixels, style)` | 登记到本帧 Screen Post | 半径为物理像素，强度 0–1。默认 `RENDER`，可选 `VISUAL`。只接受正向轴对齐变换。 |
+| `visual.foreground(z, draw)` | Screen Post 模糊后 | 按 Z 升序，同 Z 保持登记顺序。回调得到本帧 GUI 绘制上下文、原快照、局部坐标、裁剪和偏好。模糊停用或无请求时照常执行。 |
+
+`BlurApi.requestManagedPixels(graphics, area, strength, radiusPixels, style)` 是独立低层入口。`PixelRect` 用 framebuffer 左上原点、整数边界和物理像素。用现有的 `BlurApi.allowScreen(predicate)` 在客户端初始化登记可后处理的 Screen。一个 Screen 帧只有一个受管主请求，重复返回 `CONFLICT`。旧主请求有优先权，先存在时受管请求返回冲突，后来登记时会在消费前取得主槽。`ACCEPTED` 表示该帧登记成功，后处理仍受活动范围、目标与 shader 可用性约束。旧附加请求、点击波与 `deferTopLayer` 仍由原消费路径执行。
+
+空区域返回 `EMPTY_REGION`，裁剪后不可见返回 `FULLY_CLIPPED`。旋转、倾斜、翻转等不受矩形 framebuffer 路径支持的姿态返回 `UNSUPPORTED_TRANSFORM`。非法强度、半径、尺寸或坐标以参数异常报告。HUD 或 Screen Post 消费点之后的低层受管请求返回 `OUTSIDE_SCREEN_PHASE`。HUD 可用独立的即时 backdrop、`VisualReveal.drawTextureChecked`、`drawRadialGradient` 与原生普通绘制。
+
+Forge 1.20.1 和 NeoForge 1.21.1 共用这些契约。实际顺序为背景、Screen 内即时效果和普通内容、Screen Post 高斯模糊、旧 `deferTopLayer`、受管清晰前景、原有库叠层和 Kernel `RENDER`。原版 tooltip 的位置取决于宿主何时绘制，要求压在受管模糊上方的自绘标签应登记为前景。
+
+### 完整示例
+
+进入开发客户端世界后运行 `/shbettervisual`。原生按钮与点击面板都能重定向动画，键盘可用按钮和返回键。以下源码由双端主构建编译。 [VisualCompositionScreen.java](../src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/VisualCompositionScreen.java)
+
+<!-- visual-composition-example:start -->
+```java
+// Author: dishanhai
+package com.dishanhai.sh_better_ui.client.gui.panel;
+
+import com.dishanhai.sh_better_ui.client.UiFrameScheduler;
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.api.UiFrame;
+import com.dishanhai.sh_better_ui.client.blur.GaussBlur.RevealDirection;
+import com.dishanhai.sh_better_ui.client.blur.GlassStyle;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentFrame;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Transform;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentLayout;
+import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
+import com.dishanhai.sh_better_ui.client.gui.scaled.RevealProfile;
+import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
+import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiMouseState;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.visual.VisualLayoutBinding;
+import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
+import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
+import com.dishanhai.sh_better_ui.kernel.api.UIApis;
+import com.dishanhai.sh_better_ui.kernel.api.UiId;
+import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+
+import static com.dishanhai.sh_better_ui.client.visual.VisualEffectResult.DRAWN;
+
+/** The complete public API example linked from the API reference. */
+public final class VisualCompositionScreen extends Screen {
+    private static final ResourceLocation ICON = ResourceLocation.tryParse(
+            "sh_better_ui:textures/gui/display/bubble.png");
+    private static final int PANEL_WIDTH = 104;
+    private static final int PANEL_HEIGHT = 64;
+
+    static { ShBetterUiApi.blur().allowScreen(VisualCompositionScreen.class::isInstance); }
+
+    private final ModuleContext module;
+    private final Screen parent;
+    private ScopeHandle tree;
+    private VisualLayoutBinding binding;
+    private AlignmentLayout.Node panel;
+    private InterruptibleAnimation motion;
+    private RevealProfile reveal;
+
+    public VisualCompositionScreen(ModuleContext module, Screen parent) {
+        super(Component.translatable("sh_better_ui.visual_composition.title"));
+        this.module = module;
+        this.parent = parent;
+    }
+
+    @Override protected void init() {
+        if (tree == null || !tree.isOpen()) {
+            var engine = module.engine();
+            tree = engine.require(UIApis.SCREENS).mount(module, this, UiId.parse("sh_better_ui:visual_example"));
+            var layout = ShBetterUiApi.layout().create(viewport());
+            panel = layout.node("panel", geometry(0));
+            motion = new InterruptibleAnimation(Spring.PANEL, 0);
+            tree.track(motion);
+            binding = engine.require(UIApis.LAYOUT).bindVisual(module, tree, layout, time -> {
+                double progress = Math.max(0, Math.min(1, motion.sample(time.nowMs(), time.reducedMotion())));
+                panel.update(geometry(progress));
+                reveal = new RevealProfile((float) (12 * (1 - progress)), 0.15f, 0.85f);
+            });
+        }
+        addRenderableWidget(Button.builder(Component.translatable("sh_better_ui.visual_composition.move"),
+                button -> toggle()).bounds(8, height - 26, 112, 20).build());
+        addRenderableWidget(Button.builder(Component.translatable("gui.back"),
+                button -> onClose()).bounds(width - 78, height - 26, 70, 20).build());
+    }
+
+    private Bounds viewport() { return new Bounds(0, 0, width, Math.max(0, height - 30)); }
+
+    private AlignmentFrame geometry(double progress) {
+        double maxScale = Math.max(0.1, Math.min(1.4, Math.min((width - 16.0) / PANEL_WIDTH,
+                (height - 52.0) / PANEL_HEIGHT)));
+        double scale = maxScale * (0.66 + 0.34 * progress);
+        double x = 8 + Math.max(0, width - 16 - PANEL_WIDTH * maxScale) * progress;
+        double y = 18 + Math.max(0, height - 58 - PANEL_HEIGHT * maxScale) * 0.5 * progress;
+        return AlignmentFrame.box(new Rect(x, y, PANEL_WIDTH, PANEL_HEIGHT))
+                .withPose(Transform.scale(scale, scale));
+    }
+
+    private void toggle() {
+        motion.animateTo(motion.target() > 0.5f ? 0f : 1f, UiFrameScheduler.nowMs());
+    }
+
+    @Override public boolean mouseClicked(double x, double y, int button) {
+        if (super.mouseClicked(x, y, button)) return true;
+        if (button != 0 || binding == null || !binding.hitTest(panel, x, y)) return false;
+        toggle();
+        return true;
+    }
+
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {}
+
+    @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
+        graphics.fillGradient(0, 0, width, height, 0xff152c3a, 0xff392445);
+        for (int x = 0; x < width; x += 12) graphics.fill(x, 0, x + 1, height, 0x3375c2eb);
+        var frame = new UiFrame(graphics, viewport(), UiMouseState.read(), UiPreferences.configured(),
+                UiFrameScheduler.nowMs(), partialTick);
+        binding.renderScreen(frame, pass -> pass.at(panel, visual -> {
+            boolean sampled = visual.backdrop(0.8f, GlassStyle.OVERLAY, 7, 10) == DRAWN;
+            boolean hovered = pass.snapshot().hitTest(panel, mouseX, mouseY);
+            visual.draw(local -> RoundedCorners.draw(local, 0, 0, PANEL_WIDTH, PANEL_HEIGHT, 10, 1, 0x508ed6f0,
+                    sampled ? (hovered ? 0x80719dbd : 0x704b728f) : 0xe0314c65));
+            visual.radialGradient(0.68f, 0.28f, 0.85f, 0x5583d9f0, 0x00457692);
+            visual.revealTexture(ICON, new Rect(35, 8, 34, 34), reveal, RevealDirection.LEFT_TO_RIGHT);
+            visual.requestBlur(0.48f, 3f, GlassStyle.NONE);
+            visual.foreground(0, front -> front.graphics().drawCenteredString(font, title, 52, 49, 0xfff4fbff));
+        }));
+        super.render(graphics, mouseX, mouseY, partialTick);
+    }
+
+    @Override public void onClose() { Minecraft.getInstance().setScreen(parent); }
+
+    @Override public void removed() {
+        if (tree != null) tree.close();
+        super.removed();
+    }
+}
+```
+<!-- visual-composition-example:end -->
 
 ## 原生控件与界面交互
 
@@ -543,3 +720,9 @@ shapes.draw(graphics, new Bounds(16, 16, 240, 120), ShBetterUiApi.interactions()
 ## Spatial UI
 
 `SpatialUI.KEY` 通过 Unified UI Kernel 提供作用域场景、节点高度、SDF 阴影、动态灯光、玻璃材质、动画和几何命中。用 `RenderService.Context.spatial(scene)` 在已挂载的屏幕或 HUD 绘制。详见 [SpatialUI API](spatial/SpatialAPI.md) 与 [架构与兼容性](spatial/Architecture.md)。
+
+## 富文本与行内内容
+
+游戏内执行 `/shbetterricheditor` 可编辑被动 v1 文件，提供节点与属性、撤销重做、保存、预设、媒体时间轴、命中叠层和 JSON／Java 导出。Web 工作台可交换同一格式。独立第三方工程展示文件与可信原生行内节点的组合。 [编辑器和发布检查](RICH_TEXT_RELEASE.md) · [双端 SDK](RICH_TEXT_SDK.md)
+
+`RichDocument` 可混排样式文本、资源包图像、原生游戏物件、向量图标、行内控件和自定义节点。可通过 Builder、被动标记、JSON／Codec 或 Minecraft Component 组装。`RichTextView` 接入现有 `LayoutService.bindVisual`，以同一份呈现快照绘制、选取与查询命中。Forge 和 NeoForge 可在游戏中执行 `/shbetterrichtext` 试用交互和视觉效果，或执行 `/shbetterrichsync` 试用异步媒体与整合服务器的权威数值。 [接入 API](RICH_TEXT_API.md) · [排版](RICH_TEXT_LAYOUT.md) · [资源与重载](RICH_TEXT_MEDIA.md) · [扩展](RICH_TEXT_EXTENSION.md) · [服务器同步](RICH_TEXT_NETWORK.md) · [验证](RICH_TEXT_TESTING.md) · [阶段进度](RICH_TEXT_PROGRESS.md)

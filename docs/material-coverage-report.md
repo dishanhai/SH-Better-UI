@@ -5,7 +5,7 @@
 
 ## 已收录
 
-表中 ID 省略 `sh_better_ui:`。共 42 条，含 24 个具有独立 `PreviewSpec` 路由的条目。材质组合包含的通道和组件在 `renderPassDependencies` 标记。
+表中 ID 省略 `sh_better_ui:`。51 条记录均有原生 `PreviewSpec` 路由，共用 50 个场景。材质组合包含的通道和组件在 `renderPassDependencies` 标记。
 
 | 范围 | 目录 ID |
 | --- | --- |
@@ -16,27 +16,29 @@
 | 局部反馈与页面过渡 | `click_ripple`、`flow_border`、`breathing_glow`、`attention_indicator`、`page_slide`、`recipe_transition`、`capsule_reveal`、`screen_crossfade` |
 | 加载 | `loading_spinner`、`loading_progress`、`loading_skeleton` |
 | 图标与文字 | `icon_shader`、`icon_motion`、`formatted_text_effects`、`glass_text_glow`、`floating_lyrics` |
+| 音乐响应与交互 | `music_reactive`、`interruptible_animation`、`button_feedback`、`toast_motion`、`swipe_toast`、`elastic_collision`、`bottom_sheet`、`pull_refresh`、`glass_tooltip` |
 
-## 缺少独立原生预览
+## 新增的原生预览
 
-| 当前入口 | 目录 ID 或差距 |
+| 预览类型 | 目录 ID |
 | --- | --- |
-| 效果编辑器或设置内演示 | `backdrop_blur`、`breathing_glow`、`capsule_reveal`、`classic_glass_themes`、`click_ripple`、`flow_border`、`radial_gradient`、`screen_crossfade`。`screen_crossfade` 示例只演示淡出样式。 |
-| 历史原生测试场景 | `spatial_surface`、`spatial_shadow`、`spatial_lighting`。空间测试与 Shader 能力检测可复用，需登记相应 `PreviewSpec`。 |
-| 示例、调用点或历史静态资源 | `attention_indicator`、`directional_blur`、`refraction_wave`、`formatted_text_effects`、`glass_panel_shadow`、`glass_text_glow`、`icon_shader`。 |
-| 部分预设通过现有画廊展示 | `icon_motion` 的 `status_icon` 展示 `SPIN`。`slate_surface` 默认路由 `gradient_card`，`dark_button` 仍是旧画廊条目及搜索别名。`liquid_glass_surface` 的 `liquid_button` 展示按钮。`visual_reveal` 使用 RGBA 贴图路径，区域后处理仍需独立场景。 |
+| 独立路由与外观草稿 | `breathing_glow`、`capsule_reveal`、`click_ripple`、`flow_border` |
+| 模糊、合成和过渡 | `backdrop_blur`、`directional_blur`、`refraction_wave`、`radial_gradient`、`screen_crossfade` |
+| 材质、反馈、图标和文字 | `attention_indicator`、`classic_glass_themes`、`formatted_text_effects`、`glass_panel_shadow`、`glass_text_glow`、`icon_shader` |
+| 空间 | `spatial_surface`、`spatial_shadow`、`spatial_lighting` |
+| 手势 | `elastic_collision`、`pull_refresh` |
 
-`liquid_glass` 走新增受管 Glass 场景。旧 `liquid_button` 使用旧版控件材质，`clear_glass` 与 `frosted_glass` 走高斯样式和各自的画廊预览。`AppearanceGalleryPreview` 为 `ascii_field`、`shape_waves`、`visual_reveal` 提供同名的独立 `PreviewSpec`，`effect_appearance` 作为通用设置入口。仅可从效果编辑器打开的局部示例保留空 `nativePreviewId`。
+`swipe_toast` 与 `toast_motion` 共用 `toast` 场景，可在其中打开浮动或内嵌滑动通知。`visual_reveal` 并排展示区域模糊与贴图递进，`icon_motion` 并排展示旋转、悬浮与弹跳。代码雨／ASCII 的效果链、激光流的贴图显现及浮动歌词的逐字效果，可通过父条目的别名、参数说明和公开符号查询。图库仍可从 `effect_appearance` 打开通用设置预览。
 
-## 缺少 Web 适配
+## WebGL 2 适配
 
-受管 `liquid_glass` 提供 `web-approximation`，图形行为以现有受管实现为参照，真实像素对照需要固定场景在各端执行。其余 41 条标为 `native-only`，可查询兼容性、源文件、参数和原生预览信息。Web 版本状态由源条目的 `webCompatibility` 与 `webRendererId` 确定。
+51 条内建材质均标为 `web-approximation`。`liquid_glass` 沿用共享光学着色器及其原生参考帧，其余 50 条由按材质 ID 选择的 WebGL 2 场景绘制。游戏专有的屏幕捕获、音频、输入和字体由网页场景提供对应的演示数据。各项真实像素对照和平台差异仍需单独验证。 [Web 渲染指南](web-rendering-guide.md)
 
 ## 待核实及未独立收录
 
 | 状态 | 范围与证据 |
 | --- | --- |
-| 待核实 | 独立歌词 HUD 特效对外契约、字体/纹理生成的一致性，以及 Linux、macOS 和更多 GPU 的原生视觉能力。`FloatingLyricRenderer` 整体已有公开入口。 |
+| 待核实 | 字体/纹理生成的一致性，以及 Linux、macOS 和更多 GPU 的原生视觉能力。 |
 | 缺少公开 API | 受管 Glass 的内部捕获、着色程序对象、空间网格和 GPU 查询、图案波的 field FBO、视觉递进的横向中间 pass、电光场纹理及歌词 SDF pass。它们按所属效果保留渲染依赖。 |
 | 不适合独立复用 | 画廊专用诊断、配置和编辑器页面，以及按钮、步骤器、局部模态、底部弹层、音乐 HUD、业务实时表面等完整控件和场景。可单独绘制的阴影、动效、文字、玻璃和图标已按公开入口收录。 |
 | 已废弃 | 本次源条目均无已核实的弃用标记。旧玻璃与受管玻璃同时存在，兼容入口继续使用自己的材质 ID。 |

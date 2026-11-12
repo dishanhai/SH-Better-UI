@@ -158,6 +158,17 @@ button.setMessage(UiTextEffects.apply(Component.translatable("your_mod.status.ac
 
 客户端 KubeJS 可用 `SHUI.text().fcs("~", text, "rainbow")` 构造文本，或用 `SHUI.text().kjsRegister("my_palette", [0x65d9bf, 0x7ac9f5], false, "CYCLE")` 注册当前脚本世代的色板。脚本重载会释放这些注册。未加载 `gt_shanhai` 时，客户端同时提供 `ShanhaiText` 和 `ShanhaiStyleRegistry` 兼容绑定。可迁移的构造入口包括 `fcs`、`styled`、`body`、`format`、`inline`、`fromLegacy` 和元色板快捷方法。
 
+## 视觉组合的即时效果与帧末效果
+
+- Backdrop 在调用时采样已绘制的主目标。沿用 GlassBlur 的区域取样和暂存目标，避免直接读写同一纹理。目标跟随实际 framebuffer 尺寸，采样内容随绘制阶段刷新。shader 无法绘制时，节点结果让调用方选择实色底板。
+- Screen Post 消费当前帧的一个受管主请求。旧主请求优先，旧附加请求、点击波和延迟顶层仍走 GaussBlur。消费后按 Z 和登记顺序画清晰前景，模糊禁用、无请求或跳过时也执行。
+- 已绘区域的 Reveal 从原始矩形计算过渡，再按继承裁剪限制输出。独立贴图的采样在预乘 alpha 下滤波，合成前转回 straight alpha。贴图资源每次从当前纹理管理器解析，暂存目标随 shader 重载释放。shader 不可用或偏好禁用模糊时画原图。
+- 径向渐变使用局部 UV 和 GUI 距离。改变姿态或裁剪时保留中心和半径定义，模糊偏好不影响渐变。shader 不可用时结果为 `UNAVAILABLE`。
+
+开发客户端以 GUI Scale 2 跑同一烟测场景。每端采集 60 帧，从进入绑定到最后一个前景回调，包含布局发布、即时效果、帧末模糊与前景的 CPU 提交。Forge P50/P95 为 2.34/3.54 ms，NeoForge 为 2.28/3.51 ms。更大场景的 GPU 执行时间和分配量留在 TODO。
+
+[效果时序、结果和用法](API_REFERENCE.md#visual-layout--render-composition)
+
 ## 验证边界
 
 2026-11-07 主 agent 统一执行完整 `build --offline --no-daemon --console=plain` 成功；全库 107 项测试通过，其中新效果 17 项。测试覆盖时间轴、点击边界、相对原点、重复触发、减少动效、周期计算，以及同包 `Fill` 记录生产算法的绘制几何：四角只覆盖一次、边框完整、亮纹裁切、外光不进内容、调用数量上限。

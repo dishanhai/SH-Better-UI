@@ -54,6 +54,21 @@ global.openShuiWaves = () => {
 
 扩展也可以返回脚本对象，将多个独立 API 组合为自己的业务能力。工厂中的 `api.extension('other_mod:dependency')` 按需解析依赖，循环依赖会报出路径。ID 必须包含命名空间，同一时间的重复注册会报错。工厂失败后，下次访问会重新尝试。
 
+## 被动富文本预览
+
+从客户端按键或事件回调调用 `global.openRichText()`。此示例沿用 Minecraft 的语言键和钻石贴图。预览复用原生富文本界面，可滚动并返回原页面。
+
+```javascript
+global.openRichText = () => {
+  const rich = SHUI.richText()
+  const document = rich.markup('kubejs:diamond_preview',
+    '[tr=item.minecraft.diamond;Diamond] [img=minecraft:textures/item/diamond.png;16;16;]')
+  rich.open(document)
+}
+```
+
+`rich.encode(document)` 导出被动 JSON，`rich.json(json)` 读取同一格式。脚本门面采用默认被动解析策略，接受文字、样式、翻译和本地 PNG。加载器仍沿用上面的可选插件发现方式。Java 扩充规则见 [富文字擴充](RICH_TEXT_EXTENSION.md)。
+
 ## 常用入口
 
 | 调用 | 用途 |

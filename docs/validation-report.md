@@ -3,6 +3,20 @@
 
 验证在 Windows x64、Java 17/21、RTX 4060 Laptop GPU 和 Chromium 157 下进行。Forge 与 NeoForge 的客户端用隔离游戏目录。网页分别在 ANGLE SwiftShader 与 ANGLE D3D11 两条路径运行。
 
+## 目录扩充验证
+
+扩充验证时的目录包含 51 条记录，48 条有原生路由。Forge 1.20.1 与 NeoForge 1.21.1 均完成 `test kernelTest build`，发行 JAR 各核对 185 个公开符号和打包目录字节。目录及接入测试 14 项通过。
+
+两端隔离开发客户端用 `-PkernelSmokeLabel=effect-catalog-final` 逐项打开并绘制原先缺失的 18 个原生预览，检查 Esc 返回、交叉淡出的实际换页与焦点恢复、模糊可用性和正常退出。每端保留六张模糊与空间场景截图。 [Forge 场景清单](../build/kernel-verification/client-forge-effect-catalog-final/native-effect-previews.txt) · [NeoForge 场景清单](../build/kernel-verification/client-neoforge-effect-catalog-final/native-effect-previews.txt)
+
+后续的 `-PkernelSmokeMaterialEffects -PkernelSmokeLabel=uuk-gallery-effects` 在 Forge Java 17 和 NeoForge Java 21 上核对全部 51 个材质路由，打开并绘制 23 项预览，验证交叉淡出的返回焦点、弹性碰撞和下拉刷新的键盘入口及退出清理。两端都留存了新增场景截图。全量 Forge 内核烟测停在 Liquid Glass 既有的高对比像素断言，以上数据来自独立材质烟测。 [Forge 场景清单](../build/kernel-verification/client-forge-uuk-gallery-effects/native-effect-previews.txt) · [NeoForge 场景清单](../build/kernel-verification/client-neoforge-uuk-gallery-effects/native-effect-previews.txt)
+
+`npm --prefix web run test:material-effects-browser` 在 Chromium ANGLE SwiftShader 和 RTX 4060 D3D11 上分别验证 50 项新增 WebGL 场景。50 项各有独立的确定性画面，42 项重放时产生可测的帧差，39 项验证参数响应及 A/B 并排和分界线像素，4 项验证直接输入。受管 Liquid Glass 的独立浏览器回归也在两个后端通过。新增场景的跨端像素基线与更多 GPU 仍待验收。 [硬件运行日志](../build/uuk-effect-coverage/web-effects-hardware.log)
+
+Forge 与 NeoForge 均通过 `kernelTest test build`，各有 330 项内核测试，常规测试分别为 966 和 968 项。两个 1.0.7 发行 JAR 各核对 187 个公开符号及目录快照。目录与接入测试 14 项，Web 单测 8 项均通过。 [Forge 构建](../build/uuk-effect-coverage/forge-build-final.log) · [NeoForge 构建](../build/uuk-effect-coverage/neo-build-final.log)
+
+以下阶段记录对应目录初次交付时的 42 条快照。
+
 ## 阶段记录
 
 | 阶段 | 已完成与文件 | 验证 | 限制 |

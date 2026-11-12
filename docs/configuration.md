@@ -51,11 +51,15 @@ final class PageSettings {
 
 - `beginTransaction()` 擷取基線。以 `set`、`clear`、`load` 暫存同一批修改，再呼叫 `commit()`。型別、允許層、權限、作用域與基線版本都會驗證。失敗保留先前發布值，過期基線會拋出 `ConcurrentModificationException`。重新讀取後建立新交易。
 - `observe(scope, key, listener)` 以該作用域的有效值發出 `ValueChange<T>`。多次暫存同一鍵以最終有效值通知。關閉觀察的作用域或模組會移除訂閱。監聽器可排隊或提交下一批，內核診斷循環因果並限制連續通知批次。快照只讀，保留取得時的版本和值。
-- `ConfigTransaction.load(...)` 在 `USER_GLOBAL` 層載入 `Persistence.USER_GLOBAL` 的鍵，逐版應用同型別遷移再驗證。SH-Better-UI 的 `UIApis.CLIENT_SETTINGS` 繼續鏡像 Loader 的客戶端 TOML 快照，既有設定保存仍透過 `ShBetterUiApi.settings()`。資源包主題沿用主題解析與資源重載。 [原有設定入口](API_REFERENCE.md#全库客户端主题) · [平台相容性](platform-compatibility.md)
+- `ConfigTransaction.load(...)` 在 `USER_GLOBAL` 層載入 `Persistence.USER_GLOBAL` 的鍵，逐版應用同型別遷移再驗證。控制面板與 `ShBetterUiApi.settings()` 讀寫同一個 `UIApis.CLIENT_SETTINGS`。具備 `MODIFY_GLOBAL_CONFIG` 的模組可透過 User Global 交易更新它。資源包主題沿用主題解析與資源重載。 [設定入口](API_REFERENCE.md#全库客户端主题) · [平台相容性](platform-compatibility.md)
 
 ### 共用持久化
 
 兩端原生客戶端將儲存目錄接到遊戲實例的 `config/sh_better_ui/modules/`。第三方在 `start` 中先 `define(key)`，再呼叫 `persist(key, codec)`；鍵必須宣告 `Persistence.USER_GLOBAL` 並允許 `USER_GLOBAL` 層。只允許 schema 擁有模組綁定，回傳的訂閱可停止後續保存，不會刪除磁碟資料。模組停止時自動解除綁定。未配置儲存的獨立核心宿主會明確拒絕綁定。
+
+在主控面板的「顯示偏好」選擇自訂主題，開啟背景分組的設定並按「完成」，即可預覽該全域背景。按「套用」會將背景 ID 與參數寫入同一筆 `UIApis.CLIENT_SETTINGS`。舊設定檔預設使用點陣。高對比模式或背景提供者未載入時，畫面會回到預設背景。
+
+內建的 `CLIENT_SETTINGS` 由 Kernel 保存於 `config/sh_better_ui/modules/sh_better_ui.properties`。啟動時若該鍵尚無持久化值，會從 Loader 客戶端 TOML 匯入。停用 Kernel 時，原有 TOML 入口繼續提供設定和保存。
 
 `ConfigCodec` 提供字串、整數、長整數、浮點數、嚴格布林及 enum 工廠，自訂型別用 `ConfigCodec.of(encode, decode)`。編解碼器與 schema 驗證器一樣須為純函式。讀取時核對儲存型別及版本，先解碼，再逐版遷移和驗證；失敗不發布值，也不覆寫原檔。`STARTUP_ONLY` 的載入仍只能在初始化階段執行。
 

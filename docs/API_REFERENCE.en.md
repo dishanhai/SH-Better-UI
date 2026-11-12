@@ -5,6 +5,8 @@
 
 SH-Better-UI provides native Minecraft controls and rendering helpers through `ShBetterUiApi`, and scoped services through the Unified UI Kernel. Use the widget and material APIs when a screen owns its own state. Use the kernel when a mod needs to discover a provider, coordinate work across services, or cancel work when a screen closes.
 
+Use `UIApis.COLLAPSE`, `UIApis.WINDOWS` and `UIApis.DOCK` for scoped fold animation, mini-windows and dock layout. The `/shbetterdock` client command opens the interactive monitor. [Adaptive Dock API and verification](ADAPTIVE_DOCK.md)
+
 ## Dependencies and mappings
 
 The paths below use the version declared in each platform's `gradle.properties`. The current source tree builds version `1.0.6`. Match your source imports to the JAR you actually compile against.
@@ -24,6 +26,7 @@ Register widgets in `Screen.init()` or a `UiScreenBuilder.onInit` callback. Draw
 | --- | --- |
 | `ShBetterUiApi.screen(...)` | Create a `UiScreen` with native controls, a content viewport, back navigation and focus restoration. Provide `returnFocus(...)` when the parent rebuilds the original control. |
 | `controls()`, `interactions()` | Create buttons, sliders, tabs, steppers, overlays, dialogs, sheets, pull-to-refresh and swipe confirmation. Keep gesture state on the screen or control that owns it. |
+| `links()`, `markdown()` | Open external web links and parse Markdown into native text components. |
 | `search()`, `ingredients()` | Build a `SearchIndex` and `SearchField` for text, IDs and aliases. Query `JeiIntegration.isAvailable()` before calling JEI operations. `automaticCatalog()` falls back to the vanilla registry when JEI is unavailable. |
 | `settings()`, `themes()`, `materials()` | Read client preferences, use registered themes and choose glass, Slate or liquid-glass surfaces. Read a theme by stable ID without changing the global selection. |
 | `backgrounds()` | Register a `BackgroundSpec` under your namespace. Keep one background layer per screen and close it when the screen is removed. Close the registration when your provider unloads. |
@@ -34,6 +37,14 @@ Register widgets in `Screen.init()` or a `UiScreenBuilder.onInit` callback. Draw
 | `platform()` | Access version-specific fluid, tooltip and LDLib adapters. |
 
 [Screen interactions](SCREEN_INTERACTIONS.md) · [Visual alignment](VISUAL_ALIGNMENT.md) · [Dynamic themes](DYNAMIC_THEMES.md) · [Music rhythm](music-rhythm.md) · [Lyrics](lyrics.md) · [KubeJS](KUBEJS.md)
+
+## External links and Markdown
+
+Call `ShBetterUiApi.links().open(owner, url)` from a user action on the active client screen. It accepts HTTP(S) URLs and respects Minecraft's Web Links and link confirmation options. The return value reports whether the request was accepted. Use `open(owner, url, () -> linkButton)` to restore focus when the parent rebuilds its widgets.
+
+`ShBetterUiApi.markdown().parse(source)` returns a native `MutableComponent`. It supports hash headings, lists, quotes, bold, italic, strikethrough, inline and fenced code, inline links and angle-bracket HTTP(S) links. Headings render in bold and images render as alt text. Input is limited to 65,536 UTF-16 code units. Nested inline formatting works with alternating delimiters, such as `**bold _italic_**`.
+
+For custom text rendering, use the font layout to resolve the `Style` at the clicked position and pass it to `Screen.handleComponentClicked(style)`. A button can call `links().open(owner, url)` directly.
 
 ## Get the kernel and look up services
 

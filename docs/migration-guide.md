@@ -11,6 +11,7 @@
 | `ShBetterUiApi.screen()`、原生 `Screen` | 以 `ScreenService.create` 標記 builder 產生的頁面，或直接使用自己模組的 `Screen`。在活動期間 `mount`，原生按鈕、返回和渲染維持現有方法。 |
 | `ShBetterUiApi.motion()` 或既有 Spring、時間軸 | 保留時間軸與組合工具。需要單一屬性寫入者及離頁取消時，以 `AnimationService.bind` 綁定已宣告的屬性。 |
 | 直接量測排列、碰撞和輸入 | 用 `LayoutService.bind`、`CollisionService.mount` 將已有計算接到髒節點，並以 `InputService`、`FocusService` 選擇活動目標。 |
+| 自行維護提示條、停靠、懸停計時和收合動畫 | 透過 `UIApis.WINDOWS` 在原有 Screen 作用域註冊 `MiniWindowSpec`，將既有 ViewModel 接到提示條與內容工廠。受管兄弟節點需要讓出空間時可讀 `LayoutService.dockContentArea`。 [停靠接入](ADAPTIVE_DOCK.md) |
 | `UiApiContext.manage`、`ShBetterUiApi.client().run(...)` | 仍可用於現有 Screen 與擴充。需跨服務協調時，用 `ScopeHandle.track` 及 `UIScheduler.submit` 綁定世代和工作。 |
 | `ShBetterUiApi.extensions()` | 既有上下文工廠繼續用於依頁建立的物件。需要其他模組查詢的具型別服務時，在 `UIModule.register` 登記 `ServiceKey<T>`。 |
 | `SHUI.registerExtension` | 仍由 KubeJS 清理腳本世代。若要讓 Java 模組消費新的服務，另提供 Loader 發現的 Java `UIModule`。 |

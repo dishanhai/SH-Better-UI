@@ -3,6 +3,14 @@
 
 Forge 1.20.1 和 NeoForge 1.21.1 共用 `ShBetterUiApi.layout()`。普通整数行列仍可用 `graphics().align()/row()/column()`。每个 Screen、HUD 或子面板持有自己的 `AlignmentLayout`、约束句柄和可选度量缓存，统一在客户端线程更新和读取。
 
+## 与 UUK 视觉组合共用已发布的 View
+
+用 `LayoutService.bindVisual` 绑定页面的 `AlignmentLayout`。每帧依次采样、失效、增量求解、发布。绘制、效果、前景与输入从 `FrameViewSnapshot` 读取同一份不可变 `View`。布局求解后的改动留给下一次合法发布，输入只查询最后呈现。首次呈现前没有快照。
+
+节点变换把局部 GUI 坐标映射到屏幕 GUI 坐标。`renderBounds()` 与 `visualBounds()` 已在屏幕空间，前者是绘制主体，后者包含光学度量和效果外扩。父级裁剪会进入子节点的 `View.clip()`。组合再与宿主视口和已有 scissor 求交，命中仍使用原有 `View.hitTest`。像素投影根据实际主渲染目标和原版未取整 GUI 投影向外取整。
+
+矩形 framebuffer 效果要求正向轴对齐变换。旋转节点可使用局部坐标下的普通绘制、纹理 Reveal、径向渐变与清晰前景。普通原生控件可用 `snapshot.placeWidget` 应用未裁剪的整数平移。 [完整契约和示例](API_REFERENCE.md#visual-layout--render-composition)
+
 ## 对齐图标
 
 ```java

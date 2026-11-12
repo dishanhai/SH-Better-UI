@@ -16,6 +16,8 @@ SH-Better-UI 是 Forge 1.20.1 与 NeoForge 1.21.1 的 Minecraft 客户端 UI 库
 
 ## 构建
 
+Minecraft 26.1.2 的 NeoForge 移植使用独立构建入口，当前为 [alpha 开发版](#neoforge-2612-alpha)。
+
 使用 `build-local.ps1` 单独构建 Forge，或执行 `簡易構建.bat` 依次构建 Forge 与 NeoForge。两个脚本以 JDK 21 启动 Gradle。Forge 生产类使用 JDK 17 工具链，现有测试使用 JDK 21。Forge 使用 Gradle 8.8，构建包含 JUnit 与 reobfJar。批处理脚本会清理两个平台各自的 `build/libs`，并列出新产物。
 
 首次构建时先移除命令中的 `--offline`，让 Gradle 下载 JEI 编译用 API。缓存建立后可恢复离线构建。
@@ -330,7 +332,7 @@ scrollTarget = target;
 
 `client.gui.scaled.UiDotMatrix` 可用于整页或局部面板。每块背景持有一个实例，在宿主底板之后、前景控件之前调用 `render()`。`DotMatrixProfile.VIOLET` 提供黑底紫色方点和柔光，`setProfile()` 可在运行时换配色或调整动画。
 
-从主控面板进入「开发者面板 → 材质」，首项「点阵动画」默认演示彩虹渐变与随机淡出。基础设置可实时调节色相、效果、浮动概率和数量上限。标题右侧的「动效设置」可调节淡出概率、色板、流向和渐变周期。点击预览区或聚焦后按 Enter 可触发波纹。点「查看 Java 代码」打开抽屉，里面可以查看完整代码和复制示例。
+从主控面板进入「开发配置 → 开发者面板 → 材质图库」，点当前样例标题，在目录选择「点阵动画」。此样例演示彩虹渐变与随机淡出。基础设置可实时调节色相、效果、浮动概率和数量上限。标题右侧的「动效设置」可调节淡出概率、色板、流向和渐变周期。点击预览区或聚焦后按 Enter 可触发波纹。点「查看 Java 代码」打开抽屉，里面可以查看完整代码和复制示例。
 
 ```java
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -435,6 +437,8 @@ var buttons = UiLayout.row(area, List.of(new UiLayout.Size(28, 18), new UiLayout
 Forge 与 NeoForge 的原生 `Screen` 可使用 `client.gui.display` 下的图标与状态面板。状态和翻页图标有 `INFO`、`SUCCESS`、`WARNING`、`ERROR`、`PREVIOUS`、`NEXT`。通用操作图标有 `ADD`、`REMOVE`、`SEARCH`、`SETTINGS`、`REFRESH`、`CLOSE`。可用 `new GraphicIcon(textureId)` 引用自己的 16×16 透明 PNG，白色图形可按 ARGB 着色。给 `UiButton` 设置图标时仍应传入本地化按钮名称，供悬停提示和旁白使用。
 
 内置图标的 64×64 透明副本位于 `sh_better_ui:textures/gui/display_64/<图标名>.png`，与 16×16 原图同名。副本按最近邻放大 4 倍，适用于按 64×64 读取完整纹理的调用方。内置 `GraphicIcon` 常数引用 16×16 原图。
+
+商城界面可用 `PRODUCT_CARD`（商品卡片）、`PRODUCT`（商品）、`PRODUCT_OUTPUT`（商品产出）、`PRODUCT_INPUT`（商品输入）、`MY_PROFILE`（我的）、`MY_FAVORITES`（我的收藏）、`HIDE`（隐藏）、`SELECT_ALL`（全部）和 `SELECT_PARTIAL`（部分）。工具与功能入口可用 `RENDER`（渲染）、`TOOL`（工具）、`TOOLBAR`（工具栏）、`INSTALL`（安装）、`COMPATIBILITY`（兼容）和 `QUANTUM`（量子）。
 
 文件类图标有 `FOLDER`（文件夹）、`FILE`（通用文件）、`DOCUMENT`（文档）、`FILE_EXE`（.exe）、`FILE_MD`（.md）、`FILE_JAVA`（.java）和 `FILE_KT`（.kt）。模组与配方界面可用 `KUBEJS`（按 [KubeJS 项目图标](https://modrinth.com/mod/kubejs)重绘）、`AE2_PATTERN`（AE2 样板）和 `CRAFTING`（合成）。商店入口可用 `SHOP`。
 
@@ -659,6 +663,53 @@ $env:TMP = 'C:\jtmp'
 两平台共用的 shader 将 `WaveOrigin` 声明为 GLSL `vec2`，匹配 Minecraft 的 `float/count=2` 上传。资源测试检查各平台的实际构建输出。
 
 NeoForge 版本提供原生 `Screen` API 和可选的 `compat.ldlib2.LdLib2UiBridge`。使用桥接时安装 LDLib2 `2.2.44`，首次构建时联网解析编译依赖。Forge 1.20.1 的 `compat.ldlib` 套件随 Forge 产物发布。测试与待验项目见 `docs/neoforge-verification.md` 与 `TODO.md`。
+
+## NeoForge 26.x alpha
+
+`neoforge-26.1.2/` 面向 Minecraft 26.1.2、NeoForge 26.1.2.126 和 Kotlin for Forge 6.2.0。`neoforge-26.2/` 面向 Minecraft 26.2、NeoForge 26.2.0.93 和 Kotlin for Forge 6.3.0。用 JDK 25 启动 Gradle。共享内核仍编译为 Java 17 字节码，构建会使用项目原有的 JDK 21 编译工具链和 JDK 17 内核测试运行时。
+
+```bash
+bash neoforge/gradlew -p neoforge-26.1.2 build --no-daemon --console=plain
+bash neoforge/gradlew -p neoforge-26.2 build --no-daemon --console=plain
+```
+
+开发包位于各目标的 `build/libs/`，版本带 `-alpha.8`。两版共享内核、平台视口、素材目录、项目编辑服务、搜索索引、页面模型和 Kotlin DSL。扩展模块须在 `ModuleDescriptor.platforms` 中声明对应的 `NEOFORGE_26_1_2` 或 `NEOFORGE_26_2`。
+
+使用 `ShBetterUiApi.controls()` 创建按钮、开关、整数滑块、步骤器、固定或可滚动分区栏、下划线标签页和展开控件。将原生控件注册到 `Screen`，开关注册 `button()`，固定分区栏逐一注册 `buttons()`。宿主可在关闭画面前先将 Esc 交给焦点控件，以取消滑块编辑或标签栏拖动。自绘界面可在 `extractRenderState` 中调用 `GuiGeometry.fill` 提交 `FilledGeometry<Geometry2.Local>`，使用当前 GUI 姿态、裁剪和 ARGB 颜色。
+
+### 背景模糊、液态玻璃与控制面板
+
+进入世界后按 F8，或从 NeoForge 的模组列表打开 SH-Better-UI 配置。面板提供玻璃、显示和外观设置，可预览后应用模糊、折射、边缘高光、主题、高对比和减少动效。应用成功后写入当前实例的 `config/sh_better_ui/control-panel.properties`。恢复默认可以撤销，离开未应用的草稿会要求确认。消费模组可通过 `ShBetterUiApi.settings()` 读取已应用设置或打开面板。
+
+「工具」页可查看模组版本、帧率、堆内存、窗口缩放和实际启用的图形后端。反馈链接遵循 Minecraft 聊天设置的网页链接和确认选项。「打开面板」快捷键通过 Minecraft 的按键绑定界面修改，返回时保留面板草稿。
+
+从「工具 → 开发者图库」可打开 76 个样例，涵盖旧版全部 75 个样例和 26.x 新增的滚动分区栏。原生样例包含控件与转场、空间材质、动态主题、粒子特效、真实音乐播放、同步歌词和图库内活动岛。图库可单独保存外观预览，返回后保留控制面板草稿。各版本覆盖范围见 [26.x 图库迁移清单](docs/NEOFORGE_26_GALLERY_GAPS.md)。
+
+宿主完成背景提取后，可调用 `ShBetterUiApi.blur().background(graphics)`。全屏模糊沿用 Minecraft 视频设置中的菜单背景模糊强度，后续提取的前景保持清晰。要在玻璃控件内局部采样，先调用 `ShBetterUiApi.blur().prepareBackdrop(graphics)`，再提取按钮、滑块或 `LiquidGlassSurface`。需要两种效果时先请求全屏模糊。玻璃通过同帧 GPU 快照实现局部模糊、折射和边缘高光，高对比模式使用实色底板。
+
+### Vulkan 与 GLFW 65540
+
+Minecraft 26.1.2 使用 OpenGL。Minecraft 26.2 提供原生 Vulkan 和 OpenGL，两者使用同一套控件提取代码。未保存后端偏好的 26.2 实例在关闭 NeoForge 早期加载窗口后优先尝试 Vulkan，初始化失败时由 Minecraft 回退到 OpenGL。已保存的图形 API 和启动参数继续生效。
+
+NeoForge 26.2 的早期加载窗口使用 OpenGL，Vulkan 无法复用该窗口。修复版在早期窗口存在时以 OpenGL 启动，保留已保存的偏好。若要在 26.2 使用 Vulkan，退出客户端，在该实例的 `config/fml.toml` 中设置 `earlyWindowControl = false`，再从视频设置选择优先 Vulkan 并重启。开发环境的 `runClient` 会为新建的 `run-vulkan` 目录预设此配置，`runClientOpenGl` 使用独立的 `run-opengl` 目录。 [NeoForge 上游问题](https://github.com/neoforged/NeoForge/issues/3230)
+
+隔离客户端烟测会加载打包 JAR，验证控件和图库输入、模糊与玻璃像素、设置应用、模组列表配置按钮和世界内 F8 键盘回调。最后一条命令只在该烟测进程中把 Vulkan 驱动清单指向不存在的文件，以验证真正的初始化失败回退。游戏自动退出，截图保存在各自的 `build/widget-smoke/` 实例目录。
+
+```bash
+bash neoforge/gradlew -p neoforge-26.1.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
+bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
+bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=opengl
+bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=vulkan -PwidgetSmokeEarlyWindow
+bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeVulkanFallback
+```
+
+给烟测命令追加 `-PwidgetSmokeLayoutReview` 可在独立的 `-layout` 实例中验证原生 GUI Scale 3、窄布局、键盘翻页焦点、折射拖动取消，以及 F8 和模组列表入口。较窄的逻辑尺寸通过 `Screen.resize` 在同一客户端中测试。
+
+用 `-PwidgetSmokeLayoutReview=4` 可在 `-layout-4` 实例以 1280 × 960 窗口复验，并加载长文案测试语言。此模式额外检查 Tab／Shift+Tab、长标签提示换行和原生旁白生成的文本。控制面板与图库的标题、状态，以及图库按钮和滑杆的默认标签，超出空间时会显示省略号，悬停可读完整文案。
+
+给标准烟测命令追加 `-PwidgetSmokeNarrator`，可在独立的 `-narrator` 实例启用 Minecraft 系统旁白，经游戏键盘回调切到「模式 2」并触发朗读。烟测结束时恢复该实例的旁白与音量设置。Windows 实测还可通过 `-PwidgetSmokeNarratorAudio` 接入进程音频回环录制器，检查客户端 JVM 输出的语音波形。
+
+旧版图库其余样例、其他面板页面、统一屏幕宿主、着色图标、文本可读性、富文本、声明式页面、网络和可选模组集成仍在移植范围内。详见 [TODO.md](TODO.md)。
 
 ### 反重力粒子 API
 

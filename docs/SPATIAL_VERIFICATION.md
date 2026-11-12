@@ -20,9 +20,11 @@ cd neoforge
 
 用 `-PkernelNativeGuiScale=1` 和另一个标签重跑，可验证另一种 GUI 缩放。默认缩放为 2。
 
-`spatial-visual` 检查前后遮挡、子节点裁剪、旋转、外阴影、内阴影，以及空间绘制后原版 GUI 填色是否正常。`spatial-reload` 在采集前重载资源包，核对内核资源代次和 SDF Shader 能力，再检查同一组像素。RGB 取样避开抗锯齿边缘，允许每个通道最多 8 级差异。
+`spatial-visual` 检查前后遮挡、子节点裁剪、旋转、外阴影、内阴影、凹形路径及孔洞的外阴影，以及空间绘制后原版 GUI 填色是否正常。`spatial-reload` 在采集前重载资源包，核对内核资源代次、SDF 和路径阴影能力，再检查同一组像素。RGB 取样避开抗锯齿边缘，允许每个通道最多 8 级差异。
 
 `spatial-fallback` 在专用开发目录加载故意无效的 Shader 描述，检查降级后的几何、裁剪和原版 GUI，然后撤下测试包并检查 Shader 恢复。
+
+使用 `-PkernelNativeLabel=uuk-path-shadow` 在 Forge 1.20.1 和 NeoForge 1.21.1 隔离客户端运行以上三个场景。两端均通过凹形路径和孔洞的像素断言、资源重载、路径阴影降级与恢复，并正常退出。 [Forge 结果](../build/kernel-benchmark/native-forge-uuk-path-shadow/success.txt) · [NeoForge 结果](../build/kernel-benchmark/native-neoforge-uuk-path-shadow/success.txt)
 
 ## 压力基准
 

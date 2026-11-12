@@ -76,7 +76,7 @@
 | `pattern_waves_field`、`visual_reveal_horizontal`、电光场和波面字形 atlas、`capsule` 圆角绘制 | 归于波面、视觉递进、电光或胶囊/表面 | 资源加载与绘制在 renderer 内部，公开入口是效果对象、表面/圆角 API。 |
 | `SpatialStyle.ShadowType.SURFACE`、`SpatialMesh`、GPU timing | 归于 Spatial 内部命令与测量 | `Shadow` 构造器拒绝 `SURFACE`。`SpatialUI.capability` 可查询受支持、禁用或降级状态。 |
 | `lyric_sdf_text`、歌词 HUD 内部逐行特效 | 归于浮动歌词的 SDF 字形路径。脱离歌词帧语义的单独 HUD 特效待核实 | `LyricView.registerShader`、`LyricEffectEngine`、`lyrics` 预览。公开逐字文字效果另见格式文字条目。 |
-| 音乐 HUD、灵动岛、本地音乐、实时表面、动态状态 | 完整场景、业务呈现或控件组合 | `MusicApi`、Live Surface 服务、`UiDynamicStatus` 与画廊。底板、文字、图标或加载绘制可分别复用。 |
+| 音乐 HUD、音乐胶囊、本地音乐、实时表面、动态状态 | 完整场景、业务呈现或控件组合 | `MusicApi`、Live Surface 服务、`UiDynamicStatus` 与画廊。活动岛以 `sh_better_ui:live_activity` 提供原生入口和网页形态预览。 |
 | 画廊中的按钮、切换、标签页、步骤器、滑块、下拉、搜索、提示、局部模态和底部弹层 | 控件和交互组合，材质归于公开绘制条目 | `DeveloperSamples`、`DeveloperBottomSheetPreview`、`ControlsApi`。单独的时钟、弹簧、手势、滚动、裁切和图标布局是支撑原语。 |
 | 普通图标与视觉对齐、正确性 Inspector | 图片素材或诊断视图 | `GraphicIcon`、`VisualAlignmentPreview`、`ClientCorrectnessPainter`。库内调用已登记材质无需再建立材质身份。 |
 
