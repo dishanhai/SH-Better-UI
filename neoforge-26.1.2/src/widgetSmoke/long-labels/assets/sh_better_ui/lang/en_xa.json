@@ -1,0 +1,9 @@
+{
+  "sh_better_ui.panel.section.tools": "Developer tools and accessibility review",
+  "sh_better_ui.panel.section.overview": "Detailed overview of installed UI modules and the active graphics device",
+  "sh_better_ui.panel.developer.gallery.title": "Developer gallery for interactive controls, background blur and optical materials",
+  "sh_better_ui.panel.developer.gallery.sample.liquid_glass": "Liquid Glass preview with adjustable optical refraction and an independent background sample",
+  "sh_better_ui.panel.refraction": "Refraction strength for the current liquid glass optical material and background sample",
+  "sh_better_ui.panel.motion.tooltip": "Reduce animated movement while preserving visible interaction feedback",
+  "sh_better_ui.panel.unsaved": "Changes in the current control panel are still pending and have not been saved to the configuration file"
+}

@@ -1,0 +1,15 @@
+modLoader = "javafml"
+loaderVersion = "[1,)"
+license = "MIT"
+
+[[mods]]
+modId = "shbui_widgets_smoke"
+version = "1.0.0"
+displayName = "SHBUI Widgets Smoke Consumer"
+
+[[dependencies.shbui_widgets_smoke]]
+modId = "sh_better_ui"
+type = "required"
+versionRange = "[1,)"
+ordering = "AFTER"
+side = "CLIENT"

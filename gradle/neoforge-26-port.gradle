@@ -1,0 +1,213 @@
+// Author: dishanhai
+def modProperties = new Properties()
+file('../gradle.properties').withInputStream { modProperties.load(it) }
+def modId = modProperties.getProperty('mod_id')
+def modName = modProperties.getProperty('mod_name')
+def portMixinConfigs = project.findProperty('portMixinConfigs') ?: []
+group = 'com.dishanhai'
+version = "${modProperties.getProperty('mod_version')}-alpha.8"
+base { archivesName = "${modId}-neoforge-${minecraft_version}" }
+java {
+    toolchain.languageVersion = JavaLanguageVersion.of(25)
+    withSourcesJar()
+}
+kotlin { jvmToolchain(25) }
+
+def sharedJava = file('../src/main/java')
+def packagePath = 'com/dishanhai/sh_better_ui'
+def sharedSources = [
+        'client/audio/AudioBand.java',
+        'client/audio/AudioFrame.java',
+        'client/audio/MusicAnalyzer.java',
+        'client/audio/MusicMotion.java',
+        'client/audio/MusicRhythm.java',
+        'config/ControlFeedbackSettings.java',
+        'config/LiveSurfaceConfig.java',
+        'config/TabScrollSettings.java',
+        'config/ThemeOverrides.java',
+        'config/ThemeSettings.java',
+        'client/gui/display/GraphicDisplayLayout.java',
+        'client/gui/display/ElectricLogoProfile.java',
+        'client/gui/display/GraphicIconMotion.java',
+        'client/gui/layout/AlignmentFrame.java',
+        'client/gui/layout/AlignmentGeometry.java',
+        'client/gui/layout/AlignmentLayout.java',
+        'client/gui/layout/AlignmentPlacement.java',
+        'client/gui/layout/AlignmentSolver.java',
+        'client/gui/layout/AlignmentTargetMotion.java',
+        'client/gui/layout/PixelAlignment.java',
+        'client/gui/layout/TextureMetrics.java',
+        'client/gui/layout/VisualAlignment.java',
+        'client/gui/scaled/ButtonFeedback.java',
+        'client/gui/scaled/AntigravityField.java',
+        'client/gui/scaled/AntigravityPalette.java',
+        'client/gui/scaled/AntigravityProfile.java',
+        'client/gui/scaled/CodeRainProfile.java',
+        'client/gui/scaled/DotMatrixLens.java',
+        'client/gui/scaled/DotMatrixProfile.java',
+        'client/gui/scaled/GuiMotion.java',
+        'client/gui/scaled/InterruptibleAnimation.java',
+        'client/gui/scaled/LaserFlowProfile.java',
+        'client/gui/scaled/LightRaysMotion.java',
+        'client/gui/scaled/LightRaysProfile.java',
+        'client/gui/scaled/PatternWavesProfile.java',
+        'client/gui/scaled/PointerDrag.java',
+        'client/gui/scaled/RepeatCurve.java',
+        'client/gui/scaled/SpringTable.java',
+        'client/gui/scaled/TabScrollState.java',
+        'client/gui/scaled/ThemeButtonStyle.java',
+        'client/gui/scaled/UiAttention.java',
+        'client/gui/scaled/UiDisclosure.java',
+        'client/gui/scaled/UiMath.java',
+        'client/gui/scaled/UiPointerTracker.java',
+        'client/gui/scaled/UiStepperState.java',
+        'client/gui/scaled/UiStyle.java',
+        'client/gui/scaled/UiTabSelection.java',
+        'client/gui/scaled/UiTimeline.java',
+        'client/gui/scaled/UiToggleButton.java',
+        'client/gui/search/PinyinSearch.java',
+        'client/gui/search/SearchIndex.java',
+        'client/gui/search/SearchQuery.java',
+        'client/lyrics/core/lyric/LocalLyricFiles.java',
+        'client/lyrics/core/lyric/LrcParser.java',
+        'client/lyrics/core/lyric/LyricLine.java',
+        'client/lyrics/core/lyric/LyricTimeline.java',
+        'client/lyrics/core/lyric/LyricTimingFix.java',
+        'client/lyrics/core/lyric/LyricWord.java',
+        'client/lyrics/core/lyric/TtmlParser.java',
+        'client/lyrics/core/sync/TrackIdentity.java',
+        'kernel/api/text/TextReadabilityPalette.java',
+        'kernel/internal/BuiltinService.java',
+        'kernel/internal/ClientMaterialCatalog.java',
+        'kernel/internal/MaterialPresetCodec.java',
+        'kernel/internal/NativeModuleSources.java'
+].collect { "${packagePath}/${it}".toString() }.toSet()
+sourceSets.main.java {
+    srcDir(sharedJava)
+    exclude { entry ->
+        !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
+                !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/")
+    }
+}
+kotlin.sourceSets.main.kotlin {
+    srcDir('../src/main/kotlin')
+    include("${packagePath}/kernel/api/page/PageDsl.kt")
+}
+sourceSets.test {
+    java {
+        srcDir('../src/test/java')
+        include("${packagePath}/client/gui/search/SearchIndexTest.java")
+        include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
+        include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
+        include("${packagePath}/client/gui/scaled/SpringTableTest.java")
+        include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
+        include("${packagePath}/client/gui/scaled/TabScrollStateTest.java")
+        include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
+        include("${packagePath}/client/gui/scaled/*InputTest.java")
+        include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
+    }
+    compileClasspath += sourceSets.main.compileClasspath
+    runtimeClasspath += sourceSets.main.runtimeClasspath
+}
+
+repositories {
+    mavenCentral()
+    maven {
+        url = 'https://thedarkcolour.github.io/KotlinForForge/'
+        content { includeGroup 'thedarkcolour' }
+    }
+}
+
+neoForge {
+    version = neo_version
+    runs {
+        client { client() }
+        server { server(); programArgument '--nogui' }
+    }
+    mods { sh_better_ui { sourceSet sourceSets.main } }
+}
+
+dependencies {
+    implementation "thedarkcolour:kotlinforforge-neoforge:${kff_version}"
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+tasks.named('test', Test) { useJUnitPlatform() }
+ext.sourceRoot = projectDir.parentFile
+apply from: '../gradle/kernel.gradle'
+
+processResources {
+    from('../LICENSE')
+    from('../src/main/resources') {
+        include('cover.png', 'assets/sh_better_ui/lang/**', 'assets/sh_better_ui/textures/gui/display*/**',
+                'META-INF/third-party/**')
+    }
+    def metadata = [mod_version: version, mod_id: modId, mod_name: modName, minecraft_version: minecraft_version,
+                    neo_version: neo_version, kff_version: kff_version]
+    inputs.properties(metadata)
+    filesMatching('META-INF/neoforge.mods.toml') { expand(metadata) }
+}
+
+tasks.register('verifyLibraryJar') {
+    dependsOn tasks.named('jar')
+    doLast {
+        def archive = tasks.jar.archiveFile.get().asFile
+        new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            ([
+                    'META-INF/neoforge.mods.toml',
+                    "${packagePath}/ShBetterUi.class",
+                    "${packagePath}/client/api/ShBetterUiApi.class",
+                    "${packagePath}/client/api/ControlsApi.class",
+                    "${packagePath}/client/api/BlurApi.class",
+                    "${packagePath}/client/api/SettingsApi.class",
+                    "${packagePath}/client/blur/BackdropCapture.class",
+                    "${packagePath}/client/blur/BackgroundBlur.class",
+                    "${packagePath}/client/glass/LiquidGlassSurface.class",
+                    "${packagePath}/client/gui/panel/ControlPanelScreen.class",
+                    "${packagePath}/client/gui/panel/PanelOverview.class",
+                    "${packagePath}/client/gui/panel/DeveloperGalleryScreen.class",
+                    "${packagePath}/client/gui/panel/GalleryMaterialPipeline.class",
+                    "${packagePath}/client/gui/panel/GalleryAppearanceSamples.class",
+                    "${packagePath}/client/gui/panel/GalleryDynamicThemeSample.class",
+                    "${packagePath}/client/gui/panel/GalleryFieldSamples.class",
+                    "${packagePath}/client/gui/panel/GalleryLiveActivitySample.class",
+                    "${packagePath}/client/gui/panel/GalleryMusicSamples.class",
+                    "${packagePath}/client/gui/panel/GallerySpatialSamples.class",
+                    'assets/sh_better_ui/shaders/core/liquid_glass.vsh',
+                    'assets/sh_better_ui/shaders/core/liquid_glass.fsh',
+                    'assets/sh_better_ui/shaders/core/gallery_material.vsh',
+                    'assets/sh_better_ui/shaders/core/gallery_material.fsh',
+                    'assets/sh_better_ui/shaders/core/gallery_spatial.vsh',
+                    'assets/sh_better_ui/shaders/core/gallery_spatial.fsh',
+                    'assets/sh_better_ui/shaders/core/gallery_spatial_reveal.fsh',
+                    "${packagePath}/client/gui/display/GraphicIcon.class",
+                    "${packagePath}/client/gui/scaled/UiButton.class",
+                    "${packagePath}/client/gui/scaled/UiToggleButton.class",
+                    "${packagePath}/client/gui/scaled/UiSlider.class",
+                    "${packagePath}/client/gui/scaled/UiStepper.class",
+                    "${packagePath}/client/gui/scaled/UiSectionBar.class",
+                    "${packagePath}/client/gui/scaled/UiScrollableSectionBar.class",
+                    "${packagePath}/client/gui/scaled/UiUnderlinedTabs.class",
+                    "${packagePath}/client/gui/scaled/UiDisclosure.class",
+                    "${packagePath}/client/spatial/GuiGeometry.class",
+                    "${packagePath}/client/gui/search/SearchIndex.class",
+                    "${packagePath}/kernel/api/UnifiedUI.class",
+                    "${packagePath}/kernel/api/page/PageDslKt.class",
+                    'assets/sh_better_ui/material_catalog/catalog.json'
+            ] + portMixinConfigs).each { entry ->
+                if (zip.getEntry(entry) == null) throw new GradleException("Missing library entry: ${entry}")
+            }
+            def forbidden = zip.entries().findAll { entry ->
+                entry.name == 'META-INF/mods.toml' ||
+                        (entry.name.endsWith('.mixins.json') && !portMixinConfigs.contains(entry.name)) ||
+                        entry.name.startsWith('META-INF/jarjar/') || entry.name.startsWith('kotlin/') ||
+                        entry.name.startsWith('thedarkcolour/')
+            }
+            if (!forbidden.isEmpty()) throw new GradleException("Unexpected packaged entries: ${forbidden*.name}")
+        }
+    }
+}
+tasks.named('build') { dependsOn 'verifyLibraryJar' }

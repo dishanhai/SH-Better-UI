@@ -1,0 +1,9 @@
+// Author: dishanhai
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+    id 'org.jetbrains.kotlin.jvm' version '2.3.10'
+}
+
+ext.portMixinConfigs = ['sh_better_ui-26-blur.mixins.json']
+apply from: '../gradle/neoforge-26-port.gradle'

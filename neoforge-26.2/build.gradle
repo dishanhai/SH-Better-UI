@@ -1,0 +1,54 @@
+// Author: dishanhai
+plugins {
+    id 'java-library'
+    id 'net.neoforged.moddev' version '2.0.148'
+    id 'org.jetbrains.kotlin.jvm' version '2.4.0'
+}
+
+ext.portMixinConfigs = ['sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json']
+apply from: '../gradle/neoforge-26-port.gradle'
+
+def previousPort = file('../neoforge-26.1.2/src/main/java')
+def overrides = [
+        'client/blur/BlurRenderTarget.java',
+        'client/glass/LiquidGlassPipeline.java',
+        'client/gui/panel/ControlPanelPlatform.java',
+        'client/gui/panel/GalleryMaterialPipeline.java',
+        'client/gui/panel/GallerySpatialPipeline.java',
+        'client/spatial/GuiGeometryPipeline.java',
+        'kernel/internal/NativePort.java'
+].collect { "com/dishanhai/sh_better_ui/${it}".toString() }.toSet()
+sourceSets.main.java {
+    srcDir(previousPort)
+    exclude { entry ->
+        !entry.isDirectory() && entry.file.toPath().startsWith(previousPort.toPath()) && overrides.contains(entry.path)
+    }
+}
+sourceSets.test.java.srcDir('../neoforge-26.1.2/src/test/java')
+processResources {
+    from('../neoforge-26.1.2/src/main/resources') {
+        include('sh_better_ui-26-blur.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
+                'assets/sh_better_ui/shaders/core/gallery_material.*', 'assets/sh_better_ui/shaders/core/gallery_spatial*')
+    }
+}
+
+def vulkanRun = layout.projectDirectory.dir('run-vulkan')
+neoForge.runs {
+    named('client') { gameDirectory = vulkanRun.asFile }
+    clientOpenGl {
+        client()
+        gameDirectory = project.file('run-opengl')
+        programArguments.addAll('--graphicsBackend', 'opengl')
+    }
+}
+
+def prepareVulkanProfile = tasks.register('prepareVulkanProfile') {
+    doLast {
+        def fml = vulkanRun.file('config/fml.toml').asFile
+        if (!fml.exists()) {
+            fml.parentFile.mkdirs()
+            fml.setText('earlyWindowControl = false\n', 'UTF-8')
+        }
+    }
+}
+tasks.matching { it.name == 'runClient' }.configureEach { dependsOn prepareVulkanProfile }

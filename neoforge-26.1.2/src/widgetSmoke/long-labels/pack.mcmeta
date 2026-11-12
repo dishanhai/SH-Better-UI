@@ -1,0 +1,13 @@
+{
+  "pack": {
+    "description": "SH-Better-UI layout smoke translations",
+    "min_format": [84, 0],
+    "max_format": [88, 0]
+  },
+  "language": {
+    "en_xa": {
+      "name": "Long English labels",
+      "region": "SHBUI layout smoke"
+    }
+  }
+}

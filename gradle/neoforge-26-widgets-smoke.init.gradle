@@ -1,0 +1,86 @@
+// Author: dishanhai
+// Loads the published library layout and a separate consumer mod in an isolated client.
+gradle.beforeProject { p ->
+    p.afterEvaluate {
+        if (!p.projectDir.name.startsWith('neoforge-26.')) return
+        File smoke = p.file('../neoforge-26.1.2/src/widgetSmoke')
+        String backend = p.findProperty('widgetSmokeBackend') ?: 'default'
+        if (!(backend in ['default', 'opengl', 'vulkan']) ||
+                (p.minecraft_version == '26.1.2' && backend != 'default')) {
+            throw new GradleException("Unsupported smoke backend: ${backend}")
+        }
+        boolean dualBackend = p.minecraft_version == '26.2'
+        boolean earlyWindow = !dualBackend || p.hasProperty('widgetSmokeEarlyWindow')
+        boolean vulkanFallback = p.hasProperty('widgetSmokeVulkanFallback')
+        boolean layoutReview = p.hasProperty('widgetSmokeLayoutReview')
+        String layoutScale = p.findProperty('widgetSmokeLayoutReview') ?: '3'
+        if (layoutReview && !(layoutScale in ['3', '4'])) {
+            throw new GradleException('Layout review supports GUI Scale 3 or 4')
+        }
+        boolean longLabels = layoutReview && layoutScale == '4'
+        boolean narrator = p.hasProperty('widgetSmokeNarrator')
+        String narratorAudio = p.findProperty('widgetSmokeNarratorAudio')
+        if (narrator && layoutReview) throw new GradleException('Narrator smoke uses the standard gallery profile')
+        if (narratorAudio != null && !narrator) throw new GradleException('Enable widgetSmokeNarrator for audio capture')
+        if (vulkanFallback && (!dualBackend || earlyWindow || backend != 'default')) {
+            throw new GradleException('Vulkan fallback smoke requires 26.2 with its default backend and no early window')
+        }
+        String expected = earlyWindow || vulkanFallback || backend == 'opengl' ? 'OpenGL' : 'Vulkan'
+        def library = p.tasks.named('jar', Jar)
+        def sources = p.sourceSets.create('widgetSmoke') {
+            java.setSrcDirs([new File(smoke, 'java'), new File(smoke, p.minecraft_version)])
+            resources.setSrcDirs([new File(smoke, 'resources')])
+            compileClasspath += p.sourceSets.main.compileClasspath + p.files(library.flatMap { it.archiveFile })
+        }
+        String profile = vulkanFallback ? 'vulkan-fallback' : dualBackend && earlyWindow ? "${backend}-early-window" : backend
+        if (layoutReview) profile += longLabels ? '-layout-4' : '-layout'
+        if (narrator) profile += '-narrator'
+        File directory = p.layout.buildDirectory.dir("widget-smoke/${p.version}/${profile}").get().asFile
+        File missingVulkanDriver = new File(directory, 'missing-vulkan-icd.json')
+        def consumer = p.neoForge.mods.create('shbui_widgets_smoke') {
+            sourceSet sources
+        }
+        p.neoForge.runs.create('widgetSmoke') {
+            client()
+            loadedMods.set([consumer])
+            gameDirectory.set(directory)
+            systemProperty 'shbui.widgetSmoke.expectedBackend', expected
+            if (narrator) systemProperty 'shbui.widgetSmoke.narrator', 'true'
+            if (narratorAudio != null) systemProperty 'shbui.widgetSmoke.narratorAudio', p.file(narratorAudio).absolutePath
+            if (layoutReview) {
+                systemProperty 'shbui.widgetSmoke.layoutScale', layoutScale
+                programArguments.addAll('--width', longLabels ? '1280' : '1080', '--height', longLabels ? '960' : '720')
+            } else {
+                programArguments.addAll('--width', '800', '--height', '480')
+            }
+            if (backend != 'default') programArguments.addAll('--graphicsBackend', backend)
+            if (vulkanFallback) {
+                environment 'VK_DRIVER_FILES', missingVulkanDriver.absolutePath
+                systemProperty 'shbui.widgetSmoke.expectedPreference', 'vulkan'
+            }
+        }
+        p.tasks.named('compileWidgetSmokeJava').configure { dependsOn(library) }
+        def stageLibrary = p.tasks.register('stageWidgetSmokeLibrary', Sync) {
+            from library.flatMap { it.archiveFile }
+            into new File(directory, 'mods')
+        }
+        def stageLongLabels = p.tasks.register('stageWidgetSmokeLongLabels', Sync) {
+            from new File(smoke, 'long-labels')
+            into new File(directory, 'resourcepacks/long-labels')
+        }
+        p.tasks.named('runWidgetSmoke').configure {
+            dependsOn(stageLibrary)
+            if (longLabels) dependsOn(stageLongLabels)
+            doFirst {
+                if (vulkanFallback && missingVulkanDriver.exists()) {
+                    throw new GradleException("Fallback requires a missing driver manifest: ${missingVulkanDriver}")
+                }
+                File fml = new File(directory, 'config/fml.toml')
+                if (dualBackend && !fml.exists()) {
+                    fml.parentFile.mkdirs()
+                    fml.setText("earlyWindowControl = ${earlyWindow}\n", 'UTF-8')
+                }
+            }
+        }
+    }
+}

@@ -1,0 +1,9 @@
+// Author: dishanhai
+pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = 'https://maven.neoforged.net/releases' }
+    }
+}
+
+rootProject.name = 'sh_better_ui-neoforge-26.1.2'
