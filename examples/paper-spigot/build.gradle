@@ -1,0 +1,52 @@
+// Author: dishanhai
+plugins {
+    id 'org.jetbrains.kotlin.jvm' version '2.0.21' apply false
+}
+
+def sdkVersion = providers.gradleProperty('shbuiVersion').getOrElse('1.0.6')
+def sdkRepository = providers.gradleProperty('shbuiSdkRepository')
+def spigotVersion = providers.gradleProperty('spigotApiVersion').getOrElse('1.20.1-R0.1-SNAPSHOT')
+
+subprojects {
+    version = sdkVersion
+    apply plugin: 'java'
+
+    repositories {
+        if (sdkRepository.isPresent()) {
+            maven {
+                url = rootProject.uri(sdkRepository.get())
+                content { includeGroup 'com.dishanhai.sh_better_ui' }
+            }
+        } else {
+            mavenLocal { content { includeGroup 'com.dishanhai.sh_better_ui' } }
+        }
+        mavenCentral()
+        maven {
+            url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/')
+            content { includeGroup 'org.spigotmc' }
+        }
+    }
+
+    dependencies {
+        compileOnly "com.dishanhai.sh_better_ui:sh-better-ui-bridge-sdk:${sdkVersion}"
+        compileOnly "org.spigotmc:spigot-api:${spigotVersion}"
+    }
+
+    java.toolchain.languageVersion = JavaLanguageVersion.of(17)
+    tasks.withType(JavaCompile).configureEach {
+        options.release = 17
+        options.encoding = 'UTF-8'
+    }
+
+    if (name == 'paper' || name == 'spigot') {
+        dependencies { compileOnly project(':exchange') }
+        tasks.named('jar', Jar) {
+            archiveBaseName = "shbui-exchange-${project.name}"
+            from project(':exchange').sourceSets.main.output
+        }
+        tasks.named('processResources') {
+            inputs.property 'version', project.version
+            filesMatching('plugin.yml') { expand(version: project.version) }
+        }
+    }
+}

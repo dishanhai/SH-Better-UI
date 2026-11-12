@@ -1,0 +1,3 @@
+// Author: dishanhai
+rootProject.name = 'sh-better-ui-bukkit-exchange-example'
+include 'exchange', 'paper', 'spigot'

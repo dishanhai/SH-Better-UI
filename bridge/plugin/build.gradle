@@ -1,0 +1,29 @@
+// Author: dishanhai
+plugins { id 'java' }
+
+base.archivesName = 'sh-better-ui-bridge'
+
+sourceSets.main.java {
+    srcDir rootProject.file('../src/kernel/java')
+    include 'com/dishanhai/sh_better_ui/bridge/internal/**'
+    include 'com/dishanhai/sh_better_ui/kernel/internal/protocol/**'
+}
+
+def spigot = "org.spigotmc:spigot-api:${providers.gradleProperty('spigotApiVersion').getOrElse('1.20.1-R0.1-SNAPSHOT')}"
+dependencies {
+    implementation project(':sdk')
+    compileOnly spigot
+    testImplementation spigot
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+tasks.named('jar', Jar) {
+    from project(':sdk').sourceSets.main.output
+}
+
+tasks.named('processResources') {
+    inputs.property 'version', project.version
+    filesMatching('plugin.yml') { expand(version: project.version) }
+}

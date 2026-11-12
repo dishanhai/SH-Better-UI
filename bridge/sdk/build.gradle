@@ -1,0 +1,38 @@
+// Author: dishanhai
+plugins {
+    id 'java-library'
+    id 'maven-publish'
+}
+
+base.archivesName = 'sh-better-ui-bridge-sdk'
+java.withSourcesJar()
+
+sourceSets.main.java {
+    srcDir rootProject.file('../src/kernel/java')
+    include 'com/dishanhai/sh_better_ui/bridge/api/**'
+    include 'com/dishanhai/sh_better_ui/kernel/api/UiId.java'
+    include 'com/dishanhai/sh_better_ui/kernel/api/UiVersion.java'
+    include 'com/dishanhai/sh_better_ui/kernel/api/page/**'
+    include 'com/dishanhai/sh_better_ui/kernel/api/protocol/**'
+    exclude 'com/dishanhai/sh_better_ui/kernel/api/page/PageService.java'
+    exclude 'com/dishanhai/sh_better_ui/kernel/api/page/UiComponentRegistry.java'
+}
+
+dependencies {
+    compileOnly "org.spigotmc:spigot-api:${providers.gradleProperty('spigotApiVersion').getOrElse('1.20.1-R0.1-SNAPSHOT')}"
+}
+
+publishing {
+    publications {
+        sdk(MavenPublication) {
+            artifactId = 'sh-better-ui-bridge-sdk'
+            from components.java
+        }
+    }
+    repositories {
+        maven {
+            name = 'buildRepository'
+            url = rootProject.layout.buildDirectory.dir('repository')
+        }
+    }
+}

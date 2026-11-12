@@ -1,0 +1,14 @@
+# Author: dishanhai
+name: ShbuiExchange
+main: com.dishanhai.shbui_exchange.PaperExchangePlugin
+version: '${version}'
+api-version: '1.20'
+depend: [SHBetterUIBridge]
+libraries:
+  - org.jetbrains.kotlin:kotlin-stdlib:2.0.21
+commands:
+  shbui-exchange:
+    permission: shbui.example.exchange
+permissions:
+  shbui.example.exchange:
+    default: true

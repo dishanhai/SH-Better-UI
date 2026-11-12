@@ -1,0 +1,23 @@
+// Author: dishanhai
+allprojects {
+    group = 'com.dishanhai.sh_better_ui'
+    version = providers.gradleProperty('shbuiVersion').getOrElse('1.0.6')
+
+    repositories {
+        mavenCentral()
+        maven {
+            url = uri('https://hub.spigotmc.org/nexus/content/repositories/snapshots/')
+            content { includeGroup 'org.spigotmc' }
+        }
+    }
+}
+
+subprojects {
+    plugins.withType(JavaPlugin).configureEach {
+        tasks.withType(JavaCompile).configureEach {
+            options.release = 17
+            options.encoding = 'UTF-8'
+        }
+        tasks.withType(Test).configureEach { useJUnitPlatform() }
+    }
+}
