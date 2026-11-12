@@ -12,14 +12,65 @@ gradle.beforeProject { p ->
         File root = forge ? p.projectDir : p.projectDir.parentFile
         String optional = p.findProperty('kernelSmokeOptional') ?: ''
         boolean materialConsumer = p.hasProperty('kernelSmokeMaterialConsumer')
+        boolean materialEffects = p.hasProperty('kernelSmokeMaterialEffects')
+        boolean visualComposition = p.hasProperty('kernelSmokeVisualComposition')
+        boolean textReadability = p.hasProperty('kernelSmokeTextReadability')
+        boolean textReadabilityService = p.hasProperty('kernelSmokeTextReadabilityService')
+        boolean textReadabilityLocal = p.hasProperty('kernelSmokeTextReadabilityLocal')
+        boolean textReadabilityGpu = textReadabilityLocal || p.hasProperty('kernelSmokeTextReadabilityGpu')
+        def textReadabilityGpuOutputs = ['text-readability-gpu-dark.png', 'text-readability-gpu.tsv']
+        if (!textReadabilityLocal) textReadabilityGpuOutputs += ['text-readability-gpu-flash.png',
+                'text-readability-gpu-stable.png', 'text-readability-gpu-glass.png', 'text-readability-gpu-overlay.png']
+        boolean dock = p.hasProperty('kernelSmokeDock')
+        boolean pages = p.hasProperty('kernelSmokePages')
+        String kubejsMods = p.findProperty('kernelSmokeKubeJsMods') ?: ''
+        if (kubejsMods && !pages) throw new GradleException('KubeJS requires kernelSmokePages')
+        boolean richText = p.hasProperty('kernelSmokeRichText')
+        boolean richEffects = p.hasProperty('kernelSmokeRichEffects')
+        boolean richEditor = p.hasProperty('kernelSmokeRichEditor')
+        boolean richEditorDisabled = p.hasProperty('kernelSmokeRichEditorDisabled')
+        if (richEditorDisabled && !richEditor) throw new GradleException('The disabled variant requires kernelSmokeRichEditor')
         String variant = optional ? '-optional' : ''
         String label = p.findProperty('kernelSmokeLabel') ?: ''
         if (!label.matches('[A-Za-z0-9_-]*')) throw new GradleException('Invalid kernel smoke label')
         if (label) variant += '-' + label
+        if (textReadability) variant += '-text-readability'
+        if (textReadabilityService) variant += '-text-readability-service'
+        if (textReadabilityGpu) variant += '-text-readability-gpu'
+        if (dock) variant += '-dock'
+        if (pages) variant += '-pages'
+        if (kubejsMods) variant += '-kubejs'
+        if (richText) variant += '-rich-text'
+        if (richEffects) variant += '-rich-effects'
+        if (richEditor) variant += richEditorDisabled ? '-rich-editor-disabled' : '-rich-editor'
         File run = new File(root, "build/kernel-verification/client-${forge ? 'forge' : 'neoforge'}${variant}")
         p.sourceSets.main.java.srcDir(new File(root, 'src/kernelSmoke/java'))
         p.sourceSets.main.java.srcDir(new File(root, "src/kernelSmoke/${forge ? 'forge' : 'neoforge'}"))
         p.sourceSets.main.resources.srcDir(new File(root, 'src/kernelSmoke/resources'))
+        if (kubejsMods) {
+            def artifacts = p.file(kubejsMods).listFiles()?.findAll { it.name.endsWith('.jar') }?.sort { it.name } ?: []
+            if (artifacts.size() != (forge ? 3 : 2)) throw new GradleException('Missing KubeJS runtime mod JARs')
+            if (forge) {
+                File repository = new File(run, 'script-maven')
+                p.repositories.maven {
+                    url = repository.toURI()
+                    content { includeGroup 'kernel.smoke.scripts' }
+                    metadataSources { artifact() }
+                }
+                artifacts.each { artifact ->
+                    String name = artifact.name.substring(0, artifact.name.length() - 4)
+                    String version = java.security.MessageDigest.getInstance('SHA-256').digest(artifact.bytes)
+                            .encodeHex().toString().take(16)
+                    File staged = new File(repository, "kernel/smoke/scripts/${name}/${version}/${name}-${version}.jar")
+                    staged.parentFile.mkdirs()
+                    java.nio.file.Files.copy(artifact.toPath(), staged.toPath(),
+                            java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+                    p.dependencies.add('runtimeOnly', p.fg.deobf("kernel.smoke.scripts:${name}:${version}"))
+                }
+            } else {
+                artifacts.each { p.dependencies.add('runtimeOnly', p.files(it)) }
+            }
+        }
         if (optional) {
             def optionalJar = p.file(optional)
             if (!optionalJar.isFile()) throw new GradleException("Missing optional mod JAR ${optionalJar}")
@@ -48,8 +99,22 @@ gradle.beforeProject { p ->
                 property 'shb.kernel.smoke', run.absolutePath
                 property 'shb.kernel.smoke.optional', optional ? 'true' : 'false'
                 if (materialConsumer) property 'shb.kernel.smoke.materialConsumer', 'true'
+                if (materialEffects) property 'shb.kernel.smoke.materialEffects', 'true'
+                if (visualComposition) property 'shb.kernel.smoke.visualComposition', 'true'
+                if (textReadability) property 'shb.kernel.smoke.textReadability', 'true'
+                if (textReadabilityService) property 'shb.kernel.smoke.textReadabilityService', 'true'
+                if (textReadabilityGpu) property 'shb.kernel.smoke.textReadabilityGpu', 'true'
+                if (textReadabilityLocal) property 'shb.kernel.smoke.textReadabilityLocal', 'true'
+                if (dock) property 'shb.kernel.smoke.dock', 'true'
+                if (pages) property 'shb.kernel.smoke.pages', 'true'
+                if (kubejsMods) property 'shb.kernel.smoke.pages.kubejs', 'true'
+                if (pages) property 'shb.pages.trace', 'true'
+                if (richText) property 'shb.kernel.smoke.richText', 'true'
+                if (richEffects) property 'shb.kernel.smoke.richEffects', 'true'
+                if (richEditor) property 'shb.kernel.smoke.richEditor', 'true'
+                if (richEditorDisabled) property 'shb.richText.editor', 'false'
                 property 'shb.music.disabled', 'true'
-                if (optional) {
+                if (optional || kubejsMods) {
                     property 'mixin.env.remapRefMap', 'true'
                     property 'mixin.env.refMapRemappingFile',
                             p.layout.buildDirectory.file('createSrgToMcp/output.srg').get().asFile.absolutePath
@@ -62,6 +127,20 @@ gradle.beforeProject { p ->
                 systemProperty 'shb.kernel.smoke', run.absolutePath
                 systemProperty 'shb.kernel.smoke.optional', optional ? 'true' : 'false'
                 if (materialConsumer) systemProperty 'shb.kernel.smoke.materialConsumer', 'true'
+                if (materialEffects) systemProperty 'shb.kernel.smoke.materialEffects', 'true'
+                if (visualComposition) systemProperty 'shb.kernel.smoke.visualComposition', 'true'
+                if (textReadability) systemProperty 'shb.kernel.smoke.textReadability', 'true'
+                if (textReadabilityService) systemProperty 'shb.kernel.smoke.textReadabilityService', 'true'
+                if (textReadabilityGpu) systemProperty 'shb.kernel.smoke.textReadabilityGpu', 'true'
+                if (textReadabilityLocal) systemProperty 'shb.kernel.smoke.textReadabilityLocal', 'true'
+                if (dock) systemProperty 'shb.kernel.smoke.dock', 'true'
+                if (pages) systemProperty 'shb.kernel.smoke.pages', 'true'
+                if (kubejsMods) systemProperty 'shb.kernel.smoke.pages.kubejs', 'true'
+                if (pages) systemProperty 'shb.pages.trace', 'true'
+                if (richText) systemProperty 'shb.kernel.smoke.richText', 'true'
+                if (richEffects) systemProperty 'shb.kernel.smoke.richEffects', 'true'
+                if (richEditor) systemProperty 'shb.kernel.smoke.richEditor', 'true'
+                if (richEditorDisabled) systemProperty 'shb.richText.editor', 'false'
                 systemProperty 'shb.music.disabled', 'true'
                 programArgument '--width'
                 programArgument '800'
@@ -70,11 +149,61 @@ gradle.beforeProject { p ->
             }
         }
         p.tasks.matching { it.name == 'runClient' }.configureEach {
-            if (forge && optional) dependsOn('createSrgToMcp')
+            if (forge && (optional || kubejsMods)) dependsOn('createSrgToMcp')
+            if (forge) javaLauncher = p.javaToolchains.launcherFor {
+                languageVersion = JavaLanguageVersion.of(17)
+            }
             doFirst {
                 run.mkdirs()
                 ['success.txt', 'stopped.txt'].each { java.nio.file.Files.deleteIfExists(new File(run, it).toPath()) }
+                if (textReadability) java.nio.file.Files.deleteIfExists(new File(run, 'text-readability.png').toPath())
+                if (textReadabilityService) {
+                    ['text-readability-service-page.png', 'text-readability-service-popup.png'].each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
+                if (textReadabilityGpu) {
+                    textReadabilityGpuOutputs.each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
+                if (kubejsMods) {
+                    p.copy {
+                        from new File(root, 'src/kernelSmoke/kubejs')
+                        into new File(run, 'kubejs')
+                    }
+                }
+                if (dock) {
+                    ['config/sh_better_ui-dock-layout.txt', 'dock-compact.png', 'dock-expanded.png',
+                     'dock-fallback-scale1.png', 'dock-demo-compact.png', 'dock-demo-expanded.png', 'dock-hud.png',
+                     'dock-native-profile.tsv'].each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
                 if (materialConsumer) java.nio.file.Files.deleteIfExists(new File(run, 'material-catalog-consumer.txt').toPath())
+                if (richText) {
+                    ['rich-text-scale2-before.png', 'rich-text-scale1-before.png', 'rich-text-scale1-reloaded.png',
+                     'rich-text-advanced.png', 'rich-text-advanced-reveal.png', 'rich-text-world.png',
+                     'rich-text-pipeline-accepted.png', 'rich-text-pipeline-denied.png',
+                     'resourcepacks/rich-text-smoke/assets/sh_better_ui/textures/gui/rich_text/missing.png',
+                     'resourcepacks/rich-text-smoke/assets/sh_better_ui/textures/gui/rich_text/absent.gif'].each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
+                if (richEffects) {
+                    ['rich-text-effects.png', 'rich-text-effects-high-contrast.png'].each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
+                if (richEditor) {
+                    ['rich-text-editor-narrow.png', 'rich-text-editor-overlay.png', 'rich-text-editor-timeline.png',
+                     'rich-text-editor-reopened.png',
+                     'sh_better_ui/rich_text_editor/document.json', 'sh_better_ui/rich_text_editor/export.json',
+                     'sh_better_ui/rich_text_editor/ExportedRichText.java',
+                     'sh_better_ui/rich_text_editor/preset.json'].each {
+                        java.nio.file.Files.deleteIfExists(new File(run, it).toPath())
+                    }
+                }
                 File options = new File(run, 'options.txt')
                 options.setText('onboardAccessibility:false\nguiScale:2\npauseOnLostFocus:false\n', 'UTF-8')
             }
@@ -84,6 +213,12 @@ gradle.beforeProject { p ->
                 }
                 if (materialConsumer && !new File(run, 'material-catalog-consumer.txt').isFile()) {
                     throw new GradleException('The client did not complete the material consumer GUI check')
+                }
+                if (dock && !new File(run, 'dock-native-profile.tsv').isFile()) {
+                    throw new GradleException('The client did not record the dock profile')
+                }
+                if (textReadabilityGpu && !textReadabilityGpuOutputs.every { new File(run, it).isFile() }) {
+                    throw new GradleException('The client did not record the native GPU readability evidence')
                 }
             }
         }

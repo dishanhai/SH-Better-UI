@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.smoke;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.api.distmarker.Dist;
+import net.minecraftforge.client.ClientCommandHandler;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import net.minecraftforge.event.TickEvent;
 import net.minecraftforge.eventbus.api.EventPriority;
@@ -19,12 +20,18 @@ public final class ForgeKernelSmokeEvents {
                     KernelClientSmoke.options(), KernelClientSmoke::flat);
         }
 
+        @Override public void rejoin(Minecraft client, Screen parent, String name) {
+            client.createWorldOpenFlows().loadLevel(parent, name);
+        }
+
         @Override public void leave(Minecraft client, Screen title) {
             client.level.disconnect();
             client.clearLevel(title);
         }
 
         @Override public boolean optionalPresent() { return ModList.get().isLoaded("ldlib"); }
+
+        @Override public boolean clientCommand(String command) { return ClientCommandHandler.runCommand(command); }
     };
 
     @SubscribeEvent(priority = EventPriority.LOWEST)

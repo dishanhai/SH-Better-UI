@@ -78,6 +78,14 @@ minecraft {
 ext.sourceRoot = projectDir
 apply from: 'gradle/kernel.gradle'
 
+// ForgeGradle's exploded mod roots must include Kotlin's separate output directory.
+tasks.withType(JavaExec).matching { it.name in ['runClient', 'runServer'] }.configureEach {
+    doFirst {
+        def roots = sourceSets.main.output.files.findAll { it.isDirectory() }
+        environment 'MOD_CLASSES', roots.collect { "${mod_id}%%${it.absolutePath}" }.join(File.pathSeparator)
+    }
+}
+
 processResources {
     from('LICENSE')
     filteringCharset = 'UTF-8'

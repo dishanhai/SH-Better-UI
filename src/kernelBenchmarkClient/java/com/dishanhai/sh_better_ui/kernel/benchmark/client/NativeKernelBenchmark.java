@@ -264,9 +264,12 @@ public final class NativeKernelBenchmark implements UIModule {
             reload.join();
             require(resources.version() > resourceGeneration, "Spatial reload did not publish a resource generation");
             boolean fallback = scenario.work() == Work.SPATIAL_FALLBACK && !recoveringSpatialShader;
-            require(engine.require(SpatialUI.KEY).capability(SpatialUI.Capability.SDF_SHADOWS)
-                    == (fallback ? SpatialUI.Support.DEGRADED : SpatialUI.Support.SUPPORTED),
+            var spatial = engine.require(SpatialUI.KEY);
+            var expected = fallback ? SpatialUI.Support.DEGRADED : SpatialUI.Support.SUPPORTED;
+            require(spatial.capability(SpatialUI.Capability.SDF_SHADOWS) == expected,
                     "Unexpected SDF shader state after spatial reload");
+            require(spatial.capability(SpatialUI.Capability.ARBITRARY_PATH_SHADOWS) == expected,
+                    "Unexpected path shadow state after spatial reload");
             reload = null;
             lastProgress = System.nanoTime();
         }
@@ -533,8 +536,13 @@ public final class NativeKernelBenchmark implements UIModule {
                 require(service.capability(SpatialUI.Capability.SDF_SHADOWS) == SpatialUI.Support.SUPPORTED,
                         "The spatial SDF shader is unavailable");
                 spatial = service.mount(module, tree);
-                if (spatialVisual()) SpatialVisualCheck.install(spatial);
-                else spatialBenchmark = new SpatialBenchmark(service, spatial, scenario.spatialMode(), count);
+                if (spatialVisual()) {
+                    require(service.capability(SpatialUI.Capability.ARBITRARY_PATH_SHADOWS) == SpatialUI.Support.SUPPORTED,
+                            "The path shadow shader is unavailable");
+                    SpatialVisualCheck.install(spatial);
+                } else {
+                    spatialBenchmark = new SpatialBenchmark(service, spatial, scenario.spatialMode(), count);
+                }
                 return;
             }
             if (work == Work.IDLE || work == Work.DIRTY) layout = new LayoutService.Binding[count];

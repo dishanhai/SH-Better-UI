@@ -27,6 +27,9 @@ repositories {
 // Share stable drawing and motion API; only loader/render entry points are overridden.
 def platformFiles = ['com/dishanhai/sh_better_ui/ShBetterUi.java',
         'com/dishanhai/sh_better_ui/kernel/internal/live/network/PlatformLiveActivityNetwork.java',
+        'com/dishanhai/sh_better_ui/kernel/internal/page/network/PlatformPageNetwork.java',
+        'com/dishanhai/sh_better_ui/kernel/internal/page/container/PlatformPageMenus.java',
+        'com/dishanhai/sh_better_ui/kernel/internal/richtext/network/PlatformRichSyncNetwork.java',
         'com/dishanhai/sh_better_ui/client/UiClient.java',
         'com/dishanhai/sh_better_ui/client/ForgePlatformBridge.java',
         'com/dishanhai/sh_better_ui/client/api/PlatformUiApi.java',
@@ -40,6 +43,7 @@ def platformFiles = ['com/dishanhai/sh_better_ui/ShBetterUi.java',
         'com/dishanhai/sh_better_ui/client/gui/scaled/VisualRevealRenderer.java',
         'com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java',
         'com/dishanhai/sh_better_ui/client/gui/selection/IngredientValues.java',
+        'com/dishanhai/sh_better_ui/client/visual/RichInlinePlatform.java',
         'com/dishanhai/sh_better_ui/client/jei/JeiPlatformTooltip.java']
 sourceSets {
     main {

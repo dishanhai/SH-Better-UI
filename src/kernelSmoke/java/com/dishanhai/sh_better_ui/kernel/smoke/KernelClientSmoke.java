@@ -4,9 +4,12 @@ package com.dishanhai.sh_better_ui.kernel.smoke;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
+import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassService;
+import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import com.dishanhai.sh_better_ui.kernel.internal.GlassCaptureSmoke;
+import com.dishanhai.sh_better_ui.kernel.internal.TextReadabilitySmoke;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.SharedConstants;
@@ -51,6 +54,15 @@ public final class KernelClientSmoke implements UIModule {
 
     private ModuleContext module;
     private Stage stage = Stage.START;
+    private VisualCompositionSmoke visualComposition;
+    private TextReadabilitySmoke textReadability;
+    private TextReadabilityServiceSmoke textReadabilityService;
+    private TextReadabilityGpuSmoke textReadabilityGpu;
+    private DockSmoke dock;
+    private DeclarativePageSmoke pages;
+    private RichTextSmoke richText;
+    private RichTextEffectsSmoke richEffects;
+    private RichTextEditorSmoke richEditor;
     private Screen title;
     private ProbeScreen probe;
     private CompletableFuture<Void> reload;
@@ -58,13 +70,20 @@ public final class KernelClientSmoke implements UIModule {
     private long initialMisses;
     private long sessionFrames;
     private long hudGlassBefore;
+    private long retryJoinKeyAt;
+    private int joinKeyAttempts;
+    private boolean joinKeyReceived;
     private ScopeHandle worldScope;
     private LiveSurfaceSmoke live;
     private MaterialCatalogSmoke materialCatalog;
     private AnimationService.Track animation;
     private TaskHandle screenDraw;
     private TaskHandle hudDraw;
+    private List<TaskHandle> glassLayerDraws;
+    private AutoCloseable directHud;
+    private int failingHudFrames;
     private GlassService glass;
+    private ClientUiSettings savedDisplay;
     private double animated;
     private boolean stopped;
     private int captures;
@@ -81,8 +100,10 @@ public final class KernelClientSmoke implements UIModule {
 
     interface Platform {
         void join(Minecraft client, Screen parent, String name);
+        void rejoin(Minecraft client, Screen parent, String name);
         void leave(Minecraft client, Screen title);
         boolean optionalPresent();
+        boolean clientCommand(String command);
         default void flushPointer(Minecraft client) {}
     }
 
@@ -112,16 +133,74 @@ public final class KernelClientSmoke implements UIModule {
         try {
             require(System.nanoTime() - started < 120_000_000_000L, "Timed out at "
                     + (instance == null ? "discovery" : instance.stage
-                    + (instance.live == null ? "" : "/" + instance.live.stage())));
+                    + (instance.live == null ? "" : "/" + instance.live.stage())
+                    + (instance.dock == null ? "" : "/dock:" + instance.dock.stage())
+                    + (instance.textReadabilityGpu == null ? "" : "/readability:" + instance.textReadabilityGpu.stage())
+                    + (instance.richEditor == null ? "" : "/" + instance.richEditor.stage())
+                    + (instance.pages == null ? "" : "/pages:" + instance.pages.stage())));
             if (client.getOverlay() != null) return;
             if (instance == null) {
                 require(!(client.screen instanceof TitleScreen), "Loader did not discover the kernel fixture");
                 return;
             }
-            instance.advance(client, platform, Path.of(output));
+            require(!instance.stopped, "Kernel stopped before the smoke finished at " + instance.stage);
+            boolean text = Boolean.getBoolean("shb.kernel.smoke.richText");
+            boolean effects = Boolean.getBoolean("shb.kernel.smoke.richEffects");
+            if (Boolean.getBoolean("shb.kernel.smoke.textReadabilityGpu")) {
+                instance.textReadabilityGpu(client, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.textReadabilityService")) {
+                instance.textReadabilityService(client, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.textReadability")) {
+                instance.textReadability(client, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.pages")) {
+                instance.pages(client, platform, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.dock")) {
+                instance.dock(client, platform, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.richEditor")) {
+                instance.richEditor(client, platform, Path.of(output));
+            } else if (effects && (!text || instance.richEffects != null)) {
+                instance.richEffects(client, Path.of(output));
+            } else if (text) {
+                instance.richText(client, platform, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.visualComposition")) {
+                instance.visualComposition(client, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.materialEffects")) {
+                instance.materialEffects(client, platform, Path.of(output));
+            } else {
+                instance.advance(client, platform, Path.of(output));
+            }
         } catch (Exception | AssertionError failure) {
             System.err.println("KERNEL_SMOKE_FAILED " + failure);
             failure.printStackTrace();
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void dock(Minecraft client, Platform platform, Path output) throws Exception {
+        if (dock == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            glass = module.engine().glass();
+            dock = new DockSmoke(client, module, output);
+        } else if (dock.advance(client, platform)) {
+            Files.writeString(output.resolve("success.txt"), "ADCWS native smoke passed\n");
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void pages(Minecraft client, Platform platform, Path output) throws Exception {
+        if (pages == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong declarative page client JDK");
+            glass = module.engine().glass();
+            pages = new DeclarativePageSmoke(module, client.screen);
+        } else if (pages.advance(client, platform)) {
+            String scripts = Boolean.getBoolean("shb.kernel.smoke.pages.kubejs") ? ", KubeJS client reload" : "";
+            Files.writeString(output.resolve("success.txt"),
+                    "Local controls, scale, Page Studio, native container reconnect, confirmed action, priority modal, "
+                            + "interaction token, HUD and notification" + scripts + " passed\n");
             done = true;
             client.stop();
         }
@@ -137,6 +216,127 @@ public final class KernelClientSmoke implements UIModule {
         } catch (Exception failure) {
             throw new IllegalStateException("Could not record kernel shutdown", failure);
         }
+    }
+
+    private void richText(Minecraft client, Platform platform, Path output) throws Exception {
+        if (richText == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong rich text client JDK");
+            glass = module.engine().glass();
+            richText = new RichTextSmoke(client, output);
+        } else if (richText.advance(client, platform)) {
+            if (Boolean.getBoolean("shb.kernel.smoke.richEffects")) {
+                richEffects = new RichTextEffectsSmoke(client, module, output);
+                return;
+            }
+            Files.writeString(output.resolve("success.txt"), richText.result());
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void richEditor(Minecraft client, Platform platform, Path output) throws Exception {
+        if (richEditor == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong rich text editor client JDK");
+            glass = module.engine().glass();
+            richEditor = new RichTextEditorSmoke(client, platform, output);
+        } else if (richEditor.advance(client, platform)) {
+            Files.writeString(output.resolve("success.txt"), richEditor.result());
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void richEffects(Minecraft client, Path output) throws Exception {
+        if (richEffects == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong rich text effects client JDK");
+            glass = module.engine().glass();
+            richEffects = new RichTextEffectsSmoke(client, module, output);
+        } else if (richEffects.advance(client)) {
+            var textResult = richText == null ? "" : richText.result();
+            Files.writeString(output.resolve("success.txt"), textResult + richEffects.result());
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void visualComposition(Minecraft client, Path output) throws Exception {
+        if (visualComposition == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            glass = module.engine().glass();
+            visualComposition = new VisualCompositionSmoke(client, module);
+        } else if (visualComposition.advance(client)) {
+            Files.writeString(output.resolve("success.txt"), "visual composition native smoke passed\n"
+                    + visualComposition.timings());
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void textReadability(Minecraft client, Path output) throws Exception {
+        if (textReadability == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong text readability client JDK");
+            glass = module.engine().glass();
+            textReadability = new TextReadabilitySmoke();
+            client.setScreen(textReadability);
+        } else if (textReadability.verify(client, output)) {
+            client.setScreen(null);
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void textReadabilityService(Minecraft client, Path output) throws Exception {
+        if (textReadabilityService == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong text readability service client JDK");
+            glass = module.engine().glass();
+            textReadabilityService = new TextReadabilityServiceSmoke(module);
+            client.setScreen(textReadabilityService);
+        } else if (textReadabilityService.verify(client, output)) {
+            client.setScreen(null);
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void textReadabilityGpu(Minecraft client, Path output) throws Exception {
+        if (textReadabilityGpu == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            int java = module.engine().platform().info() == ModuleDescriptor.Platform.FORGE_1_20_1 ? 17 : 21;
+            require(Runtime.version().feature() == java, "Wrong GPU text readability client JDK");
+            glass = module.engine().glass();
+            textReadabilityGpu = new TextReadabilityGpuSmoke(module);
+            client.setScreen(textReadabilityGpu);
+        } else if (textReadabilityGpu.verify(client, output)) {
+            client.setScreen(null);
+            textReadabilityGpu.verifyClosed();
+            Files.writeString(output.resolve("success.txt"), textReadabilityGpu.result());
+            done = true;
+            client.stop();
+        }
+    }
+
+    private void materialEffects(Minecraft client, Platform platform, Path output) throws Exception {
+        if (materialCatalog == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            glass = module.engine().glass();
+            materialCatalog = new MaterialCatalogSmoke(true);
+        }
+        if (!materialCatalog.advance(client, platform, output)) return;
+        Files.writeString(output.resolve("success.txt"),
+                "Native material routes resolved and selected effects rendered on " + module.engine().platform().info()
+                        + " Java " + Runtime.version().feature() + "\n");
+        done = true;
+        client.stop();
     }
 
     private void advance(Minecraft client, Platform game, Path output) throws Exception {
@@ -192,6 +392,21 @@ public final class KernelClientSmoke implements UIModule {
                     GlassOpticsSmoke.verify(image, client);
                     image.writeToFile(output.resolve("screen.png").toFile());
                 }
+                savedDisplay = ClientUiSettings.current();
+                require(ClientUiKernel.saveClientSettings(savedDisplay.withDisplay(true, savedDisplay.reducedMotion(),
+                        savedDisplay.widgetBackdropBlur())), "Could not enable high contrast in the kernel configuration");
+                screenDraw = engine.require(UIApis.RENDER).submit(module, probe.tree, RenderService.Surface.SCREEN,
+                        RenderService.Layer.OVERLAY, 0, GlassOpticsSmoke::drawHighContrast);
+                stage = Stage.HIGH_CONTRAST;
+            }
+            case HIGH_CONTRAST -> {
+                require(screenDraw.status() == TaskHandle.Status.SUCCEEDED, "High-contrast glass pass did not run");
+                try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                    GlassOpticsSmoke.verifyHighContrast(image, client);
+                    image.writeToFile(output.resolve("liquid-glass-high-contrast.png").toFile());
+                } finally {
+                    require(ClientUiKernel.saveClientSettings(savedDisplay), "Could not restore kernel display preferences");
+                }
                 var resource = engine.require(UIApis.RESOURCES);
                 resourceVersion = resource.version();
                 var assets = resource.alignmentAssets(module, probe.tree, client.getResourceManager());
@@ -236,8 +451,34 @@ public final class KernelClientSmoke implements UIModule {
             case RECOVERED_SHADER -> {
                 var stats = glass.diagnostics();
                 require(screenDraw.status() == TaskHandle.Status.SUCCEEDED && stats.shaderReady()
-                                && stats.passesWithCapture() == 2 && stats.opticalDraws() == 7,
+                                && stats.passesWithCapture() == 3
+                                && stats.opticalDraws() == GlassOpticsSmoke.INITIAL_OPTICAL_DRAWS + 1,
                         "Reload did not recover the Liquid Glass renderer " + stats);
+                glassLayerDraws = GlassOpticsSmoke.submitLayerChecks(module, probe.tree);
+                stage = Stage.GLASS_LAYERS;
+            }
+            case GLASS_LAYERS -> {
+                require(glassLayerDraws.stream().allMatch(task -> task.status() == TaskHandle.Status.SUCCEEDED),
+                        "Optical glass layer passes did not run");
+                try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                    GlassOpticsSmoke.verifyLayers(image, client, false);
+                }
+                savedDisplay = ClientUiSettings.current();
+                require(ClientUiKernel.saveClientSettings(savedDisplay.withDisplay(savedDisplay.highContrast(),
+                        savedDisplay.reducedMotion(), false)), "Could not disable optical glass");
+                glassLayerDraws = GlassOpticsSmoke.submitLayerChecks(module, probe.tree);
+                stage = Stage.GLASS_LAYERS_FALLBACK;
+            }
+            case GLASS_LAYERS_FALLBACK -> {
+                try {
+                    require(glassLayerDraws.stream().allMatch(task -> task.status() == TaskHandle.Status.SUCCEEDED),
+                            "Fallback glass layer passes did not run");
+                    try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                        GlassOpticsSmoke.verifyLayers(image, client, true);
+                    }
+                } finally {
+                    require(ClientUiKernel.saveClientSettings(savedDisplay), "Could not restore optical glass");
+                }
                 var pending = module.engine().scheduler().submit(UITask.ui(probe.tree, UIPhase.STATE_MUTATION,
                         UIPriority.NORMAL, () -> { throw new AssertionError("Closed Screen task ran"); })
                         .delayed(60_000_000_000L));
@@ -258,19 +499,41 @@ public final class KernelClientSmoke implements UIModule {
                 module.engine().events().subscribe(InputService.EVENT, probe.tree, UIEventPhase.TARGET, 0, event -> {
                     if (event.payload() instanceof NativeInput.Key key && key.action() == NativeInput.KeyAction.PRESS) {
                         event.consume();
+                        if (joinKeyReceived) return;
+                        joinKeyReceived = true;
+                        System.out.println("KERNEL_SMOKE_JOIN native L received on attempt " + joinKeyAttempts);
                         game.join(client, title, "kernel-smoke-" + System.nanoTime());
                     }
                 });
                 stage = Stage.JOIN;
-                // Process the native key between frames. The input callback may synchronously render a loading Screen.
-                client.tell(() -> key(client, GLFW.GLFW_KEY_L, GLFW.GLFW_PRESS));
+                sendJoinKey(client);
             }
             case JOIN -> {
+                if (!joinKeyReceived) {
+                    if (System.nanoTime() >= retryJoinKeyAt) {
+                        require(joinKeyAttempts < 3 && client.screen == probe,
+                                "Native L did not reach the join target after " + joinKeyAttempts + " attempts; screen="
+                                        + client.screen + ", windowActive=" + client.isWindowActive());
+                        sendJoinKey(client);
+                    }
+                    return;
+                }
                 if (client.level == null || client.player == null || client.screen != null) return;
                 require(engine.platform().hasClientSession(), "Native login did not open the session");
                 worldScope = engine.require(UIApis.SCREENS).session(module, id("smoke/session"));
                 sessionFrames = engine.scheduler().snapshot().frame();
                 hudGlassBefore = glass.diagnostics().opticalDraws();
+                var hud = engine.require(UIApis.HUD);
+                hud.mount(module, frame -> {
+                    failingHudFrames++;
+                    frame.graphics().enableScissor(0, 0, 2, 2);
+                    throw new IllegalStateException("intentional HUD scissor failure");
+                });
+                directHud = hud.mount(module, frame -> {
+                    frame.graphics().enableScissor(23, 19, 35, 31);
+                    frame.graphics().fill(24, 20, 32, 28, MARKER);
+                    frame.graphics().disableScissor();
+                });
                 hudDraw = engine.require(UIApis.RENDER).submit(module, worldScope, RenderService.Surface.HUD,
                         RenderService.Layer.OVERLAY, 0, context -> {
                             require(context.frame().surface() == RenderService.Surface.HUD, "Wrong HUD surface");
@@ -285,8 +548,12 @@ public final class KernelClientSmoke implements UIModule {
                 if (live == null) {
                     require(glass.diagnostics().opticalDraws() == hudGlassBefore + 1, "World HUD glass did not draw");
                     try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                        require(failingHudFrames == 1 && pixel(image, client, 26, 22) == MARKER,
+                                "A failed direct HUD layer clipped the next layer or was invoked again");
                         image.writeToFile(output.resolve("liquid-glass-world.png").toFile());
                     }
+                    directHud.close();
+                    directHud.close();
                     client.options.guiScale().set(2);
                     client.resizeDisplay();
                     live = new LiveSurfaceSmoke(module, worldScope);
@@ -316,9 +583,10 @@ public final class KernelClientSmoke implements UIModule {
                         + "reentrant input, capture failure, world login/HUD/logout, live surface split/expand, "
                         + "live local action, 32 continuous retargets, network publish/action/result, "
                         + "window resize, GUI scale 1 and three live resource reloads\n"
-                        + "Liquid Glass: shared native capture, optical and contrast pixels, GL state, solid fallback, "
+                        + "Liquid Glass: shared native capture, wide frost and contrast pixels, GL state, solid fallback, "
                         + "shader compile failure and reload recovery, world HUD, shutdown release\n"
-                        + "Material catalog: stable and alias routes, native optics, reduced motion, frame step/reset, "
+                        + "Material catalog: developer panel and fullscreen return focus, stable and alias routes, "
+                        + "native optical sliders and endpoint screenshots, reduced motion, frame step/reset, "
                         + "four fixed keyframes, keyboard draft, A/B, GUI scale and reload retention, close and fresh draft\n";
                 Files.writeString(output.resolve("success.txt"), result);
                 System.out.println("KERNEL_SMOKE_OK " + result);
@@ -326,6 +594,18 @@ public final class KernelClientSmoke implements UIModule {
                 client.stop();
             }
         }
+    }
+
+    private void sendJoinKey(Minecraft client) {
+        joinKeyAttempts++;
+        retryJoinKeyAt = System.nanoTime() + 500_000_000L;
+        // The callback can render a loading Screen. Keep the synthetic key between frames.
+        client.tell(() -> {
+            if (client.screen != probe || joinKeyReceived || client.getOverlay() != null) return;
+            client.setWindowActive(true);
+            key(client, GLFW.GLFW_KEY_L, GLFW.GLFW_PRESS);
+            if (client.screen == probe) key(client, GLFW.GLFW_KEY_L, GLFW.GLFW_RELEASE);
+        });
     }
 
     private void nativeInputs(Minecraft client, Platform game, ModuleDescriptor.Platform platform) throws Exception {
@@ -368,8 +648,10 @@ public final class KernelClientSmoke implements UIModule {
 
         button(client, GLFW.GLFW_PRESS);
         require(captures == 2, "Second native capture failed");
+        var focusOnLoss = service.request(module, probe.keyboardNode, FOCUS, probe.second, 0).orElseThrow();
         client.setWindowActive(false);
         require(cancels == 1 && !UnifiedUI.get().platform().viewport().focused(), "Window loss did not revoke capture");
+        require(!focusOnLoss.isActive() && probe.getFocused() == original, "Window loss did not restore native focus");
         client.setWindowActive(true);
         button(client, GLFW.GLFW_RELEASE);
         require(releases == 1, "Canceled capture delivered its release");
@@ -502,7 +784,7 @@ public final class KernelClientSmoke implements UIModule {
                 window(client), GLFW.GLFW_MOUSE_BUTTON_LEFT, action, 0);
     }
 
-    private static void invoke(Object target, String name, Class<?>[] arguments, Object... values) throws Exception {
+    static void invoke(Object target, String name, Class<?>[] arguments, Object... values) throws Exception {
         Method method = target.getClass().getDeclaredMethod(name, arguments);
         method.setAccessible(true);
         method.invoke(target, values);
@@ -558,5 +840,8 @@ public final class KernelClientSmoke implements UIModule {
         if (!condition) throw new AssertionError(message);
     }
 
-    private enum Stage { START, DRAW, RELOAD, BROKEN_SHADER, RELOAD_SHADER, RECOVERED_SHADER, JOIN, HUD, LEAVE }
+    private enum Stage {
+        START, DRAW, HIGH_CONTRAST, RELOAD, BROKEN_SHADER, RELOAD_SHADER, RECOVERED_SHADER,
+        GLASS_LAYERS, GLASS_LAYERS_FALLBACK, JOIN, HUD, LEAVE
+    }
 }

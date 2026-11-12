@@ -2,6 +2,9 @@
 package com.dishanhai.sh_better_ui.kernel.benchmark.client;
 
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Local;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Point;
+import com.dishanhai.sh_better_ui.spatial.SpatialGeometry.ShadowPath;
 import com.dishanhai.sh_better_ui.spatial.SpatialGeometry.Shape;
 import com.dishanhai.sh_better_ui.spatial.SpatialGeometry.Transform;
 import com.dishanhai.sh_better_ui.spatial.SpatialScene;
@@ -31,7 +34,15 @@ final class SpatialVisualCheck {
         rotation.transform(new Transform(142, 18, 1, 1, Math.PI / 2, 0, 0));
         var inset = node(scene, "inset", null, Shape.rounded(36, 25, 4), 158, 20, 0, SURFACE, false);
         inset.shadows(List.of(new Shadow(ShadowType.INNER, 0, 4, 4, 0, .9, 0xff121925, true)));
+        var path = node(scene, "path", null, Shape.rectangle(46, 38), 68, 83, 0, 0, false);
+        var outline = List.of(point(0, 0), point(46, 0), point(46, 13),
+                point(42, 13), point(42, 38), point(0, 38));
+        var hole = List.of(point(12, 8), point(34, 8), point(34, 30), point(12, 30));
+        path.shadowPath(new ShadowPath(List.of(outline, hole)));
+        path.shadows(List.of(new Shadow(ShadowType.DROP, 7, 0, 3, 0, .95, 0xff121925, true)));
     }
+
+    private static Point<Local> point(double x, double y) { return new Point<>(x, y); }
 
     private static SpatialScene.Node node(SpatialScene scene, String name, UiId parent, Shape shape,
                                           double x, double y, int z, int color, boolean clip) {
@@ -53,10 +64,15 @@ final class SpatialVisualCheck {
         if (sdf) {
             darker("drop shadow", BACKGROUND, pixel(image, guiWidth, guiHeight, 33, 55));
             darker("inner shadow", SURFACE, pixel(image, guiWidth, guiHeight, 178, 22));
+            darker("path outer shadow", BACKGROUND, pixel(image, guiWidth, guiHeight, 116, 87));
+            darker("path hole shadow", BACKGROUND, pixel(image, guiWidth, guiHeight, 81, 102));
         } else {
             near("fallback outside surface", BACKGROUND, pixel(image, guiWidth, guiHeight, 33, 55));
             near("fallback inside surface", SURFACE, pixel(image, guiWidth, guiHeight, 178, 22));
+            near("fallback without path shadow", BACKGROUND, pixel(image, guiWidth, guiHeight, 116, 87));
         }
+        near("path hole center remains open", BACKGROUND, pixel(image, guiWidth, guiHeight, 94, 102));
+        near("path drop stays outside its outline", BACKGROUND, pixel(image, guiWidth, guiHeight, 105, 89));
         near("inner shadow remains inside", BACKGROUND, pixel(image, guiWidth, guiHeight, 178, 17));
     }
 

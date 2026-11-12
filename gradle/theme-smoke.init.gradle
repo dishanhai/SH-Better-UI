@@ -13,8 +13,8 @@ gradle.beforeProject { p ->
         def root = forge ? p.projectDir : p.projectDir.parentFile
         def platform = forge ? 'forge' : 'neoforge'
         def settings = p.findProperty('themeSmokeSettings') ?: ''
-        if (!(settings in ['', 'write', 'read'])) throw new GradleException('Expected themeSmokeSettings=write or read')
-        def suffix = settings ? '-settings' : ''
+        if (!(settings in ['', 'write', 'read', 'hud'])) throw new GradleException('Expected themeSmokeSettings=write, read or hud')
+        def suffix = settings == 'hud' ? '-hud-glass' : settings ? '-settings' : ''
         def game = new File(root, "build/dynamic-theme/client-${platform}${suffix}")
         def screenshots = new File(root, "build/dynamic-theme/screenshots/${platform}${suffix}")
         def baseline = new File(root, 'src/themeSmoke/baseline')

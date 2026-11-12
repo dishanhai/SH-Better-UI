@@ -8,6 +8,11 @@ def benchmark = sourceSets.create('kernelBenchmark') {
 
 def java17 = JavaLanguageVersion.of(17)
 def java21 = JavaLanguageVersion.of(21)
+def defaultPlatform = [
+        '1.21.1': 'NEOFORGE_1_21_1',
+        '26.1.2': 'NEOFORGE_26_1_2',
+        '26.2': 'NEOFORGE_26_2'
+][project.findProperty('minecraft_version')] ?: 'FORGE_1_20_1'
 tasks.named(benchmark.compileJavaTaskName, JavaCompile) {
     javaCompiler = javaToolchains.compilerFor { languageVersion = java21 }
     options.release = 17
@@ -22,8 +27,6 @@ tasks.register('kernelBenchmark', JavaExec) {
     minHeapSize = '512m'
     maxHeapSize = '512m'
     jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'
-    def defaultPlatform = project.findProperty('minecraft_version') == '1.21.1'
-            ? 'NEOFORGE_1_21_1' : 'FORGE_1_20_1'
     def reportDirectory = providers.gradleProperty('kernelBenchmarkOutput').map { file(it) }
             .getOrElse(layout.buildDirectory.dir('reports/kernel-benchmark').get().asFile)
     args '--output', reportDirectory.absolutePath,
@@ -42,8 +45,6 @@ tasks.register('liveSurfaceBenchmark', JavaExec) {
     minHeapSize = '512m'
     maxHeapSize = '512m'
     jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'
-    def defaultPlatform = project.findProperty('minecraft_version') == '1.21.1'
-            ? 'NEOFORGE_1_21_1' : 'FORGE_1_20_1'
     def reportDirectory = providers.gradleProperty('liveSurfaceBenchmarkOutput').map { file(it) }
             .getOrElse(layout.buildDirectory.dir('reports/live-surface-benchmark').get().asFile)
     args '--output', reportDirectory.absolutePath,
@@ -51,6 +52,28 @@ tasks.register('liveSurfaceBenchmark', JavaExec) {
             '--warmup', providers.gradleProperty('liveSurfaceBenchmarkWarmup').getOrElse('2000'),
             '--samples', providers.gradleProperty('liveSurfaceBenchmarkSamples').getOrElse('2000'),
             '--scenario', providers.gradleProperty('liveSurfaceBenchmarkScenario').getOrElse('all')
+}
+
+tasks.register('richTextBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Measures Java 17 rich-text layout, visible rows and sync wire round trips.'
+    classpath = benchmark.runtimeClasspath
+    mainClass = 'com.dishanhai.sh_better_ui.kernel.benchmark.RichTextBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = java17 }
+    minHeapSize = '512m'
+    maxHeapSize = '512m'
+    jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'
+}
+
+tasks.register('pageProtocolBenchmark', JavaExec) {
+    group = 'verification'
+    description = 'Measures declarative page protocol round trips, wire size and allocations.'
+    classpath = benchmark.runtimeClasspath
+    mainClass = 'com.dishanhai.sh_better_ui.kernel.benchmark.PageProtocolBenchmark'
+    javaLauncher = javaToolchains.launcherFor { languageVersion = java17 }
+    minHeapSize = '512m'
+    maxHeapSize = '512m'
+    jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'
 }
 
 // CPU/model benchmark only. Platform names identify the common kernel configuration, not a game client.
@@ -63,8 +86,6 @@ tasks.register('correctnessBenchmark', JavaExec) {
     minHeapSize = '512m'
     maxHeapSize = '512m'
     jvmArgs '-XX:+UseG1GC', '-XX:ActiveProcessorCount=4'
-    def defaultPlatform = project.findProperty('minecraft_version') == '1.21.1'
-            ? 'NEOFORGE_1_21_1' : 'FORGE_1_20_1'
     def reportDirectory = providers.gradleProperty('correctnessBenchmarkOutput').map { file(it) }
             .getOrElse(layout.buildDirectory.dir('reports/correctness-benchmark').get().asFile)
     args '--output', reportDirectory.absolutePath,

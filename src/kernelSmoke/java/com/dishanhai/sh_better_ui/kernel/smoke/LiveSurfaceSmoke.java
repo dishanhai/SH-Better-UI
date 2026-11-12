@@ -1,12 +1,14 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.smoke;
 
+import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.live.ActivityService;
 import com.dishanhai.sh_better_ui.kernel.api.live.ActivityService.*;
 import com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceService;
+import com.dishanhai.sh_better_ui.kernel.api.live.NotificationService;
 import com.dishanhai.sh_better_ui.kernel.api.live.SurfaceGeometry;
 import com.dishanhai.sh_better_ui.kernel.api.live.SurfacePresentation;
 import com.dishanhai.sh_better_ui.kernel.api.live.network.NetworkLiveActivity;
@@ -15,6 +17,10 @@ import com.dishanhai.sh_better_ui.kernel.api.live.network.ServerLiveActivityActi
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
+import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.EditBox;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import org.lwjgl.opengl.GL11;
 
@@ -32,7 +38,11 @@ final class LiveSurfaceSmoke {
     private static final UiId MAIN = id("live/smoke_main");
     private static final UiId SECONDARY = id("live/smoke_secondary");
     private static final UiId ACTIVATE = id("live/smoke_activate");
+    private static final UiId NOTICE = id("live/smoke_notice");
     private static final UiId REMOTE = id("live/smoke_remote");
+    private static final UiId PREVIEW = id("live/preview");
+    private final ModuleContext module;
+    private final ScopeHandle session;
     private final LiveSurfaceService surfaces;
     private final Handle primary, secondary;
     private final AtomicInteger serverActions = new AtomicInteger();
@@ -47,9 +57,15 @@ final class LiveSurfaceSmoke {
     private Stage loggedStage;
     private Stage stage = Stage.SPLIT;
     private int localActions;
+    private int oldNoticeActions, newNoticeActions;
+    private Screen activityScreen;
+    private HostInputScreen hostInput;
+    private NotificationService.Handle notice;
     private int splitFrames, expandedFrames, interruptions, reloads;
 
     LiveSurfaceSmoke(ModuleContext module, ScopeHandle session) {
+        this.module = module;
+        this.session = session;
         surfaces = module.engine().require(LiveSurfaceService.KEY);
         var activities = module.engine().require(ActivityService.KEY);
         var content = new Content(Text.literal("Live smoke primary"), Text.literal("Local activity"),
@@ -88,13 +104,51 @@ final class LiveSurfaceSmoke {
                 sample(client, "hud-split");
                 if (++splitFrames < 48) return false;
                 screenshot(client, output.resolve("live-hud.png"), view.primary());
-                ClientUiKernel.openLiveActivities(client);
-                require(client.screen != null, "Live activities shortcut did not open a native Screen");
+                primary.requestPresentation(SurfacePresentation.MINIMAL);
+                stage = Stage.MINIMAL_HINTS;
+            }
+            case MINIMAL_HINTS -> {
+                if (view.settled() != SurfacePresentation.MINIMAL || view.transitioning()) return false;
+                screenshot(client, output.resolve("live-minimal-shortcuts.png"), view.primary());
+                stage = Stage.HINTS_RETRACTED;
+            }
+            case HINTS_RETRACTED -> {
+                if (now - enteredAt < Duration.ofMillis(2_300).toNanos()) return false;
+                require(view.settled() == SurfacePresentation.MINIMAL && view.primary().visible(),
+                        "Shortcut hint timeout hid the live activity");
+                screenshot(client, output.resolve("live-minimal-shortcuts-retracted.png"), view.primary());
+                primary.requestPresentation(SurfacePresentation.COMPACT);
+                stage = Stage.POINTER_SHORTCUT;
+            }
+            case POINTER_SHORTCUT -> {
+                if (view.settled() != SurfacePresentation.SPLIT || view.transitioning()) return false;
+                altKey(client, GLFW.GLFW_KEY_LEFT_ALT, GLFW.GLFW_PRESS);
+                require(client.screen == null, "Alt opened before the chord was known");
+                altKey(client, GLFW.GLFW_KEY_GRAVE_ACCENT, GLFW.GLFW_PRESS);
+                altKey(client, GLFW.GLFW_KEY_GRAVE_ACCENT, GLFW.GLFW_RELEASE);
+                KernelClientSmoke.key(client, GLFW.GLFW_KEY_LEFT_ALT, GLFW.GLFW_RELEASE);
+                require(client.screen != null && !client.mouseHandler.isMouseGrabbed(),
+                        "Alt+grave did not release the pointer");
                 stage = Stage.OPEN;
             }
             case OPEN -> {
                 if (!view.interactive()) return false;
                 clickBody(client, platform, view.primary());
+                stage = Stage.POINTER_EXPANDED;
+            }
+            case POINTER_EXPANDED -> {
+                if (view.settled() != SurfacePresentation.EXPANDED || view.transitioning()) return false;
+                pressKey(client, GLFW.GLFW_KEY_ESCAPE);
+                if (client.screen != null) pressKey(client, GLFW.GLFW_KEY_ESCAPE);
+                require(client.screen == null && client.mouseHandler.isMouseGrabbed(),
+                        "Escape did not restore gameplay mouse capture");
+                stage = Stage.ALT_DETAILS;
+            }
+            case ALT_DETAILS -> {
+                if (view.interactive() || !view.primary().visible()) return false;
+                altKey(client, GLFW.GLFW_KEY_RIGHT_ALT, GLFW.GLFW_PRESS);
+                KernelClientSmoke.key(client, GLFW.GLFW_KEY_RIGHT_ALT, GLFW.GLFW_RELEASE);
+                require(client.screen != null, "Solo Alt did not open the activity dashboard");
                 stage = Stage.EXPANDED;
             }
             case EXPANDED -> {
@@ -133,6 +187,79 @@ final class LiveSurfaceSmoke {
                 client.setWindowActive(true);
                 primary.cancel();
                 secondary.cancel();
+                activityScreen = client.screen;
+                require(DeveloperPanelScreen.sampleIds().contains("live_activity"),
+                        "Activity Island is missing from the developer gallery");
+                stage = Stage.PREVIEW_ENTRY;
+            }
+            case PREVIEW_ENTRY -> {
+                var label = Component.translatable("sh_better_ui.live.preview.open").getString();
+                var entry = client.screen.children().stream().filter(Button.class::isInstance).map(Button.class::cast)
+                        .filter(button -> button.visible && button.active && button.getMessage().getString().equals(label))
+                        .findFirst();
+                if (entry.isEmpty()) return false;
+                entry.orElseThrow().onPress();
+                require(client.screen != activityScreen, "Activity Island preview did not open");
+                stage = Stage.PREVIEW_COMPACT;
+            }
+            case PREVIEW_COMPACT -> {
+                if (!view.interactive() || view.plan().primary() == null || !PREVIEW.equals(view.plan().primary().id())
+                        || view.settled() != SurfacePresentation.COMPACT || view.transitioning()) return false;
+                clickBody(client, platform, view.primary());
+                stage = Stage.PREVIEW_EXPANDED;
+            }
+            case PREVIEW_EXPANDED -> {
+                if (!view.interactive() || view.settled() != SurfacePresentation.EXPANDED || view.transitioning()) return false;
+                screenshot(client, output.resolve("live-activity-preview.png"), view.primary());
+                client.screen.onClose();
+                require(client.screen == activityScreen, "Activity Island preview did not return to its parent");
+                require(surfaces.diagnostics().activities() == 0, "Activity Island preview survived its Screen");
+                hostInput = new HostInputScreen();
+                client.setScreen(hostInput);
+                notice = publishNotice(false);
+                stage = Stage.NOTICE_OPEN;
+            }
+            case NOTICE_OPEN -> {
+                if (!view.interactive() || view.plan().primary() == null || !NOTICE.equals(view.plan().primary().id())) return false;
+                clickBody(client, platform, view.primary());
+                stage = Stage.NOTICE_PRESS;
+            }
+            case NOTICE_PRESS -> {
+                if (view.settled() != SurfacePresentation.EXPANDED || view.transitioning() || !view.interactive()) return false;
+                moveToAction(client, platform, view.primary());
+                KernelClientSmoke.button(client, GLFW.GLFW_PRESS);
+                require(hostInput.nativePresses == 0, "Live notification did not capture the native press");
+                require(publishNotice(true) == notice, "Notice replacement did not reuse its publication");
+                stage = Stage.NOTICE_RELEASE;
+            }
+            case NOTICE_RELEASE -> {
+                if (view.plan().primary() == null || view.plan().primary().revision() != notice.snapshot().revision()
+                        || view.transitioning() || !view.interactive()) return false;
+                KernelClientSmoke.button(client, GLFW.GLFW_RELEASE);
+                stage = Stage.NOTICE_FRESH_ACTION;
+            }
+            case NOTICE_FRESH_ACTION -> {
+                require(oldNoticeActions == 0 && newNoticeActions == 0, "Held old notice executed after replacement");
+                moveToAction(client, platform, view.primary());
+                KernelClientSmoke.button(client, GLFW.GLFW_PRESS);
+                KernelClientSmoke.button(client, GLFW.GLFW_RELEASE);
+                stage = Stage.NOTICE_FOCUS;
+            }
+            case NOTICE_FOCUS -> {
+                require(oldNoticeActions == 0 && newNoticeActions == 1, "Fresh notice action did not execute exactly once");
+                KernelClientSmoke.move(client, hostInput.field.getX() + 10, hostInput.field.getY() + 9);
+                platform.flushPointer(client);
+                KernelClientSmoke.button(client, GLFW.GLFW_PRESS);
+                KernelClientSmoke.button(client, GLFW.GLFW_RELEASE);
+                require(hostInput.getFocused() == hostInput.field, "The host input field did not take focus");
+                int end = hostInput.field.getValue().length();
+                hostInput.field.setCursorPosition(end);
+                hostInput.field.setHighlightPos(end);
+                pressKey(client, GLFW.GLFW_KEY_BACKSPACE);
+                require("x".equals(hostInput.field.getValue()) && notice.snapshot().lifecycle() == Lifecycle.RUNNING,
+                        "Live notification kept keyboard focus after the host input field was clicked");
+                notice.dismiss();
+                client.setScreen(activityScreen);
                 var server = client.getSingleplayerServer();
                 var user = client.player.getUUID();
                 server.execute(() -> {
@@ -206,6 +333,18 @@ final class LiveSurfaceSmoke {
 
     String stage() { return stage.name(); }
 
+    private NotificationService.Handle publishNotice(boolean replacement) {
+        var content = new Content(Text.literal(replacement ? "Live notice B" : "Live notice A"),
+                Text.literal("Local activity"), null, .4, false,
+                List.of(new Control(ACTIVATE, Text.literal("Confirm"))), List.of());
+        return module.engine().require(NotificationService.KEY).publish(module, session,
+                new NotificationService.Request(NOTICE, content, Priority.HIGH, Duration.ofSeconds(30), NOTICE,
+                        NotificationService.Merge.REPLACE, ignored -> {
+                            if (replacement) newNoticeActions++;
+                            else oldNoticeActions++;
+                        }));
+    }
+
     private void reload(Minecraft client) {
         initialResourceVersion = com.dishanhai.sh_better_ui.kernel.api.UnifiedUI.get()
                 .require(com.dishanhai.sh_better_ui.kernel.api.UIApis.RESOURCES).version();
@@ -231,9 +370,19 @@ final class LiveSurfaceSmoke {
         platform.flushPointer(client);
     }
 
+    private static void moveToAction(Minecraft client, KernelClientSmoke.Platform platform, SurfaceGeometry geometry) throws Exception {
+        KernelClientSmoke.move(client, geometry.x() + geometry.width() / 2, geometry.y() + geometry.height() - 16);
+        platform.flushPointer(client);
+    }
+
     private static void pressKey(Minecraft client, int key) {
         KernelClientSmoke.key(client, key, GLFW.GLFW_PRESS);
         KernelClientSmoke.key(client, key, GLFW.GLFW_RELEASE);
+    }
+
+    private static void altKey(Minecraft client, int key, int action) {
+        client.keyboardHandler.keyPress(client.getWindow().getWindow(), key, GLFW.glfwGetKeyScancode(key),
+                action, GLFW.GLFW_MOD_ALT);
     }
 
     private static void screenshot(Minecraft client, Path path, SurfaceGeometry geometry) throws Exception {
@@ -247,5 +396,29 @@ final class LiveSurfaceSmoke {
 
     private static UiId id(String path) { return new UiId("sh_better_ui", path); }
 
-    private enum Stage { SPLIT, OPEN, EXPANDED, LOCAL_ACTION, INTERRUPT, REMOTE, REMOTE_OPEN, REMOTE_ACTION, RELOAD, DONE }
+    private static final class HostInputScreen extends Screen {
+        private EditBox field;
+        private int nativePresses;
+
+        HostInputScreen() { super(Component.empty()); }
+
+        @Override protected void init() {
+            field = addRenderableWidget(new EditBox(font, 12, height - 46, 80, 18, Component.empty()));
+            field.setValue("xy");
+        }
+
+        @Override public boolean mouseClicked(double x, double y, int button) {
+            nativePresses++;
+            return super.mouseClicked(x, y, button);
+        }
+
+        @Override public boolean isPauseScreen() { return false; }
+    }
+
+    private enum Stage {
+        SPLIT, MINIMAL_HINTS, HINTS_RETRACTED, POINTER_SHORTCUT, OPEN, POINTER_EXPANDED, ALT_DETAILS, EXPANDED, LOCAL_ACTION,
+        INTERRUPT, PREVIEW_ENTRY, PREVIEW_COMPACT, PREVIEW_EXPANDED,
+        NOTICE_OPEN, NOTICE_PRESS, NOTICE_RELEASE, NOTICE_FRESH_ACTION, NOTICE_FOCUS,
+        REMOTE, REMOTE_OPEN, REMOTE_ACTION, RELOAD, DONE
+    }
 }

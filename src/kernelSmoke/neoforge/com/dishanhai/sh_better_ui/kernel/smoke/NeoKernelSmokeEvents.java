@@ -8,6 +8,7 @@ import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.ModList;
 import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.client.ClientCommandHandler;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
 
@@ -19,12 +20,18 @@ public final class NeoKernelSmokeEvents {
                     KernelClientSmoke.options(), KernelClientSmoke::flat, parent);
         }
 
+        @Override public void rejoin(Minecraft client, Screen parent, String name) {
+            client.createWorldOpenFlows().openWorld(name, () -> client.setScreen(parent));
+        }
+
         @Override public void leave(Minecraft client, Screen title) {
             client.level.disconnect();
             client.disconnect(title);
         }
 
         @Override public boolean optionalPresent() { return ModList.get().isLoaded("ldlib2"); }
+
+        @Override public boolean clientCommand(String command) { return ClientCommandHandler.runCommand(command); }
 
         @Override public void flushPointer(Minecraft client) { client.mouseHandler.handleAccumulatedMovement(); }
     };

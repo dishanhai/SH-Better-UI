@@ -62,6 +62,12 @@ public final class DynamicThemeSmoke {
         try {
             var now = System.nanoTime() / 1_000_000L;
             String settings = System.getProperty("shb.theme.smoke.settings", "");
+            if (settings.equals("hud")) {
+                if (DynamicThemeSettingsSmoke.hudFrame(client, platform, Path.of(output), now)) {
+                    finish(client, output, "settings=hud");
+                }
+                return;
+            }
             if (!settings.isEmpty()) {
                 if (DynamicThemeSettingsSmoke.frame(client, Path.of(output), settings, now)) {
                     finish(client, output, "settings=" + settings);
