@@ -1,4 +1,5 @@
 {
+  "sh_better_ui.control.scroll.position": "Scroll position: %s%%",
   "sh_better_ui.text_readability.debug.enabled": "Text readability overlay on. Point at an opted-in text run.",
   "sh_better_ui.text_readability.debug.disabled": "Text readability overlay off.",
   "sh_better_ui.text_readability.debug.frame": "Frame %1$s  %2$s  %3$s  Target %4$s",

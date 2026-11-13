@@ -1,6 +1,21 @@
 <!-- 作者：山海／dishanhai -->
 # 富文字 API
 
+## 世界 HUD 文字
+
+`UiHudRichText` 提供單行 HUD 文字入口。`prepare(Component)` 先解析 SHBUI 格式標記，宿主再量寬、截斷及分頁；`prepare(RichDocument)` 接受文字和翻譯節點，保留顏色、字型、粗體、斜體、底線等樣式。HUD 不承載圖片或互動節點，傳入這些節點會明確拒絕。語言或來源變更後須重新 prepare。
+
+```java
+var title = UiHudRichText.prepare(RichText.document(UiId.parse("example:hud"))
+        .text("Status", new RichStyle(0x66ccff, true, false, false, false, false, null))
+        .build());
+var animated = UiHudRichText.prepare(UiTextEffects.parse("{fire}Status{/}"));
+// 排版並取得已更新背景採樣的 TextReadabilityPalette 後：
+UiHudRichText.draw(graphics, font, animated.getVisualOrderText(), x, y, textColor, preferences, palette);
+```
+
+`UiHudPanel.Row` 會自動 prepare，面板繪製時使用同一入口；NeoForge 26.1.2 的 `GuiGraphicsExtractor` 提供對應簽名。效果先取樣、再校正顏色對比；高對比與減少動效沿用 `UiPreferences`。有位移或描邊效果的文字需要逐字繪製，普通文字仍按整行繪製。效果註冊及標記見 [文字效果](effects.md#格式文字與逐字效果)。
+
 Forge 1.20.1 與 NeoForge 1.21.1 使用同一套 Java API。進入世界後執行 `/shbetterrichtext`。基礎頁展示同行 PNG、寬圖及缺圖占位。進階頁提供文件交換示例、選取、編輯、復原、行內控件和效果切換。另可用 `/shbetterrichsync` 開啟媒體與同步示例，查看 GIF、占位和由整合伺服器提供數值的自訂能量條。Back 或 Esc 返回。可用 `/shbetterricheditor` 開啟遊戲內編輯器，以同一套渲染管線預覽本機文件。 [編輯、交換與設定](RICH_TEXT_RELEASE.md)
 
 | 入口 | 契約 |

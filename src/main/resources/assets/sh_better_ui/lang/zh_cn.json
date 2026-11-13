@@ -1,4 +1,5 @@
 {
+  "sh_better_ui.control.scroll.position": "滚动位置：%s%%",
   "sh_better_ui.text_readability.debug.enabled": "已打开文字可读性叠层。请将指针移到已接入的文字上。",
   "sh_better_ui.text_readability.debug.disabled": "已关闭文字可读性叠层。",
   "sh_better_ui.text_readability.debug.frame": "帧 %1$s  %2$s  %3$s  目标 %4$s",

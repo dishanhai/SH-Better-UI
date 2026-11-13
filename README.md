@@ -462,6 +462,8 @@ HUD 行首可使用按 8 像素网格设计的 `COMPACT_SIGNAL`、`COMPACT_CLOCK
 
 记录、账户和设备图标包括 `HISTORY`（历史记录）、`USER`（单个用户）、`SYSTEM`（系统）、`PHONE`（手机）和 `COMPUTER`（电脑）。成员列表仍可用 `MEMBERS`，监控面板可用 `MONITOR`。
 
+操作系统图标可用 `WINDOWS`、`MACOS`、`IOS`、`ANDROID` 和 `LINUX`，均提供可着色的 16×16 原图和 64×64 副本。
+
 任务控制按钮可用 `RUN`（运行）、`PAUSE`（暂停）和 `RESUME`（继续）。继续图标在播放三角左侧保留一条暂停线，便于区分开始运行与恢复运行。
 
 游戏和设备图标包括 `MINECRAFT`（苦力怕脸）、`GAMEPAD`（手柄／游玩）、`MOUSE`（鼠标）、`KEYBOARD`（键盘）、`HEADPHONES`（耳机）和 `MICROPHONE`（麦克风／语音）。加载器可用 `FORGE`（铁砧）和 `NEOFORGE`（狐狸头）。游戏和加载器标识是适合主题着色的单色像素图案。
@@ -653,10 +655,10 @@ var toast = addRenderableWidget(new UiSwipeToast(this, UiSwipeToast.Placement.BO
 $env:JAVA_HOME = 'C:\Program Files\Java\jdk-21.0.11'
 $env:TEMP = 'C:\jtmp'
 $env:TMP = 'C:\jtmp'
-.\neoforge\gradlew.bat -p neoforge test build --no-daemon --console=plain
+.\neoforge-1.21.1\gradlew.bat -p neoforge-1.21.1 test build --no-daemon --console=plain
 ```
 
-正式包为 `neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.3.jar`。NeoForge 使用 Mojang 命名，不需要 Forge 1.20.1 的 devJar／reobfJar 分流；接入方项目编译与游戏端均依赖此正式 jar。
+正式包为 `neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-<version>.jar`。NeoForge 使用 Mojang 命名，不需要 Forge 1.20.1 的 devJar／reobfJar 分流；接入方项目编译与游戏端均依赖此正式 jar。
 
 游戏端另外安装 **KotlinForForge NeoForge 5.10.0 或相容的 5.x**，不可使用 Forge 1.20.1 的 4.x。已验证前置 5.10.0 使用 Kotlin 2.2.20，与本库 Kotlin compiler 2.2.21 同一条版本线。前置由整合包提供，本库不内嵌 Kotlin／KFF。`FTB Quest Nexus/neoforge` 直接引用此项目产物提供玻璃 UI。
 
@@ -669,8 +671,8 @@ NeoForge 版本提供原生 `Screen` API 和可选的 `compat.ldlib2.LdLib2UiBri
 `neoforge-26.1.2/` 面向 Minecraft 26.1.2、NeoForge 26.1.2.126 和 Kotlin for Forge 6.2.0。`neoforge-26.2/` 面向 Minecraft 26.2、NeoForge 26.2.0.93 和 Kotlin for Forge 6.3.0。用 JDK 25 启动 Gradle。共享内核仍编译为 Java 17 字节码，构建会使用项目原有的 JDK 21 编译工具链和 JDK 17 内核测试运行时。
 
 ```bash
-bash neoforge/gradlew -p neoforge-26.1.2 build --no-daemon --console=plain
-bash neoforge/gradlew -p neoforge-26.2 build --no-daemon --console=plain
+bash neoforge-1.21.1/gradlew -p neoforge-26.1.2 build --no-daemon --console=plain
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 build --no-daemon --console=plain
 ```
 
 开发包位于各目标的 `build/libs/`，版本带 `-alpha.8`。两版共享内核、平台视口、素材目录、项目编辑服务、搜索索引、页面模型和 Kotlin DSL。扩展模块须在 `ModuleDescriptor.platforms` 中声明对应的 `NEOFORGE_26_1_2` 或 `NEOFORGE_26_2`。
@@ -696,11 +698,11 @@ NeoForge 26.2 的早期加载窗口使用 OpenGL，Vulkan 无法复用该窗口�
 隔离客户端烟测会加载打包 JAR，验证控件和图库输入、模糊与玻璃像素、设置应用、模组列表配置按钮和世界内 F8 键盘回调。最后一条命令只在该烟测进程中把 Vulkan 驱动清单指向不存在的文件，以验证真正的初始化失败回退。游戏自动退出，截图保存在各自的 `build/widget-smoke/` 实例目录。
 
 ```bash
-bash neoforge/gradlew -p neoforge-26.1.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
-bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
-bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=opengl
-bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=vulkan -PwidgetSmokeEarlyWindow
-bash neoforge/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeVulkanFallback
+bash neoforge-1.21.1/gradlew -p neoforge-26.1.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=opengl
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeBackend=vulkan -PwidgetSmokeEarlyWindow
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokeVulkanFallback
 ```
 
 给烟测命令追加 `-PwidgetSmokeLayoutReview` 可在独立的 `-layout` 实例中验证原生 GUI Scale 3、窄布局、键盘翻页焦点、折射拖动取消，以及 F8 和模组列表入口。较窄的逻辑尺寸通过 `Screen.resize` 在同一客户端中测试。

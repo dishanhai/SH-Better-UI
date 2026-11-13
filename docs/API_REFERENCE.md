@@ -440,6 +440,8 @@ Minecraft.getInstance().setScreen(settings.developerSampleFullscreen(this, "unde
 
 ### 登记开发者预览
 
+以下示例使用 Forge 1.20.1／NeoForge 1.21.1 的共享宿主。NeoForge 26.x 的提取管线、可用上下文和内嵌预览边界不同，见 [26.x 预览登记与 UUK 材质路由](NEOFORGE_26_GALLERY_GAPS.md#2026-11-13预览注册与-uuk-材质路由复查)。
+
 在客户端初始化时登记一次。开发者图库和全屏入口会读取同一条目，排序依次使用分类、`order` 和 ID。下例在控件分类显示一个能切换选中状态的按钮，标题和按钮标签由资源包提供。
 
 ```java
@@ -726,3 +728,17 @@ shapes.draw(graphics, new Bounds(16, 16, 240, 120), ShBetterUiApi.interactions()
 游戏内执行 `/shbetterricheditor` 可编辑被动 v1 文件，提供节点与属性、撤销重做、保存、预设、媒体时间轴、命中叠层和 JSON／Java 导出。Web 工作台可交换同一格式。独立第三方工程展示文件与可信原生行内节点的组合。 [编辑器和发布检查](RICH_TEXT_RELEASE.md) · [双端 SDK](RICH_TEXT_SDK.md)
 
 `RichDocument` 可混排样式文本、资源包图像、原生游戏物件、向量图标、行内控件和自定义节点。可通过 Builder、被动标记、JSON／Codec 或 Minecraft Component 组装。`RichTextView` 接入现有 `LayoutService.bindVisual`，以同一份呈现快照绘制、选取与查询命中。Forge 和 NeoForge 可在游戏中执行 `/shbetterrichtext` 试用交互和视觉效果，或执行 `/shbetterrichsync` 试用异步媒体与整合服务器的权威数值。 [接入 API](RICH_TEXT_API.md) · [排版](RICH_TEXT_LAYOUT.md) · [资源与重载](RICH_TEXT_MEDIA.md) · [扩展](RICH_TEXT_EXTENSION.md) · [服务器同步](RICH_TEXT_NETWORK.md) · [验证](RICH_TEXT_TESTING.md) · [阶段进度](RICH_TEXT_PROGRESS.md)
+
+## 滚动设置区域与分组入口
+
+`kernel.api.layout.VerticalScroll` 管理视口尺寸、偏移边界、滚动条滑块和拖动取消；`SplitActionRow.of(width, disclosureWidth, gap)` 返回互不重叠的主操作和右侧入口区域。它们不依赖 Minecraft，适用于各宿主。
+
+`SmoothVerticalScroll` 为 `VerticalScroll` 提供可中断、可累积输入的滚动弹簧；每帧调用 `advance(nowMs, reducedMotion)`，直接拖动或外部改位置后调用 `synchronize()`。时间参数须使用同一单调时钟，减少动效时立即到达目标。`ListEntrance.start(nowMs)` 与 `offset(row, nowMs, reducedMotion)` 提供逐行错峰入场位移，减少动效时返回零。
+
+原生界面可用 `ShBetterUiApi.controls().verticalScrollBar(bounds, accessibleName, scroll, step, onChange)` 创建竖向滚动条。宿主负责裁剪或隐藏视口外的控件，在 `onChange` 中按 `scroll.offset()` 更新内容位置，并把位于列表区域内的滚轮输入交给 `scrollByWheel`。控件支持拖动、方向键、Page Up/Down、Home/End 和失焦时取消拖动。分组开关与右侧入口应分别注册为可聚焦操作，并为入口提供本地化名称；不可用项目保留其配置值并显示原因。
+
+调用 `setSmoothScrolling(reducedMotionSupplier)` 可启用滚轮和键盘缓动，并在每帧绘制内容前调用 `advanceMotion()`；宿主直接重设偏移或尺寸后调用 `synchronizeMotion()`。滑块拖动、轨道点击和取消仍即时生效。部分可见控件应同时限制绘制裁剪和指针命中区域，键盘焦点进入时滚动到可见位置。
+
+## HUD 分组布局
+
+`kernel.api.layout.HudSections.layout` 接收已过滤的行、分组提取函数、标题工厂和分隔线开关，返回插入标题后的行以及分隔位置。分页时应以扩展后的候选行测量宽高，再为当前页生成计划，避免标题溢出、空标题或孤立分隔线。`client.gui.scaled.UiHudSections.drawDividers` 可在紧凑 HUD 面板的行间隙绘制这些分隔线；标题和行的文字、图标及本地化由调用方提供。
