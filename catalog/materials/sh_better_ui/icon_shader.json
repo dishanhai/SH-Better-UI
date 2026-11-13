@@ -41,7 +41,7 @@
     "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIcon.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconShader.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
-    "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
+    "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/api/GraphicsApi.java"
   ],
   "publicSymbols": [

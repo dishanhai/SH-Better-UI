@@ -42,7 +42,7 @@
     "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
     "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-    "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
+    "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
     "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/AppearanceGalleryPreview.java"
   ],
   "publicSymbols": [

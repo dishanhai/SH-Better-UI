@@ -9,8 +9,11 @@ import { fileURLToPath } from 'node:url';
 import { assembleCatalog } from '../build.mjs';
 
 const catalog = assembleCatalog();
-const forgeJar = fileURLToPath(new URL('../../build/libs/sh_better_ui-1.0.6-dev.jar', import.meta.url));
-const neoJar = fileURLToPath(new URL('../../neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.6.jar', import.meta.url));
+const versionMatch = readFileSync(new URL('../../gradle.properties', import.meta.url), 'utf8').match(/^mod_version=(.+)$/m);
+assert.ok(versionMatch, 'mod_version must be declared');
+const version = versionMatch[1].trim();
+const forgeJar = fileURLToPath(new URL(`../../build/libs/sh_better_ui-${version}-dev.jar`, import.meta.url));
+const neoJar = fileURLToPath(new URL(`../../neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-${version}.jar`, import.meta.url));
 const source = 'src/main/java/example/Consumer.java';
 const fixtures = [];
 
@@ -80,7 +83,7 @@ versionRange="[${mc}]"
 [[dependencies.example]]
 modId="sh_better_ui"
 ${modDependency}
-versionRange="[1.0.6,)"
+versionRange="[${version},)"
 side="CLIENT"
 `);
   write('src/main/resources/META-INF/sh_better_ui.modules', 'example example.Consumer\n');
@@ -97,7 +100,7 @@ test('produces an applicable read-only patch for each matching external library'
       const result = await proposal({ ...f.options, values: { refraction: 4.75 } });
       assert.equal(result.audit.loader, loader);
       assert.equal(result.audit.javaVersion, javaVersion);
-      assert.equal(result.audit.dependencyVersion, '1.0.6');
+      assert.equal(result.audit.dependencyVersion, version);
       assert.match(result.diff, /pass\.glass\(java\.util\.List\.of\(/);
       assert.match(result.diff, /4\.75f/);
       assert.doesNotMatch(result.diff, /kernel\.internal|org\.lwjgl/);

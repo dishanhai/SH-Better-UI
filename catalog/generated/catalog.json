@@ -920,7 +920,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#tryBackdrop",
@@ -1780,7 +1780,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#tryBackdrop",
@@ -2328,7 +2328,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#directionalPixelsNow",
@@ -4045,7 +4045,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#tryBackdrop",
@@ -4328,7 +4328,7 @@
       "sourceFiles": [
         "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTheme.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.glass.GlassTooltip#render",
@@ -4500,7 +4500,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIcon.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/GraphicIconShader.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/gui/display/IconShaderRenderer.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/api/GraphicsApi.java"
       ],
       "publicSymbols": [
@@ -7508,7 +7508,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java"
       ],
       "publicSymbols": [
         "com.dishanhai.sh_better_ui.client.api.BlurApi#requestWavePixels",
@@ -8914,7 +8914,7 @@
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/blur/GlassStyle.java",
         "src/main/java/com/dishanhai/sh_better_ui/config/GlassBackdropSettings.java",
-        "neoforge/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
+        "neoforge-1.21.1/src/main/java/com/dishanhai/sh_better_ui/client/blur/GaussBlur.java",
         "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/AppearanceGalleryPreview.java"
       ],
       "publicSymbols": [
@@ -9051,5 +9051,5 @@
       }
     }
   ],
-  "contentHash": "sha256:922933bf5462008756af96d3a1d64f7c8dd9e4f37fd75de782493e54eeac8a5e"
+  "contentHash": "sha256:f2e7748eca4013f2444bdb1da241575ac88cd59eb11c4b87f808fb70f82c2915"
 }

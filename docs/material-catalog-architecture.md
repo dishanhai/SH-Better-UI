@@ -33,7 +33,7 @@ export JAVA_HOME='C:/Program Files/Java/jdk-21.0.11'
 node catalog/build.mjs --check
 node --test catalog/tests/*.test.mjs
 ./gradle-install/gradle-8.8/bin/gradle build --offline --console=plain
-./neoforge/gradlew -p neoforge build --offline --console=plain
+./neoforge-1.21.1/gradlew -p neoforge-1.21.1 build --offline --console=plain
 ```
 
-Forge 产物位于 `build/libs`，NeoForge 产物位于 `neoforge/build/libs`。两者均由消费工程作为外部依赖读取。网页由独立命令生成到 `web/dist`。测试、性能和客户端取证记录分别见 [验证报告](validation-report.md) 与 [性能报告](performance-report.md)。
+Forge 产物位于 `build/libs`，NeoForge 产物位于 `neoforge-1.21.1/build/libs`。两者均由消费工程作为外部依赖读取。网页由独立命令生成到 `web/dist`。测试、性能和客户端取证记录分别见 [验证报告](validation-report.md) 与 [性能报告](performance-report.md)。
