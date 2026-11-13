@@ -20,7 +20,7 @@ repositories {
 
 def workspace = file('../../..')
 ext.uiLibrary = file(providers.gradleProperty('shBetterUiJar')
-        .orElse(new File(workspace, 'neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.7.jar').path).get())
+        .orElse(new File(workspace, 'neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-1.0.11.jar').path).get())
 ext.loaderMetadata = 'META-INF/neoforge.mods.toml'
 ext.exampleLaunchArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
 apply from: '../example.gradle'

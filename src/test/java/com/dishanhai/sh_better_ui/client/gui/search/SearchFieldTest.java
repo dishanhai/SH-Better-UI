@@ -204,7 +204,7 @@ class SearchFieldTest {
     @Test
     void glassTooltipRaisesThePlateBeforePaintingOnBothPlatforms() throws Exception {
         var source = Path.of("src/main/java/com/dishanhai/sh_better_ui/client/glass/GlassTooltip.java");
-        for (var path : List.of(source, Path.of("neoforge").resolve(source))) {
+        for (var path : List.of(source, Path.of("neoforge-1.21.1").resolve(source))) {
             String code = Files.readString(path);
             int depth = code.indexOf("g.pose().translate(0f, 0f, TOOLTIP_Z)");
             int smoke = code.indexOf("GlassSurface.smokePanel(g");

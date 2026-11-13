@@ -26,17 +26,17 @@ set "BUILD_EXIT=%ERRORLEVEL%"
 if not "%BUILD_EXIT%"=="0" goto finish
 echo Forge 產物：
 dir /b "%~dp0build\libs\*.jar"
-if exist "%~dp0neoforge\build\libs" rmdir /s /q "%~dp0neoforge\build\libs"
-if exist "%~dp0neoforge\build\libs" (
-    echo 無法清除舊的 neoforge\build\libs 目錄
+if exist "%~dp0neoforge-1.21.1\build\libs" rmdir /s /q "%~dp0neoforge-1.21.1\build\libs"
+if exist "%~dp0neoforge-1.21.1\build\libs" (
+    echo 無法清除舊的 neoforge-1.21.1\build\libs 目錄
     set "BUILD_EXIT=1"
     goto finish
 )
-call "%~dp0neoforge\gradlew.bat" -p "%~dp0neoforge" build --offline --no-daemon --console=plain
+call "%~dp0neoforge-1.21.1\gradlew.bat" -p "%~dp0neoforge-1.21.1" build --offline --no-daemon --console=plain
 set "BUILD_EXIT=%ERRORLEVEL%"
 if not "%BUILD_EXIT%"=="0" goto finish
 echo NeoForge 1.21.1 產物：
-dir /b "%~dp0neoforge\build\libs\*.jar"
+dir /b "%~dp0neoforge-1.21.1\build\libs\*.jar"
 
 :finish
 echo.

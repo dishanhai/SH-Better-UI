@@ -31,7 +31,7 @@ class ExtractionContract(unittest.TestCase):
         self.assertEqual(f"[{version[1]},2.0.0)", expanded)
 
     def test_core_does_not_depend_on_consumer_or_optional_ldlib(self):
-        roots = [ROOT / "src/main", ROOT / "src/kernel", ROOT / "neoforge/src/main"]
+        roots = [ROOT / "src/main", ROOT / "src/kernel", ROOT / "neoforge-1.21.1/src/main"]
         sources = [path for root in roots for suffix in ("*.java", "*.kt") for path in root.rglob(suffix)]
         self.assertGreater(len(sources), 10, "UI implementation has not been extracted")
         for path in sources:
