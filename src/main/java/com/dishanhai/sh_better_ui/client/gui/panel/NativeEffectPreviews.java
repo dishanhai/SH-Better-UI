@@ -73,7 +73,6 @@ final class NativeEffectPreviews implements PreviewScene {
             var button = new UiButton(canvas.x(), canvas.y(), canvas.width(), 20,
                     Component.translatable("sh_better_ui.panel.developer.gallery.crossfade_open"),
                     source -> openCrossfade(host, source), host.preferences(), false);
-            button.active = host.interactive();
             host.add(button);
         }
         if (spatial != null) {

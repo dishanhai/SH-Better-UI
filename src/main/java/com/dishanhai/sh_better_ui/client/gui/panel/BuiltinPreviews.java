@@ -47,7 +47,6 @@ public final class BuiltinPreviews {
                             Component.translatable("sh_better_ui.theme.dynamic.open"), ignored ->
                                     DynamicThemePreview.screen(host.screen(), () -> host.screen().getFocused()).open(),
                             host.preferences(), false);
-                    button.active = host.interactive();
                     host.add(button);
                 }));
     }

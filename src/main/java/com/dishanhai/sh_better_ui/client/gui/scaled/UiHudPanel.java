@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.glass.GlassSurface;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
+import com.dishanhai.sh_better_ui.client.gui.text.UiHudRichText;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassRegion;
@@ -87,8 +88,10 @@ public final class UiHudPanel {
             }
             var sample = glass ? ClientUiKernel.sampleHudText(graphics, sampleId,
                     new Rect(TEXT_X, PADDING, width - TEXT_X - PADDING, height - 2 * PADDING)) : null;
-            palette.update(sample, darkest, lightest);
-            textColor = palette.color(textColor);
+            var sharedPalette = ClientUiKernel.hudTextPalette(sampleId);
+            var framePalette = sharedPalette == null ? palette : sharedPalette;
+            framePalette.update(sample, darkest, lightest);
+            textColor = framePalette.baseColor(textColor);
             int rowHeight = rowHeight(font);
             int iconY = PADDING + (rowHeight - ICON_SIZE) / 2;
             pose.pushPose();
@@ -113,8 +116,8 @@ public final class UiHudPanel {
                 graphics.flush();
             }
             for (var row : rows) {
-                var glyphs = palette.glyphs(row.text().getVisualOrderText());
-                graphics.drawString(font, glyphs, TEXT_X, lineY, textColor, false);
+                UiHudRichText.draw(graphics, font, row.text().getVisualOrderText(), TEXT_X, lineY,
+                        textColor, preferences, framePalette);
                 lineY += rowHeight;
             }
         } finally {
@@ -141,7 +144,11 @@ public final class UiHudPanel {
         return Math.max(ICON_SIZE, font.lineHeight) + 3;
     }
 
-    public record Row(GraphicIcon icon, int iconColor, Component text) {}
+    public record Row(GraphicIcon icon, int iconColor, Component text) {
+        public Row {
+            text = UiHudRichText.prepare(text);
+        }
+    }
 
     public record Placement(int width, int height, int travelX, int travelY, float scale) {
         public int x(double fraction) { return MARGIN + (int) Math.round(travelX * fraction); }
