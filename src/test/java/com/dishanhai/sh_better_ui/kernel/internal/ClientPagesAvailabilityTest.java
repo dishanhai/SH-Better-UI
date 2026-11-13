@@ -5,7 +5,9 @@ import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageType;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiErrorCode;
 import org.junit.jupiter.api.Test;
 
@@ -81,6 +83,27 @@ final class ClientPagesAvailabilityTest {
                     assertEquals(PageService.State.OPENING, reopened.snapshot().state());
                 }
             }
+        }
+    }
+
+    @Test
+    void validatesLocalReadabilityBeforeRegisteringPage() {
+        try (var fixture = new ClientServiceFixture(Set.of(), Set.of())) {
+            var module = fixture.module;
+            var pages = module.engine().require(PageService.KEY);
+            var screen = UiPageDefinition.builder(new UiId("example", "readable_screen"))
+                    .root("root", "text", node -> node.text("Readable text")).build();
+            var policy = new UiPageTextReadability.Options(new TextReadabilityPolicy(true, true, null, null, null));
+            var missing = new UiPageTextReadability(policy, Map.of("missing", policy));
+            var invalid = assertThrows(IllegalArgumentException.class, () -> pages.register(module, screen, missing));
+            assertTrue(invalid.getMessage().contains("Unknown text readability nodes"));
+            assertTrue(pages.find(module, screen.id()).isEmpty());
+            try (var registration = pages.register(module, screen, new UiPageTextReadability(policy, Map.of("root", policy)))) {
+                assertEquals(screen, pages.find(module, screen.id()).orElseThrow());
+            }
+            var hud = definition(UiPageType.HUD, "hud_panel");
+            assertThrows(IllegalArgumentException.class,
+                    () -> pages.register(module, hud, new UiPageTextReadability(policy)));
         }
     }
 

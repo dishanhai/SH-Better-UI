@@ -4,12 +4,14 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.api.UiScreenBuilder;
 import com.dishanhai.sh_better_ui.client.gui.display.ElectricLogoProfile;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.gui.scaled.DotMatrixProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PatternWavesProfile;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.DynamicThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityStatus;
+import com.dishanhai.sh_better_ui.kernel.api.HudService;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeKind;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
@@ -57,7 +59,11 @@ class ClientUiKernelTest {
                     engine.require(UIApis.COMPUTER_STATUS));
             var empty = engine.require(UIApis.COMPUTER_STATUS).read(Set.of());
             assertTrue(empty.memory().isEmpty() && empty.cpu().isEmpty() && empty.gpu().isEmpty() && empty.disk().isEmpty());
-            var handle = engine.require(UIApis.HUD).mount(fixture.module, frame -> fail("A CPU-only frame cannot draw HUDs"));
+            var hud = engine.require(UIApis.HUD);
+            var handle = hud.mount(fixture.module, frame -> fail("A CPU-only frame cannot draw HUDs"));
+            assertThrows(IllegalStateException.class, () -> hud.textPalette(fixture.module,
+                    new HudService.Frame(null, null, 0), UiId.parse("example:panel"), new Rect(0, 0, 10, 10),
+                    0xff000000, 0xff000000));
             fixture.client.runFrame();
             handle.close();
             handle.close();
