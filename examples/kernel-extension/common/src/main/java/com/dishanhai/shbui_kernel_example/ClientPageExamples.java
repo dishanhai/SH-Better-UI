@@ -6,8 +6,10 @@ import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiActionPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageType;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
 
 import java.util.Map;
 
@@ -24,7 +26,11 @@ final class ClientPageExamples {
     ClientPageExamples(ModuleContext owner, PageService pages) {
         this.owner = owner;
         this.pages = pages;
-        pages.register(owner, ExchangePage.create(LOCAL, UiActionPolicy.LOCAL, ClientPageExamples::text));
+        var readability = new UiPageTextReadability(
+                new UiPageTextReadability.Options(new TextReadabilityPolicy(true, true, null, null, null)),
+                Map.of("balance", new UiPageTextReadability.Options(TextReadabilityPolicy.inherit(),
+                        UiPageTextReadability.Sampling.IMPORTANT)));
+        pages.register(owner, ExchangePage.create(LOCAL, UiActionPolicy.LOCAL, ClientPageExamples::text), readability);
         pages.register(owner, passive(HUD, UiPageType.HUD, "hud_panel", "hud"));
         pages.register(owner, passive(NOTIFICATION, UiPageType.NOTIFICATION, "notification", "notification"));
     }
