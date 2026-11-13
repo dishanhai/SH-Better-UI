@@ -14,6 +14,7 @@ gradle.beforeProject { p ->
         boolean materialConsumer = p.hasProperty('kernelSmokeMaterialConsumer')
         boolean materialEffects = p.hasProperty('kernelSmokeMaterialEffects')
         boolean visualComposition = p.hasProperty('kernelSmokeVisualComposition')
+        boolean hudText = p.hasProperty('kernelSmokeHudText')
         boolean textReadability = p.hasProperty('kernelSmokeTextReadability')
         boolean textReadabilityService = p.hasProperty('kernelSmokeTextReadabilityService')
         boolean textReadabilityLocal = p.hasProperty('kernelSmokeTextReadabilityLocal')
@@ -21,6 +22,7 @@ gradle.beforeProject { p ->
         def textReadabilityGpuOutputs = ['text-readability-gpu-dark.png', 'text-readability-gpu-flash.png',
                 'text-readability-gpu-transition.png', 'text-readability-gpu-hud-transition.png',
                 'text-readability-gpu-stable.png', 'text-readability-gpu.tsv']
+        textReadabilityGpuOutputs += (1..6).collect { "text-readability-gpu-handoff-${it}.png" }
         if (!textReadabilityLocal) textReadabilityGpuOutputs += ['text-readability-gpu-glass.png',
                 'text-readability-gpu-overlay.png']
         boolean dock = p.hasProperty('kernelSmokeDock')
@@ -36,6 +38,7 @@ gradle.beforeProject { p ->
         String label = p.findProperty('kernelSmokeLabel') ?: ''
         if (!label.matches('[A-Za-z0-9_-]*')) throw new GradleException('Invalid kernel smoke label')
         if (label) variant += '-' + label
+        if (hudText) variant += '-hud-text'
         if (textReadability) variant += '-text-readability'
         if (textReadabilityService) variant += '-text-readability-service'
         if (textReadabilityGpu) variant += '-text-readability-gpu'
@@ -103,6 +106,7 @@ gradle.beforeProject { p ->
                 if (materialConsumer) property 'shb.kernel.smoke.materialConsumer', 'true'
                 if (materialEffects) property 'shb.kernel.smoke.materialEffects', 'true'
                 if (visualComposition) property 'shb.kernel.smoke.visualComposition', 'true'
+                if (hudText) property 'shb.kernel.smoke.hudText', 'true'
                 if (textReadability) property 'shb.kernel.smoke.textReadability', 'true'
                 if (textReadabilityService) property 'shb.kernel.smoke.textReadabilityService', 'true'
                 if (textReadabilityGpu) property 'shb.kernel.smoke.textReadabilityGpu', 'true'
@@ -131,6 +135,7 @@ gradle.beforeProject { p ->
                 if (materialConsumer) systemProperty 'shb.kernel.smoke.materialConsumer', 'true'
                 if (materialEffects) systemProperty 'shb.kernel.smoke.materialEffects', 'true'
                 if (visualComposition) systemProperty 'shb.kernel.smoke.visualComposition', 'true'
+                if (hudText) systemProperty 'shb.kernel.smoke.hudText', 'true'
                 if (textReadability) systemProperty 'shb.kernel.smoke.textReadability', 'true'
                 if (textReadabilityService) systemProperty 'shb.kernel.smoke.textReadabilityService', 'true'
                 if (textReadabilityGpu) systemProperty 'shb.kernel.smoke.textReadabilityGpu', 'true'

@@ -139,7 +139,14 @@ tasks.register('verifyLibraryJar') {
                             'assets/sh_better_ui/shaders/program/shop_gauss_blur.vsh',
                             'assets/sh_better_ui/shaders/core/spatial.json',
                             'assets/sh_better_ui/shaders/core/spatial.vsh',
-                            'assets/sh_better_ui/shaders/core/spatial.fsh']
+                            'assets/sh_better_ui/shaders/core/spatial.fsh',
+              'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.class',
+              'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService$ClusterDiagnostic.class',
+              'com/dishanhai/sh_better_ui/kernel/api/page/UiPageTextReadability.class',
+              'assets/sh_better_ui/shaders/text_readability.vsh',
+              'assets/sh_better_ui/shaders/text_readability_sample.fsh',
+              'assets/sh_better_ui/shaders/text_readability_decide.fsh',
+              'assets/sh_better_ui/shaders/text_readability_composite.fsh']
             sourceSets.main.output.classesDirs.files.each { classesDir ->
                 fileTree(classesDir).matching { include '**/*.class' }.files.each { classFile ->
                     required.add(classesDir.toPath().relativize(classFile.toPath()).toString().replace('\\', '/'))

@@ -18,6 +18,8 @@ gradle.beforeProject { p ->
             throw new GradleException('Layout review supports GUI Scale 3 or 4')
         }
         boolean longLabels = layoutReview && layoutScale == '4'
+        boolean readabilityHud = p.hasProperty('widgetSmokeReadabilityHud')
+        boolean readability = readabilityHud || p.hasProperty('widgetSmokeReadability')
         boolean narrator = p.hasProperty('widgetSmokeNarrator')
         String narratorAudio = p.findProperty('widgetSmokeNarratorAudio')
         if (narrator && layoutReview) throw new GradleException('Narrator smoke uses the standard gallery profile')
@@ -34,6 +36,7 @@ gradle.beforeProject { p ->
         }
         String profile = vulkanFallback ? 'vulkan-fallback' : dualBackend && earlyWindow ? "${backend}-early-window" : backend
         if (layoutReview) profile += longLabels ? '-layout-4' : '-layout'
+        if (readability) profile += readabilityHud ? "-text-readability-hud" : "-text-readability"
         if (narrator) profile += '-narrator'
         File directory = p.layout.buildDirectory.dir("widget-smoke/${p.version}/${profile}").get().asFile
         File missingVulkanDriver = new File(directory, 'missing-vulkan-icd.json')
@@ -45,6 +48,8 @@ gradle.beforeProject { p ->
             loadedMods.set([consumer])
             gameDirectory.set(directory)
             systemProperty 'shbui.widgetSmoke.expectedBackend', expected
+            if (readability) systemProperty 'shbui.widgetSmoke.readability', 'true'
+            if (readabilityHud) systemProperty 'shbui.widgetSmoke.readabilityHud', 'true'
             if (narrator) systemProperty 'shbui.widgetSmoke.narrator', 'true'
             if (narratorAudio != null) systemProperty 'shbui.widgetSmoke.narratorAudio', p.file(narratorAudio).absolutePath
             if (layoutReview) {
@@ -71,7 +76,10 @@ gradle.beforeProject { p ->
         p.tasks.named('runWidgetSmoke').configure {
             dependsOn(stageLibrary)
             if (longLabels) dependsOn(stageLongLabels)
+            def readabilityImages = [new File(directory, 'text-readability-26.png')]
+            if (readabilityHud) readabilityImages += new File(directory, 'text-readability-26-hud.png')
             doFirst {
+                if (readability) readabilityImages.each { java.nio.file.Files.deleteIfExists(it.toPath()) }
                 if (vulkanFallback && missingVulkanDriver.exists()) {
                     throw new GradleException("Fallback requires a missing driver manifest: ${missingVulkanDriver}")
                 }
@@ -79,6 +87,11 @@ gradle.beforeProject { p ->
                 if (dualBackend && !fml.exists()) {
                     fml.parentFile.mkdirs()
                     fml.setText("earlyWindowControl = ${earlyWindow}\n", 'UTF-8')
+                }
+            }
+            doLast {
+                if (readability && !readabilityImages.every { it.isFile() }) {
+                    throw new GradleException("Missing text readability smoke screenshots: ${readabilityImages.findAll { !it.isFile() }}")
                 }
             }
         }

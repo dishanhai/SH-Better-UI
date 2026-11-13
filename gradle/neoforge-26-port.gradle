@@ -37,6 +37,7 @@ def sharedSources = [
         'client/gui/layout/AlignmentSolver.java',
         'client/gui/layout/AlignmentTargetMotion.java',
         'client/gui/layout/PixelAlignment.java',
+        'client/gui/layout/PopupArea.java',
         'client/gui/layout/TextureMetrics.java',
         'client/gui/layout/VisualAlignment.java',
         'client/gui/scaled/ButtonFeedback.java',
@@ -53,6 +54,7 @@ def sharedSources = [
         'client/gui/scaled/LightRaysProfile.java',
         'client/gui/scaled/PatternWavesProfile.java',
         'client/gui/scaled/PointerDrag.java',
+        'client/gui/scaled/PopupMotion.java',
         'client/gui/scaled/RepeatCurve.java',
         'client/gui/scaled/SpringTable.java',
         'client/gui/scaled/TabScrollState.java',
@@ -84,7 +86,9 @@ def sharedSources = [
         'kernel/internal/BuiltinService.java',
         'kernel/internal/ClientMaterialCatalog.java',
         'kernel/internal/MaterialPresetCodec.java',
-        'kernel/internal/NativeModuleSources.java'
+        'kernel/internal/NativeModuleSources.java',
+        'kernel/internal/NativeTextClusters.java',
+        'kernel/internal/TextReadabilityBudget.java'
 ].collect { "${packagePath}/${it}".toString() }.toSet()
 sourceSets.main.java {
     srcDir(sharedJava)
@@ -214,6 +218,12 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/spatial/GuiGeometry.class",
                     "${packagePath}/client/gui/search/SearchIndex.class",
                     "${packagePath}/kernel/api/UnifiedUI.class",
+                    "${packagePath}/kernel/api/UIApis.class",
+                    "${packagePath}/kernel/api/ScreenService.class",
+                    "${packagePath}/kernel/api/HudService.class",
+                    "${packagePath}/kernel/api/text/TextReadabilityService.class",
+                    "${packagePath}/kernel/internal/ClientTextReadability.class",
+                    "${packagePath}/client/blur/mixin/GuiRendererReadbackMixin.class",
                     "${packagePath}/kernel/api/page/PageDslKt.class",
                     'assets/sh_better_ui/material_catalog/catalog.json'
             ] + portMixinConfigs).each { entry ->

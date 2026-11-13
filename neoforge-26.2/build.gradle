@@ -11,6 +11,7 @@ apply from: '../gradle/neoforge-26-port.gradle'
 def previousPort = file('../neoforge-26.1.2/src/main/java')
 def overrides = [
         'client/blur/BlurRenderTarget.java',
+        'client/blur/mixin/GuiRendererReadbackMixin.java',
         'client/glass/LiquidGlassPipeline.java',
         'client/gui/panel/ControlPanelPlatform.java',
         'client/gui/panel/GalleryMaterialPipeline.java',

@@ -40,7 +40,8 @@ def checkLibrary = tasks.register('verifyExampleDependency') {
                          'com/dishanhai/sh_better_ui/kernel/api/project/ProjectEdits.class',
                          'com/dishanhai/sh_better_ui/kernel/api/render/RenderGraph.class',
                          'com/dishanhai/sh_better_ui/kernel/api/geometry/FilledGeometry.class',
-                         'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.class']
+                         'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.class',
+                         'com/dishanhai/sh_better_ui/kernel/api/page/UiPageTextReadability.class']
             if (required.any { zip.getEntry(it) == null }) {
                 throw new GradleException("Incompatible SH-Better-UI JAR: ${library}")
             }
