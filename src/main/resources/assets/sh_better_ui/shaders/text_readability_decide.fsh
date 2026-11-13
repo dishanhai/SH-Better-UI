@@ -6,6 +6,7 @@ uniform ivec2 Slot;
 uniform uint Generation;
 uniform uvec2 DeltaNanos;
 uniform uvec2 StabilityNanos;
+uniform ivec2 TransitionTiming; // duration and maximum advance per frame, in nanoseconds
 uniform uint Original;
 uniform uint Declared;
 uniform ivec4 Rules; // sample budget, minimum valid, lock hue, outline/backing bit flags
@@ -124,6 +125,14 @@ uint choose(bool allowBacking) {
 
 bool atLeast(uvec2 a, uvec2 b) { return a.y > b.y || (a.y == b.y && a.x >= b.x); }
 
+uint transitionFill(uint from, uint target, uint progress) {
+    if (from == target || progress == 0u) return from;
+    uint duration = uint(TransitionTiming.x) / 1000u;
+    uint micros = progress / 1000u;
+    uvec3 rgb = (channels(from) * (duration - micros) + channels(target) * micros + duration / 2u) / duration;
+    return (target & 0xFF000000u) | (rgb.r << 16u) | (rgb.g << 8u) | rgb.b;
+}
+
 void main() {
     for (int i = 0; i < Rules.x; ++i) {
         vec2 point = texelFetch(Samples, ivec2(i, 0), 0).xy;
@@ -146,24 +155,43 @@ void main() {
         reasons |= NO_CANDIDATE;
         if (Rules.z != 0) reasons |= HUE_LOCKED;
     }
-    uint fill = Original;
+    uint from = Original;
+    uint target = Original;
+    uint progress = 0u;
     uint pending = 0u;
     uvec2 elapsed = uvec2(0u);
     if (Generation == 0u) {
-        if (candidate != 0u && all(equal(StabilityNanos, uvec2(0u)))) fill = candidate;
-        else if (candidate != 0u && candidate != fill) reasons |= NO_ID;
+        if (candidate != 0u && candidate != Original) reasons |= NO_ID;
     } else {
         uvec4 previous = texelFetch(State, Slot, 0);
-        bool valid = previous.x == Generation && previous.w == source;
-        if (valid) fill = previous.y;
-        if (candidate != 0u && candidate != fill) {
-            if (valid && previous.z == candidate) {
-                uvec2 time = texelFetch(State, Slot + ivec2(32, 0), 0).xy;
-                elapsed = time + DeltaNanos;
-                if (elapsed.x < time.x) ++elapsed.y;
+        uvec4 timing = uvec4(0u);
+        bool sameSource = previous.x == Generation && previous.w == source;
+        if (previous.x == Generation) {
+            timing = texelFetch(State, Slot + ivec2(32, 0), 0);
+            if (sameSource) {
+                from = previous.y;
+                target = timing.z;
+                progress = timing.w;
+            } else {
+                from = transitionFill(previous.y, timing.z, timing.w);
+                target = from;
+            }
+        }
+        if (candidate != 0u && candidate == target) {
+            if (sameSource && previous.z == 0u) {
+                uint stepNanos = DeltaNanos.y == 0u ? min(DeltaNanos.x, uint(TransitionTiming.y))
+                        : uint(TransitionTiming.y);
+                progress = min(progress + stepNanos, uint(TransitionTiming.x));
+            }
+        } else if (candidate != 0u) {
+            if (sameSource && previous.z == candidate) {
+                elapsed = timing.xy + DeltaNanos;
+                if (elapsed.x < timing.x) ++elapsed.y;
             }
             if (atLeast(elapsed, StabilityNanos)) {
-                fill = candidate;
+                from = transitionFill(from, target, progress);
+                target = candidate;
+                progress = 0u;
                 elapsed = uvec2(0u);
             } else {
                 pending = candidate;
@@ -172,6 +200,7 @@ void main() {
         }
     }
 
+    uint fill = transitionFill(from, target, progress);
     float ink = luminance(fill);
     uint kind = NONE;
     float protect = 0.0;
@@ -207,8 +236,8 @@ void main() {
     if (!meets(protectedRatio.y)) reasons |= LIMITED;
     if (Thresholds.y < 1.0 && meets(protectedRatio.y) && !meets(finalRatio.y)) reasons |= OPACITY;
 
-    NextState = uvec4(Generation, fill, pending, source);
-    NextTiming = uvec4(elapsed, 0u, 0u);
+    NextState = uvec4(Generation, from, pending, source);
+    NextTiming = uvec4(elapsed, target, progress);
     Decision = uvec4(fill, kind == NONE ? 0u : (protect == 1.0 ? WHITE : BLACK),
                      candidate == fill ? 0u : candidate, source | (kind << 2u) | (reasons << 4u));
     Metrics = vec4(bare.x, protectedRatio.x, finalRatio.x, float(actualCount));

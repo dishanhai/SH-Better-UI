@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.api.UiScreenBuilder;
 import com.dishanhai.sh_better_ui.client.gui.display.ElectricLogoProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.DotMatrixProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PatternWavesProfile;
@@ -20,6 +21,7 @@ import com.dishanhai.sh_better_ui.theme.ThemeManager;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
 import com.dishanhai.sh_better_ui.theme.transition.TransitionSpec;
 import com.google.gson.JsonObject;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -31,6 +33,20 @@ import java.util.Set;
 import static org.junit.jupiter.api.Assertions.*;
 
 class ClientUiKernelTest {
+    @Test
+    void shutdownRemovesTheActiveComposedPageBeforeReleasingItsTheme() {
+        int[] removals = {0};
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onRemoved(page -> removals[0]++).build();
+        var context = screen.context();
+
+        ClientUiKernel.removeActivePage(screen);
+
+        assertEquals(1, removals[0]);
+        assertTrue(context.isClosed());
+        assertDoesNotThrow(() -> screen.render(null, 0, 0, 0));
+    }
+
     @Test
     void registersHardwareAndHudServicesWithNativeCapabilities() throws Exception {
         try (var fixture = new ClientServiceFixture(Set.of(), Set.of(UIPermission.REGISTER_RENDER_PASS))) {

@@ -10,6 +10,7 @@ import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassDraw;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.BackgroundSample;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.dishanhai.sh_better_ui.spatial.SpatialScene;
 import com.dishanhai.sh_better_ui.spatial.internal.Scene;
 import net.minecraft.client.gui.GuiGraphics;
@@ -113,6 +114,10 @@ final class ClientRender implements RenderService {
     }
 
     void reload() { glass.reload(); }
+
+    TextReadabilityPalette hudTextPalette(UiId id) {
+        return glass.hudTextPalette(id);
+    }
 
     BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
         return glass.sampleHudText(graphics, id, local);

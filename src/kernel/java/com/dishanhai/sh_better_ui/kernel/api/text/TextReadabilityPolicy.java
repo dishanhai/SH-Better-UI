@@ -3,7 +3,10 @@ package com.dishanhai.sh_better_ui.kernel.api.text;
 
 import java.util.Objects;
 
-/** Field-level text readability overrides. A null field inherits from the enclosing configuration. */
+/**
+ * Field-level text readability overrides. A null field inherits from the enclosing configuration.
+ * Stable text IDs wait at least {@link #DEFAULT_STABILITY_NANOS} before starting a color transition.
+ */
 public record TextReadabilityPolicy(Boolean adaptiveColor, Boolean foregroundProtection, Contrast contrast,
                                     Classification classification, Double largeTextFramebufferPixels,
                                     Long stabilityNanos, SamplingMode samplingMode, Boolean lockHue, Boolean localColor) {

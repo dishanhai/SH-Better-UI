@@ -20,6 +20,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.IntToDoubleFunction;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 
 /** 山海：在 GUI 中绘制带有 {@link UiTextEffects} 标记的原版文字。 */
 public final class UiFormattedText {
@@ -60,6 +61,36 @@ public final class UiFormattedText {
         return end;
     }
 
+    /** Draw effects while adapting their resulting colors to the HUD backdrop. */
+    public static int drawHud(GuiGraphics graphics, Font font, FormattedCharSequence text, float x, float y,
+                              int argb, UiPreferences preferences, TextReadabilityPalette palette) {
+        var original = collectGlyphs(text);
+        List<Glyph> glyphs = original;
+        if (hasEffect(text, true)) {
+            glyphs = new ArrayList<>(original);
+            sample(glyphs, argb, PageTransition.nowMs(), preferences, UiTextEffects.Timing.DEFAULT, true);
+        }
+        boolean drawIndividually = false;
+        for (int i = 0; i < glyphs.size(); i++) {
+            Glyph glyph = glyphs.get(i);
+            Style style = glyph.style();
+            int fill = argb;
+            if (style.getColor() != null) {
+                int rgb = style.getColor().getValue();
+                fill = Objects.equals(style.getColor(), original.get(i).style().getColor())
+                        ? palette.color(rgb) : palette.animatedColor(rgb);
+                style = style.withColor(fill & 0xffffff);
+            }
+            drawIndividually |= glyph.positioned() || palette.outlineColor(fill) != 0;
+            glyphs.set(i, new Glyph(glyph.index(), glyph.codePoint(), style, glyph.x(), glyph.y(), glyph.outline()));
+        }
+        if (!drawIndividually) return graphics.drawString(font, sequence(glyphs), x, y, argb, false);
+        int end = drawGlyphs(font, glyphs, x, y, argb, false, graphics.pose().last().pose(),
+                graphics.bufferSource(), Font.DisplayMode.NORMAL, LightTexture.FULL_BRIGHT, palette);
+        graphics.flush();
+        return end;
+    }
+
     /** 在现有字体批次内绘制，返回 null 表示由原版处理。 */
     public static Integer drawBatch(Font font, FormattedCharSequence text, float x, float y, int argb,
                                     boolean shadow, Matrix4f pose, MultiBufferSource buffers,
@@ -75,13 +106,30 @@ public final class UiFormattedText {
 
     private static int drawGlyphs(Font font, List<Glyph> glyphs, float x, float y, int argb, boolean shadow,
                                   Matrix4f pose, MultiBufferSource buffers, Font.DisplayMode mode, int light) {
+        return drawGlyphs(font, glyphs, x, y, argb, shadow, pose, buffers, mode, light, null);
+    }
+
+    private static int drawGlyphs(Font font, List<Glyph> glyphs, float x, float y, int argb, boolean shadow,
+                                  Matrix4f pose, MultiBufferSource buffers, Font.DisplayMode mode, int light,
+                                  TextReadabilityPalette palette) {
         float[] positions = new float[glyphs.size()];
         float cursor = x;
         for (int i = 0; i < glyphs.size(); i++) {
             Glyph glyph = glyphs.get(i);
             positions[i] = cursor + glyph.x();
             cursor += font.getSplitter().stringWidth(glyph.sequence());
-            if (glyph.outline()) {
+            int fill = glyph.style().getColor() == null ? argb : glyph.style().getColor().getValue();
+            int protection = palette == null ? 0 : palette.outlineColor(fill);
+            if (protection != 0) {
+                var outline = FormattedCharSequence.codepoint(glyph.codePoint(),
+                        glyph.style().withColor(protection & 0xffffff));
+                for (float offset = -.5f; offset <= .5f; offset++) {
+                    font.drawInBatch(outline, positions[i] + offset, y + glyph.y(), argb, false,
+                            pose, buffers, mode, 0, light);
+                    font.drawInBatch(outline, positions[i], y + glyph.y() + offset, argb, false,
+                            pose, buffers, mode, 0, light);
+                }
+            } else if (glyph.outline()) {
                 FormattedCharSequence outline = FormattedCharSequence.codepoint(glyph.codePoint(),
                         glyph.style().withColor(0x000000));
                 for (int dy = -1; dy <= 1; dy++) {

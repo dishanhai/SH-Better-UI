@@ -13,6 +13,7 @@ import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentLayout;
 import com.dishanhai.sh_better_ui.client.gui.scaled.GuiStateGuard;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiMouseState;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.text.UiHudRichText;
 import com.dishanhai.sh_better_ui.client.visual.RichTextEffects;
 import com.dishanhai.sh_better_ui.client.visual.RichTextView;
 import com.dishanhai.sh_better_ui.client.visual.VisualLayoutBinding;
@@ -26,6 +27,7 @@ import com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichStyle;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.TextRun;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextId;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference.Background;
@@ -74,6 +76,11 @@ final class TextReadabilityGpuSmoke extends Screen {
     private static final int RICH_Y = 81;
     private static final int LOCAL_Y = 99;
     private static final int GLASS_Y = 119;
+    private static final int HUD_Y = 147;
+    private static final UiId HUD_SAMPLE = id("hud_text_transition");
+    private static final FormattedCharSequence HUD_LINE = FormattedCharSequence.composite(
+            FormattedCharSequence.forward("MM", Style.EMPTY),
+            FormattedCharSequence.forward("MM", Style.EMPTY.withColor(0xffffff).withBold(true)));
     private static final int BUDGET_RUNS = 70;
     private static final long STABILITY = 400_000_000;
     private static final double METRIC_TOLERANCE = 0.00002;
@@ -124,11 +131,14 @@ final class TextReadabilityGpuSmoke extends Screen {
     private Stage stage = Stage.DARK;
     private Stage rendered;
     private int framesInStage;
+    private long firstDarkNanos;
     private long firstBrightNanos;
+    private boolean capturedIntermediate;
+    private TextReadabilityPalette hudPalette;
     private Throwable failure;
     private String result;
 
-    private enum Stage { DARK, FLASH, STABLE, GLASS, DEGRADATION, INTEROP, OVERLAY, BUDGET }
+    private enum Stage { DARK, FLASH, STABLE, HUD_TRANSITION, GLASS, DEGRADATION, INTEROP, OVERLAY, BUDGET }
 
     TextReadabilityGpuSmoke(ModuleContext module) {
         super(Component.translatable("gui.done"));
@@ -169,8 +179,20 @@ final class TextReadabilityGpuSmoke extends Screen {
         if (rendered != stage) framesInStage = 0;
         rendered = stage;
         framesInStage++;
+        if (stage == Stage.DARK && framesInStage == 1) firstDarkNanos = System.nanoTime();
         require(width >= 350 && height >= 210, "GPU smoke requires a GUI area of at least 350×210");
         graphics.fill(0, 0, width, height, BLACK);
+        if (stage == Stage.HUD_TRANSITION) {
+            int backdrop = framesInStage == 1 ? BLACK : WHITE;
+            graphics.fill(X - 4, HUD_Y - 4, X + font.width(HUD_LINE) + 4, HUD_Y + font.lineHeight + 4, backdrop);
+            var palette = ClientUiKernel.hudTextPalette(HUD_SAMPLE);
+            if (framesInStage == 1) hudPalette = palette;
+            require(palette != null && palette == hudPalette, "HUD palette was replaced for a stable panel ID");
+            palette.update(null, backdrop, backdrop, framesInStage * 40_000_000L);
+            UiHudRichText.draw(graphics, font, HUD_LINE, X, HUD_Y, palette.baseColor(WHITE),
+                    new UiPreferences(false, true, true), palette);
+            return;
+        }
         if (stage == Stage.BUDGET) {
             budgetProbe();
             return;
@@ -344,6 +366,9 @@ final class TextReadabilityGpuSmoke extends Screen {
                                 && diagnostic(page, LOCAL_MIXED).sampling() == SamplingStatus.LOCAL_GPU,
                         "Native single-sequence localized sampling did not run");
                 if (dark.gpu().status() != DetailStatus.READY || split.gpu().status() != DetailStatus.READY) return false;
+                if (System.nanoTime() - firstDarkNanos < STABILITY + 2L * TextReadabilityReference.TRANSITION_NANOS) {
+                    return false;
+                }
                 verifyParity(client, dark, split, diagnostic(page, DECLARED));
                 capture(client, output, "dark", image -> {
                     int white = ink(image, client, X, MOTION_Y, font.width(GLYPHS), WHITE);
@@ -365,12 +390,6 @@ final class TextReadabilityGpuSmoke extends Screen {
                             "Localized sequences did not preserve the native glyph footprint and inline bold style: "
                                     + localWhite + "/" + localBlack + "/" + mixedWhite + "/" + mixedGreen);
                 });
-                if (Boolean.getBoolean("shb.kernel.smoke.textReadabilityLocal")) {
-                    Files.writeString(output.resolve("text-readability-gpu.tsv"), statistics);
-                    result = "Native text readability local-color GPU smoke passed on Java " + Runtime.version().feature()
-                            + "\nUniform and mixed styled native sequences through submit and drawNow\n";
-                    return true;
-                }
                 stage = Stage.FLASH;
             }
             case FLASH -> {
@@ -381,14 +400,56 @@ final class TextReadabilityGpuSmoke extends Screen {
                 stage = Stage.STABLE;
             }
             case STABLE -> {
-                if (System.nanoTime() - firstBrightNanos < STABILITY + 100_000_000) return false;
+                if (System.nanoTime() - firstBrightNanos < STABILITY) return false;
                 var bright = diagnostic(page, MOTION);
-                if (bright.gpu().status() != DetailStatus.READY || bright.gpu().decision().fillArgb() != BLACK) return false;
+                if (bright.gpu().status() != DetailStatus.READY) return false;
+                int fill = bright.gpu().decision().fillArgb();
+                if (fill != BLACK) {
+                    if (fill != WHITE && !capturedIntermediate) {
+                        // Diagnostic readback may describe an earlier frame. Check the current pixels separately.
+                        try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                            if (hasIntermediateInk(image, client)) {
+                                image.writeToFile(output.resolve("text-readability-gpu-transition.png").toFile());
+                                capturedIntermediate = true;
+                            }
+                        }
+                    }
+                    return false;
+                }
+                require(capturedIntermediate, "The GPU reached black without painting an intermediate fill");
                 require(bright.gpu().decision().protection() == TextReadabilityReference.Protection.NONE,
                         "Settled black fill retained temporary protection");
                 capture(client, output, "stable", image -> require(pixel(image, client, X - 1, MOTION_Y - 1) == WHITE
                                 && ink(image, client, X, MOTION_Y, font.width(GLYPHS), BLACK) > 0,
                         "Sustained bright backdrop did not switch to black glyphs without backing"));
+                stage = Stage.HUD_TRANSITION;
+            }
+            case HUD_TRANSITION -> {
+                if (framesInStage == 6) {
+                    capture(client, output, "hud-transition", image -> {
+                        int split = font.width(SMALL_RUN);
+                        int fill = 0xffdfdfdf;
+                        require(ink(image, client, X, HUD_Y, split, fill) > 0
+                                        && ink(image, client, X + split, HUD_Y, font.width(HUD_LINE) - split, fill) > 0,
+                                "The HUD failed to paint the same intermediate color in base and inline glyphs");
+                    });
+                }
+                if (framesInStage < 13) return false;
+                try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
+                    require(ink(image, client, X, HUD_Y, font.width(HUD_LINE), BLACK) > 0,
+                            "The HUD failed to finish the transition to black");
+                }
+                require(Files.isRegularFile(output.resolve("text-readability-gpu-hud-transition.png")),
+                        "The HUD transition frame was missed");
+                if (Boolean.getBoolean("shb.kernel.smoke.textReadabilityLocal")) {
+                    Files.writeString(output.resolve("text-readability-gpu.tsv"), statistics);
+                    result = "Native text readability local-color and transition GPU smoke passed on Java "
+                            + Runtime.version().feature()
+                            + "\nUniform and mixed styled native sequences through submit and drawNow"
+                            + "\nFirst bright frame retained white, then painted intermediate gray and settled on black"
+                            + "\nHUD base and inline glyphs painted a midtone with reduced motion enabled\n";
+                    return true;
+                }
                 stage = Stage.GLASS;
             }
             case GLASS -> {
@@ -497,7 +558,7 @@ final class TextReadabilityGpuSmoke extends Screen {
                         + client.getMainRenderTarget().viewWidth + "x" + client.getMainRenderTarget().viewHeight
                         + ", GUI scale=" + client.getWindow().getGuiScale()
                         + "\nCPU/GPU uniform and split candidate/protection parity, contrast tolerance=" + METRIC_TOLERANCE
-                        + "\nFirst bright frame retained white with black backing; stable bright switched to unprotected black"
+                        + "\nFirst bright frame retained white with black backing; painted intermediate gray before settling on black"
                         + "\nActual composited glass, adaptive Rich Text spans, expired and valid foreground contexts"
                         + "\nLocalized native sequences through submit and drawNow, including inline bold and RGB"
                         + "\nNative diagnostic overlay, invalid region, unsupported stencil path and insufficient glyph samples"
@@ -603,6 +664,14 @@ final class TextReadabilityGpuSmoke extends Screen {
 
     private Diagnostic diagnostic(ScopeHandle scope, TextId text) {
         return service.diagnostics(module, scope, text).orElseThrow(() -> new AssertionError("Missing diagnostic " + text));
+    }
+
+    private boolean hasIntermediateInk(NativeImage image, Minecraft client) {
+        for (int shade = 48; shade <= 207; shade++) {
+            int color = BLACK | shade * 0x010101;
+            if (ink(image, client, X, MOTION_Y, font.width(GLYPHS), color) > 0) return true;
+        }
+        return false;
     }
 
     private int ink(NativeImage image, Minecraft client, int left, int top, int width, int color) {

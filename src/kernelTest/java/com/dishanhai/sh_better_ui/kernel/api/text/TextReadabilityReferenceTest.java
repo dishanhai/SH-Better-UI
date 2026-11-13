@@ -128,7 +128,7 @@ class TextReadabilityReferenceTest {
         var locked = evaluate(new Input(RED, true, true, true, 21, 1, 20, 0, black), new State(), 0);
         assertEquals(RED, locked.fillArgb());
         assertTrue(locked.diagnostics().containsAll(Set.of(HUE_LOCKED, NO_ELIGIBLE_CANDIDATE, PROTECTION_LIMITED)));
-        var unlocked = evaluate(new Input(RED, false, true, true, 21, 1, 20, 0, black), new State(), 0);
+        var unlocked = evaluate(new Input(RED, false, true, true, 21, 1, 20, 0, black), null, 0);
         assertEquals(WHITE, unlocked.fillArgb());
         assertEquals(21, unlocked.fillP10());
     }
@@ -162,7 +162,7 @@ class TextReadabilityReferenceTest {
     }
 
     @Test
-    void stableCandidateSwitchesAt120msAndOriginalRecoversWithTheSameWindow() {
+    void stableCandidateGraduallyTransitionsInBothDirectionsWithProtection() {
         var state = new State();
         var low = input(WHITE, Background.declared(WHITE));
         var start = evaluate(low, state, 8);
@@ -171,13 +171,68 @@ class TextReadabilityReferenceTest {
         assertEquals(BACKING, start.protection());
         assertTrue(start.diagnostics().contains(WAITING_FOR_STABILITY));
         assertEquals(WHITE, evaluate(low, state, 8 + WINDOW - 1).fillArgb());
-        assertEquals(BLACK, evaluate(low, state, 8 + WINDOW).fillArgb());
+        long accepted = 8 + WINDOW;
+        assertEquals(WHITE, evaluate(low, state, accepted).fillArgb());
+        assertEquals(WHITE, evaluate(low, state, accepted).fillArgb());
+
+        var early = evaluate(low, state, accepted + 40_000_000L);
+        assertEquals(0xffdfdfdf, early.fillArgb());
+        assertEquals(BLACK, early.pendingArgb());
+        assertEquals(BACKING, early.protection());
+        assertFalse(early.diagnostics().contains(WAITING_FOR_STABILITY));
+        for (int step = 2; step <= 8; step++) {
+            early = evaluate(low, state, accepted + step * 40_000_000L);
+        }
+        assertEquals(BLACK, early.fillArgb());
+        assertNull(early.pendingArgb());
+        assertEquals(NONE, early.protection());
 
         var recovered = input(WHITE, Background.declared(BLACK));
-        assertEquals(BLACK, evaluate(recovered, state, 9 + WINDOW).fillArgb());
-        var switched = evaluate(recovered, state, 9 + 2 * WINDOW);
-        assertEquals(WHITE, switched.fillArgb());
-        assertEquals(NONE, switched.protection());
+        long recovery = accepted + 320_000_001L;
+        assertEquals(BLACK, evaluate(recovered, state, recovery).fillArgb());
+        assertEquals(BLACK, evaluate(recovered, state, recovery + WINDOW).fillArgb());
+        assertEquals(0xff202020, evaluate(recovered, state, recovery + WINDOW + 40_000_000L).fillArgb());
+    }
+
+    @Test
+    void zeroOverrideStillRejectsRapidChangesAndLargeFrameGapsCannotSkipIntermediateColors() {
+        var state = new State();
+        var bright = new Input(WHITE, false, false, true, 4.5, 1, 20, 0, Background.declared(WHITE));
+        var dark = new Input(WHITE, false, false, true, 4.5, 1, 20, 0, Background.declared(BLACK));
+        assertEquals(WHITE, evaluate(bright, state, 0).fillArgb());
+        assertEquals(WHITE, evaluate(dark, state, WINDOW - 1).fillArgb());
+        assertEquals(WHITE, evaluate(bright, state, WINDOW).fillArgb());
+        assertEquals(WHITE, evaluate(bright, state, 2 * WINDOW).fillArgb());
+
+        long afterStall = 1_000_000_000L;
+        int intermediate = evaluate(bright, state, afterStall).fillArgb();
+        assertEquals(0xffdfdfdf, intermediate);
+        assertEquals(intermediate, evaluate(bright, state, afterStall).fillArgb());
+        assertEquals(intermediate, evaluate(dark, state, afterStall + 1).fillArgb());
+        assertEquals(intermediate, evaluate(dark, state, afterStall + WINDOW + 1).fillArgb());
+        assertEquals(0xffe3e3e3, evaluate(dark, state, afterStall + WINDOW + 40_000_001L).fillArgb());
+    }
+
+    @Test
+    void changingSamplingSourceRetainsTheDisplayedColorAndRestartsTheStabilityWindow() {
+        var state = new State();
+        var declared = input(WHITE, Background.declared(WHITE));
+        var actual = input(WHITE, Background.actual(List.of(sample(0, WHITE), sample(1, WHITE),
+                sample(2, WHITE), sample(3, WHITE)), WHITE));
+        evaluate(declared, state, 0);
+        evaluate(declared, state, WINDOW);
+        long intermediateAt = WINDOW + 40_000_000L;
+        int fill = evaluate(declared, state, intermediateAt).fillArgb();
+        assertEquals(0xffdfdfdf, fill);
+
+        long changedAt = intermediateAt + 1;
+        var changed = evaluate(actual, state, changedAt);
+        assertEquals(ACTUAL, changed.source());
+        assertEquals(fill, changed.fillArgb());
+        assertEquals(BLACK, changed.pendingArgb());
+        assertTrue(changed.diagnostics().contains(WAITING_FOR_STABILITY));
+        assertEquals(fill, evaluate(actual, state, changedAt + WINDOW).fillArgb());
+        assertEquals(0xffc3c3c3, evaluate(actual, state, changedAt + WINDOW + 40_000_000L).fillArgb());
     }
 
     @Test
@@ -195,7 +250,8 @@ class TextReadabilityReferenceTest {
         var missing = input(WHITE, Background.actual(List.of(sample(0, WHITE)), WHITE));
         assertEquals(DECLARED, evaluate(missing, state, 2 * WINDOW - 1).source());
         assertEquals(WHITE, evaluate(low, state, 2 * WINDOW).fillArgb());
-        assertEquals(BLACK, evaluate(low, state, 3 * WINDOW).fillArgb());
+        assertEquals(WHITE, evaluate(low, state, 3 * WINDOW).fillArgb());
+        assertEquals(0xffdfdfdf, evaluate(low, state, 3 * WINDOW + 40_000_000L).fillArgb());
 
         state.reset();
         assertEquals(WHITE, evaluate(low, state, 4 * WINDOW).fillArgb());
@@ -213,7 +269,8 @@ class TextReadabilityReferenceTest {
         assertNotEquals(brightCandidate, darkCandidate);
         assertEquals(RED, evaluate(dark, state, 0).fillArgb());
         assertEquals(RED, evaluate(dark, state, WINDOW - 1).fillArgb());
-        assertEquals(brightCandidate, evaluate(dark, state, WINDOW).fillArgb());
+        assertEquals(brightCandidate, evaluate(dark, state, WINDOW).pendingArgb());
+        assertNotEquals(RED, evaluate(dark, state, WINDOW + 40_000_000L).fillArgb());
     }
 
     @Test

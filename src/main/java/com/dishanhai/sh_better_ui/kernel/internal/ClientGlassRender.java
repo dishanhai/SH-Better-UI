@@ -14,6 +14,7 @@ import com.dishanhai.sh_better_ui.kernel.api.glass.GlassService;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.BackgroundSample;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.PixelRegion;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Stage;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
@@ -22,6 +23,7 @@ import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
 
 import java.io.IOException;
+import java.util.LinkedHashMap;
 import java.util.List;
 
 /** Native optical pass. The kernel owns its only capture and program for the current client lifetime. */
@@ -31,6 +33,7 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
     private final KernelHost host;
     private final GlassSceneCapture capture;
     private final ClientBackgroundSampler hudText = new ClientBackgroundSampler(8, 100_000_000L);
+    private final LinkedHashMap<UiId, HudPalette> hudPalettes = new LinkedHashMap<>(16, .75f, true);
     private long hudTextFrame;
     private GlassProgram program;
     private boolean programFailed;
@@ -45,6 +48,24 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
     }
 
     @Override public Diagnostics diagnostics() { return published; }
+
+    TextReadabilityPalette hudTextPalette(UiId id) {
+        long now = host.nowNanos();
+        var minecraft = Minecraft.getInstance();
+        int level = System.identityHashCode(minecraft.level);
+        var entry = hudPalettes.get(id);
+        if (entry == null || entry.level != level || now - entry.seen >= 5_000_000_000L) {
+            entry = new HudPalette(new TextReadabilityPalette(), level);
+            hudPalettes.put(id, entry);
+            if (hudPalettes.size() > 128) hudPalettes.remove(hudPalettes.keySet().iterator().next());
+        }
+        entry.seen = now;
+        return entry.palette;
+    }
+
+    private static long hudPresentation(Minecraft minecraft) {
+        return 31L * System.identityHashCode(minecraft.level) + System.identityHashCode(minecraft.screen);
+    }
 
     BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
         var minecraft = Minecraft.getInstance();
@@ -61,8 +82,7 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
                 pose.m31() + local.y() * pose.m11(), local.width() * pose.m00(), local.height() * pose.m11()));
         if (pixels.getW() == 0 || pixels.getH() == 0) return null;
         var roi = new PixelRegion(pixels.getX(), pixels.getY(), pixels.getW(), pixels.getH());
-        long presentation = 31L * System.identityHashCode(minecraft.level) + System.identityHashCode(minecraft.screen);
-        hudText.beginFrame(++hudTextFrame, host.nowNanos(), presentation);
+        hudText.beginFrame(++hudTextFrame, host.nowNanos(), hudPresentation(minecraft));
         if (id == null) id = minecraft.screen == null ? HUD_TEXT : PREVIEW_TEXT;
         return hudText.request(id, roi, Stage.POST_MATERIAL_PRE_TEXT,
                 () -> GuiStateGuard.draw(graphics::flush));
@@ -194,6 +214,7 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
     void reload() {
         capture.reset();
         hudText.reset();
+        hudPalettes.clear();
         releaseProgram();
         publish();
     }
@@ -216,11 +237,23 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
             capture.close();
         } finally {
             try {
+                hudPalettes.clear();
                 hudText.close();
             } finally {
                 releaseProgram();
                 publish();
             }
+        }
+    }
+
+    private static final class HudPalette {
+        private final TextReadabilityPalette palette;
+        private final int level;
+        private long seen;
+
+        private HudPalette(TextReadabilityPalette palette, int level) {
+            this.palette = palette;
+            this.level = level;
         }
     }
 }

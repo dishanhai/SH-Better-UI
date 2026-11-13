@@ -508,7 +508,8 @@ final class ClientTextReadability implements TextReadabilityService {
                         : TextReadabilityReference.Background.declared(color);
                 var input = new TextReadabilityReference.Input(style.argb(), style.lockHue(), style.allowOutline(),
                         style.allowBacking(), item.contrast, request.groupOpacity(), item.height,
-                        item.policy.stabilityNanos(), background, SAMPLING, List.of());
+                        Math.max(item.policy.stabilityNanos(), TextReadabilityPolicy.DEFAULT_STABILITY_NANOS),
+                        background, SAMPLING, List.of());
                 decision = TextReadabilityReference.evaluate(input, state, host.nowNanos());
                 if (decision.fillArgb() != style.argb()) fill = decision.fillArgb();
                 if (decision.protection() == TextReadabilityReference.Protection.OUTLINE) outline = decision.protectionArgb();

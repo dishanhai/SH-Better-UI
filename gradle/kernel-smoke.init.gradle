@@ -18,9 +18,11 @@ gradle.beforeProject { p ->
         boolean textReadabilityService = p.hasProperty('kernelSmokeTextReadabilityService')
         boolean textReadabilityLocal = p.hasProperty('kernelSmokeTextReadabilityLocal')
         boolean textReadabilityGpu = textReadabilityLocal || p.hasProperty('kernelSmokeTextReadabilityGpu')
-        def textReadabilityGpuOutputs = ['text-readability-gpu-dark.png', 'text-readability-gpu.tsv']
-        if (!textReadabilityLocal) textReadabilityGpuOutputs += ['text-readability-gpu-flash.png',
-                'text-readability-gpu-stable.png', 'text-readability-gpu-glass.png', 'text-readability-gpu-overlay.png']
+        def textReadabilityGpuOutputs = ['text-readability-gpu-dark.png', 'text-readability-gpu-flash.png',
+                'text-readability-gpu-transition.png', 'text-readability-gpu-hud-transition.png',
+                'text-readability-gpu-stable.png', 'text-readability-gpu.tsv']
+        if (!textReadabilityLocal) textReadabilityGpuOutputs += ['text-readability-gpu-glass.png',
+                'text-readability-gpu-overlay.png']
         boolean dock = p.hasProperty('kernelSmokeDock')
         boolean pages = p.hasProperty('kernelSmokePages')
         String kubejsMods = p.findProperty('kernelSmokeKubeJsMods') ?: ''

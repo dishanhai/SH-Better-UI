@@ -16,6 +16,8 @@ import java.util.function.IntPredicate;
 public final class TextReadabilityReference {
     public static final int WHOLE_RUN = -1;
     public static final double CONTRAST_TOLERANCE = 0.000001;
+    public static final int TRANSITION_NANOS = 320_000_000;
+    public static final int MAX_TRANSITION_STEP_NANOS = 40_000_000;
 
     private static final int BLACK = 0xff000000;
     private static final int WHITE = 0xffffffff;
@@ -134,7 +136,7 @@ public final class TextReadabilityReference {
     public static final class State {
         private Source source;
         private int originalArgb;
-        private int fillArgb;
+        private final TextColorTransition transition = new TextColorTransition();
         private Integer pendingArgb;
         private long pendingSinceNanos;
         private long lastNanos;
@@ -249,9 +251,9 @@ public final class TextReadabilityReference {
     }
 
     /**
-     * Applies isolated group opacity and chooses fills with a discrete, monotonic stability window.
-     * The original is the initial fill and the first candidate once its contrast recovers. Returning from
-     * an adapted fill to the recovered original uses the same stability window as other switches.
+     * Applies isolated group opacity and waits for a stable candidate before interpolating the fill.
+     * The original is the initial fill and the first candidate once its contrast recovers. Protection
+     * and contrast diagnostics are computed for the fill rendered at the current point in the transition.
      */
     public static Decision evaluate(Input input, State state, long nowNanos) {
         var diagnostics = EnumSet.noneOf(Diagnostic.class);
@@ -399,33 +401,42 @@ public final class TextReadabilityReference {
             return input.originalArgb;
         }
 
-        if (state.source != source || state.originalArgb != input.originalArgb || state.lockHue != input.lockHue
+        long delta = nowNanos - state.lastNanos;
+        if (state.source == null || state.originalArgb != input.originalArgb || state.lockHue != input.lockHue
                 || state.targetContrast != input.targetContrast || state.stabilityNanos != input.stabilityNanos
-                || nowNanos - state.lastNanos < 0) {
+                || delta < 0) {
             state.reset();
-            state.source = source;
             state.originalArgb = input.originalArgb;
-            state.fillArgb = input.originalArgb;
+            state.transition.start(input.originalArgb, input.originalArgb);
             state.lockHue = input.lockHue;
             state.targetContrast = input.targetContrast;
             state.stabilityNanos = input.stabilityNanos;
+        } else if (state.source != source) {
+            int fill = state.transition.fill();
+            state.transition.start(fill, fill);
+            state.pendingArgb = null;
         }
+        state.source = source;
         state.lastNanos = nowNanos;
-        if (pending(candidate, state.fillArgb) == null) {
+        if (candidate == null) {
+            state.pendingArgb = null;
+        } else if (candidate == state.transition.target()) {
+            if (state.pendingArgb == null) state.transition.advance(delta);
             state.pendingArgb = null;
         } else {
             if (!candidate.equals(state.pendingArgb)) {
                 state.pendingArgb = candidate;
                 state.pendingSinceNanos = nowNanos;
             }
-            if (nowNanos - state.pendingSinceNanos >= input.stabilityNanos) {
-                state.fillArgb = candidate;
+            long stability = Math.max(input.stabilityNanos, TextReadabilityPolicy.DEFAULT_STABILITY_NANOS);
+            if (nowNanos - state.pendingSinceNanos >= stability) {
+                state.transition.start(state.transition.fill(), candidate);
                 state.pendingArgb = null;
             } else {
                 diagnostics.add(Diagnostic.WAITING_FOR_STABILITY);
             }
         }
-        return state.fillArgb;
+        return state.transition.fill();
     }
 
     private static Integer pending(Integer candidate, int fillArgb) {

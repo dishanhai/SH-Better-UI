@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.audio.ClientMusicPulse;
+import com.dishanhai.sh_better_ui.client.api.UiScreen;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
@@ -18,6 +19,7 @@ import com.dishanhai.sh_better_ui.kernel.api.ConfigScope;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityKey;
 import com.dishanhai.sh_better_ui.kernel.api.EventResult;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.BackgroundSample;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.dishanhai.sh_better_ui.kernel.api.EngineState;
 import com.dishanhai.sh_better_ui.kernel.api.ConflictPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
@@ -268,6 +270,13 @@ public final class ClientUiKernel implements AutoCloseable {
         if (client == null || client.host.lifecycle().state() != EngineState.RUNNING) return false;
         client.rendering.paintHudGlass(graphics, surface);
         return true;
+    }
+
+    /** Keeps one HUD text palette across layout rebuilds for a stable panel ID. */
+    public static TextReadabilityPalette hudTextPalette(UiId id) {
+        var client = active;
+        return id == null || client == null || client.host.lifecycle().state() != EngineState.RUNNING
+                ? null : client.rendering.hudTextPalette(id);
     }
 
     public static BackgroundSample sampleHudText(GuiGraphics graphics, Rect local) {
@@ -588,17 +597,27 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     public static void stop() {
-        ClientMusicPulse.global().close();
-        var client = active;
-        if (client != null) {
-            try {
-                client.close();
-            } finally {
-                active = null;
+        try {
+            var minecraft = Minecraft.getInstance();
+            if (minecraft != null) removeActivePage(minecraft.screen);
+        } finally {
+            ClientMusicPulse.global().close();
+            var client = active;
+            if (client != null) {
+                try {
+                    client.close();
+                } finally {
+                    active = null;
+                }
+            } else {
+                MinecraftThemes.shutdown();
             }
-        } else {
-            MinecraftThemes.shutdown();
         }
+    }
+
+    /** The native client can render one final frame after its shutdown event. */
+    static void removeActivePage(Screen screen) {
+        if (screen instanceof UiScreen page) page.removed();
     }
 
     /** The opt-in UI context closes this handle on removal. Shutdown also closes any remaining pages. */

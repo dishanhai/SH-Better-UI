@@ -37,15 +37,51 @@ class HudTextPaletteTest {
     }
 
     @Test
-    void adjustsBaseColorWhenBackdropChangesAndUsesDeclaredColorWhileWaiting() {
+    void baseAndInlineFillsRejectFlashesAndRenderIntermediateColors() {
         var palette = new TextReadabilityPalette();
-        int white = 0xfff7f7fa;
-        palette.update(null, 0xff000000, 0xff343b46);
-        assertEquals(white, palette.color(white));
-        palette.update(sample(0xfff2f2f2), 0xff000000, 0xff343b46);
-        assertTrue(contrast(palette.color(white), 0xfff2f2f2) >= 4.5);
-        palette.update(sample(0xff16191f), 0xff000000, 0xff343b46);
-        assertEquals(white, palette.color(white));
+        int white = 0xffffffff;
+        int black = 0xff000000;
+        int blue = 0xff347fee;
+        var bright = sample(white);
+        var glyph = FormattedCharSequence.codepoint('9', Style.EMPTY.withColor(blue & 0xffffff).withBold(true));
+        palette.update(null, black, black, 0);
+        assertEquals(white, palette.baseColor(white));
+        int oldInline = inlineColor(palette, glyph);
+
+        palette.update(bright, black, black, 10_000_000L);
+        assertEquals(white, palette.baseColor(white));
+        palette.update(null, black, black, 90_000_000L);
+        assertEquals(white, palette.baseColor(white));
+
+        for (long now : new long[]{100_000_000L, 220_000_000L}) {
+            palette.update(bright, black, black, now);
+            assertEquals(white, palette.baseColor(white));
+            assertEquals(oldInline, inlineColor(palette, glyph));
+        }
+        palette.update(bright, black, black, 1_000_000_000L);
+        assertEquals(0xffdfdfdf, palette.baseColor(white));
+        assertEquals(0xffdfdfdf, palette.baseColor(white));
+        assertEquals(black, palette.outlineColor(0xffdfdfdf));
+        int middleInline = inlineColor(palette, glyph);
+        assertNotEquals(oldInline, middleInline);
+        for (int frame = 1; frame <= 7; frame++) {
+            palette.update(bright, black, black, 1_000_000_000L + frame * 40_000_000L);
+            palette.baseColor(white);
+            inlineColor(palette, glyph);
+        }
+        assertEquals(black, palette.baseColor(white));
+        assertNotEquals(middleInline, inlineColor(palette, glyph));
+        assertEquals(0, palette.outlineColor(black));
+    }
+
+    private static int inlineColor(TextReadabilityPalette palette, FormattedCharSequence glyph) {
+        int[] argb = {0};
+        palette.glyphs(glyph).accept((index, style, codePoint) -> {
+            assertTrue(style.isBold());
+            argb[0] = 0xff000000 | style.getColor().getValue();
+            return true;
+        });
+        return argb[0];
     }
 
     @Test

@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Insets;
 import com.dishanhai.sh_better_ui.client.visual.VisualProjection;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService.Request;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService.Result;
@@ -214,7 +215,10 @@ final class TextReadabilityGpu implements AutoCloseable {
         decisionProgram.pair("Slot", slot % STATE_COLUMNS, slot / STATE_COLUMNS);
         decisionProgram.unsigned("Generation", input.stateSlot() < 0 ? 0 : input.generation());
         decisionProgram.nanos("DeltaNanos", input.deltaNanos());
-        decisionProgram.nanos("StabilityNanos", input.stabilityNanos());
+        decisionProgram.nanos("StabilityNanos", Math.max(input.stabilityNanos(),
+                TextReadabilityPolicy.DEFAULT_STABILITY_NANOS));
+        decisionProgram.pair("TransitionTiming", TextReadabilityReference.TRANSITION_NANOS,
+                TextReadabilityReference.MAX_TRANSITION_STEP_NANOS);
         var style = request.style();
         decisionProgram.unsigned("Original", style.argb());
         decisionProgram.unsigned("Declared", request.declaredBackgroundArgb() == null ? 0 : request.declaredBackgroundArgb());
