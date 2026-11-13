@@ -76,6 +76,12 @@ class NetworkIconTest {
     }
 
     @Test
+    void operatingSystemIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.WINDOWS, GraphicIcon.MACOS, GraphicIcon.IOS,
+                GraphicIcon.ANDROID, GraphicIcon.LINUX));
+    }
+
+    @Test
     void blockItemAndDetailIconsAreTransparentSixteenPixelTextures() throws IOException {
         assertIconTextures(List.of(GraphicIcon.BLOCK, GraphicIcon.ITEM, GraphicIcon.ATTRIBUTES,
                 GraphicIcon.DESCRIPTION, GraphicIcon.TOOLTIP, GraphicIcon.INTERACTION));
