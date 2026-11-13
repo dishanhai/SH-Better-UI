@@ -15,11 +15,11 @@ HUD 共用色盤也套用相同的候選穩定與漸變時間。傳入穩定的�
 
 頁面 `submit` 使用 `Screen.Render.Pre` 建立的同幀渲染作用域。啟用前景保護後，請求進入現有 `VisualFrameCoordinator` 前景佇列，與管理前景共享 Z 值和同 Z 登記順序。畫面 Post 封閉佇列、執行幀末模糊，再繪製清晰前景並合成上層彈層。僅啟用自適應選色時，`submit` 在原本的合法頁面或彈層內容 pass 畫入。未啟用自適應選色時保留原始的字形樣式和顏色。 [前景佇列](../src/main/java/com/dishanhai/sh_better_ui/client/visual/VisualFrameCoordinator.java)
 
-`Request.forVisual` 讀取同一份 `FrameViewSnapshot` 的變換和有效裁剪，並以畫面、幀及布局作用域世代驗證快照。手動建構的請求可提供已排版的 `FormattedCharSequence` 和實際有效裁剪。單一原生序列預設整體決策，`localColor` 可啟用[原生字形簇局部分色](TEXT_READABILITY_PHASE_4_5.md#第三方與診斷)。CPU 接入可以把已驗證的視覺字形簇交給 `evaluateVerifiedClusters`，逐簇決策後合併同色的相鄰簇，並保留顯式分段。 [公共服務](../src/main/java/com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.java)
+`Request.forVisual` 讀取同一份 `FrameViewSnapshot` 的變換和有效裁剪，並以畫面、幀及布局作用域世代驗證快照。渲染服務接受當幀尚未發布的繪製快照，命中與輸入仍以已發布快照為準。手動建構的請求可提供已排版的 `FormattedCharSequence` 和實際有效裁剪。單一原生序列預設整體決策，`localColor` 可啟用[原生字形簇局部分色](TEXT_READABILITY_PHASE_4_5.md#第三方與診斷)。CPU 接入可以把已驗證的視覺字形簇交給 `evaluateVerifiedClusters`，逐簇決策後合併同色的相鄰簇，並保留顯式分段。 [公共服務](../src/main/java/com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.java)
 
 附著式彈層在自己的原生 overlay callback 使用 `renderPopup` 包住內容。其背景和即時效果先完成，彈層前景在外層裁剪仍有效時消費。直接繪製用 `foreground` 回呼取得 `RenderService.Context`，再呼叫 `drawNow`。該 context 限於目前幀、回呼和精確的請求 scope。過期或外來 context 回報 `INVALID_STAGE`。封閉後提交回報 `QUEUE_CLOSED`，同一幀重複消費同一請求回報 `ALREADY_CONSUMED`。畫面取消、關閉、舊布局、目標失效或虛擬行回收會阻止舊請求繪製。 [客戶端服務](../src/main/java/com/dishanhai/sh_better_ui/kernel/internal/ClientTextReadability.java)
 
-部分組透明度用兩份裁剪大小的 RGBA8 scratch 保存前後畫面，線性混合已合成的文字、描邊及底襯，再一次寫回裁剪範圍。Minecraft 字形內部保留載入器原生的 atlas 和抗鋸齒行為。組透明度歸零時跳過繪製。GL scratch 在重載及關閉時釋放，遊戲畫面路徑沒有同步像素讀回。原生繪製支援主 GUI framebuffer 的完整 viewport，遇到其他目標回報 `RENDER_UNAVAILABLE`。 [原生繪製器](../src/main/java/com/dishanhai/sh_better_ui/kernel/internal/TextReadabilityPainter.java)
+部分組透明度用兩份裁剪大小的 RGBA8 scratch 保存前後畫面，線性混合已合成的文字、描邊及底襯，再一次寫回裁剪範圍。Minecraft 字形內部保留載入器原生的 atlas 和抗鋸齒行為。組透明度歸零時跳過繪製。GL scratch 在重載及關閉時釋放。從原生 GPU 取樣降級到 CPU 時，僅在切換幀讀回既有文字槽的少量漸變狀態，以目前填色開始重新確認候選色。恢復 GPU 取樣時以上一個 CPU 填色接續。原生繪製支援主 GUI framebuffer 的完整 viewport，遇到其他目標回報 `RENDER_UNAVAILABLE`。 [原生繪製器](../src/main/java/com/dishanhai/sh_better_ui/kernel/internal/TextReadabilityPainter.java)
 
 ## 原生驗證
 

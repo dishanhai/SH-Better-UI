@@ -94,7 +94,14 @@
 - [x] Phase 4–5 同幀 GPU 分析與預算、原生控件與富文本、第三方 Screen／Java／Kotlin、SHUI 及非同步診斷，雙端開發客戶端與 KubeJS 驗證通過。 [Phase 4–5](docs/TEXT_READABILITY_PHASE_4_5.md)
 - [x] 原生序列內的字形簇局部分色已接入 `localColor`，雙端通過 `submit` 和 `drawNow` 的定向 GPU 像素驗證。 [驗證](docs/TEXT_READABILITY_PHASE_4_5.md)
 - [ ] Phase 6 補代表性畫面、自訂字型及雙向文字、不同 GUI 比例及高 DPI、4K、多 GPU／平台與實際整合包校準。補正式發佈環境的雙端客戶端、Forge 專用伺服器啟動，以及完整 GPU 煙測的原生懸停探針。
-- [ ] 在实际整合包检查 UUK 自适应文字渐变，覆盖移动背景、低帧率、高对比和减少动效。补测采样预算耗尽时 GPU 与 CPU 回退之间的填色连续性，以及玩家信息 HUD 在实际整合包中刷新、换页和拖动预览时的渐变与描边。NeoForge 26.1.2 的 assemble 已通过，完整测试待补齐工作区中的 SmoothVerticalScroll。
+- [x] Forge 1.20.1／NeoForge 1.21.1 修复当帧视觉布局误报 `STALE_LAYOUT`。公开服务烟测双端通过，覆盖嵌套裁剪、前景顺序、弹层及过期快照拒绝。
+- [ ] 在实际整合包检查 UUK 自适应文字渐变，覆盖移动背景、低帧率、高对比和减少动效，以及玩家信息 HUD 在刷新、换页和拖动预览时的渐变与描边。
+- [x] Forge 1.20.1／NeoForge 1.21.1 在 GPU／CPU 交接和局部分色回退时复用当前填色。HUD 动态效果沿用作者时钟，并对背景适配独立做限速过渡。
+- [ ] 补测实际整合包的大批量 GPU 回退性能，以及混色字形簇合并为同一整段颜色时的视觉一致性。
+- [x] Forge 1.20.1／NeoForge 1.21.1 的 Java／Kotlin 和 SHUI 声明式页面共用文字策略模型。双端页面及 KubeJS 烟测通过，覆盖编辑与选区、列表筛选、弹层键盘选择、缩放和脚本重载。
+- [x] Forge 1.20.1／NeoForge 1.21.1 的 `HudService.textPalette` 提供挂载内取样和稳定调色板，双端世界内验证通过。Screen 的 `clusterDiagnostics` 可用稳定文字 ID 读取各簇的采样和保护状态。
+- [x] NeoForge 26.1.2／26.2 的 UUK Screen 和 HUD 服务、原生渲染阶段、区域采样及诊断已移植。两端发布包校验包含服务及图形后端适配。独立消费者通过 26.1.2 OpenGL、26.2 Vulkan 和 26.2 OpenGL 的 Screen 异步采样、过渡和裁剪像素验收，以及世界内 HUD 的实测背景、调色板复用、过期帧拒绝和普通／行内文字像素验收。
+- [ ] NeoForge 26.x 继续补声明式页面运行时、SHUI 和原生富文本控件的文字策略接入，并在实际整合包验证世界切换、异步样本失效和光学材质叠加。补齐字形实际覆盖率和文字／保护的独立组透明度合成。
 
 ## 主控反馈
 

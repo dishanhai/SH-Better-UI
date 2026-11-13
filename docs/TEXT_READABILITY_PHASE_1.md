@@ -5,7 +5,7 @@
 
 客戶端模組從 `engine.require(UIApis.TEXT_READABILITY)` 取得服務。`UIApis.TEXT_READABILITY_POLICY` 表示作用域策略與診斷可用。以 `ScreenService.mount` 取得頁面樹，再以 `ScopeKind.COMPONENT` 建立控件及同一 Screen 上的附著式彈層。呼叫應在 UUK 客戶端執行緒，並使用模組擁有的作用域。 [服務介面](../src/main/java/com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityService.java)
 
-自行繪製 HUD 的模組可為每個面板持有一個 `TextReadabilityPalette`。先繪製背景，再呼叫 `update(sample, darkestArgb, lightestArgb)`，其中背景樣本應取自材質繪製完成後、文字繪製前。取樣尚未完成或後端不支援時，提供面板與場景合成後的最暗和最亮色。透過 `color(argb)` 調整基礎字色，並將 `glyphs(sequence)` 傳給原生字型以調整行內色彩。色彩以 4.5:1 為目標，單一顏色無法涵蓋整個亮度範圍時會選擇最差位置對比較高的黑或白。`UiHudPanel.draw` 已代為處理，呼叫端可傳入穩定的取樣 `UiId`。 [面板配色 API](../src/main/java/com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityPalette.java)
+自行繪製 HUD 的模組可為每個面板持有一個 `TextReadabilityPalette`。先繪製背景，再呼叫 `update(sample, darkestArgb, lightestArgb)`，其中背景樣本應取自材質繪製完成後、文字繪製前。取樣尚未完成或後端不支援時，提供面板與場景合成後的最暗和最亮色。透過 `baseColor(argb)` 調整基礎字色，並將 `glyphs(sequence)` 傳給原生字型以調整行內色彩。使用 UUK HUD 時，在 `HudService.mount` 的繪製回呼內，先畫面板底材，再呼叫 `textPalette(module, frame, panelId, region, darkestArgb, lightestArgb)`。面板 ID 在同一個掛載中保持穩定，可經 `backgroundSample()` 讀取最近的觀測狀態。色彩以 4.5:1 為目標，單一顏色無法涵蓋整個亮度範圍時會選擇最差位置對比較高的黑或白。`UiHudPanel.draw` 已代為處理，呼叫端可傳入穩定的取樣 `UiId`。 [面板配色 API](../src/main/java/com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityPalette.java)
 
 ## 策略與渲染歸屬
 

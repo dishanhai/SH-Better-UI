@@ -27,7 +27,7 @@ Screen preview = settings.developerSampleFullscreen(parent, "underlined_tabs");
 - 扩展场景使用 26.x 原生 `GuiGraphicsExtractor` 和 `PreviewContext`。`layout` 的控件坐标必须位于 `viewport` 内，`render` 按该区域裁切；重排与放大对同一个场景调用 `layout`，离开时调用 `close`。代码页往返时可用 `saveForRemount` 保存值；上下文过期后不会再附加控件。场景工厂、布局或自绘回调异常显示可旁白的失败提示和重试，日志记录异常。
 - 材质路由绑定原始目录、条目和预览登记世代。撤销或替换后，活动独立页在下一次客户端 tick 返回父页；第三方页在此之前也会拦截输入和绘制。关闭登记句柄后，目录随快照更新。
 - 26.x 内置声明的场景工厂提供打开原生样例的入口；图库仍直接打开现有交互样例。当前第三方场景使用独立样例页，并非旧版固定尺寸内嵌画廊；`preferredHeight`、`toolbarRightInset`、覆盖层及旧版 `UiApiContext` 尚未接通。26.x 的 `UiFrame` 使用新的提取 API 与鼠标坐标，不能将旧版 JAR 直接用于 26.x。
-- 此次接通的是 UUK `MaterialCatalog` 与原生预览的发现及生命周期路由。26.x 的 `GlassService` 原生绘制、全局 `ActivityService`、HUD 和其他内核原生渲染阶段仍未移植，不能仅凭图库样例判定这些服务已接通。
+- 此次接通的是 UUK `MaterialCatalog` 与原生预览的发现及生命周期路由。26.x 的 `GlassService` 原生绘制、全局 `ActivityService` 和通用内核渲染图仍待移植。独立的 Screen／HUD 文字可读性服务已使用原生提取阶段，见 [26.x 文字可读性](TEXT_READABILITY_PHASE_4_5.md#neoforge-26x)。
 
 第三方客户端可在初始化时登记并在模块停止时关闭句柄：
 

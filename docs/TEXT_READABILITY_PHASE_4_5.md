@@ -30,13 +30,19 @@ GPU 狀態用 2,048 個整數槽保存，無穩定 ID 的文字走無狀態路�
 
 `/shbettertextreadability` 開關遊戲內疊層。將指標移到接入服務的文字上可查看文字範圍、裁剪、階段結果、採樣狀態、對比與保護原因。Java／Kotlin 可用 `setGpuDiagnostics(module, scope, true)` 開啟自己的子樹採集。詳細結果透過固定容量的 PBO 和 fence 延後返回，來源幀與待回傳幀分開標記。作用域關閉、資料列回收、目標或資源失效時，舊結果不會傳入新世代。停用診斷後停止送出詳細讀回。
 
-開啟 `localColor` 後，`submit` 與 `drawNow` 可在同一個原生 `FormattedCharSequence` 內依視覺字形簇選色。服務沿用 Minecraft 已重排的 sink 順序與字型的逐字形浮點 advance，保留 inline style，並把基底字與組合記號留在同一簇。各簇從同一份繪字前的背景取樣，共用既有幀預算，各自保有穩定狀態。父 run 有任何簇完成 GPU 分析時，診斷的採樣狀態為 `LOCAL_GPU`。
+開啟 `localColor` 後，`submit` 與 `drawNow` 可在同一個原生 `FormattedCharSequence` 內依視覺字形簇選色。服務沿用 Minecraft 已重排的 sink 順序與字型的逐字形浮點 advance，保留 inline style，並把基底字與組合記號留在同一簇。各簇從同一份繪字前的背景取樣，共用既有幀預算，各自保有穩定狀態。父 run 有任何簇完成 GPU 分析時，診斷的採樣狀態為 `LOCAL_GPU`。Java／Kotlin 可用 `clusterDiagnostics(module, scope, textId)` 按視覺順序取得最新各簇診斷。取樣配額不足或暫時不可用時，已量測的簇沿用各自的填色並執行 CPU 回退。
 
 組透明度過渡、缺少可靠邊界的反向組合字、裝飾線、混淆字及依賴整段位置的效果沿用原生整段路徑。有混合行內色且無法局部分色時，保留作者配色與前景保護。關閉 `localColor` 的混合行內色自適應請求仍回傳 `INVALID_REQUEST`。原生 RichTextView 沿用原本排版的片段，虛擬列重用 view 時用 `readabilityDataItem` 切換 ID 並回收上一筆資料的狀態。
 
-`-PkernelSmokeTextReadabilityLocal -PkernelSmokeLabel=uuk-local-color-focused` 已在 Forge Java 17 與 NeoForge Java 21 通過。煙測核對單一序列跨越明暗背景的字形像素、混合行內色與粗體、`submit`、`drawNow` 和退出清理。Forge 的完整 GPU 煙測通過這些斷言後，停在原生診斷浮層的視窗懸停探針。 [Forge 結果](../build/kernel-verification/client-forge-uuk-local-color-focused-text-readability-gpu/success.txt) · [NeoForge 結果](../build/kernel-verification/client-neoforge-uuk-local-color-focused-text-readability-gpu/success.txt)
+`-PkernelSmokeTextReadabilityLocal -PkernelSmokeLabel=uuk-local-color-focused` 已在 Forge Java 17 與 NeoForge Java 21 通過。煙測核對單一序列跨越明暗背景的字形像素、混合行內色與粗體、`submit`、`drawNow` 和退出清理。更新後用 `-PkernelSmokeLabel=uuk-completion-final` 重跑，兩端在配額耗盡、取樣不可用、GPU 恢復以及整段／逐簇切換的六幀皆保留當前填色。Forge 的完整 GPU 煙測通過這些斷言後，停在原生診斷浮層的視窗懸停探針。 [Forge 結果](../build/kernel-verification/client-forge-uuk-local-color-focused-text-readability-gpu/success.txt) · [NeoForge 結果](../build/kernel-verification/client-neoforge-uuk-local-color-focused-text-readability-gpu/success.txt)
 
-SHUI 支援宣告式頁面、控件、附著彈層及受限腳本提交。附著彈層預設從原生主題取得設定，`inheritPage: true` 再套用頁面覆蓋。完整欄位和腳本範例見 [SHUI API](kubejs-api.md)。
+Java 宣告式頁面可傳入 `PageService.register(module, definition, UiPageTextReadability)` 設定頁面及節點的策略和取樣優先級。Kotlin 可用 `pageTextReadability(...)` 建立相同的選項。SHUI 宣告式頁面沿用同一份模型與控件綁定，也支援附著彈層和受限腳本提交。原生滑塊、標籤頁、下拉選項、輸入值及佔位提示可以使用同一策略。輸入文字維持原生即時繪製順序，游標與選取區域仍由 Minecraft 控件繪製。附著彈層預設從原生主題取得設定，`inheritPage: true` 再套用頁面覆蓋。完整欄位和腳本範例見 [SHUI API](kubejs-api.md)。
+
+## NeoForge 26.x
+
+26.1.2 和 26.2 經由 `UIApis.SCREENS`、`UIApis.TEXT_READABILITY` 與 `UIApis.HUD` 提供原生客戶端入口。26.x 使用 Minecraft 的 `GuiGraphicsExtractor`；在取樣標記之前送出背景，之後再提交文字。有效 GPU 像素經由非同步區域讀回交給共享 CPU 選色，結果帶實際取樣來源幀。讀回等待、過期或失效時使用宣告／未知背景，穩定文字 ID 沿用目前填色。視覺快照可在當前 Screen 提取階段用 `FrameViewSnapshot.capture(module, scope, layout, viewport)` 取得。
+
+26.x 的 Screen 可由 `ScreenService.create` 或外部原生 Screen 掛載。區域取樣依據原生字形範圍，尚無 GPU 字形遮罩的實際覆蓋率。26.x 對文字與保護各自套用組透明度，交疊處仍需獨立合成。Java／Kotlin 的聲明式頁面選項模型已隨庫提供，26.x 聲明式頁面渲染器及 SHUI 適配仍需獨立移植。外部 Screen 煙測使用 `gradle/neoforge-26-widgets-smoke.init.gradle` 的 `runWidgetSmoke -PwidgetSmokeReadability`，26.2 可傳 `-PwidgetSmokeBackend=vulkan` 或 `-PwidgetSmokeBackend=opengl`。加上 `-PwidgetSmokeReadabilityHud` 會進入隔離世界驗證底板取樣、中間色、調色板復用和 HUD 字形像素。
 
 ## 驗證
 
