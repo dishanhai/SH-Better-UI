@@ -64,11 +64,17 @@ public final class UiFormattedText {
     /** Draw effects while adapting their resulting colors to the HUD backdrop. */
     public static int drawHud(GuiGraphics graphics, Font font, FormattedCharSequence text, float x, float y,
                               int argb, UiPreferences preferences, TextReadabilityPalette palette) {
+        return drawHud(graphics, font, text, x, y, argb, argb, preferences, palette);
+    }
+
+    static int drawHud(GuiGraphics graphics, Font font, FormattedCharSequence text, float x, float y,
+                       int argb, int authoredArgb, UiPreferences preferences, TextReadabilityPalette palette) {
         var original = collectGlyphs(text);
         List<Glyph> glyphs = original;
+        var colorEffects = new boolean[original.size()];
         if (hasEffect(text, true)) {
             glyphs = new ArrayList<>(original);
-            sample(glyphs, argb, PageTransition.nowMs(), preferences, UiTextEffects.Timing.DEFAULT, true);
+            sample(glyphs, authoredArgb, PageTransition.nowMs(), preferences, UiTextEffects.Timing.DEFAULT, true, colorEffects);
         }
         boolean drawIndividually = false;
         for (int i = 0; i < glyphs.size(); i++) {
@@ -77,8 +83,7 @@ public final class UiFormattedText {
             int fill = argb;
             if (style.getColor() != null) {
                 int rgb = style.getColor().getValue();
-                fill = Objects.equals(style.getColor(), original.get(i).style().getColor())
-                        ? palette.color(rgb) : palette.animatedColor(rgb);
+                fill = colorEffects[i] ? palette.animatedColor(rgb) : palette.color(rgb);
                 style = style.withColor(fill & 0xffffff);
             }
             drawIndividually |= glyph.positioned() || palette.outlineColor(fill) != 0;
@@ -259,6 +264,14 @@ public final class UiFormattedText {
         return glyphs;
     }
 
+    private static boolean hasColorEffect(UiTextEffects.Format format, Style style, boolean reducedMotion) {
+        var palette = format.palette();
+        if (palette != null && palette.mode() == TextPalettes.Mode.ALL && style.getColor() != null) return false;
+        if (reducedMotion) return false;
+        return format.effect() != null || palette != null && palette.mode() != TextPalettes.Mode.STATIC
+                || format.symbols().chars().anyMatch(symbol -> "^?+>".indexOf(symbol) >= 0);
+    }
+
     private static boolean hasEffect(FormattedCharSequence text, boolean legacy) {
         boolean[] hasEffect = {false};
         text.accept((index, style, codePoint) -> {
@@ -271,6 +284,11 @@ public final class UiFormattedText {
 
     private static void sample(List<Glyph> glyphs, int argb, long timeMillis, UiPreferences preferences,
                                UiTextEffects.Timing timing, boolean legacy) {
+        sample(glyphs, argb, timeMillis, preferences, timing, legacy, null);
+    }
+
+    private static void sample(List<Glyph> glyphs, int argb, long timeMillis, UiPreferences preferences,
+                               UiTextEffects.Timing timing, boolean legacy, boolean[] colorEffects) {
         for (int from = 0; from < glyphs.size();) {
             String marker = glyphs.get(from).style().getInsertion();
             int to = from + 1;
@@ -287,7 +305,10 @@ public final class UiFormattedText {
                     int rgb = style.getColor() == null ? argb & 0xffffff : style.getColor().getValue();
                     UiTextEffects.Glyph sample = UiTextEffects.sample(format, rgb, i - from, to - from,
                             glyph.codePoint(), timeMillis, preferences.reducedMotion(), timing, style.getColor() != null);
-                    if (sample.rgb() != rgb) style = style.withColor(sample.rgb());
+                    boolean colorEffect = colorEffects != null
+                            && hasColorEffect(format, style, preferences.reducedMotion());
+                    if (colorEffects != null) colorEffects[i] = colorEffect;
+                    if (sample.rgb() != rgb || colorEffect) style = style.withColor(sample.rgb());
                     if (sample.obfuscated()) style = style.withObfuscated(true);
                     glyphs.set(i, new Glyph(glyph.index(), glyph.codePoint(), style,
                             sample.x(), sample.y(), sample.outline()));

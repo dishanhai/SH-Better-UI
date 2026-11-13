@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Bac
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.PixelRegion;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Source;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Stage;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Validity;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference;
 import net.minecraft.network.chat.Style;
@@ -72,6 +73,53 @@ class HudTextPaletteTest {
         assertEquals(black, palette.baseColor(white));
         assertNotEquals(middleInline, inlineColor(palette, glyph));
         assertEquals(0, palette.outlineColor(black));
+    }
+
+    @Test
+    void animatedColorsRetainAuthorTimingAndBlendBothBackdropMappings() {
+        var palette = new TextReadabilityPalette();
+        int black = 0xff000000;
+        int white = 0xffffffff;
+        int red = 0xffff8080;
+        var bright = sample(white);
+        palette.update(null, black, black, 0);
+        assertEquals(white, palette.animatedColor(white));
+        assertEquals(red, palette.animatedColor(red));
+
+        palette.update(bright, black, black, 10_000_000L);
+        assertEquals(white, palette.animatedColor(white));
+        palette.update(null, black, black, 90_000_000L);
+        assertEquals(red, palette.animatedColor(red));
+
+        palette.update(bright, black, black, 100_000_000L);
+        palette.update(bright, black, black, 220_000_000L);
+        assertEquals(white, palette.animatedColor(white));
+        assertEquals(red, palette.animatedColor(red));
+        palette.update(bright, black, black, 1_000_000_000L);
+        assertEquals(0xffdfdfdf, palette.animatedColor(white));
+        int adjustedRed = TextReadabilityReference.readableFill(red, 1, 1, 4.5);
+        assertNotEquals(red, palette.animatedColor(red));
+        assertNotEquals(adjustedRed, palette.animatedColor(red));
+        for (int frame = 1; frame <= 7; frame++) {
+            palette.update(bright, black, black, 1_000_000_000L + frame * 40_000_000L);
+        }
+        assertEquals(black, palette.animatedColor(white));
+        assertEquals(adjustedRed, palette.animatedColor(red));
+    }
+
+    @Test
+    void reportsPendingCaptureAndUsesDeclaredRangeUntilItArrives() {
+        var palette = new TextReadabilityPalette();
+        var pending = BackgroundSample.unavailable(new PixelRegion(0, 0, 32, 32), Stage.POST_MATERIAL_PRE_TEXT,
+                Validity.PENDING, 1, 1, 1);
+        palette.update(pending, 0xff000000, 0xff000000, 0);
+        assertEquals(0xffffffff, palette.baseColor(0xffffffff));
+        assertEquals(Validity.PENDING, palette.backgroundSample().orElseThrow().validity());
+
+        var bright = sample(0xffffffff);
+        palette.update(bright, 0xff000000, 0xff000000, 1);
+        assertEquals(0xffffffff, palette.baseColor(0xffffffff));
+        assertEquals(Validity.VALID, palette.backgroundSample().orElseThrow().validity());
     }
 
     private static int inlineColor(TextReadabilityPalette palette, FormattedCharSequence glyph) {

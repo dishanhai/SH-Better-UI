@@ -61,6 +61,15 @@ public final class UiHudPanel {
 
     /** Use a stable, distinct sample ID for each HUD panel and its editor preview. */
     public void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, UiId sampleId) {
+        draw(graphics, font, preferences, x, y, scale, sampleId, false);
+    }
+
+    /** Draws a bordered, strongly blurred popover suitable for interactive overlays. */
+    public void drawPopover(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale) {
+        draw(graphics, font, preferences, x, y, scale, null, true);
+    }
+
+    private void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, UiId sampleId, boolean popover) {
         if (isEmpty()) return;
         var pose = graphics.pose();
         pose.pushPose();
@@ -69,10 +78,14 @@ public final class UiHudPanel {
             pose.scale(scale, scale, 1);
             int textColor = LiquidGlassTheme.textColor();
             boolean useGlass = preferences.useBackdropBlur();
-            boolean glass = useGlass && paintGlass(graphics, textColor);
+            boolean glass = !popover && useGlass && paintGlass(graphics, textColor);
             int darkest;
             int lightest;
-            if (!glass) {
+            if (popover) {
+                LiquidGlassTheme.layeredPopover(graphics, 0, 0, width, height, preferences, 1f);
+                darkest = 0xff000000;
+                lightest = 0xff555555;
+            } else if (!glass) {
                 int backdrop = DarkModeTheme.surfaceColor();
                 LiquidGlassTheme.plate(graphics, 0, 0, width, height,
                         preferences.highContrast() ? textColor : DarkModeTheme.borderColor(),
@@ -86,11 +99,11 @@ public final class UiHudPanel {
                 darkest = luma >= 128 ? 0xff000000 : 0xff757575;
                 lightest = luma >= 128 ? 0xff767676 : 0xffffffff;
             }
-            var sample = glass ? ClientUiKernel.sampleHudText(graphics, sampleId,
-                    new Rect(TEXT_X, PADDING, width - TEXT_X - PADDING, height - 2 * PADDING)) : null;
-            var sharedPalette = ClientUiKernel.hudTextPalette(sampleId);
-            var framePalette = sharedPalette == null ? palette : sharedPalette;
-            framePalette.update(sample, darkest, lightest);
+            var sampleRegion = glass
+                    ? new Rect(TEXT_X, PADDING, width - TEXT_X - PADDING, height - 2 * PADDING) : null;
+            var framePalette = ClientUiKernel.prepareHudText(graphics, sampleId, sampleRegion,
+                    darkest, lightest, palette);
+            int authoredTextColor = textColor;
             textColor = framePalette.baseColor(textColor);
             int rowHeight = rowHeight(font);
             int iconY = PADDING + (rowHeight - ICON_SIZE) / 2;
@@ -117,7 +130,7 @@ public final class UiHudPanel {
             }
             for (var row : rows) {
                 UiHudRichText.draw(graphics, font, row.text().getVisualOrderText(), TEXT_X, lineY,
-                        textColor, preferences, framePalette);
+                        textColor, authoredTextColor, preferences, framePalette);
                 lineY += rowHeight;
             }
         } finally {

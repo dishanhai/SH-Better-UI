@@ -1,8 +1,10 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.api.PlatformUiApi;
 import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractSliderButton;
@@ -33,6 +35,7 @@ public final class UiSlider extends AbstractSliderButton {
     private IntConsumer onCommit;
     private IntConsumer onCancel;
     private Integer pressedValue;
+    private NativeTextReadability.Label readableLabel;
 
     /**
      * min 必须小于 max，step 必须为正数。各档从 min 起按 step 递增，max 始终可到达。
@@ -53,6 +56,10 @@ public final class UiSlider extends AbstractSliderButton {
         this.label = Objects.requireNonNull(label);
         this.onChange = Objects.requireNonNull(onChange);
         setValue(value);
+    }
+
+    public void bindTextReadability(NativeTextReadability.Label label) {
+        readableLabel = label;
     }
 
     public int value() {
@@ -186,9 +193,15 @@ public final class UiSlider extends AbstractSliderButton {
         var message = getMessage();
         graphics.enableScissor(x + 2, y + 1, x + width - 2, trackY - 1);
         try {
-            UiFormattedText.draw(graphics, font, message, x + (width - font.width(message)) / 2,
-                    y + Math.max(1, (height - 5 - font.lineHeight) / 2), LiquidGlassTheme.controlText(active),
-                    false, preferences);
+            int textX = x + (width - font.width(message)) / 2;
+            int textY = y + Math.max(1, (height - 5 - font.lineHeight) / 2);
+            int color = LiquidGlassTheme.controlText(active);
+            var clip = new Rect(
+                    x + 2, y + 1, width - 4, trackY - y - 2);
+            if (readableLabel == null || !readableLabel.drawClipped(graphics, font, message.getVisualOrderText(),
+                    textX, textY, color, false, 0, isHovered, isFocused(), clip)) {
+                UiFormattedText.draw(graphics, font, message, textX, textY, color, false, preferences);
+            }
         } finally {
             graphics.disableScissor();
         }

@@ -34,4 +34,10 @@ public final class UiHudRichText {
                             int color, UiPreferences preferences, TextReadabilityPalette palette) {
         UiFormattedText.drawHud(graphics, font, text, x, y, color, preferences, palette);
     }
+
+    /** Draw author effects from their original base while the unstyled glyphs use the adapted base. */
+    public static void draw(GuiGraphics graphics, Font font, FormattedCharSequence text, int x, int y,
+                            int color, int authoredColor, UiPreferences preferences, TextReadabilityPalette palette) {
+        UiFormattedText.drawHud(graphics, font, text, x, y, color, authoredColor, preferences, palette);
+    }
 }

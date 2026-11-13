@@ -1,6 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
@@ -25,6 +26,7 @@ public final class UiUnderlinedTabs extends AbstractWidget {
     private final List<Tab> tabs;
     private final UiTabSelection selection;
     private final IntConsumer onSelect;
+    private NativeTextReadability.Label readableLabel;
 
     public record Tab(Component label, Component panel, boolean enabled) {
         public Tab {
@@ -44,6 +46,10 @@ public final class UiUnderlinedTabs extends AbstractWidget {
 
     /** 宿主可直接同步选中项，此途径不触发控件回调。 */
     public UiTabSelection selection() { return selection; }
+
+    public void bindTextReadability(NativeTextReadability.Label label) {
+        readableLabel = label;
+    }
 
     private Bounds[] tabBounds(Font font) {
         var bounds = new Bounds[tabs.size()];
@@ -121,7 +127,10 @@ public final class UiUnderlinedTabs extends AbstractWidget {
             boolean selected = i == selection.selectedIndex();
             int color = !active || !selection.isEnabled(i) ? disabled
                     : selected ? theme.text() : tab.contains(mouseX, mouseY) ? hover : muted;
-            graphics.drawString(font, line, x, tab.y() + 4, color, false);
+            if (readableLabel == null || !readableLabel.draw(graphics, font, line, x, tab.y() + 4,
+                    color, false, i, tab.contains(mouseX, mouseY), selected && isFocused())) {
+                graphics.drawString(font, line, x, tab.y() + 4, color, false);
+            }
             if (selected) {
                 graphics.fill(x, tab.bottom() - 4, x + width, tab.bottom() - 2, active ? theme.accent() : disabled);
                 if (active && isFocused() && minecraft.getLastInputType().isKeyboard()) {

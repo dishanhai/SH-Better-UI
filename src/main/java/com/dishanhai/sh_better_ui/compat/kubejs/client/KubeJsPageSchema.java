@@ -3,8 +3,6 @@ package com.dishanhai.sh_better_ui.compat.kubejs.client;
 
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.page.*;
-import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability.Options;
-import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability.PageOptions;
 
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -25,9 +23,9 @@ final class KubeJsPageSchema {
     private int nodes;
     private int schemas;
     private int values;
-    private final Map<String, Options> textNodes = new LinkedHashMap<>();
+    private final Map<String, UiPageTextReadability.Options> textNodes = new LinkedHashMap<>();
 
-    record Definition(UiPageDefinition page, PageOptions text) {}
+    record Definition(UiPageDefinition page, UiPageTextReadability text) {}
 
     static UiId scriptId(String id) {
         UiId parsed = UiId.parse(id);
@@ -72,13 +70,12 @@ final class KubeJsPageSchema {
         }
         UiPageDefinition definition = builder.root(readNode(page.get("root"), 1)).build();
         new UiPageValidator().requireValid(definition, false);
-        var text = page.containsKey("textReadability") ? KubeJsTextReadabilityApi.options(page.get("textReadability"))
-                : Options.INHERIT;
-        if ((page.containsKey("textReadability") || !textNodes.isEmpty())
-                && definition.type() != UiPageType.SCREEN && definition.type() != UiPageType.MODAL) {
-            throw new IllegalArgumentException("Text readability requires a script Screen or modal page");
-        }
-        return new Definition(definition, new PageOptions(text, textNodes));
+        var options = page.containsKey("textReadability")
+                ? KubeJsTextReadabilityApi.options(page.get("textReadability")).forPage()
+                : UiPageTextReadability.Options.INHERIT;
+        var text = new UiPageTextReadability(options, textNodes);
+        text.validateFor(definition);
+        return new Definition(definition, text);
     }
 
     private UiNode readNode(Object source, int depth) {
@@ -96,7 +93,7 @@ final class KubeJsPageSchema {
         String nodeId = string(node.get("id"), "id");
         UiNode.Builder builder = UiNode.builder(nodeId, typeId);
         if (node.containsKey("textReadability")) {
-            textNodes.put(nodeId, KubeJsTextReadabilityApi.options(node.get("textReadability")));
+            textNodes.put(nodeId, KubeJsTextReadabilityApi.options(node.get("textReadability")).forPage());
         }
         if (node.containsKey("properties")) {
             object(node.get("properties"), LIMITS.maxProperties(), "properties").forEach((key, raw) -> {

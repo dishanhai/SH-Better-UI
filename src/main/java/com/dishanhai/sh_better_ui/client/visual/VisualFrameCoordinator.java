@@ -344,7 +344,8 @@ public final class VisualFrameCoordinator {
             return !sealed && hasSnapshot(snapshot);
         }
 
-        boolean hasSnapshot(FrameViewSnapshot candidate) {
+        /** Validates geometry from this frame, including before its post-render publication. */
+        public boolean hasSnapshot(FrameViewSnapshot candidate) {
             return candidate != null && snapshot == candidate && active() && binding.isActive();
         }
 

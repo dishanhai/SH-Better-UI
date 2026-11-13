@@ -5,7 +5,7 @@ import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiActionPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
-import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService.SamplingHint;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability.Sampling;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -80,7 +80,7 @@ class KubeJsPageSchemaTest {
         assertEquals(TextReadabilityPolicy.SamplingMode.EXPLICIT_ONLY, policy.samplingMode());
         assertEquals(Boolean.FALSE, policy.lockHue());
         assertTrue(policy.localColor());
-        assertEquals(SamplingHint.IMPORTANT, options.sampling());
+        assertEquals(Sampling.IMPORTANT, options.sampling());
         assertEquals(Map.of("text", new UiValue.Text("Example")), configured.page().root().properties());
     }
 
