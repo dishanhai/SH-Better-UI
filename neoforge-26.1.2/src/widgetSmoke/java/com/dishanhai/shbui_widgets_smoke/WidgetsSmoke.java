@@ -55,6 +55,10 @@ public final class WidgetsSmoke {
     public static void capture(RenderFrameEvent.Post event) {
         var minecraft = Minecraft.getInstance();
         if (!started) return;
+        if (Boolean.getBoolean("shbui.widgetSmoke.readability")) {
+            ReadabilitySmoke.frame(minecraft);
+            return;
+        }
         if (System.getProperty("shbui.widgetSmoke.layoutScale") != null) {
             if (LayoutSmoke.frame(minecraft)) EntrySmoke.frame(minecraft);
             return;

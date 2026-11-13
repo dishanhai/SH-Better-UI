@@ -8,6 +8,8 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
 public final class UiClientApi {
     UiClientApi() {}
 
+    public UiScreenBuilder screen(net.minecraft.network.chat.Component title) { return new UiScreenBuilder(title); }
+
     public PreviewRegistry.Registration registerDeveloperPreview(PreviewSpec spec) {
         return ShBetterUiApi.developerPreviews().register(spec);
     }

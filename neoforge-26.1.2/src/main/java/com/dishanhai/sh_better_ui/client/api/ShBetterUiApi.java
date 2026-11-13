@@ -23,6 +23,8 @@ public final class ShBetterUiApi {
 
     public static UiClientApi client() { return CLIENT; }
 
+    public static UiScreenBuilder screen(net.minecraft.network.chat.Component title) { return CLIENT.screen(title); }
+
     public static PreviewRegistry developerPreviews() { return Previews.REGISTRY; }
 
     private static final class Previews {
