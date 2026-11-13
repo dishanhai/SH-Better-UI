@@ -143,11 +143,30 @@ public final class TextReadabilityReference {
         private double targetContrast;
         private long stabilityNanos;
         private boolean lockHue;
+        private Integer seed;
+
+        /** Starts the next evaluation from the color previously displayed by another backend. */
+        public void seedDisplayedFill(int argb) {
+            reset();
+            seed = argb;
+        }
+
+        /** The last displayed fill, or null until the first evaluation. */
+        public Integer displayedFill() {
+            if (source == null) return seed;
+            return transition.fill();
+        }
 
         public void reset() {
             source = null;
             pendingArgb = null;
+            seed = null;
         }
+    }
+
+    /** Restores a displayed color from a backend's sRGB transition state. */
+    public static int interpolateFill(int from, int target, int elapsedNanos) {
+        return TextColorTransition.fill(from, target, elapsedNanos);
     }
 
     public record ProtectionArea(int glyphCluster, Protection kind, int argb) {}
@@ -405,9 +424,11 @@ public final class TextReadabilityReference {
         if (state.source == null || state.originalArgb != input.originalArgb || state.lockHue != input.lockHue
                 || state.targetContrast != input.targetContrast || state.stabilityNanos != input.stabilityNanos
                 || delta < 0) {
+            int fill = state.seed == null ? input.originalArgb
+                    : (state.seed & 0x00ffffff) | (input.originalArgb & 0xff000000);
             state.reset();
             state.originalArgb = input.originalArgb;
-            state.transition.start(input.originalArgb, input.originalArgb);
+            state.transition.start(fill, fill);
             state.lockHue = input.lockHue;
             state.targetContrast = input.targetContrast;
             state.stabilityNanos = input.stabilityNanos;

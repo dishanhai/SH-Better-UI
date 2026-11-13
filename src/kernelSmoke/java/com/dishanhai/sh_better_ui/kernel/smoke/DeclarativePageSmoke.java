@@ -12,6 +12,8 @@ import com.dishanhai.sh_better_ui.kernel.api.protocol.UiErrorCode;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiActionPrompt;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiInteractionTarget;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiOpenResult;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeTextReadability;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import com.dishanhai.sh_better_ui.kernel.internal.CorrectnessInspectorScreen;
 import net.minecraft.client.Minecraft;
@@ -36,6 +38,8 @@ final class DeclarativePageSmoke {
     private static final UiId MODAL = UiId.parse("sh_better_ui:smoke/modal");
     private static final UiId ACTION = UiId.parse("sh_better_ui:smoke/exchange");
     private static final UiId REGRESSION_PAGE = UiId.parse("sh_better_ui:smoke/page_input");
+    private static final UiPageTextReadability TEXT_READABILITY = new UiPageTextReadability(
+            new UiPageTextReadability.Options(new TextReadabilityPolicy(true, true, null, null, null)));
     private static final Map<String, UiValue> INITIAL = Map.of("balance", new UiValue.Int(5));
 
     private static final UiValue.ItemReference SAMPLE = new UiValue.ItemReference(UiId.parse("minecraft:stone"), 1);
@@ -103,13 +107,14 @@ final class DeclarativePageSmoke {
                                         .child("upper", "tooltip", upper -> upper.text("Upper")
                                                 .property("enabled", new UiValue.Bool(false))))
                                 .child("hint", "button", button -> button.label("Bound hint").bind("tooltip", "hint"))
+                                .child("slider", "slider", slider -> slider.label("Level"))
                                 .child("search", "search_field", search -> search.property("value", new UiValue.Text("Iron")))
                                 .child("list", "list_view", list -> list.property("search", new UiValue.Text("search"))
                                         .property("height", new UiValue.Int(20))
                                         .property("items", new UiValue.Sequence(List.of(new UiValue.Text("Iron"),
                                                 new UiValue.Text("Copper"), new UiValue.Text("Gold"))))))
                         .build();
-                localRegistration = service.register(module, page);
+                localRegistration = service.register(module, page, TEXT_READABILITY);
                 local = service.open(module, REGRESSION_PAGE, Map.of("hint", new UiValue.Text("Old hint")),
                         ignored -> {});
                 stage = Stage.LOCAL_REGRESSION_INPUT;
@@ -129,6 +134,8 @@ final class DeclarativePageSmoke {
                 var search = screen.children().stream().filter(EditBox.class::isInstance)
                         .map(EditBox.class::cast).findFirst().orElseThrow();
                 require(search.getValue().equals("Iron"), "Search fixture did not initialize");
+                require((Object) search instanceof NativeTextReadability.EditBoxBinding,
+                        "Native EditBox readability mixin did not attach");
                 var list = widget(screen, Component.translatable("sh_better_ui.pages.list").getString());
                 require(!screen.mouseScrolled(list.getX() + 2, list.getY() + 2, 0, -1),
                         "Prefilled search let the single-result list scroll");
@@ -153,7 +160,7 @@ final class DeclarativePageSmoke {
             }
             case LOCAL_OPEN -> {
                 var service = UnifiedUI.pages();
-                localRegistration = service.register(module, definition(UiActionPolicy.LOCAL));
+                localRegistration = service.register(module, definition(UiActionPolicy.LOCAL), TEXT_READABILITY);
                 local = service.open(module, PAGE, INITIAL, id -> {
                     require(ACTION.equals(id), "Undeclared local action");
                     localActions.incrementAndGet();
@@ -171,6 +178,10 @@ final class DeclarativePageSmoke {
                 var input = client.screen.children().stream().filter(EditBox.class::isInstance)
                         .map(EditBox.class::cast).findFirst().orElseThrow();
                 clickWidget(client.screen, input);
+                require(client.screen.charTyped('A', 0) && client.screen.charTyped('B', 0),
+                        "Readability disrupted native editing");
+                input.setHighlightPos(0);
+                require(input.getHighlighted().equals("AB"), "Native selection was lost");
                 require(client.screen.charTyped('字', 0), "Text field did not receive input");
                 require(new UiValue.Text("字").equals(local.localValues().get("editor")), "Text draft did not change");
                 click(client.screen, Component.translatable("sh_better_ui.pages.ghost_empty"));

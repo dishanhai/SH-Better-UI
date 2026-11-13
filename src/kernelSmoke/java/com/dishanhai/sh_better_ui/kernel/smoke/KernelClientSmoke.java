@@ -1,12 +1,15 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.smoke;
 
+import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassService;
+import com.dishanhai.sh_better_ui.kernel.api.intelligence.VisualIntelligence.Validity;
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import com.dishanhai.sh_better_ui.kernel.internal.GlassCaptureSmoke;
 import com.dishanhai.sh_better_ui.kernel.internal.TextReadabilitySmoke;
@@ -82,6 +85,9 @@ public final class KernelClientSmoke implements UIModule {
     private List<TaskHandle> glassLayerDraws;
     private AutoCloseable directHud;
     private int failingHudFrames;
+    private HudService.Frame hudTextFrame;
+    private TextReadabilityPalette hudTextPalette;
+    private boolean hudTextCaptured;
     private GlassService glass;
     private ClientUiSettings savedDisplay;
     private double animated;
@@ -150,6 +156,8 @@ public final class KernelClientSmoke implements UIModule {
                 instance.textReadabilityGpu(client, Path.of(output));
             } else if (Boolean.getBoolean("shb.kernel.smoke.textReadabilityService")) {
                 instance.textReadabilityService(client, Path.of(output));
+            } else if (Boolean.getBoolean("shb.kernel.smoke.hudText")) {
+                instance.hudText(client, platform, Path.of(output));
             } else if (Boolean.getBoolean("shb.kernel.smoke.textReadability")) {
                 instance.textReadability(client, Path.of(output));
             } else if (Boolean.getBoolean("shb.kernel.smoke.pages")) {
@@ -323,6 +331,49 @@ public final class KernelClientSmoke implements UIModule {
             done = true;
             client.stop();
         }
+    }
+
+    private void hudText(Minecraft client, Platform platform, Path output) throws Exception {
+        if (title == null) {
+            if (!(client.screen instanceof TitleScreen)) return;
+            title = client.screen;
+            glass = module.engine().glass();
+            platform.join(client, title, "hud-text-smoke-" + System.nanoTime());
+            return;
+        }
+        if (client.level == null || client.player == null || client.screen != null) return;
+        var hud = module.engine().require(UIApis.HUD);
+        var panel = id("smoke/hud_text");
+        var region = new Rect(50, 20, 16, 16);
+        if (directHud == null) {
+            sessionFrames = module.engine().scheduler().snapshot().frame();
+            directHud = hud.mount(module, frame -> {
+                frame.graphics().fill(50, 20, 66, 36, 0xffffffff);
+                var palette = hud.textPalette(module, frame, panel, region, 0xff000000, 0xff000000);
+                if (hudTextPalette != null) require(palette == hudTextPalette, "HUD panel lost its stable palette");
+                hudTextFrame = frame;
+                hudTextPalette = palette;
+                palette.backgroundSample().filter(sample -> sample.validity() == Validity.VALID).ifPresent(sample -> {
+                    require(sample.statistics().minimum() > 0.95, "HUD text sampled before the white plate");
+                    hudTextCaptured = true;
+                });
+            });
+            return;
+        }
+        if (!hudTextCaptured && module.engine().scheduler().snapshot().frame() < sessionFrames + 120) return;
+        require(hudTextCaptured, "Mounted HUD callback did not receive its post-background sample");
+        directHud.close();
+        boolean expiredRejected = false;
+        try {
+            hud.textPalette(module, hudTextFrame, panel, region, 0xff000000, 0xff000000);
+        } catch (IllegalStateException expected) {
+            expiredRejected = true;
+        }
+        require(expiredRejected, "Expired HUD frame remained usable");
+        Files.writeString(output.resolve("success.txt"),
+                "Mounted HUD sampled its painted plate, reused the palette and rejected an expired frame.\n");
+        done = true;
+        client.stop();
     }
 
     private void materialEffects(Minecraft client, Platform platform, Path output) throws Exception {

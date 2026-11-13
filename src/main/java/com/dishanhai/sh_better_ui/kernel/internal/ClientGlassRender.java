@@ -18,11 +18,14 @@ import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPalette;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.multiplayer.ClientLevel;
 import org.joml.Matrix4fc;
 import org.joml.Vector4f;
 import org.lwjgl.opengl.GL11;
+import org.lwjgl.opengl.GL30;
 
 import java.io.IOException;
+import java.lang.ref.WeakReference;
 import java.util.LinkedHashMap;
 import java.util.List;
 
@@ -30,14 +33,18 @@ import java.util.List;
 final class ClientGlassRender implements GlassService, AutoCloseable {
     private static final UiId HUD_TEXT = new UiId("sh_better_ui", "hud_text");
     private static final UiId PREVIEW_TEXT = new UiId("sh_better_ui", "hud_preview_text");
+    private static final int MAX_HUD_PALETTES = 128;
+    private static final long HUD_PALETTE_IDLE_NANOS = 5_000_000_000L;
+
     private final KernelHost host;
     private final GlassSceneCapture capture;
     private final ClientBackgroundSampler hudText = new ClientBackgroundSampler(8, 100_000_000L);
-    private final LinkedHashMap<UiId, HudPalette> hudPalettes = new LinkedHashMap<>(16, .75f, true);
-    private long hudTextFrame;
+    private final LinkedHashMap<HudKey, HudPalette> hudPalettes = new LinkedHashMap<>(16, .75f, true);
+    private long nextHudSample;
     private GlassProgram program;
     private boolean programFailed;
     private boolean passCaptured;
+    private boolean hudTextClosed;
     private boolean updated;
     private long capturedPasses, opticalDraws, fallbackDraws;
     private volatile Diagnostics published = new Diagnostics(0, 0, 0, 0, false);
@@ -50,17 +57,48 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
     @Override public Diagnostics diagnostics() { return published; }
 
     TextReadabilityPalette hudTextPalette(UiId id) {
+        return hudPalette(new HudKey(0, id), host.nowNanos()).palette;
+    }
+
+    TextReadabilityPalette prepareHudText(GuiGraphics graphics, long layer, UiId id, Rect local,
+                                          int darkestArgb, int lightestArgb, TextReadabilityPalette fallback) {
         long now = host.nowNanos();
+        var entry = id == null ? null : hudPalette(new HudKey(layer, id), now);
+        var palette = entry == null ? fallback : entry.palette;
+        var sample = local == null ? null : sampleHudText(graphics, local,
+                entry == null ? defaultSample() : entry.sampleId, now);
+        palette.update(sample, darkestArgb, lightestArgb, now);
+        return palette;
+    }
+
+    private HudPalette hudPalette(HudKey key, long now) {
         var minecraft = Minecraft.getInstance();
-        int level = System.identityHashCode(minecraft.level);
-        var entry = hudPalettes.get(id);
-        if (entry == null || entry.level != level || now - entry.seen >= 5_000_000_000L) {
-            entry = new HudPalette(new TextReadabilityPalette(), level);
-            hudPalettes.put(id, entry);
-            if (hudPalettes.size() > 128) hudPalettes.remove(hudPalettes.keySet().iterator().next());
+        var level = minecraft == null ? null : minecraft.level;
+        var entry = hudPalettes.get(key);
+        if (entry == null || entry.level.get() != level || now - entry.seen >= HUD_PALETTE_IDLE_NANOS) {
+            if (entry != null) hudText.forget(entry.sampleId);
+            var sampleId = new UiId("sh_better_ui", "hud_sample/" + ++nextHudSample);
+            entry = new HudPalette(sampleId, level);
+            hudPalettes.put(key, entry);
+            if (hudPalettes.size() > MAX_HUD_PALETTES) {
+                var oldest = hudPalettes.keySet().iterator().next();
+                hudText.forget(hudPalettes.remove(oldest).sampleId);
+            }
         }
         entry.seen = now;
-        return entry.palette;
+        return entry;
+    }
+
+    void forgetHudText(long layer) {
+        hudPalettes.entrySet().removeIf(entry -> {
+            if (entry.getKey().layer != layer) return false;
+            if (!hudTextClosed) hudText.forget(entry.getValue().sampleId);
+            return true;
+        });
+    }
+
+    private static UiId defaultSample() {
+        return Minecraft.getInstance().screen == null ? HUD_TEXT : PREVIEW_TEXT;
     }
 
     private static long hudPresentation(Minecraft minecraft) {
@@ -68,23 +106,31 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
     }
 
     BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
+        long now = host.nowNanos();
+        var sampleId = id == null ? defaultSample() : hudPalette(new HudKey(0, id), now).sampleId;
+        return sampleHudText(graphics, local, sampleId, now);
+    }
+
+    private BackgroundSample sampleHudText(GuiGraphics graphics, Rect local, UiId sampleId, long now) {
         var minecraft = Minecraft.getInstance();
         var window = minecraft.getWindow();
         var target = minecraft.getMainRenderTarget();
         double guiScale = window.getGuiScale();
         var pose = graphics.pose().last().pose();
-        if (target == null || target.width != window.getWidth() || target.height != window.getHeight()
-                || target.width <= 0 || target.height <= 0 || guiScale <= 0
-                || pose.m00() <= 0 || pose.m11() <= 0 || pose.m01() != 0 || pose.m10() != 0) return null;
-        var projection = new VisualProjection.Target(target.width, target.height,
-                target.width / guiScale, target.height / guiScale);
+        if (target == null || target.viewWidth != window.getWidth() || target.viewHeight != window.getHeight()
+                || target.viewWidth <= 0 || target.viewHeight <= 0 || guiScale <= 0
+                || pose.m00() <= 0 || pose.m11() <= 0 || pose.m01() != 0 || pose.m10() != 0
+                || GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING) != target.frameBufferId) return null;
+        var projection = new VisualProjection.Target(target.viewWidth, target.viewHeight,
+                target.viewWidth / guiScale, target.viewHeight / guiScale);
         var pixels = projection.pixels(new Rect(pose.m30() + local.x() * pose.m00(),
                 pose.m31() + local.y() * pose.m11(), local.width() * pose.m00(), local.height() * pose.m11()));
-        if (pixels.getW() == 0 || pixels.getH() == 0) return null;
-        var roi = new PixelRegion(pixels.getX(), pixels.getY(), pixels.getW(), pixels.getH());
-        hudText.beginFrame(++hudTextFrame, host.nowNanos(), hudPresentation(minecraft));
-        if (id == null) id = minecraft.screen == null ? HUD_TEXT : PREVIEW_TEXT;
-        return hudText.request(id, roi, Stage.POST_MATERIAL_PRE_TEXT,
+        var clip = TextReadabilityPainter.Scissor.of(pixels, target.viewHeight).intersectActive();
+        if (clip.empty()) return null;
+        var roi = new PixelRegion(clip.left(), target.viewHeight - clip.top(), clip.width(), clip.height());
+        long version = 31 * hudPresentation(minecraft) + target.getColorTextureId();
+        hudText.beginFrame(host.frameNumber(), now, version);
+        return hudText.request(sampleId, roi, Stage.POST_MATERIAL_PRE_TEXT,
                 () -> GuiStateGuard.draw(graphics::flush));
     }
 
@@ -238,6 +284,7 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
         } finally {
             try {
                 hudPalettes.clear();
+                hudTextClosed = true;
                 hudText.close();
             } finally {
                 releaseProgram();
@@ -246,14 +293,17 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
         }
     }
 
+    private record HudKey(long layer, UiId panel) {}
+
     private static final class HudPalette {
-        private final TextReadabilityPalette palette;
-        private final int level;
+        private final TextReadabilityPalette palette = new TextReadabilityPalette();
+        private final UiId sampleId;
+        private final WeakReference<ClientLevel> level;
         private long seen;
 
-        private HudPalette(TextReadabilityPalette palette, int level) {
-            this.palette = palette;
-            this.level = level;
+        private HudPalette(UiId sampleId, ClientLevel level) {
+            this.sampleId = sampleId;
+            this.level = new WeakReference<>(level);
         }
     }
 }

@@ -13,10 +13,12 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiUnderlinedTabs;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiBuiltinComponents;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiNode;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageType;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode;
@@ -73,7 +75,7 @@ final class NativePageView {
             .stream().map(UiBuiltinComponents::id).collect(Collectors.toUnmodifiableSet());
     private final ClientPages.OpenPage page;
     private final LayoutApi layouts;
-    private final NativeTextReadability.PageOptions textOptions;
+    private final UiPageTextReadability textOptions;
     private final Supplier<NativeTextReadability.Mount> mountText;
     private NativeTextReadability.Mount textMount;
     private final List<Binding> bindings = new ArrayList<>();
@@ -95,7 +97,7 @@ final class NativePageView {
     private PageService.Snapshot rendered;
     private boolean fits;
 
-    NativePageView(ClientPages.OpenPage page, LayoutApi layouts, NativeTextReadability.PageOptions textOptions,
+    NativePageView(ClientPages.OpenPage page, LayoutApi layouts, UiPageTextReadability textOptions,
                    Supplier<NativeTextReadability.Mount> mountText) {
         this.page = page;
         this.layouts = layouts;
@@ -159,7 +161,7 @@ final class NativePageView {
         var restore = inspect().focused();
         UiLocalModal.interrupt(screen);
         if (options == null) options = new UiLocalModal(screen, screen.context().preferences());
-        if (!textOptions.equals(NativeTextReadability.PageOptions.DEFAULT)
+        if (!textOptions.equals(UiPageTextReadability.DEFAULT)
                 && (textMount == null || !textMount.scope().isOpen())) {
             var mounted = mountText.get();
             try {
@@ -231,6 +233,11 @@ final class NativePageView {
                     if (widget instanceof UiButton button) button.bindTextReadability(label);
                     if (widget instanceof PassiveWidget passive) passive.readableLabel = label;
                     if (widget instanceof NativePageList list) list.bindTextReadability(label);
+                    if (widget instanceof UiSlider slider) slider.bindTextReadability(label);
+                    if (widget instanceof UiUnderlinedTabs tabs) tabs.bindTextReadability(label);
+                    if (widget instanceof NativeTextReadability.EditBoxBinding editor) {
+                        editor.shbui$bindReadability(label.inline());
+                    }
                 }
                 bindings.add(new Binding(node, parents, widget, control.update()));
                 yield widget;
@@ -323,16 +330,16 @@ final class NativePageView {
         return new NativePageInputs.Control(passive, data -> passive.update(node, data, screen.context().preferences()));
     }
 
-    private NativeTextReadability.Label textLabel(UiNode node, List<UiNode> parents, AbstractWidget widget) {
+    NativeTextReadability.Label textLabel(UiNode node, List<UiNode> parents, AbstractWidget widget) {
         if (textMount == null) return null;
         var options = textOptions.page();
         for (var ancestor : parents) {
-            options = options.overlay(textOptions.nodes().getOrDefault(ancestor.id(), NativeTextReadability.Options.INHERIT));
+            options = options.overlay(textOptions.nodes().getOrDefault(ancestor.id(), UiPageTextReadability.Options.INHERIT));
         }
-        options = options.overlay(textOptions.nodes().getOrDefault(node.id(), NativeTextReadability.Options.INHERIT));
+        options = options.overlay(textOptions.nodes().getOrDefault(node.id(), UiPageTextReadability.Options.INHERIT));
         String stableId = HexFormat.of().formatHex(node.id().getBytes(UTF_8));
         return new NativeTextReadability.Label(textMount, new UiId("sh_better_ui", "page_node/" + stableId),
-                options, () -> intersect(clip(parents),
+                NativeTextReadability.Options.fromPage(options), () -> intersect(clip(parents),
                 new Bounds(widget.getX(), widget.getY(), widget.getWidth(), widget.getHeight())));
     }
 

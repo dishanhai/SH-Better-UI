@@ -133,12 +133,15 @@ final class TextReadabilityGpuSmoke extends Screen {
     private int framesInStage;
     private long firstDarkNanos;
     private long firstBrightNanos;
+    private long firstGlassNanos;
     private boolean capturedIntermediate;
+    private boolean checkedHandoff;
+    private int handoffFill;
     private TextReadabilityPalette hudPalette;
     private Throwable failure;
     private String result;
 
-    private enum Stage { DARK, FLASH, STABLE, HUD_TRANSITION, GLASS, DEGRADATION, INTEROP, OVERLAY, BUDGET }
+    private enum Stage { DARK, FLASH, STABLE, HANDOFF, HUD_TRANSITION, GLASS, DEGRADATION, INTEROP, OVERLAY, BUDGET }
 
     TextReadabilityGpuSmoke(ModuleContext module) {
         super(Component.translatable("gui.done"));
@@ -182,6 +185,10 @@ final class TextReadabilityGpuSmoke extends Screen {
         if (stage == Stage.DARK && framesInStage == 1) firstDarkNanos = System.nanoTime();
         require(width >= 350 && height >= 210, "GPU smoke requires a GUI area of at least 350×210");
         graphics.fill(0, 0, width, height, BLACK);
+        if (stage == Stage.HANDOFF) {
+            drawHandoff(graphics);
+            return;
+        }
         if (stage == Stage.HUD_TRANSITION) {
             int backdrop = framesInStage == 1 ? BLACK : WHITE;
             graphics.fill(X - 4, HUD_Y - 4, X + font.width(HUD_LINE) + 4, HUD_Y + font.lineHeight + 4, backdrop);
@@ -237,6 +244,7 @@ final class TextReadabilityGpuSmoke extends Screen {
         })));
 
         if (stage == Stage.GLASS) {
+            if (framesInStage == 1) firstGlassNanos = System.nanoTime();
             for (int x = 0; x < width; x += 4) {
                 int stripe = (x / 4 + framesInStage / 4) % 2 == 0 ? BLACK : WHITE;
                 graphics.fill(x, GLASS_Y - 20, x + 4, GLASS_Y + 20, stripe);
@@ -259,6 +267,32 @@ final class TextReadabilityGpuSmoke extends Screen {
         }
         // Deliberately submitted after the low-priority crowd.
         submit(request(page, MOTION, GLYPHS, X, GLASS_Y + 30, BLACK, SamplingHint.FOCUSED));
+    }
+
+    private void drawHandoff(GuiGraphics graphics) {
+        graphics.fill(X - 4, MOTION_Y - 5, X + font.width(GLYPHS) + 8, MOTION_Y + 14, WHITE);
+        int split = font.width(SMALL_RUN);
+        graphics.fill(X + split, LOCAL_Y - 3, X + split * 3, LOCAL_Y + 12, WHITE);
+        expect(Result.SUBMITTED, service.foreground(module, page, 1, context -> guard(() -> {
+            if (framesInStage == 1) {
+                for (int i = 0; i < BUDGET_RUNS; i++) {
+                    expect(Result.DRAWN, service.drawNow(module, context,
+                            request(page, null, GLYPHS, 210, SPLIT_Y, BLACK, SamplingHint.FOCUSED)));
+                }
+            }
+            boolean previousStencil = GL11.glIsEnabled(GL11.GL_STENCIL_TEST);
+            if (framesInStage == 3) GL11.glEnable(GL11.GL_STENCIL_TEST);
+            try {
+                var motion = request(page, MOTION, GLYPHS, X, MOTION_Y, BLACK, SamplingHint.FOCUSED);
+                if (framesInStage == 5) motion = motion.withPolicy(ADAPTIVE.withLocalColor(true));
+                expect(Result.DRAWN, service.drawNow(module, context, motion));
+                expect(Result.DRAWN, service.drawNow(module, context, request(page, LOCAL,
+                        FormattedCharSequence.forward("MMMM", Style.EMPTY), X, LOCAL_Y, BLACK, SamplingHint.FOCUSED)
+                        .withPolicy(LOCAL_ADAPTIVE)));
+            } finally {
+                if (framesInStage == 3 && !previousStencil) GL11.glDisable(GL11.GL_STENCIL_TEST);
+            }
+        })));
     }
 
     private void degradationProbe() {
@@ -365,6 +399,10 @@ final class TextReadabilityGpuSmoke extends Screen {
                 require(diagnostic(page, LOCAL).sampling() == SamplingStatus.LOCAL_GPU
                                 && diagnostic(page, LOCAL_MIXED).sampling() == SamplingStatus.LOCAL_GPU,
                         "Native single-sequence localized sampling did not run");
+                var clusters = service.clusterDiagnostics(module, page, LOCAL);
+                require(clusters.size() == 4 && clusters.stream()
+                                .allMatch(cluster -> cluster.diagnostic().sampling() == SamplingStatus.GPU),
+                        "Missing per-cluster diagnostics: " + clusters);
                 if (dark.gpu().status() != DetailStatus.READY || split.gpu().status() != DetailStatus.READY) return false;
                 if (System.nanoTime() - firstDarkNanos < STABILITY + 2L * TextReadabilityReference.TRANSITION_NANOS) {
                     return false;
@@ -408,21 +446,53 @@ final class TextReadabilityGpuSmoke extends Screen {
                     if (fill != WHITE && !capturedIntermediate) {
                         // Diagnostic readback may describe an earlier frame. Check the current pixels separately.
                         try (var image = Screenshot.takeScreenshot(client.getMainRenderTarget())) {
-                            if (hasIntermediateInk(image, client)) {
+                            int displayed = intermediateInk(image, client);
+                            if (displayed != 0) {
                                 image.writeToFile(output.resolve("text-readability-gpu-transition.png").toFile());
                                 capturedIntermediate = true;
+                                handoffFill = displayed;
+                                stage = Stage.HANDOFF;
                             }
                         }
                     }
                     return false;
                 }
-                require(capturedIntermediate, "The GPU reached black without painting an intermediate fill");
+                require(capturedIntermediate && checkedHandoff, "The GPU reached black without the checked transition");
                 require(bright.gpu().decision().protection() == TextReadabilityReference.Protection.NONE,
                         "Settled black fill retained temporary protection");
                 capture(client, output, "stable", image -> require(pixel(image, client, X - 1, MOTION_Y - 1) == WHITE
                                 && ink(image, client, X, MOTION_Y, font.width(GLYPHS), BLACK) > 0,
                         "Sustained bright backdrop did not switch to black glyphs without backing"));
                 stage = Stage.HUD_TRANSITION;
+            }
+            case HANDOFF -> {
+                var decision = diagnostic(page, MOTION);
+                var expected = switch (framesInStage) {
+                    case 1 -> SamplingStatus.BUDGET_EXHAUSTED;
+                    case 3 -> SamplingStatus.UNAVAILABLE;
+                    default -> SamplingStatus.GPU;
+                };
+                var expectedMotion = framesInStage == 5 ? SamplingStatus.LOCAL_GPU : expected;
+                require(decision.sampling() == expectedMotion, "Unexpected handoff sampling: " + decision.sampling());
+                if (expected == SamplingStatus.BUDGET_EXHAUSTED || expected == SamplingStatus.UNAVAILABLE) {
+                    require(decision.decision().fillArgb() == handoffFill, "CPU fallback lost the displayed fill");
+                }
+                var clusters = service.clusterDiagnostics(module, page, LOCAL);
+                require(clusters.size() == 4 && clusters.stream()
+                                .allMatch(cluster -> cluster.diagnostic().sampling() == expected),
+                        "Local clusters lost their sampling status across the handoff");
+                capture(client, output, "handoff-" + framesInStage, image -> {
+                    require(ink(image, client, X, MOTION_Y, font.width(GLYPHS), handoffFill) > 0,
+                            "Backend handoff did not retain the visible intermediate fill on frame " + framesInStage);
+                    int split = font.width(SMALL_RUN);
+                    require(ink(image, client, X, LOCAL_Y, split, WHITE) > 0
+                                    && ink(image, client, X + split, LOCAL_Y, split, BLACK) > 0,
+                            "Backend handoff reset independently adapted clusters on frame " + framesInStage);
+                });
+                if (framesInStage == 6) {
+                    checkedHandoff = true;
+                    stage = Stage.STABLE;
+                }
             }
             case HUD_TRANSITION -> {
                 if (framesInStage == 6) {
@@ -447,6 +517,7 @@ final class TextReadabilityGpuSmoke extends Screen {
                             + Runtime.version().feature()
                             + "\nUniform and mixed styled native sequences through submit and drawNow"
                             + "\nFirst bright frame retained white, then painted intermediate gray and settled on black"
+                            + "\nGPU budget, unavailable sampling and recovery retained the displayed midtone"
                             + "\nHUD base and inline glyphs painted a midtone with reduced motion enabled\n";
                     return true;
                 }
@@ -454,7 +525,10 @@ final class TextReadabilityGpuSmoke extends Screen {
             }
             case GLASS -> {
                 var glass = diagnostic(page, GLASS);
-                if (glass.gpu().status() != DetailStatus.READY || framesInStage < 5) return false;
+                if (glass.gpu().status() != DetailStatus.READY || framesInStage < 10
+                        || System.nanoTime() - firstGlassNanos < STABILITY + TextReadabilityReference.TRANSITION_NANOS) {
+                    return false;
+                }
                 require(GaussBlur.isReady() && glass.gpu().decision().source() == TextReadabilityReference.Source.ACTUAL
                                 && glass.gpu().samples().stream().anyMatch(point -> point.luminance() > .01
                                 && point.luminance() < .95),
@@ -666,12 +740,12 @@ final class TextReadabilityGpuSmoke extends Screen {
         return service.diagnostics(module, scope, text).orElseThrow(() -> new AssertionError("Missing diagnostic " + text));
     }
 
-    private boolean hasIntermediateInk(NativeImage image, Minecraft client) {
+    private int intermediateInk(NativeImage image, Minecraft client) {
         for (int shade = 48; shade <= 207; shade++) {
             int color = BLACK | shade * 0x010101;
-            if (ink(image, client, X, MOTION_Y, font.width(GLYPHS), color) > 0) return true;
+            if (ink(image, client, X, MOTION_Y, font.width(GLYPHS), color) > 0) return color;
         }
-        return false;
+        return 0;
     }
 
     private int ink(NativeImage image, Minecraft client, int left, int top, int width, int color) {

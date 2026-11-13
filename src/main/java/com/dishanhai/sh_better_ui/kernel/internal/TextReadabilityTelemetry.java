@@ -278,7 +278,7 @@ final class TextReadabilityTelemetry implements AutoCloseable {
         Timer(int start, int end) { this.start = start; this.end = end; }
     }
 
-    private record Pack(int alignment, int rowLength, int skipPixels, int skipRows, int swapBytes) {
+    record Pack(int alignment, int rowLength, int skipPixels, int skipRows, int swapBytes) {
         static final Pack DEFAULT = new Pack(1, 0, 0, 0, 0);
 
         static Pack capture() {

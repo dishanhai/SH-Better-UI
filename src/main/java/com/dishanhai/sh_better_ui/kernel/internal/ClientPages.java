@@ -22,6 +22,7 @@ import com.dishanhai.sh_better_ui.kernel.api.page.UiComponentFactory;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiComponentRegistry;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiNode;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageType;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiResolvedPage;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
@@ -141,19 +142,24 @@ final class ClientPages implements PageService, UIModule {
 
     @Override
     public RegistrationHandle register(ModuleContext owner, UiPageDefinition page) {
+        return register(owner, page, UiPageTextReadability.DEFAULT);
+    }
+
+    @Override
+    public RegistrationHandle register(ModuleContext owner, UiPageDefinition page, UiPageTextReadability text) {
         host.moduleAccess(owner);
-        return registerOwned(owner.scope(), owner.descriptor().id().namespace(), page,
-                NativeTextReadability.PageOptions.DEFAULT);
+        return registerOwned(owner.scope(), owner.descriptor().id().namespace(), page, text);
     }
 
     private RegistrationHandle registerOwned(ScopeHandle owner, String namespace, UiPageDefinition page,
-                                             NativeTextReadability.PageOptions text) {
+                                             UiPageTextReadability text) {
         host.assertOwner();
         Objects.requireNonNull(page);
         if (!owner.isOpen() || !page.id().namespace().equals(namespace)) {
             throw new SecurityException("Page namespace must belong to its registering scope");
         }
         validate(page, false);
+        Objects.requireNonNull(text, "text").validateFor(page);
         if (definitions.size() >= MAX_REGISTRATIONS) throw new IllegalStateException("Page registry is full");
         var registration = new Registered(owner, page, text);
         if (definitions.putIfAbsent(page.id(), registration) != null) {
@@ -195,7 +201,7 @@ final class ClientPages implements PageService, UIModule {
         return scope;
     }
 
-    RegistrationHandle registerScript(ScopeHandle scope, UiPageDefinition page, NativeTextReadability.PageOptions text) {
+    RegistrationHandle registerScript(ScopeHandle scope, UiPageDefinition page, UiPageTextReadability text) {
         requireScript(scope);
         return registerOwned(scope, "kubejs", page, text);
     }
@@ -244,7 +250,7 @@ final class ClientPages implements PageService, UIModule {
         }
         var scope = screens.session(context, new UiId(KEY.id().namespace(), "page_session/" + instanceId));
         try {
-            return show(scope, instanceId, resolved, initialData, true, action, closed, NativeTextReadability.PageOptions.DEFAULT);
+            return show(scope, instanceId, resolved, initialData, true, action, closed, UiPageTextReadability.DEFAULT);
         } catch (RuntimeException failure) {
             scope.close();
             throw failure;
@@ -296,7 +302,7 @@ final class ClientPages implements PageService, UIModule {
     private OpenPage show(ScopeHandle owner, UUID instanceId, UiResolvedPage resolution,
                           Map<String, UiValue> data, boolean remote,
                           BiConsumer<UiId, Map<String, UiValue>> action, Runnable closed,
-                          NativeTextReadability.PageOptions text) {
+                          UiPageTextReadability text) {
         host.assertOwner();
         Objects.requireNonNull(action);
         var definition = resolution.page().orElseThrow();
@@ -420,9 +426,9 @@ final class ClientPages implements PageService, UIModule {
     private final class Registered implements RegistrationHandle {
         private final ScopeHandle owner;
         private final UiPageDefinition page;
-        private final NativeTextReadability.PageOptions text;
+        private final UiPageTextReadability text;
 
-        Registered(ScopeHandle owner, UiPageDefinition page, NativeTextReadability.PageOptions text) {
+        Registered(ScopeHandle owner, UiPageDefinition page, UiPageTextReadability text) {
             this.owner = owner;
             this.page = page;
             this.text = Objects.requireNonNull(text);

@@ -8,6 +8,7 @@ uniform uvec2 DeltaNanos;
 uniform uvec2 StabilityNanos;
 uniform ivec2 TransitionTiming; // duration and maximum advance per frame, in nanoseconds
 uniform uint Original;
+uniform uint InitialFill;
 uniform uint Declared;
 uniform ivec4 Rules; // sample budget, minimum valid, lock hue, outline/backing bit flags
 uniform vec2 Thresholds; // contrast, group opacity
@@ -155,8 +156,8 @@ void main() {
         reasons |= NO_CANDIDATE;
         if (Rules.z != 0) reasons |= HUE_LOCKED;
     }
-    uint from = Original;
-    uint target = Original;
+    uint from = (Original & 0xff000000u) | (InitialFill & 0x00ffffffu);
+    uint target = from;
     uint progress = 0u;
     uint pending = 0u;
     uvec2 elapsed = uvec2(0u);

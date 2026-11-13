@@ -179,6 +179,24 @@ final class ClientTextReadability implements TextReadabilityService {
     }
 
     @Override
+    public List<ClusterDiagnostic> clusterDiagnostics(ModuleContext module, ScopeHandle scope, TextId text) {
+        host.moduleAccess(module);
+        if (scope == null || !scope.isOpen() || text == null) return List.of();
+        var node = node(module, scope);
+        var parent = history.get(new Key(node, text));
+        if (parent == null || parent.diagnostic.result() != Result.DRAWN
+                || parent.diagnostic.decision() != null
+                || host.nowNanos() - parent.seen >= IDLE_NANOS) return List.of();
+        return history.entrySet().stream()
+                .filter(entry -> entry.getKey().scope == node && entry.getKey().text.equals(text)
+                        && entry.getKey().clusterIndex >= 0 && entry.getValue().lastPaintFrame == parent.lastPaintFrame)
+                .sorted(Comparator.comparingInt(entry -> entry.getKey().clusterIndex))
+                .map(entry -> new ClusterDiagnostic(entry.getKey().clusterIndex,
+                        withDetails(entry.getKey(), entry.getValue().diagnostic)))
+                .toList();
+    }
+
+    @Override
     public void setGpuDiagnostics(ModuleContext module, ScopeHandle scope, boolean enabled) {
         var node = node(module, scope);
         if (enabled) {
@@ -364,7 +382,7 @@ final class ClientTextReadability implements TextReadabilityService {
     private boolean currentSnapshot(Prepared item) {
         var snapshot = item.request.snapshot();
         if (snapshot == null) return true;
-        if (item.frame == null || !snapshot.isCurrent() || snapshot.frameId() != item.frame.id()
+        if (item.frame == null || !item.frame.hasSnapshot(snapshot) || snapshot.frameId() != item.frame.id()
                 || snapshot.mountGeneration() != item.screen.generation()) return false;
         for (var scope = item.node; scope != null; scope = scope.parent()) {
             if (scope.generation() == snapshot.scopeGeneration()) return true;
@@ -409,45 +427,92 @@ final class ClientTextReadability implements TextReadabilityService {
                 return report(item, Result.RENDER_FAILED);
             }
             var authored = withAuthoredColor(item);
-            if (authored != null) return paintRun(authored, graphics, null);
+            if (authored != null) return paintWhole(authored, graphics);
             var preserved = item.request.withPolicy(item.request.policyOverride().overlay(
                     new TextReadabilityPolicy(false, null, null, null, null)));
-            return paintRun(prepare(preserved, item.node, item.popup, item.frame), graphics, null);
+            return paintWhole(prepare(preserved, item.node, item.popup, item.frame), graphics);
         }
-        return paintRun(item, graphics, null);
+        return paintWhole(item, graphics);
+    }
+
+    private Result paintWhole(Prepared item, GuiGraphics graphics) {
+        var key = item.key();
+        Integer initialFill = null;
+        var previous = key == null ? null : history.get(key);
+        if (previous != null && previous.lastPaintFrame >= item.frame.id() - 1
+                && item.policy.adaptiveColor() && !observed(key, item.frame.id())) {
+            int first = Integer.MAX_VALUE;
+            Key cluster = null;
+            for (var entry : history.entrySet()) {
+                var candidate = entry.getKey();
+                if (candidate.clusterIndex >= 0 && candidate.clusterIndex < first
+                        && candidate.scope == key.scope && candidate.text.equals(key.text)
+                        && observed(candidate, item.frame.id())) {
+                    first = candidate.clusterIndex;
+                    cluster = candidate;
+                }
+            }
+            if (cluster != null) initialFill = displayedFill(cluster, item.frame.id());
+        }
+        return paintRun(item, graphics, null, initialFill);
+    }
+
+    private boolean observed(Key key, long frame) {
+        var entry = history.get(key);
+        return entry != null && entry.lastPaintFrame >= frame - 1
+                && (entry.state != null || entry.diagnostic.sampling() == SamplingStatus.GPU);
+    }
+
+    private Integer displayedFill(Key key, long frame) {
+        if (!observed(key, frame)) return null;
+        var entry = history.get(key);
+        if (entry.state != null) return entry.state.displayedFill();
+        var slot = slots.get(key);
+        return slot == null || slot.signature == null || slot.frame < frame - 1 ? null
+                : TextReadabilityPainter.displayedGpuFill(slot.index, slot.generation);
     }
 
     private Result paintLocal(Prepared item, GuiGraphics graphics) {
         var request = item.request;
         var run = request.run();
         var hint = request.sampling();
-        if (target == null || request.groupOpacity() < 1 || hint == SamplingHint.DECLARED_ONLY
-                || item.policy.samplingMode() == TextReadabilityPolicy.SamplingMode.EXPLICIT_ONLY
-                && !hint.explicitlyMarked()) return null;
+        if (request.groupOpacity() < 1) return null;
         var font = run.font() == null ? Minecraft.getInstance().font : run.font();
         if (font.getClass() != Font.class) return null;
         var clusters = NativeTextClusters.measure(run.glyphs(), (float) run.x(), request.style().argb(),
                 font.getSplitter()::stringWidth);
         if (clusters.size() < 2) return null;
         int priority = priority(item);
-        var grant = budget.offer(priority, 1);
-        if (grant == null) return null;
-        long sourceFrame = host.frameNumber();
-        long started = System.nanoTime();
-        TextReadabilityPainter.Scissor backdrop;
-        try {
-            backdrop = TextReadabilityPainter.captureLocalBackdrop(graphics, request, sourceFrame, grant.pixelAllowance());
-        } finally {
-            counters.cpuNanos += System.nanoTime() - started;
+        SamplingStatus fallback = samplingRestriction(item);
+        TextReadabilityPainter.Scissor backdrop = null;
+        if (fallback == null) {
+            var grant = budget.offer(priority, 1);
+            if (grant == null) {
+                fallback = SamplingStatus.BUDGET_EXHAUSTED;
+            } else {
+                long started = System.nanoTime();
+                try {
+                    backdrop = TextReadabilityPainter.captureLocalBackdrop(graphics, request, host.frameNumber(),
+                            grant.pixelAllowance());
+                } finally {
+                    counters.cpuNanos += System.nanoTime() - started;
+                }
+                if (backdrop == null) {
+                    fallback = SamplingStatus.UNAVAILABLE;
+                } else {
+                    int copied = backdrop.width() * backdrop.height();
+                    budget.spendPixels(grant, copied);
+                    counters.pixels += copied;
+                }
+            }
         }
-        if (backdrop == null) return null;
-        int copied = backdrop.width() * backdrop.height();
-        budget.spendPixels(grant, copied);
-        counters.pixels += copied;
 
+        var key = item.key();
+        Integer initialFill = key == null ? null : displayedFill(key, item.frame.id());
         int previousSamples = counters.runs;
         Result result = Result.CLIPPED;
         Result failure = null;
+        SamplingStatus clusterSampling = fallback == null ? SamplingStatus.BUDGET_EXHAUSTED : fallback;
         for (int i = 0; i < clusters.size(); i++) {
             var cluster = clusters.get(i);
             var bounds = new Rect(cluster.left(), run.bounds().y(), cluster.right() - (double) cluster.left(),
@@ -459,7 +524,7 @@ final class ClientTextReadability implements TextReadabilityService {
             double left = i == 0 ? 2 : Math.min(2, (cluster.left() - (double) clusters.get(i - 1).right()) / 2);
             double right = i + 1 == clusters.size() ? 2
                     : Math.min(2, (clusters.get(i + 1).left() - (double) cluster.right()) / 2);
-            var local = new Local(cluster, backdrop, bounds.outset(new Insets(left, 1, right, 1)), priority);
+            var local = new Local(cluster, backdrop, bounds.outset(new Insets(left, 1, right, 1)), priority, fallback);
             var style = request.style();
             var child = new Request(request.scope(), request.text(),
                     new Run(cluster.sequence(), cluster.left(), run.y(), bounds, run.lineHeight(), run.font()),
@@ -467,21 +532,24 @@ final class ClientTextReadability implements TextReadabilityService {
                             style.allowBacking()), request.transform(), request.clip(), request.groupOpacity(),
                     request.declaredBackgroundArgb(), request.foregroundZ(), request.snapshot(), hint,
                     request.policyOverride());
-            var painted = paintRun(item.withRun(child, visible, cluster.index()), graphics, local);
+            var prepared = item.withRun(child, visible, cluster.index());
+            var painted = paintRun(prepared, graphics, local, initialFill);
+            var entry = history.get(prepared.key());
+            if (entry != null) clusterSampling = entry.diagnostic.sampling();
             if (painted == Result.DRAWN) result = painted;
             else if (painted != Result.CLIPPED && failure == null) failure = painted;
         }
-        var key = item.key();
         if (key != null) releaseSlot(key);
-        var sampling = counters.runs > previousSamples ? SamplingStatus.LOCAL_GPU : SamplingStatus.BUDGET_EXHAUSTED;
+        var sampling = counters.runs > previousSamples ? SamplingStatus.LOCAL_GPU : clusterSampling;
         return report(item, failure == null ? result : failure, null, null, item.frame.id(), sampling);
     }
 
-    private Result paintRun(Prepared item, GuiGraphics graphics, Local local) {
+    private Result paintRun(Prepared item, GuiGraphics graphics, Local local, Integer initialFill) {
         var request = item.request;
         var key = item.key();
         var previous = key == null ? null : history.get(key);
         var frameNumber = item.frame.id();
+        if (key != null && observed(key, frameNumber)) initialFill = null;
         TextReadabilityReference.State state = null;
         TextReadabilityReference.Decision decision = null;
         Integer fill = null;
@@ -492,15 +560,20 @@ final class ClientTextReadability implements TextReadabilityService {
         long started = System.nanoTime();
         try {
             if (item.policy.adaptiveColor()) {
-                sampling = sample(item, graphics, local);
+                sampling = sample(item, graphics, local, initialFill);
                 if (sampling == SamplingStatus.GPU) {
                     return report(item, Result.DRAWN, null, null, frameNumber, sampling);
                 }
                 if (key != null) {
+                    if (previous != null && previous.state != null && previous.lastPaintFrame >= frameNumber - 1) {
+                        state = previous.state;
+                    } else {
+                        state = new TextReadabilityReference.State();
+                        var fillBeforeFallback = displayedFill(key, frameNumber);
+                        if (fillBeforeFallback == null) fillBeforeFallback = initialFill;
+                        if (fillBeforeFallback != null) state.seedDisplayedFill(fillBeforeFallback);
+                    }
                     releaseSlot(key);
-                    state = previous != null && previous.state != null
-                            && frameNumber - previous.lastPaintFrame <= 1
-                            ? previous.state : new TextReadabilityReference.State();
                 }
                 var style = request.style();
                 var color = request.declaredBackgroundArgb();
@@ -537,14 +610,22 @@ final class ClientTextReadability implements TextReadabilityService {
         };
     }
 
-    private SamplingStatus sample(Prepared item, GuiGraphics graphics, Local local) {
-        var request = item.request;
-        var hint = request.sampling();
+    private SamplingStatus samplingRestriction(Prepared item) {
+        var hint = item.request.sampling();
         if (hint == SamplingHint.DECLARED_ONLY) return SamplingStatus.DECLARED_ONLY;
         if (item.policy.samplingMode() == TextReadabilityPolicy.SamplingMode.EXPLICIT_ONLY && !hint.explicitlyMarked()) {
             return SamplingStatus.EXPLICIT_ONLY;
         }
-        if (target == null) return fallback(SamplingStatus.UNAVAILABLE);
+        return target == null ? SamplingStatus.UNAVAILABLE : null;
+    }
+
+    private SamplingStatus sample(Prepared item, GuiGraphics graphics, Local local, Integer initialFill) {
+        var request = item.request;
+        var restriction = local == null ? samplingRestriction(item) : local.fallback();
+        if (restriction != null) {
+            return restriction == SamplingStatus.DECLARED_ONLY || restriction == SamplingStatus.EXPLICIT_ONLY
+                    ? restriction : fallback(restriction);
+        }
         int priority = local == null ? priority(item) : local.priority();
         var visible = item.visible.intersect(new Rect(0, 0, target.width / target.guiScale, target.height / target.guiScale));
         if (visible.empty()) return fallback(SamplingStatus.INVALID_REGION);
@@ -552,6 +633,10 @@ final class ClientTextReadability implements TextReadabilityService {
         if (grant == null) return fallback(SamplingStatus.BUDGET_EXHAUSTED);
 
         var key = item.key();
+        var previous = key == null ? null : history.get(key);
+        if (previous != null && previous.state != null && previous.lastPaintFrame >= item.frame.id() - 1) {
+            initialFill = previous.state.displayedFill();
+        }
         long now = host.nowNanos();
         var slot = key == null ? null : slot(key);
         var signature = new Signature(request.style(), item.policy.stabilityNanos(), item.contrast,
@@ -559,11 +644,11 @@ final class ClientTextReadability implements TextReadabilityService {
         long previousFrame = slot == null ? -1 : slot.frame;
         long frame = item.frame.id();
         long elapsed = 0;
-        if (slot != null) {
-            if (slot.signature != null && (!signature.equals(slot.signature) || frame - previousFrame > 1)) {
-                slot.generation = nextGeneration();
-                invalidateDetail(key);
-            } else if (slot.signature != null && previousFrame != frame) {
+        int requestedGeneration = slot == null ? 0 : slot.generation;
+        if (slot != null && slot.signature != null) {
+            if (!signature.equals(slot.signature) || frame - previousFrame > 1) {
+                requestedGeneration = nextGeneration();
+            } else if (previousFrame != frame) {
                 elapsed = Math.max(0, now - slot.nanos);
             }
         }
@@ -575,9 +660,9 @@ final class ClientTextReadability implements TextReadabilityService {
         while (true) {
             result = TextReadabilityPainter.drawActual(graphics, request,
                     new TextReadabilityPainter.ActualInput(grant.samples(), slot == null ? -1 : slot.index,
-                            slot == null ? 0 : slot.generation, elapsed, item.policy.stabilityNanos(), item.contrast,
+                            requestedGeneration, elapsed, item.policy.stabilityNanos(), item.contrast,
                             item.height, SAMPLING, sourceFrame, ticket, grant.pixelAllowance(),
-                            local == null ? null : local.backdrop(), local == null ? null : local.backing()));
+                            local == null ? null : local.backdrop(), local == null ? null : local.backing(), initialFill));
             if (!result.pixelBudgetExhausted()) break;
             grant = budget.offer(grant.lane() - 1, 1);
             if (grant == null) return fallback(SamplingStatus.BUDGET_EXHAUSTED);
@@ -591,6 +676,8 @@ final class ClientTextReadability implements TextReadabilityService {
         counters.samples += result.attemptedSamples();
         counters.pixels += result.copiedPixels();
         if (slot != null) {
+            if (slot.generation != requestedGeneration) invalidateDetail(key);
+            slot.generation = requestedGeneration;
             slot.signature = signature;
             slot.frame = frame;
             slot.nanos = now;
@@ -847,7 +934,7 @@ final class ClientTextReadability implements TextReadabilityService {
     private record Ticket(Key key, long frame, long epoch, int generation) {}
     private record Signature(Style style, long stabilityNanos, double target, List<NativeTextClusters.Glyph> glyphs) {}
     private record Local(NativeTextClusters.Cluster cluster, TextReadabilityPainter.Scissor backdrop,
-                         Rect backing, int priority) {}
+                         Rect backing, int priority, SamplingStatus fallback) {}
 
     private static final class Slot {
         private final int index;

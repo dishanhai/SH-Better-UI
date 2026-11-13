@@ -51,7 +51,7 @@ final class TextReadabilityPainter {
     record ActualInput(int sampleBudget, int stateSlot, int generation, long deltaNanos, long stabilityNanos,
                        double threshold, double framebufferHeight, TextReadabilityReference.Sampling sampling,
                        long frame, long diagnosticId, int pixelAllowance, Scissor localBackdrop,
-                       Rect localBacking) {}
+                       Rect localBacking, Integer initialFill) {}
     record ActualResult(Result result, int attemptedSamples, int copiedPixels, boolean telemetryQueued,
                         boolean regionInvalid, boolean pixelBudgetExhausted) {}
     record ActualDiagnostic(long diagnosticId, long frame, int attemptedSamples,
@@ -168,6 +168,11 @@ final class TextReadabilityPainter {
 
     private static ActualResult actualUnavailable(Result result, boolean regionInvalid, boolean budgetExhausted) {
         return new ActualResult(result, 0, 0, false, regionInvalid, budgetExhausted);
+    }
+
+    /** Reads back the displayed fill only when a stable run leaves the GPU path. */
+    static Integer displayedGpuFill(int slot, int generation) {
+        return actualGpu == null ? null : actualGpu.displayedFill(slot, generation);
     }
 
     static void pollActualDiagnostics(Consumer<ActualDiagnostic> accept) {

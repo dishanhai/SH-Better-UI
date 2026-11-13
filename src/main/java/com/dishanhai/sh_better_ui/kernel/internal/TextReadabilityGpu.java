@@ -221,6 +221,7 @@ final class TextReadabilityGpu implements AutoCloseable {
                 TextReadabilityReference.MAX_TRANSITION_STEP_NANOS);
         var style = request.style();
         decisionProgram.unsigned("Original", style.argb());
+        decisionProgram.unsigned("InitialFill", input.initialFill() == null ? style.argb() : input.initialFill());
         decisionProgram.unsigned("Declared", request.declaredBackgroundArgb() == null ? 0 : request.declaredBackgroundArgb());
         int protection = style.allowBacking() ? 2 : 0;
         if (style.allowOutline() && input.framebufferHeight() >= input.sampling().minimumOutlineFramebufferPixels()) {
@@ -229,6 +230,27 @@ final class TextReadabilityGpu implements AutoCloseable {
         decisionProgram.ints("Rules", budget, input.sampling().minimumActualSamples(), style.lockHue() ? 1 : 0, protection);
         decisionProgram.floats("Thresholds", (float) input.threshold(), request.groupOpacity());
         drawTriangle();
+    }
+
+    Integer displayedFill(int slot, int generation) {
+        int read = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
+        int packBuffer = GL11.glGetInteger(GL21.GL_PIXEL_PACK_BUFFER_BINDING);
+        var pack = TextReadabilityTelemetry.Pack.capture();
+        int[] values = new int[(STATE_COLUMNS + 1) * 4];
+        try {
+            GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, state.framebuffer);
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0);
+            TextReadabilityTelemetry.Pack.DEFAULT.apply();
+            GL11.glReadPixels(slot % STATE_COLUMNS, slot / STATE_COLUMNS, STATE_COLUMNS + 1, 1,
+                    GL30.GL_RGBA_INTEGER, GL11.GL_UNSIGNED_INT, values);
+        } finally {
+            pack.apply();
+            GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, packBuffer);
+            GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, read);
+        }
+        int timing = STATE_COLUMNS * 4;
+        return values[0] != generation ? null
+                : TextReadabilityReference.interpolateFill(values[1], values[timing + 2], values[timing + 3]);
     }
 
     private void storeState(int slot) {

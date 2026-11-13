@@ -236,6 +236,21 @@ class TextReadabilityReferenceTest {
     }
 
     @Test
+    void seedsFallbackFromTheDisplayedGpuTransitionFill() {
+        var bright = input(WHITE, Background.declared(WHITE));
+        int gpuFill = TextReadabilityReference.interpolateFill(WHITE, BLACK, 40_000_000);
+        var state = new State();
+        assertNull(state.displayedFill());
+        state.seedDisplayedFill(gpuFill);
+        assertEquals(0xffdfdfdf, evaluate(bright, state, 0).fillArgb());
+        assertEquals(gpuFill, evaluate(bright, state, WINDOW).fillArgb());
+        assertEquals(0xffc3c3c3, evaluate(bright, state, WINDOW + 40_000_000).fillArgb());
+        assertEquals(Integer.valueOf(0xffc3c3c3), state.displayedFill());
+        state.reset();
+        assertNull(state.displayedFill());
+    }
+
+    @Test
     void candidateFailureSourceChangesAndStateResetBreakTheContinuousWindow() {
         var state = new State();
         var actualWhite = Background.actual(List.of(sample(0, WHITE), sample(1, WHITE), sample(2, WHITE),

@@ -4,6 +4,7 @@
   "package": "com.dishanhai.sh_better_ui.client.mixin.kernel",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "EditBoxReadabilityMixin",
     "KeyboardActionMixin",
     "PointerMotionMixin",
     "WindowFocusMixin"

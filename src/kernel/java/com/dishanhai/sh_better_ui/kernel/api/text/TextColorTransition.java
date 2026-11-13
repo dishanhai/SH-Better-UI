@@ -26,13 +26,18 @@ final class TextColorTransition {
     }
 
     int fill() {
-        if (from == target || elapsed == 0) return from;
-        if (elapsed == TRANSITION_NANOS) return target;
-        int micros = elapsed / 1000;
-        return (target & 0xff000000) | channel(16, micros) << 16 | channel(8, micros) << 8 | channel(0, micros);
+        return fill(from, target, elapsed);
     }
 
-    private int channel(int shift, int micros) {
+    static int fill(int from, int target, int elapsed) {
+        if (from == target || elapsed <= 0) return from;
+        if (elapsed >= TRANSITION_NANOS) return target;
+        int micros = elapsed / 1000;
+        return (target & 0xff000000) | channel(from, target, 16, micros) << 16
+                | channel(from, target, 8, micros) << 8 | channel(from, target, 0, micros);
+    }
+
+    private static int channel(int from, int target, int shift, int micros) {
         int duration = TRANSITION_NANOS / 1000;
         int first = (from >>> shift) & 255;
         int last = (target >>> shift) & 255;

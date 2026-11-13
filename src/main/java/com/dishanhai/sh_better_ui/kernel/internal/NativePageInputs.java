@@ -141,6 +141,7 @@ final class NativePageInputs {
                 button -> {
                     if (view.acceptsInput(node, ancestors)) {
                         NativePageOptions.open(screen, view.options(), source[0], labels, candidates.indexOf(current[0]),
+                                view.textLabel(node, ancestors, source[0]),
                                 index -> view.commit(node, ancestors, candidates.get(index)));
                     }
                 }, screen.context().preferences(), false, UiStyle.DEFAULT);

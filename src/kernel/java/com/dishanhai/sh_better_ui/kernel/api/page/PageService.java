@@ -9,6 +9,7 @@ import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.UiVersion;
 
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
@@ -31,6 +32,14 @@ public interface PageService extends UIService {
     }
 
     RegistrationHandle register(ModuleContext owner, UiPageDefinition page);
+
+    /** Registers a local Screen or modal with readability overrides keyed by stable node ID. */
+    default RegistrationHandle register(ModuleContext owner, UiPageDefinition page, UiPageTextReadability text) {
+        if (!UiPageTextReadability.DEFAULT.equals(Objects.requireNonNull(text, "text"))) {
+            throw new UnsupportedOperationException("Declarative page text readability is unavailable");
+        }
+        return register(owner, page);
+    }
 
     Optional<UiPageDefinition> find(ModuleContext owner, UiId id);
 

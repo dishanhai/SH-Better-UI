@@ -52,6 +52,13 @@ public interface TextReadabilityService extends UIService {
     /** The last decision for this stable ID, while its scope and decision are current. */
     Optional<Diagnostic> diagnostics(ModuleContext module, ScopeHandle scope, TextId text);
 
+    /** Current visual-cluster decisions for a local-color run, in visual order. */
+    default List<ClusterDiagnostic> clusterDiagnostics(ModuleContext module, ScopeHandle scope, TextId text) {
+        return List.of();
+    }
+
+    record ClusterDiagnostic(int visualIndex, Diagnostic diagnostic) {}
+
     /** Requests asynchronous GPU detail for stable IDs in this owned subtree until disabled or closed. */
     void setGpuDiagnostics(ModuleContext module, ScopeHandle scope, boolean enabled);
 

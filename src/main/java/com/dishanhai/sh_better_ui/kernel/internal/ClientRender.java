@@ -119,6 +119,11 @@ final class ClientRender implements RenderService {
         return glass.hudTextPalette(id);
     }
 
+    TextReadabilityPalette prepareHudText(GuiGraphics graphics, UiId id, Rect local, int darkestArgb,
+                                           int lightestArgb, TextReadabilityPalette fallback) {
+        return glass.prepareHudText(graphics, 0, id, local, darkestArgb, lightestArgb, fallback);
+    }
+
     BackgroundSample sampleHudText(GuiGraphics graphics, UiId id, Rect local) {
         return glass.sampleHudText(graphics, id, local);
     }

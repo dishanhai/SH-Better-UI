@@ -8,6 +8,7 @@ import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextId;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService;
@@ -18,7 +19,6 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.util.FormattedCharSequence;
 
-import java.util.Map;
 import java.util.function.Supplier;
 
 /** Native adapter for positioned Minecraft font lines and client-local page overrides. */
@@ -32,21 +32,38 @@ public final class NativeTextReadability {
     public record Options(TextReadabilityPolicy policy, TextReadabilityService.SamplingHint sampling) {
         public static final Options INHERIT = new Options(TextReadabilityPolicy.inherit(), null);
 
+        public static Options fromPage(UiPageTextReadability.Options options) {
+            var hint = options.sampling() == null ? null
+                    : TextReadabilityService.SamplingHint.valueOf(options.sampling().name());
+            return new Options(options.policy(), hint);
+        }
+
+        public UiPageTextReadability.Options forPage() {
+            var hint = sampling == null ? null : UiPageTextReadability.Sampling.valueOf(sampling.name());
+            return new UiPageTextReadability.Options(policy, hint);
+        }
+
         public Options overlay(Options overrides) {
             return new Options(policy.overlay(overrides.policy),
                     overrides.sampling == null ? sampling : overrides.sampling);
         }
     }
 
-    public record PageOptions(Options page, Map<String, Options> nodes) {
-        public static final PageOptions DEFAULT = new PageOptions(Options.INHERIT, Map.of());
-
-        public PageOptions {
-            nodes = Map.copyOf(nodes);
-        }
+    public interface EditBoxBinding {
+        void shbui$bindReadability(Label label);
     }
 
     public record Label(Mount mount, UiId id, Options options, Supplier<Bounds> clip) {
+        public Label inline() {
+            return new Label(mount, id, new Options(options.policy().overlay(
+                    new TextReadabilityPolicy(null, false, null, null, null)), options.sampling()), clip);
+        }
+
+        public boolean drawClipped(GuiGraphics graphics, Font font, FormattedCharSequence glyphs, int x, int y,
+                                   int color, boolean shadow, int line, boolean hovered, boolean focused, Rect clip) {
+            return draw(graphics, font, glyphs, x, y, color, shadow, line, hovered, focused, null, clip);
+        }
+
         public boolean draw(GuiGraphics graphics, Font font, FormattedCharSequence glyphs, int x, int y, int color,
                             boolean shadow, int lineNumber, boolean hovered, boolean focused) {
             return draw(graphics, font, glyphs, x, y, color, shadow, lineNumber, hovered, focused, null, null);

@@ -7,6 +7,8 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiExpansionController;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
+import com.dishanhai.sh_better_ui.kernel.api.ScopeKind;
+import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.locale.Language;
@@ -22,7 +24,7 @@ final class NativePageOptions implements UiLocalModal.Content {
     private static final int MAX_VISIBLE = 8;
 
     static void open(UiScreen screen, UiLocalModal owner, UiButton source,
-                     List<Component> labels, int selected, IntConsumer commit) {
+                     List<Component> labels, int selected, NativeTextReadability.Label readability, IntConsumer commit) {
         if (labels.isEmpty()) return;
         Bounds viewport = screen.viewport();
         int height = Math.min(viewport.height(), Math.min(MAX_VISIBLE, labels.size()) * ROW_HEIGHT + 2 * PADDING);
@@ -33,28 +35,63 @@ final class NativePageOptions implements UiLocalModal.Content {
         var chosen = new int[]{selected};
         modal.open(source, viewport, UiExpansionController.anchored(width, height, .5f, .5f),
                 UiExpansionController.Config.DEFAULT,
-                session -> new NativePageOptions(session, labels, chosen), () -> commit.accept(chosen[0]));
+                session -> new NativePageOptions(screen, session, labels, chosen, readability),
+                () -> commit.accept(chosen[0]));
     }
 
     private final UiLocalModal.Session session;
     private final List<Component> labels;
     private final int[] chosen;
     private final int rows;
+    private final NativeTextReadability.Label readability;
     private int cursor;
     private int first;
     private int pressed = -1;
 
-    private NativePageOptions(UiLocalModal.Session session, List<Component> labels, int[] chosen) {
+    private NativePageOptions(UiScreen screen, UiLocalModal.Session session, List<Component> labels, int[] chosen,
+                              NativeTextReadability.Label source) {
         this.session = session;
         this.labels = List.copyOf(labels);
         this.chosen = chosen;
         rows = Math.max(1, (session.target().height() - 2 * PADDING) / ROW_HEIGHT);
         moveTo(Math.max(0, chosen[0]));
+        readability = source == null ? null : popupReadability(screen, session, source);
+    }
+
+    private static NativeTextReadability.Label popupReadability(UiScreen screen, UiLocalModal.Session session,
+                                                                 NativeTextReadability.Label source) {
+        var page = source.mount();
+        var scope = page.scope().openChild(ScopeKind.COMPONENT,
+                new UiId(source.id().namespace(), source.id().path() + "/popup"));
+        try {
+            var popup = new NativeTextReadability.Mount(page.module(), scope);
+            popup.service().configurePopup(popup.module(), scope, screen.context().themeScope(),
+                    page.scope(), source.options().policy());
+            return new NativeTextReadability.Label(popup, source.id(), source.options(), session::target);
+        } catch (RuntimeException | Error failure) {
+            scope.close();
+            throw failure;
+        }
     }
 
     @Override
     public void render(GuiGraphics graphics, UiLocalModal.Frame frame, int mouseX, int mouseY, float partialTick) {
-        var bounds = frame.bounds();
+        if (readability == null || !readability.mount().scope().isOpen()) {
+            renderRows(graphics, frame.bounds(), mouseX, mouseY, null);
+            return;
+        }
+        var popup = readability.mount();
+        popup.service().renderPopup(popup.module(), popup.scope(), graphics,
+                () -> renderRows(graphics, frame.bounds(), mouseX, mouseY, readability));
+    }
+
+    @Override
+    public void close() {
+        if (readability != null) readability.mount().scope().close();
+    }
+
+    private void renderRows(GuiGraphics graphics, Bounds bounds, int mouseX, int mouseY,
+                            NativeTextReadability.Label readable) {
         var font = Minecraft.getInstance().font;
         int hover = indexAt(mouseX, mouseY);
         for (int row = 0; row < rows && first + row < labels.size(); row++) {
@@ -65,8 +102,14 @@ final class NativePageOptions implements UiLocalModal.Content {
                         DarkModeTheme.surfaceColor());
             }
             var line = font.substrByWidth(labels.get(index), Math.max(0, bounds.width() - 4 * PADDING));
-            graphics.drawString(font, Language.getInstance().getVisualOrder(line), bounds.x() + 2 * PADDING,
-                    y + (ROW_HEIGHT - font.lineHeight) / 2, DarkModeTheme.textColor());
+            var visual = Language.getInstance().getVisualOrder(line);
+            int textX = bounds.x() + 2 * PADDING;
+            int textY = y + (ROW_HEIGHT - font.lineHeight) / 2;
+            int color = DarkModeTheme.textColor();
+            if (readable == null || !readable.draw(graphics, font, visual, textX, textY, color, true, index,
+                    index == hover, index == cursor)) {
+                graphics.drawString(font, visual, textX, textY, color);
+            }
         }
     }
 

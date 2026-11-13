@@ -279,6 +279,17 @@ public final class ClientUiKernel implements AutoCloseable {
                 ? null : client.rendering.hudTextPalette(id);
     }
 
+    /** Shared capture and fallback path for the built-in HUD panel and its Screen preview. */
+    public static TextReadabilityPalette prepareHudText(GuiGraphics graphics, UiId id, Rect local, int darkestArgb,
+                                                         int lightestArgb, TextReadabilityPalette fallback) {
+        var client = active;
+        if (client == null || client.host.lifecycle().state() != EngineState.RUNNING) {
+            fallback.update(null, darkestArgb, lightestArgb);
+            return fallback;
+        }
+        return client.rendering.prepareHudText(graphics, id, local, darkestArgb, lightestArgb, fallback);
+    }
+
     public static BackgroundSample sampleHudText(GuiGraphics graphics, Rect local) {
         return sampleHudText(graphics, null, local);
     }
@@ -474,11 +485,11 @@ public final class ClientUiKernel implements AutoCloseable {
 
     public static void registerScriptPage(ScopeHandle scope,
             com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition page) {
-        registerScriptPage(scope, page, NativeTextReadability.PageOptions.DEFAULT);
+        registerScriptPage(scope, page, com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability.DEFAULT);
     }
 
     public static void registerScriptPage(ScopeHandle scope,
-            com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition page, NativeTextReadability.PageOptions text) {
+            com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition page, com.dishanhai.sh_better_ui.kernel.api.page.UiPageTextReadability text) {
         if (!hasNativeAuthority()) throw new IllegalStateException("Client UI kernel is unavailable");
         active.pages.registerScript(scope, page, text);
     }
@@ -799,7 +810,7 @@ public final class ClientUiKernel implements AutoCloseable {
         var correctness = new ClientCorrectness(kernel, manager, glass);
         var rendering = new ClientRender(kernel, screens, spatial, glass);
         var textReadability = new ClientTextReadability(kernel, screens);
-        var hud = new ClientHud(kernel);
+        var hud = new ClientHud(kernel, glass);
         var resources = new ClientResources(kernel);
         var materialCatalog = new ClientMaterialCatalog(kernel, platform, asset -> {
             var minecraft = Minecraft.getInstance();

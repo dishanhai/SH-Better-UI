@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.api.page
 
 import com.dishanhai.sh_better_ui.kernel.api.UiId
+import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityPolicy
 
 /** Scopes the implicit receiver to the current page or node builder. */
 @DslMarker
@@ -13,6 +14,13 @@ public fun uiPage(
     id: UiId,
     configure: @UiPageDsl UiPageDefinition.Builder.() -> Unit,
 ): UiPageDefinition = UiPageDefinition.builder(id).apply(configure).build()
+
+/** Builds the same client-local registration options as the Java SDK. */
+public fun pageTextReadability(
+    policy: TextReadabilityPolicy,
+    sampling: UiPageTextReadability.Sampling? = null,
+    nodes: Map<String, UiPageTextReadability.Options> = emptyMap(),
+): UiPageTextReadability = UiPageTextReadability(UiPageTextReadability.Options(policy, sampling), nodes)
 
 public fun UiPageDefinition.Builder.pageRoot(
     id: String,
