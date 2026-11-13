@@ -5,6 +5,54 @@
 
 按 [旧版登记入口](../src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/BuiltinPreviews.java) 和 [26.x 样例枚举](../neoforge-26.1.2/src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperGalleryScreen.java) 核对，26.x 图库有 **76 个入口**，涵盖旧版全部 75 个 ID，另有 `scrollable_sections`。英语、简中和繁中均有 76 个标题。同名样例与旧版的能力差异见后文。
 
+## 2026-11-13：开发者面板与图库宿主
+
+- 设置面板的开发者入口恢复为独立面板，分别进入控件和材质目录；保留确认、通知、底部抽屉及动画演示。目录按旧版分类与顺序排列，额外保留 26.x 的 `scrollable_sections`。材质目录也包含素材目录中关联到控件预览的条目。
+- 目录可按本地化名称、拼音、预览 ID、素材 ID、别名及 `#标签` 检索，回到目录时保留搜索和选中项；素材目录快照变化时重建搜索索引。内置样例支持在当前页面放大和退出放大，按 Esc 先退出放大，再返回目录。
+- 按钮、开关、胶囊开关、滑块、展开、分区栏、滚动分区栏、底线分页、步骤器、原生确认及系统通知共 11 个样例提供可滚动、复制的 26.x Java 示例。构建中的 `GalleryExamplesTest` 将实际展示的文本编译为 `Screen` 成员。其余样例涉及尚未公开的宿主 API，暂不提供伪造的接入代码。
+- `ShBetterUiApi.settings()` 提供 `developerPanel(parent)`、`developerSampleIds()`、`developerSampleFullscreen(parent, id)` 和 `developerMaterialFullscreen(parent, id)`。内置预览接受短 ID 或 `sh_better_ui:` 命名空间；材质入口使用运行中的 `MaterialCatalog` 解析 ID 和别名。全屏重载可接收 `UiPreferences` 和返回焦点 Supplier，适用于父画面返回时会重建控件的宿主。
+
+```java
+var settings = ShBetterUiApi.settings();
+var available = settings.developerSampleIds();
+Screen preview = settings.developerSampleFullscreen(parent, "underlined_tabs");
+// 在客户端线程用目标 Minecraft 版本的屏幕切换入口显示 preview。
+```
+
+未知预览／材质 ID 或材质缺少可用预览时抛出 `IllegalArgumentException`；内核素材目录不可用时，材质入口抛出 `IllegalStateException`。
+
+## 2026-11-13：预览注册与 UUK 材质路由复查
+
+- `ShBetterUiApi.developerPreviews()` 与 `client().registerDeveloperPreview(...)` 共用可撤销的 `PreviewRegistry`。76 个内置 ID 和第三方声明出现在同一分类、排序和搜索目录；内置 ID 仍可用短名，扩展使用完整命名空间。目录、公开样例入口及 UUK 材质 ID／别名入口读取同一注册表。登记是惰性的，打开场景时才调用工厂。
+- 扩展场景使用 26.x 原生 `GuiGraphicsExtractor` 和 `PreviewContext`。`layout` 的控件坐标必须位于 `viewport` 内，`render` 按该区域裁切；重排与放大对同一个场景调用 `layout`，离开时调用 `close`。代码页往返时可用 `saveForRemount` 保存值；上下文过期后不会再附加控件。场景工厂、布局或自绘回调异常显示可旁白的失败提示和重试，日志记录异常。
+- 材质路由绑定原始目录、条目和预览登记世代。撤销或替换后，活动独立页在下一次客户端 tick 返回父页；第三方页在此之前也会拦截输入和绘制。关闭登记句柄后，目录随快照更新。
+- 26.x 内置声明的场景工厂提供打开原生样例的入口；图库仍直接打开现有交互样例。当前第三方场景使用独立样例页，并非旧版固定尺寸内嵌画廊；`preferredHeight`、`toolbarRightInset`、覆盖层及旧版 `UiApiContext` 尚未接通。26.x 的 `UiFrame` 使用新的提取 API 与鼠标坐标，不能将旧版 JAR 直接用于 26.x。
+- 此次接通的是 UUK `MaterialCatalog` 与原生预览的发现及生命周期路由。26.x 的 `GlassService` 原生绘制、全局 `ActivityService`、HUD 和其他内核原生渲染阶段仍未移植，不能仅凭图库样例判定这些服务已接通。
+
+第三方客户端可在初始化时登记并在模块停止时关闭句柄：
+
+```java
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
+import net.minecraft.network.chat.Component;
+
+var registration = ShBetterUiApi.client().registerDeveloperPreview(new PreviewSpec(
+        "example:control", PreviewSpec.Category.CONTROLS, 100, "example.preview.control", () -> host -> {
+            var area = host.viewport();
+            if (area.width() < 100 || area.height() < 22) return;
+            host.add(ShBetterUiApi.controls().button(new Bounds(area.x(), area.y(), 100, 22),
+                    Component.translatable("gui.done"), button -> { /* 消费方操作 */ },
+                    host.preferences(), false, UiStyle.DEFAULT));
+        }));
+// 模块结束时：registration.close();
+```
+
+预览自绘可实现 `PreviewScene.render(UiFrame)`；场景持有的资源应在 `close()` 释放。调用方须在客户端线程登记控件，不能保留旧布局的 `PreviewContext` 继续使用。
+
+以工作区 `1.0.9-alpha.8` 构建两版并检查打包内容，每版 102 项常规测试及 357 项内核测试通过，包含 11 个示例的实际编译。26.1.2 OpenGL 与 26.2 Vulkan 的隔离客户端通过分类、搜索／清除焦点、代码复制、直接入口、放大与返回、76 项目录和独立样例控件边界检查，也通过模组列表与世界内 F8 入口。26.1.2 另通过 GUI Scale 4 长文案与资源重载布局检查。尚未用实际整合包或其他 GPU 验收。
+
 ## 最终审核修复
 
 - `live_activity` 复用 `ActivityService.Content` 和 `SEEK` 动作模型。图库内可用键鼠展开活动详情、预览和提交进度。Esc 可取消拖动，重排保留进度及焦点，关闭后恢复目录焦点。全局活动调度、常驻 HUD、快捷键及网络仍待移植。
@@ -72,8 +120,8 @@
 
 | 范围 | 待补内容 |
 | --- | --- |
-| 图库宿主 | 移植 `PreviewRegistry`、`PreviewSpec` 和 `PreviewScene` 生命周期，补控件／材质分类、按名称／别名／稳定 ID／`#标签` 搜索、目录状态恢复、内嵌／全屏、Java 示例抽屉和复制。验证第三方登记、撤销、重载及父页焦点。 |
-| 公开路由 | 补 `ShBetterUiApi.developerPreviews()`、`SettingsApi.developerSampleIds()`、`developerSampleFullscreen()`、`developerMaterialFullscreen()` 及旧 `NativeMaterialRoute`。26.x 已发布 `MaterialCatalog` 元数据，待接到实际原生场景工厂。 |
+| 图库宿主 | 已有分类搜索、目录返回状态、样例放大、11 个可复制的内置示例和第三方场景登记。仍须补固定尺寸的内嵌预览、样例前后切换、原版代码抽屉、覆盖层和其余可用 API 的示例，并在客户端验证第三方登记、撤销、重载及父页焦点。 |
+| 公开路由 | 已提供统一登记表、ID 列表、全屏样例和基于 `MaterialCatalog` 的材质 ID／别名及注册世代路由。需在实际消费模组中验证登记撤销、目录替换和返回路径。 |
 | 屏幕和输入 | 补 `ShBetterUiApi.screen()`、统一 `UiScreen`／`UiFrame` 宿主、覆盖层、指针捕获和主题／背景／布局／动效接口。新场景可复用现有 `controls()` 和 `GuiGeometry`，再按需求接通 `interactions()`、`layout()`、`motion()` 等分组。 |
 | 原生渲染 | 补 `graphics()`、`materials()`、旧 `blur()` 区域接口以及对应 shader 和资源。把绘制接入 `GuiGraphicsExtractor` 和原生管线，核对姿态、裁剪、层级、同帧采样及释放。共享源码和资源须纳入 [26.x 打包白名单](../gradle/neoforge-26-port.gradle)。 |
 | 内核与控制面板 | 26.x 已接通平台视口、材质元数据、项目编辑和基础帧调度。待补内核渲染服务的原生阶段、声明式页面、富文本、HUD／停靠、活动通知和可选网络。面板待补自定义背景／效果编辑和 HUD 玻璃调校，验收应用、取消及重启恢复。 |
@@ -82,7 +130,7 @@
 ## 尚待实测
 
 - [ ] 涉及启动和窗口的改动另测显式 OpenGL、NeoForge 早期窗口和 GLFW 65540。
-- [ ] 补直接全屏公开入口和第三方登记后的返回路径验证。复验实际 GUI 缩放下的正反向 Tab、方向键、Enter／Space、Esc 和拖动取消。
+- [ ] 复验第三方登记后的直接全屏入口与返回路径。继续覆盖实际 GUI 缩放下的正反向 Tab、方向键、Enter／Space、Esc 和拖动取消。
 - [ ] 补各类样例的系统旁白实测，覆盖焦点、候选、状态变化、确认和取消，以及中文语音。alpha.8 的 Windows 进程回环实测覆盖英文「模式 2」，其他场景仍需分别验收。
 - [ ] 用实际字体／资源包及整合包复验 GUI Scale 3／4、长标签、中文输入、高对比和减少动效。覆盖资源重载、退出／返回和前景可读性。
 - [ ] 补多 GPU、渲染／着色器模组和第三方叠层兼容性。重点检查 `GuiRendererBlurMixin` 的注入共存、局部效果边界和资源重载。高密度玻璃及粒子场需记录 GPU 耗时、显存和持续运行表现。

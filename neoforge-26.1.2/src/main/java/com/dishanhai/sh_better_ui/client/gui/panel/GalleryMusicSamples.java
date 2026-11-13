@@ -191,8 +191,7 @@ final class GalleryMusicSamples extends GallerySampleScreen {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void tickSample() {
         if (compact || !minecraft.isWindowActive()) {
             playback.pause();
             rhythm.reset();

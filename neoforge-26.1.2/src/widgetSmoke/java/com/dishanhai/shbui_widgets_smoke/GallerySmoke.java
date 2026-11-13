@@ -2,12 +2,20 @@
 package com.dishanhai.shbui_widgets_smoke;
 
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.api.UiFrame;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewScene;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelSettings;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
+import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiUnderlinedTabs;
 import com.mojang.blaze3d.platform.NativeImage;
 import net.minecraft.client.Minecraft;
@@ -33,6 +41,7 @@ import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.util.List;
 import java.util.TreeSet;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 
 /** Opens the packaged gallery through its control-panel entry and exercises its real widgets. */
@@ -61,6 +70,15 @@ final class GallerySmoke {
     private static final List<String> FEEDBACK_STATES = List.of("baseline", "cancelled", "save_failed", "saved");
     private static ControlPanelScreen panel;
     private static DeveloperGalleryScreen gallery;
+    private static DeveloperPanelScreen developer;
+    private static PreviewRegistry.Registration renderRegistration;
+    private static Screen renderPreview;
+    private static int renderCount;
+    private static int renderValue;
+    private static int renderedValue = -1;
+    private static int renderCloses;
+    private static int renderWaitFrames;
+    private static boolean renderInputSent;
     private static ControlPanelSettings applied;
     private static int stage;
     private static int frames;
@@ -104,7 +122,7 @@ final class GallerySmoke {
             if (!verifyMigratedSamples(minecraft)) return false;
             gallery.keyPressed(key(GLFW.GLFW_KEY_ESCAPE));
             require(WidgetSmokePlatform.screen(minecraft) == panel, "gallery returns to control panel");
-            require(panel.getFocused() == visible(panel, GALLERY + "title"), "gallery entry focus restored");
+            require(panel.getFocused() == visible(panel, PANEL + "developer.title"), "gallery entry focus restored");
             require(visible(panel, PANEL + "apply").active, "control-panel draft kept");
             require(ShBetterUiApi.settings().current().equals(applied), "samples do not change applied settings");
             click(panel, PANEL + "section.display");
@@ -116,16 +134,25 @@ final class GallerySmoke {
             return true;
         }
         if (gallery == null) {
-            ShBetterUiApi.settings().openControlPanel();
-            require(WidgetSmokePlatform.screen(minecraft) instanceof ControlPanelScreen, "opens control panel");
-            panel = (ControlPanelScreen) WidgetSmokePlatform.screen(minecraft);
-            applied = ShBetterUiApi.settings().current();
-            click(panel, PANEL + "section.display");
-            click(panel, PANEL + "motion");
-            click(panel, PANEL + "section.tools");
-            click(panel, GALLERY + "title");
-            require(WidgetSmokePlatform.screen(minecraft) instanceof DeveloperGalleryScreen, "opens developer gallery");
-            gallery = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
+            if (panel == null) {
+                ShBetterUiApi.settings().openControlPanel();
+                require(WidgetSmokePlatform.screen(minecraft) instanceof ControlPanelScreen, "opens control panel");
+                panel = (ControlPanelScreen) WidgetSmokePlatform.screen(minecraft);
+                applied = ShBetterUiApi.settings().current();
+                click(panel, PANEL + "section.display");
+                click(panel, PANEL + "motion");
+                click(panel, PANEL + "section.tools");
+                click(panel, PANEL + "developer.title");
+                require(WidgetSmokePlatform.screen(minecraft) instanceof DeveloperPanelScreen, "opens developer panel");
+                developer = (DeveloperPanelScreen) WidgetSmokePlatform.screen(minecraft);
+                verifyDeveloperRoutes(minecraft, developer);
+                beginRenderProbe(minecraft);
+                return false;
+            }
+            if (!advanceRenderProbe(minecraft)) return false;
+            developer.onClose();
+            require(WidgetSmokePlatform.screen(minecraft) == panel, "developer panel returns to settings");
+            openAllGallery(minecraft);
             verifyDirectory();
             verifyControls(minecraft);
             return false;
@@ -223,6 +250,7 @@ final class GallerySmoke {
             require(screen != gallery && screen.getTitle().equals(Component.translatable(titleKey))
                     && !screen.getTitle().getString().equals(titleKey), "opens localized migrated sample: " + id);
             screen.resize(260, 142);
+            verifyFullscreenBounds(screen, id);
             if (needsWindow && !minecraft.isWindowActive()) GLFW.glfwFocusWindow(minecraft.getWindow().handle());
             inputFocusDeadline = Util.getMillis() + 15_000;
         } else if (migratedFrames == 2) {
@@ -241,6 +269,7 @@ final class GallerySmoke {
                 screen = WidgetSmokePlatform.screen(minecraft);
             }
             screen.resize(gallery.width, gallery.height);
+            verifyFullscreenBounds(screen, id);
             verifyMigratedInput(minecraft, screen, id);
             fieldCaptureAt = Util.getMillis() + 1400;
         } else if (migratedFrames == 4 && MUSIC.contains(id)) {
@@ -301,6 +330,277 @@ final class GallerySmoke {
         return false;
     }
 
+    private static void openAllGallery(Minecraft minecraft) {
+        gallery = new DeveloperGalleryScreen(panel,
+                () -> panel.setFocused(visible(panel, PANEL + "developer.title")));
+        WidgetSmokePlatform.open(minecraft, gallery);
+    }
+
+    private static void verifyDeveloperRoutes(Minecraft minecraft, DeveloperPanelScreen developer) {
+        int originalWidth = developer.width;
+        int originalHeight = developer.height;
+        developer.resize(260, 200);
+        verifyPanelBounds(developer);
+        developer.resize(originalWidth, originalHeight);
+        verifyPanelBounds(developer);
+        click(developer, PANEL + "developer.example.open_dialog");
+        var panelCode = WidgetSmokePlatform.screen(minecraft);
+        click(panelCode, GALLERY + "copy");
+        require(minecraft.keyboardHandler.getClipboard().contains("new ConfirmScreen"),
+                "developer panel copies the 26.x dialog example");
+        panelCode.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, PANEL + "developer.example.open_dialog"),
+                "panel code example restores its entry focus");
+        click(developer, GALLERY + "controls");
+        var controls = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
+        var query = controls.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                .findFirst().orElseThrow();
+        query.setValue("sh_better_ui:slider");
+        require(findVisible(controls, GALLERY + "sample.slider") != null
+                        && findVisible(controls, GALLERY + "sample.button") == null,
+                "control directory searches stable IDs");
+        controls.setFocused(query);
+        controls.keyPressed(key(GLFW.GLFW_KEY_ENTER));
+        require(controls.getNarrationMessage().getString().contains(
+                Component.translatable(GALLERY + "sample.slider").getString()), "Enter opens the first result");
+        click(controls, GALLERY + "fullscreen");
+        require(visible(controls, GALLERY + "exit_fullscreen").isFocused(), "fullscreen toggle keeps focus");
+        controls.keyPressed(key(GLFW.GLFW_KEY_ESCAPE));
+        require(WidgetSmokePlatform.screen(minecraft) == controls
+                        && findVisible(controls, GALLERY + "fullscreen") != null,
+                "Escape exits fullscreen without leaving the preview");
+        click(controls, GALLERY + "code_open");
+        var code = WidgetSmokePlatform.screen(minecraft);
+        require(code != controls && code.getTitle().getString().equals(Component.translatable(GALLERY + "code_title").getString()),
+                "opens the source for the selected 26.x control");
+        code.keyPressed(key(GLFW.GLFW_KEY_PAGE_DOWN));
+        click(code, GALLERY + "copy");
+        require(minecraft.keyboardHandler.getClipboard().contains("ShBetterUiApi.controls().slider"),
+                "copies the complete slider example");
+        code.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == controls
+                        && controls.getFocused() == visible(controls, GALLERY + "code_open"),
+                "code view returns to its preview and focus");
+        controls.onClose();
+        require(controls.getFocused() == visible(controls, GALLERY + "sample.slider"),
+                "return restores the searched entry");
+        query = controls.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                .findFirst().orElseThrow();
+        query.setValue("sh_better_ui:bottom_sheet");
+        click(controls, GALLERY + "sample.bottom_sheet");
+        var standalone = WidgetSmokePlatform.screen(minecraft);
+        click(standalone, GALLERY + "fullscreen");
+        require(visible(standalone, GALLERY + "exit_fullscreen").isFocused(),
+                "standalone fullscreen toggle keeps focus");
+        standalone.keyPressed(key(GLFW.GLFW_KEY_ESCAPE));
+        require(WidgetSmokePlatform.screen(minecraft) == standalone
+                        && findVisible(standalone, GALLERY + "fullscreen") != null,
+                "Escape exits standalone fullscreen before returning");
+        standalone.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == controls
+                        && controls.getFocused() == visible(controls, GALLERY + "sample.bottom_sheet"),
+                "standalone preview returns to its searched entry");
+        controls.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "controls"),
+                "control gallery returns to its developer entry");
+
+        click(developer, GALLERY + "materials");
+        var materials = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
+        query = materials.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                .findFirst().orElseThrow();
+        query.setValue("managed glass #refraction");
+        require(findVisible(materials, GALLERY + "sample.liquid_glass") != null,
+                "material directory searches catalog aliases and tags");
+        query.setValue("sh_better_ui:slider");
+        require(findVisible(materials, GALLERY + "sample.slider") == null,
+                "material directory excludes unrelated controls");
+        query.setValue("unmatched-preview-identifier");
+        require(visible(materials, GALLERY + "directory_clear").active, "empty search can be cleared");
+        require(materials.getNarrationMessage().getString().contains(
+                Component.translatable(GALLERY + "directory_no_matches").getString()),
+                "empty search results are announced");
+        click(materials, GALLERY + "directory_clear");
+        require(query.getValue().isEmpty() && materials.getFocused() == query,
+                "clearing a search returns focus to the input");
+        materials.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "materials"),
+                "material gallery returns to its developer entry");
+
+        var settings = ShBetterUiApi.settings();
+        require(settings.developerSampleIds().contains("button") && settings.developerSampleIds().size() == 76,
+                "public API exposes the complete built-in directory");
+        require(settings.developerSampleIds().subList(0, 5)
+                        .equals(List.of("underlined_tabs", "stepper", "button", "toggle", "sections")),
+                "built-in controls retain the legacy gallery order");
+        var direct = settings.developerSampleFullscreen(developer, "sh_better_ui:button",
+                settings.preferences(), () -> visible(developer, GALLERY + "controls"));
+        WidgetSmokePlatform.open(minecraft, direct);
+        require(WidgetSmokePlatform.screen(minecraft) == direct, "public ID route opens a native preview");
+        direct.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "controls"),
+                "direct preview returns to the supplied focus");
+        direct = settings.developerSampleFullscreen(developer, "bottom_sheet", settings.preferences(),
+                () -> visible(developer, GALLERY + "controls"));
+        WidgetSmokePlatform.open(minecraft, direct);
+        direct.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "controls"),
+                "standalone preview returns to the supplied focus");
+        direct = settings.developerMaterialFullscreen(developer, "managed glass", settings.preferences(),
+                () -> visible(developer, GALLERY + "controls"));
+        WidgetSmokePlatform.open(minecraft, direct);
+        direct.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "controls"),
+                "material alias opens its registered native preview");
+        developer.setFocused(visible(developer, GALLERY + "materials"));
+        direct = settings.developerSampleFullscreen(developer, "button");
+        WidgetSmokePlatform.open(minecraft, direct);
+        direct.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == visible(developer, GALLERY + "materials"),
+                "default direct route restores focus after the parent rebuilds");
+        try {
+            settings.developerSampleFullscreen(developer, "missing:preview");
+            throw new IllegalStateException("Unknown preview ID was accepted");
+        } catch (IllegalArgumentException expected) {
+            // Unknown IDs must not silently open an unrelated sample.
+        }
+        verifyExtensionPreview(minecraft, developer);
+        System.out.println("SHBUI_DEVELOPER_ROUTES_PASS");
+    }
+
+    private static void verifyExtensionPreview(Minecraft minecraft, DeveloperPanelScreen developer) {
+        var creations = new AtomicInteger();
+        var layouts = new AtomicInteger();
+        var clicks = new AtomicInteger();
+        var closes = new AtomicInteger();
+        PreviewContext[] stale = new PreviewContext[1];
+        var spec = new PreviewSpec("shbui_widgets_smoke:live_preview", PreviewSpec.Category.CONTROLS, 900,
+                "gui.done", () -> {
+                    creations.incrementAndGet();
+                    return new PreviewScene() {
+                        @Override public void layout(PreviewContext host) {
+                            layouts.incrementAndGet();
+                            stale[0] = host;
+                            var area = host.viewport();
+                            host.add(ShBetterUiApi.controls().button(new Bounds(area.x(), area.y(), 100, 22),
+                                    Component.translatable("gui.cancel"), ignored -> clicks.incrementAndGet(),
+                                    host.preferences(), false, UiStyle.DEFAULT));
+                        }
+                        @Override public void close() { closes.incrementAndGet(); }
+                    };
+                });
+        var settings = ShBetterUiApi.settings();
+        try (var registration = ShBetterUiApi.client().registerDeveloperPreview(spec)) {
+            require(creations.get() == 0 && settings.developerSampleIds().contains(spec.id()),
+                    "registration is discoverable and lazy");
+            click(developer, GALLERY + "controls");
+            var controls = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
+            var query = controls.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                    .findFirst().orElseThrow();
+            query.setValue(spec.id());
+            click(controls, "gui.done");
+            var preview = WidgetSmokePlatform.screen(minecraft);
+            require(creations.get() == 1 && layouts.get() == 1, "directory mounts the registered scene");
+            click(preview, "gui.cancel");
+            require(clicks.get() == 1, "extension widget receives native input");
+            preview.resize(preview.width, preview.height);
+            require(creations.get() == 1 && layouts.get() == 2, "resize retains the scene instance");
+            preview.onClose();
+            require(WidgetSmokePlatform.screen(minecraft) == controls && closes.get() == 1,
+                    "scene closes and returns to the searched directory");
+            query = controls.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                    .findFirst().orElseThrow();
+            query.setValue("shbui_widgets_smoke");
+            controls.setFocused(visible(controls, "gui.done"));
+            var earlier = new PreviewSpec("shbui_widgets_smoke:earlier", PreviewSpec.Category.CONTROLS, 1,
+                    "gui.yes", () -> host -> {});
+            try (var extra = ShBetterUiApi.client().registerDeveloperPreview(earlier)) {
+                controls.tick();
+                require(controls.getFocused() == visible(controls, "gui.done"),
+                        "directory refresh retains the focused preview when order changes");
+            }
+            controls.tick();
+            controls.onClose();
+            var direct = settings.developerSampleFullscreen(developer, spec.id(), settings.preferences(),
+                    () -> visible(developer, GALLERY + "controls"));
+            WidgetSmokePlatform.open(minecraft, direct);
+            registration.close();
+            require(direct.keyPressed(key(GLFW.GLFW_KEY_ENTER)), "revoked preview blocks input");
+            direct.tick();
+            require(WidgetSmokePlatform.screen(minecraft) == developer && closes.get() == 2,
+                    "revoked direct preview closes and restores its parent");
+            int childCount = direct.children().size();
+            var area = stale[0].viewport();
+            stale[0].add(ShBetterUiApi.controls().button(new Bounds(area.x(), area.y(), 100, 22),
+                    Component.translatable("gui.cancel"), ignored -> clicks.incrementAndGet(),
+                    stale[0].preferences(), false, UiStyle.DEFAULT));
+            require(direct.children().size() == childCount, "a stale scene context cannot attach widgets");
+        }
+    }
+
+    private static void beginRenderProbe(Minecraft minecraft) {
+        var spec = new PreviewSpec("shbui_widgets_smoke:render_preview", PreviewSpec.Category.MATERIALS, 900,
+                "gui.done", () -> new PreviewScene() {
+                    @Override public void layout(PreviewContext host) {
+                        var area = host.viewport();
+                        host.add(ShBetterUiApi.controls().button(new Bounds(area.x(), area.y(), 100, 22),
+                                Component.translatable("gui.cancel"), ignored -> renderValue++,
+                                host.preferences(), false, UiStyle.DEFAULT));
+                    }
+                    @Override public void render(UiFrame frame) {
+                        renderCount++;
+                        renderedValue = renderValue;
+                        var area = frame.viewport();
+                        frame.graphics().fill(area.x(), area.y() + 26, area.x() + 20, area.y() + 46,
+                                renderValue == 0 ? 0xFF4477AA : 0xFF77AA44);
+                    }
+                    @Override public void close() { renderCloses++; }
+                });
+        renderRegistration = ShBetterUiApi.client().registerDeveloperPreview(spec);
+        renderPreview = ShBetterUiApi.settings().developerSampleFullscreen(developer, spec.id(),
+                ShBetterUiApi.settings().preferences(), () -> visible(developer, GALLERY + "controls"));
+        WidgetSmokePlatform.open(minecraft, renderPreview);
+    }
+
+    private static boolean advanceRenderProbe(Minecraft minecraft) {
+        require(++renderWaitFrames <= 300, "extension preview render did not advance");
+        if (renderCount == 0) return false;
+        if (!renderInputSent) {
+            require(renderedValue == 0, "extension scene rendered its initial state");
+            click(renderPreview, "gui.cancel");
+            renderInputSent = true;
+            return false;
+        }
+        if (renderedValue != 1) return false;
+        renderRegistration.close();
+        renderPreview.tick();
+        require(WidgetSmokePlatform.screen(minecraft) == developer && renderCloses == 1,
+                "live extension preview closes when its registration is revoked");
+        System.out.println("SHBUI_EXTENSION_LIVE_PREVIEW_PASS");
+        return true;
+    }
+
+    private static void verifyPanelBounds(Screen screen) {
+        var widgets = screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
+                .filter(widget -> widget.visible).toList();
+        for (int first = 0; first < widgets.size(); first++) {
+            var a = widgets.get(first);
+            for (int second = first + 1; second < widgets.size(); second++) {
+                var b = widgets.get(second);
+                boolean overlaps = a.getX() < b.getX() + b.getWidth() && b.getX() < a.getX() + a.getWidth()
+                        && a.getY() < b.getY() + b.getHeight() && b.getY() < a.getY() + a.getHeight();
+                require(!overlaps, "developer controls do not overlap: " + a.getMessage().getString()
+                        + " / " + b.getMessage().getString());
+            }
+        }
+    }
+
     private static void verifyDirectory() {
         var expected = new TreeSet<>(STANDALONE);
         expected.addAll(CONTROLS);
@@ -326,6 +626,18 @@ final class GallerySmoke {
         require(missing.isEmpty() && extra.isEmpty(), "complete catalog missing=" + missing + " extra=" + extra);
         while (gallery.keyPressed(key(GLFW.GLFW_KEY_PAGE_UP))) { /* Return to the first page. */ }
         System.out.println("SHBUI_GALLERY_CATALOG_PASS count=" + actual.size());
+    }
+
+    private static void verifyFullscreenBounds(Screen screen, String id) {
+        var fullscreen = visible(screen, GALLERY + "fullscreen");
+        for (var child : screen.children()) {
+            if (!(child instanceof AbstractWidget widget) || widget == fullscreen || !widget.visible) continue;
+            boolean overlaps = fullscreen.getX() < widget.getX() + widget.getWidth()
+                    && widget.getX() < fullscreen.getX() + fullscreen.getWidth()
+                    && fullscreen.getY() < widget.getY() + widget.getHeight()
+                    && widget.getY() < fullscreen.getY() + fullscreen.getHeight();
+            require(!overlaps, "fullscreen control does not cover " + id + ": " + widget.getMessage().getString());
+        }
     }
 
     private static boolean verifyFieldCapture(Minecraft minecraft, String id) {
@@ -511,8 +823,7 @@ final class GallerySmoke {
         try {
             require(ShBetterUiApi.settings().current().highContrast(), "enabled high contrast for spatial controls");
             click(panel, PANEL + "section.tools");
-            click(panel, GALLERY + "title");
-            gallery = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
+            openAllGallery(minecraft);
             for (String id : List.of("spatial_surface", "spatial_shadow", "spatial_lighting")) {
                 openSample(id);
                 var screen = WidgetSmokePlatform.screen(minecraft);
@@ -621,6 +932,15 @@ final class GallerySmoke {
             return;
         }
         if (id.equals("toast")) {
+            click(screen, GALLERY + "code_open");
+            var code = WidgetSmokePlatform.screen(minecraft);
+            click(code, GALLERY + "copy");
+            require(minecraft.keyboardHandler.getClipboard().contains("SystemToast.add"),
+                    "standalone toast example copies its native API");
+            code.onClose();
+            require(WidgetSmokePlatform.screen(minecraft) == screen
+                            && screen.getFocused() == visible(screen, GALLERY + "code_open"),
+                    "standalone code returns to its source control");
             click(screen, GALLERY + "toast_floating");
             click(screen, "sh_better_ui.swipe_toast.close");
             click(screen, GALLERY + "toast.undo");

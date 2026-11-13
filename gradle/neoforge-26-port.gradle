@@ -21,6 +21,7 @@ def sharedSources = [
         'client/audio/MusicAnalyzer.java',
         'client/audio/MusicMotion.java',
         'client/audio/MusicRhythm.java',
+        'client/api/preview/PreviewRegistry.java',
         'config/ControlFeedbackSettings.java',
         'config/LiveSurfaceConfig.java',
         'config/TabScrollSettings.java',
@@ -68,6 +69,9 @@ def sharedSources = [
         'client/gui/search/PinyinSearch.java',
         'client/gui/search/SearchIndex.java',
         'client/gui/search/SearchQuery.java',
+        'client/gui/text/LegacyTextParser.java',
+        'client/gui/text/TextGlyphEffects.java',
+        'client/gui/text/TextPalettes.java',
         'client/lyrics/core/lyric/LocalLyricFiles.java',
         'client/lyrics/core/lyric/LrcParser.java',
         'client/lyrics/core/lyric/LyricLine.java',
@@ -105,6 +109,9 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
+        include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
+        include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
+        include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
     }
     compileClasspath += sourceSets.main.compileClasspath
     runtimeClasspath += sourceSets.main.runtimeClasspath
@@ -135,7 +142,11 @@ dependencies {
 }
 
 tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
-tasks.named('test', Test) { useJUnitPlatform() }
+tasks.named('test', Test) {
+    useJUnitPlatform()
+    systemProperty 'shbui.examples.compileClasspath', sourceSets.test.runtimeClasspath.asPath
+    inputs.file('../docs/NEOFORGE_26_GALLERY_GAPS.md')
+}
 ext.sourceRoot = projectDir.parentFile
 apply from: '../gradle/kernel.gradle'
 
@@ -163,12 +174,20 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/ControlsApi.class",
                     "${packagePath}/client/api/BlurApi.class",
                     "${packagePath}/client/api/SettingsApi.class",
+                    "${packagePath}/client/api/UiClientApi.class",
+                    "${packagePath}/client/api/UiFrame.class",
+                    "${packagePath}/client/api/preview/PreviewRegistry.class",
+                    "${packagePath}/client/api/preview/PreviewSpec.class",
+                    "${packagePath}/client/api/preview/PreviewScene.class",
+                    "${packagePath}/client/api/preview/PreviewContext.class",
                     "${packagePath}/client/blur/BackdropCapture.class",
                     "${packagePath}/client/blur/BackgroundBlur.class",
                     "${packagePath}/client/glass/LiquidGlassSurface.class",
                     "${packagePath}/client/gui/panel/ControlPanelScreen.class",
                     "${packagePath}/client/gui/panel/PanelOverview.class",
+                    "${packagePath}/client/gui/panel/DeveloperPanelScreen.class",
                     "${packagePath}/client/gui/panel/DeveloperGalleryScreen.class",
+                    "${packagePath}/client/gui/panel/GalleryExtensionScreen.class",
                     "${packagePath}/client/gui/panel/GalleryMaterialPipeline.class",
                     "${packagePath}/client/gui/panel/GalleryAppearanceSamples.class",
                     "${packagePath}/client/gui/panel/GalleryDynamicThemeSample.class",

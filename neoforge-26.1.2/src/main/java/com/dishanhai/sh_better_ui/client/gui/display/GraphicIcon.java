@@ -117,6 +117,11 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     public static final GraphicIcon SYSTEM = builtIn("system");
     public static final GraphicIcon PHONE = builtIn("phone");
     public static final GraphicIcon COMPUTER = builtIn("computer");
+    public static final GraphicIcon WINDOWS = builtIn("windows");
+    public static final GraphicIcon MACOS = builtIn("macos");
+    public static final GraphicIcon IOS = builtIn("ios");
+    public static final GraphicIcon ANDROID = builtIn("android");
+    public static final GraphicIcon LINUX = builtIn("linux");
     public static final GraphicIcon MINECRAFT = builtIn("minecraft");
     public static final GraphicIcon GAMEPAD = builtIn("gamepad");
     public static final GraphicIcon MOUSE = builtIn("mouse");

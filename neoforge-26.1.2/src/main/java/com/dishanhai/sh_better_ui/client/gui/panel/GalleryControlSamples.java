@@ -217,8 +217,7 @@ final class GalleryControlSamples extends GallerySampleScreen {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void tickSample() {
         long now = Util.getMillis();
         if (liveStatus == Status.PENDING) {
             livePercent = (int) Math.clamp((now - liveStartedAt) * 100 / STATUS_DURATION, 0L, 100L);

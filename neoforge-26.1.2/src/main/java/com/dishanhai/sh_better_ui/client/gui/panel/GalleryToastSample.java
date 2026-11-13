@@ -134,8 +134,7 @@ final class GalleryToastSample extends GallerySampleScreen {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void tickSample() {
         if (compact) return;
         long now = Util.getMillis();
         if (undo != null && now >= undoUntil) {

@@ -3,6 +3,7 @@ package com.dishanhai.shbui_widgets_smoke;
 
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
+import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractSelectionList;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -29,7 +30,8 @@ import java.time.Duration;
 /** Verifies the shipped panel through the real mod-list button and in-world keyboard callback. */
 final class EntrySmoke {
     private static final String WORLD = "shbui-entry-smoke";
-    private static final String GALLERY_KEY = "sh_better_ui.panel.developer.gallery.title";
+    private static final String DEVELOPER_KEY = "sh_better_ui.panel.developer.title";
+    private static final String CONTROLS_KEY = "sh_better_ui.panel.developer.gallery.controls";
     private static final long TIMEOUT_NANOS = Duration.ofMinutes(2).toNanos();
     private static Stage stage = Stage.START;
     private static long startedAt;
@@ -37,6 +39,7 @@ final class EntrySmoke {
     private static Screen mods;
     private static ControlPanelScreen panel;
     private static DeveloperGalleryScreen gallery;
+    private static DeveloperPanelScreen developer;
     private static boolean pauseOnLostFocus;
 
     private EntrySmoke() {}
@@ -132,7 +135,10 @@ final class EntrySmoke {
 
     private static void openGallery(Minecraft minecraft, Stage next) {
         click(panel, findByKey(panel, "sh_better_ui.panel.section.tools"));
-        click(panel, findByKey(panel, GALLERY_KEY));
+        click(panel, findByKey(panel, DEVELOPER_KEY));
+        require(WidgetSmokePlatform.screen(minecraft) instanceof DeveloperPanelScreen, "developer panel opened");
+        developer = (DeveloperPanelScreen) WidgetSmokePlatform.screen(minecraft);
+        click(developer, findByKey(developer, CONTROLS_KEY));
         var active = WidgetSmokePlatform.screen(minecraft);
         if (!(active instanceof DeveloperGalleryScreen opened)) {
             throw new IllegalStateException("Panel entry smoke: developer gallery opened " + active);
@@ -144,8 +150,11 @@ final class EntrySmoke {
     private static void closeGallery(Minecraft minecraft) {
         require(WidgetSmokePlatform.screen(minecraft) == gallery, "gallery rendered in the active screen");
         gallery.onClose();
-        require(WidgetSmokePlatform.screen(minecraft) == panel, "gallery returns to the same panel");
-        require(panel.getFocused() == findByKey(panel, GALLERY_KEY), "gallery restores panel entry focus");
+        require(WidgetSmokePlatform.screen(minecraft) == developer, "gallery returns to the developer panel");
+        require(developer.getFocused() == findByKey(developer, CONTROLS_KEY), "gallery restores developer entry focus");
+        developer.onClose();
+        require(WidgetSmokePlatform.screen(minecraft) == panel, "developer panel returns to the same settings panel");
+        require(panel.getFocused() == findByKey(panel, DEVELOPER_KEY), "developer panel restores settings focus");
     }
 
     private static AbstractWidget findByKey(Screen screen, String key) {

@@ -386,8 +386,7 @@ final class GalleryGestureSamples extends GallerySampleScreen {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void tickSample() {
         long now = Util.getMillis();
         if (ready(Gesture.SLIDE) && handle.visible) {
             boolean armed = slideArmed(now);

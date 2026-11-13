@@ -2,6 +2,8 @@ package com.dishanhai.sh_better_ui.client.api;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiVerticalScrollBar;
+import com.dishanhai.sh_better_ui.kernel.api.layout.VerticalScroll;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiDisclosure;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
@@ -33,6 +35,12 @@ public final class ControlsApi {
     public UiButton button(Bounds area, Component label, Button.OnPress onPress, UiPreferences preferences,
                            boolean primary, UiStyle style) {
         return new UiButton(area.x(), area.y(), area.width(), area.height(), label, onPress, preferences, primary, style);
+    }
+
+    /** A draggable, keyboard-accessible scrollbar backed by a shared UUK scroll model. */
+    public UiVerticalScrollBar verticalScrollBar(Bounds area, Component name, VerticalScroll scroll,
+                                                  double step, Runnable onChange) {
+        return new UiVerticalScrollBar(area, name, scroll, step, onChange);
     }
 
     public UiSlider slider(Bounds area, int min, int max, int step, int value, UiPreferences preferences,

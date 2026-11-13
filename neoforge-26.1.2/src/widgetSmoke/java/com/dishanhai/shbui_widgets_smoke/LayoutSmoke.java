@@ -4,11 +4,13 @@ package com.dishanhai.shbui_widgets_smoke;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
+import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.narration.ScreenNarrationCollector;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
@@ -127,11 +129,15 @@ final class LayoutSmoke {
             panel.keyPressed(new KeyEvent(GLFW.GLFW_KEY_TAB, 0, GLFW.GLFW_MOD_SHIFT));
             check(errors, panel.getFocused() == tools, "Shift+Tab moves from rebuilt content to navigation");
         }
-        click(panel, GALLERY + "title");
+        click(panel, PANEL + "developer.title");
+        var developer = (DeveloperPanelScreen) WidgetSmokePlatform.screen(minecraft);
+        click(developer, GALLERY + "materials");
         var gallery = (DeveloperGalleryScreen) WidgetSmokePlatform.screen(minecraft);
 
         gallery.resize(260, 180);
-        for (int page = 0; page < 3; page++) gallery.keyPressed(key(GLFW.GLFW_KEY_PAGE_DOWN));
+        var search = gallery.children().stream().filter(EditBox.class::isInstance).map(EditBox.class::cast)
+                .findFirst().orElseThrow();
+        search.setValue("sh_better_ui:liquid_glass");
         click(gallery, GALLERY + "sample.liquid_glass");
         var slider = slider(gallery);
         int before = slider.value();
@@ -171,8 +177,13 @@ final class LayoutSmoke {
                     "the full sample label is narrated once");
         }
         gallery.onClose();
-        check(errors, WidgetSmokePlatform.screen(minecraft) == panel && panel.getFocused() == find(panel, GALLERY + "title"),
-                "gallery returns to the same panel and restores the entry");
+        check(errors, WidgetSmokePlatform.screen(minecraft) == developer
+                        && developer.getFocused() == find(developer, GALLERY + "materials"),
+                "gallery returns to the developer panel and restores the entry");
+        developer.onClose();
+        check(errors, WidgetSmokePlatform.screen(minecraft) == panel
+                        && panel.getFocused() == find(panel, PANEL + "developer.title"),
+                "developer panel returns to settings and restores the entry");
         check(errors, find(panel, PANEL + "apply").active && ShBetterUiApi.settings().current().equals(applied),
                 "gallery keeps the pending panel draft");
         if (!errors.isEmpty()) throw new IllegalStateException("Layout smoke: " + String.join("; ", errors));
@@ -180,7 +191,9 @@ final class LayoutSmoke {
         click(panel, PANEL + "section.display");
         click(panel, PANEL + "motion");
         click(panel, PANEL + "section.tools");
-        click(panel, GALLERY + "title");
+        click(panel, PANEL + "developer.title");
+        developer = (DeveloperPanelScreen) WidgetSmokePlatform.screen(minecraft);
+        click(developer, GALLERY + "materials");
     }
 
     private static UiSlider slider(Screen screen) {

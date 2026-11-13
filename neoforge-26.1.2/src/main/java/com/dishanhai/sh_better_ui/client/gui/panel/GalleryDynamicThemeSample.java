@@ -133,8 +133,7 @@ final class GalleryDynamicThemeSample extends GallerySampleScreen {
     }
 
     @Override
-    public void tick() {
-        super.tick();
+    protected void tickSample() {
         if (!compact) updateEnvironment();
     }
 

@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
@@ -31,26 +32,38 @@ abstract class GallerySampleScreen extends Screen {
     protected UiTheme theme;
     protected AbstractWidget initialFocus;
     protected UiButton back;
+    private UiButton fullscreenButton;
+    private UiButton codeButton;
     protected boolean compact;
     private Bounds panel;
+    private boolean expanded;
+    private int revision;
 
     GallerySampleScreen(DeveloperGalleryScreen parent, String id) {
-        super(Component.translatable(KEY + "sample." + id));
+        this(parent, id, Component.translatable(KEY + "sample." + id));
+    }
+
+    GallerySampleScreen(DeveloperGalleryScreen parent, String id, Component title) {
+        super(title);
         this.parent = parent;
         this.id = id;
     }
 
     @Override
     protected final void init() {
-        preferences = UiPreferences.configured();
+        revision++;
+        preferences = parent.previewPreferences();
         theme = UiTheme.current();
-        int panelWidth = Math.max(1, Math.min(500, width - 16));
-        int panelHeight = Math.max(1, Math.min(306, height - 16));
+        beforeSampleInit();
+        int panelWidth = Math.max(1, parent.fullscreenOnly() || expanded ? width - 16 : Math.min(500, width - 16));
+        int panelHeight = Math.max(1, parent.fullscreenOnly() || expanded ? height - 16 : Math.min(306, height - 16));
         panel = new Bounds((width - panelWidth) / 2, (height - panelHeight) / 2, panelWidth, panelHeight);
         int footer = panel.bottom() - INSET - FOOTER_HEIGHT;
         int contentY = panel.y() + 35;
-        compact = panelWidth < 156 || panelHeight < 126;
+        compact = panelWidth < 156 || panelHeight < 126 || !previewAvailable();
         initialFocus = null;
+        fullscreenButton = null;
+        codeButton = null;
         body = new Bounds(panel.x() + INSET, contentY, Math.max(0, panel.width() - INSET * 2),
                 Math.max(0, footer - contentY - 5));
         if (compact) {
@@ -61,9 +74,43 @@ abstract class GallerySampleScreen extends Screen {
         initSample();
         back = addButton(new Bounds(body.x(), footer, Math.min(96, body.width() / 2), FOOTER_HEIGHT),
                 CommonComponents.GUI_BACK, ignored -> onClose(), false);
+        int right = body.right();
+        if (!parent.fullscreenOnly()) {
+            fullscreenButton = addButton(new Bounds(right - FOOTER_HEIGHT, panel.y() + 6,
+                            FOOTER_HEIGHT, FOOTER_HEIGHT),
+                    Component.translatable(KEY + (expanded ? "exit_fullscreen" : "fullscreen")),
+                    ignored -> setExpanded(!expanded), false);
+            fullscreenButton.setIcon(expanded ? GraphicIcon.COLLAPSE : GraphicIcon.EXPAND);
+            right -= FOOTER_HEIGHT + 5;
+        }
+        String example = sampleCode();
+        if (example != null) {
+            codeButton = addButton(new Bounds(right - FOOTER_HEIGHT, panel.y() + 6, FOOTER_HEIGHT, FOOTER_HEIGHT),
+                    Component.translatable(KEY + "code_open"), ignored -> openCode(example), false);
+            codeButton.setIcon(GraphicIcon.CODE);
+        }
+    }
+
+    private void openCode(String code) {
+        ControlPanelPlatform.show(minecraft, new GalleryCodeScreen(this, code, preferences, () -> {
+            if (codeButton != null) setInitialFocus(codeButton);
+        }));
+    }
+
+    private void setExpanded(boolean value) {
+        cancelEdits();
+        expanded = value;
+        rebuildWidgets();
+        if (fullscreenButton != null) setInitialFocus(fullscreenButton);
     }
 
     protected abstract void initSample();
+
+    protected void beforeSampleInit() {}
+
+    protected String sampleCode() { return GalleryExamples.code(id); }
+
+    protected boolean previewAvailable() { return parent.routeAvailable(); }
 
     protected void extractSample(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {}
 
@@ -120,6 +167,10 @@ abstract class GallerySampleScreen extends Screen {
             setDragging(false);
             return true;
         }
+        if (event.isEscape() && expanded && !parent.fullscreenOnly()) {
+            setExpanded(false);
+            return true;
+        }
         boolean handled = super.keyPressed(event);
         restoreUsableFocus();
         return handled;
@@ -127,7 +178,13 @@ abstract class GallerySampleScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        int before = revision;
         boolean handled = super.mouseClicked(event, doubleClick);
+        if (revision != before) {
+            setDragging(false);
+            if (fullscreenButton != null) setInitialFocus(fullscreenButton);
+            else setInitialFocus();
+        }
         restoreUsableFocus();
         return handled;
     }
@@ -140,15 +197,25 @@ abstract class GallerySampleScreen extends Screen {
     }
 
     @Override
-    public void tick() {
+    public final void tick() {
+        if (!previewAvailable()) {
+            parent.returnFromStandalone(minecraft);
+            return;
+        }
         if (!minecraft.isWindowActive()) cancelEdits();
+        tickSample();
     }
+
+    protected void tickSample() {}
 
     @Override
     public void removed() { cancelEdits(); }
 
     @Override
-    public void onClose() { parent.returnFromStandalone(); }
+    public void onClose() {
+        if (expanded && !parent.fullscreenOnly()) setExpanded(false);
+        else parent.returnFromStandalone(minecraft);
+    }
 
     private void cancelEdits() {
         for (var child : children()) {
@@ -174,8 +241,11 @@ abstract class GallerySampleScreen extends Screen {
             PanelText.drawLine(graphics, font, Component.translatable("sh_better_ui.panel.compact"), panel.x() + 4,
                     panel.y() + 4, Math.max(1, panel.width() - 8), theme.text(), mouseX, mouseY);
         } else {
-            PanelText.drawLine(graphics, font, getTitle(), body.x(), panel.y() + INSET, body.width(), theme.text(), mouseX, mouseY);
-            extractSample(graphics, mouseX, mouseY, partialTick);
+            var lastHeaderButton = codeButton == null ? fullscreenButton : codeButton;
+            int titleWidth = lastHeaderButton == null ? body.width() : lastHeaderButton.getX() - body.x() - 5;
+            PanelText.drawLine(graphics, font, getTitle(), body.x(), panel.y() + INSET,
+                    Math.max(1, titleWidth), theme.text(), mouseX, mouseY);
+            if (previewAvailable()) extractSample(graphics, mouseX, mouseY, partialTick);
         }
         UiTheme.preview(theme, () -> super.extractRenderState(graphics, mouseX, mouseY, partialTick));
     }

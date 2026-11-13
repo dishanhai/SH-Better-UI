@@ -234,7 +234,7 @@ public final class ControlPanelScreen extends Screen {
                     shortcut.setMessage(mapping == null ? label("section.shortcut")
                             : label("shortcut.binding", mapping.getTranslatedKeyMessage()));
                 });
-                toolButton(label("developer.gallery.title"), GraphicIcon.CODE, this::openDeveloperGallery);
+                toolButton(label("developer.title"), GraphicIcon.CODE, this::openDeveloperPanel);
             }
             case OVERVIEW -> {
                 var snapshot = PanelOverview.capture(minecraft);
@@ -321,9 +321,9 @@ public final class ControlPanelScreen extends Screen {
         });
     }
 
-    private void openDeveloperGallery() {
+    private void openDeveloperPanel() {
         var focus = focusAnchor();
-        ControlPanelPlatform.show(minecraft, new DeveloperGalleryScreen(this, () -> restoreFocus(focus)));
+        ControlPanelPlatform.show(minecraft, new DeveloperPanelScreen(this, preferences, () -> restoreFocus(focus)));
     }
 
     private void openLink(FeedbackLink link) {
