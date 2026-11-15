@@ -251,4 +251,8 @@ public final class ControlsApi {
     public void topProgressBar(GuiGraphics graphics, Bounds viewport, float progress, UiPreferences preferences) {
         UiLoading.topBar(graphics, viewport, progress, preferences);
     }
+    /** Secondary configuration screen with native navigation and scrolling field cards. */
+    public UiSettingsDetailPage settingsDetailPage(Component title, List<UiSettingsDetailPage.Section> sections) {
+        return new UiSettingsDetailPage(title, sections);
+    }
 }
