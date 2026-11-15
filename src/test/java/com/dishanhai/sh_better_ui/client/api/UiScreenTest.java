@@ -23,6 +23,31 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
     @Test
+    void detailResetLabelTracksEditsThatInvalidateUndo() {
+        var session = new com.dishanhai.sh_better_ui.kernel.api.settings.SettingsDraftSession<>(
+                java.util.Map.of("enabled", false), java.util.Map.of("enabled", true));
+        var detail = new UiSettingsDetailPage(Component.literal("Detail"), java.util.List.of(),
+                new UiSettingsDetailPage.Actions(
+                        () -> Component.literal(session.canUndoReset() ? "Undo reset" : "Restore defaults"),
+                        Component.literal("Cancel"), Component.literal("Apply"), session::resetDefaults,
+                        session::cancel, () -> null, session::dirty));
+        // Mount native controls without requesting the live Minecraft theme service.
+        var screen = new UiScreenBuilder(Component.literal("Detail")).backButton(false)
+                .onInit(detail::init).build();
+        screen.width = 400; screen.height = 300; screen.init();
+        var reset = screen.children().stream().filter(AbstractWidget.class::isInstance)
+                .map(AbstractWidget.class::cast)
+                .filter(widget -> widget.getMessage().getString().equals("Restore defaults")).findFirst().orElseThrow();
+        session.resetDefaults();
+        detail.syncActionState();
+        assertEquals("Undo reset", reset.getMessage().getString());
+        session.edit("enabled", false);
+        detail.syncActionState();
+        assertEquals("Restore defaults", reset.getMessage().getString());
+        screen.removed();
+    }
+
+    @Test
     void disposingCannotBeVetoedByAnEditingCloseGuard() {
         var screen = new UiScreenBuilder(Component.empty()).build();
         screen.onCloseRequest(() -> false);

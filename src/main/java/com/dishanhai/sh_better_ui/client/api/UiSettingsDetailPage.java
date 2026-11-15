@@ -63,6 +63,7 @@ public final class UiSettingsDetailPage {
     private Component status;
     private Component footerHint;
     private UiButton applyButton;
+    private UiButton resetButton;
     private int footerY;
     private UiScreen owner;
 
@@ -88,19 +89,19 @@ public final class UiSettingsDetailPage {
     /** Pass to UUK ScreenService.create(module, builder), then open through the host. */
     public UiScreenBuilder builder() {
         return new UiScreenBuilder(title).dynamicTheme().themeBackground()
-                .onInit(this::init).onRender(this::render).onRemoved(screen -> {
+                .onInit(this::init).onTick(screen -> syncActionState()).onRender(this::render).onRemoved(screen -> {
                     if (owner == screen) {
                         try { if (actions != null && !applied) actions.cancel().run(); }
                         finally {
                             if (confirmation != null) confirmation.ownerClosed();
                             confirmation = null;
-                            widgets.clear(); scrollbar = null; owner = null; applyButton = null;
+                            widgets.clear(); scrollbar = null; owner = null; applyButton = null; resetButton = null;
                         }
                     }
                 });
     }
 
-    private void init(UiScreen screen) {
+    void init(UiScreen screen) {
         if (owner != null && owner != screen) throw new IllegalStateException("Settings page already mounted");
         if (owner == null) { applied = false; discardConfirmed = false; }
         owner = screen;
@@ -136,7 +137,7 @@ public final class UiSettingsDetailPage {
         if (actions != null) {
             footerY = Math.max(viewport.y(), viewport.bottom() - 30);
             int buttonWidth = Math.max(0, (width - 12) / 3);
-            addAction(screen, clip.x(), buttonWidth, actions.resetLabel().get(), () -> {
+            resetButton = addAction(screen, clip.x(), buttonWidth, actions.resetLabel().get(), () -> {
                 actions.reset().run();
                 status = null;
                 screen.resize(Minecraft.getInstance(), screen.width, screen.height);
@@ -166,6 +167,7 @@ public final class UiSettingsDetailPage {
             return false;
         });
         screen.onFocusChanged(this::revealFocus);
+        syncActionState();
         position();
     }
 
@@ -205,9 +207,18 @@ public final class UiSettingsDetailPage {
         }
     }
 
+    // Keep labels, narration and click semantics aligned after host-owned draft edits.
+    void syncActionState() {
+        if (resetButton != null) {
+            var label = actions.resetLabel().get();
+            if (!resetButton.getMessage().equals(label)) resetButton.setMessage(label);
+        }
+        if (applyButton != null) applyButton.active = !applied && actions.dirty().getAsBoolean();
+    }
+
     private void render(UiScreen screen, UiFrame frame) {
         scrollbar.advanceMotion();
-        if (applyButton != null) applyButton.active = !applied && actions.dirty().getAsBoolean();
+        syncActionState();
         var notice = status == null ? footerHint : status;
         if (notice != null && actions != null) frame.graphics().drawString(Minecraft.getInstance().font,
                 Language.getInstance().getVisualOrder(Minecraft.getInstance().font.substrByWidth(notice, clip.width())),
