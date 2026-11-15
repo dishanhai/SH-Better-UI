@@ -37,9 +37,15 @@ final class NativeModuleSources {
     }
 
     static List<ModuleDiscovery.Candidate> discover(List<Source> modFiles) {
+        return discover(modFiles, UIModule.class).stream()
+                .map(entry -> new ModuleDiscovery.Candidate(entry.modId(), entry.location(),
+                        entry.module(), OWN_SCREEN_GRANTS, false)).toList();
+    }
+
+    static <T> List<Declaration<T>> discover(List<Source> modFiles, Class<T> contract) {
         var sorted = modFiles.stream().sorted(Comparator.comparing(Source::owner)
                 .thenComparing(Source::location)).toList();
-        var candidates = new ArrayList<ModuleDiscovery.Candidate>();
+        var candidates = new ArrayList<Declaration<T>>();
         for (var file : sorted) {
             try {
                 var lines = read(file.open());
@@ -48,12 +54,12 @@ final class NativeModuleSources {
                     var entry = line.strip();
                     if (entry.isEmpty() || entry.startsWith("#")) continue;
                     if (candidates.size() == MAX_MODULES) {
-                        throw new IllegalArgumentException("Client UI module discovery limit reached");
+                        throw new IllegalArgumentException("UUK module discovery limit reached");
                     }
-                    if (seen.add(entry)) load(file, entry, candidates);
+                    if (seen.add(entry)) load(file, entry, contract, candidates);
                 }
             } catch (IOException | RuntimeException | LinkageError failure) {
-                LOGGER.log(System.Logger.Level.ERROR, "Reading UI modules from " + file.location(), failure);
+                LOGGER.log(System.Logger.Level.ERROR, "Reading UUK modules from " + file.location(), failure);
             }
         }
         return List.copyOf(candidates);
@@ -67,7 +73,7 @@ final class NativeModuleSources {
         }
     }
 
-    private static void load(Source file, String entry, List<ModuleDiscovery.Candidate> candidates) {
+    private static <T> void load(Source file, String entry, Class<T> contract, List<Declaration<T>> candidates) {
         try {
             String[] tokens = entry.split("\\s+");
             if (tokens.length != 2 || !file.modIds().contains(tokens[0])) {
@@ -77,13 +83,14 @@ final class NativeModuleSources {
             if (type == null) {
                 throw new SecurityException("UI module class is outside the declaring mod file");
             }
-            var module = type.asSubclass(UIModule.class).getConstructor().newInstance();
-            candidates.add(new ModuleDiscovery.Candidate(tokens[0], file.location() + "#" + tokens[1],
-                    module, OWN_SCREEN_GRANTS, false));
+            var module = type.asSubclass(contract).getConstructor().newInstance();
+            candidates.add(new Declaration<>(tokens[0], file.location() + "#" + tokens[1], module));
         } catch (ReflectiveOperationException | RuntimeException | LinkageError failure) {
             LOGGER.log(System.Logger.Level.ERROR, "Rejected UI module entry " + entry + " in " + file.location(), failure);
         }
     }
+
+    record Declaration<T>(String modId, String location, T module) {}
 
     record Source(String owner, String location, Set<String> modIds, DescriptorReader open, ClassLookup classes) {}
 

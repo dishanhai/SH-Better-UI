@@ -35,6 +35,34 @@ float distanceToGlass(vec2 p) {
     return arc + min(max(q.x, q.y), 0.0) - Radius;
 }
 
+vec2 outwardNormal(vec2 p) {
+    if (Mode.x == 2) {
+        // Gradient of the ellipse equation, in framebuffer units rather than normalized UVs.
+        return normalize((p / Geometry.zw) / Geometry.zw);
+    }
+    vec2 q = abs(p) - (Geometry.zw - Radius);
+    vec2 arc = max(q, 0.0);
+    float extent = max(arc.x, arc.y);
+    if (extent > 0.0) {
+        // The circular and fourth-power corners must use their respective contour gradients.
+        arc /= extent;
+        if (Mode.x == 3) arc = arc * arc * arc;
+        return sign(p) * normalize(arc);
+    }
+    return sign(p) * (q.x > q.y ? vec2(1.0, 0.0) : vec2(0.0, 1.0));
+}
+
+float curvedRim(vec2 normal) {
+    if (Mode.x == 2) return 1.0;
+    if (Radius <= 0.0) return 0.0;
+    // Fade in at joins with straight edges. A circle has no straight edges;
+    // a capsule only has straight edges along its long axis.
+    vec2 straight = smoothstep(vec2(0.0), vec2(1.0), Geometry.zw - Radius);
+    vec2 curved = smoothstep(vec2(0.0), vec2(0.55), abs(normal));
+    vec2 weight = mix(vec2(1.0), curved, straight);
+    return weight.x * weight.y;
+}
+
 vec3 sceneLod(vec2 pixel, float lod) {
     vec2 uv = (pixel - Viewport.xy) / Viewport.zw;
     vec2 inset = 0.5 / vec2(textureSize(Backdrop, 0));
@@ -143,35 +171,34 @@ void main() {
     float rim = 1.0 - smoothstep(0.0, max(1.0, rimWidth), depth);
     float highlightWidth = snell ? max(2.0 * aa, 0.38 * thickness) : 0.0;
     vec2 normal = vec2(0.0);
-    if (rim > 0.0 || (Optics.w > 0.0 && depth < highlightWidth)) {
-        vec2 gradient = vec2(distanceToGlass(local + vec2(0.7, 0.0)) - distanceToGlass(local - vec2(0.7, 0.0)),
-                distanceToGlass(local + vec2(0.0, 0.7)) - distanceToGlass(local - vec2(0.0, 0.7)));
-        normal = gradient / max(length(gradient), 0.001);
+    if ((rim > 0.0 || (Optics.w > 0.0 && depth < highlightWidth)) && any(notEqual(local, vec2(0.0)))) {
+        normal = outwardNormal(local);
     }
     vec2 bent = pixel;
-    vec2 surfaceNormal = vec2(0.0, 1.0);
-    vec2 rayTravel = vec2(0.0);
     if (snell && depth < rimWidth && Optics.x > 0.0) {
-        surfaceNormal = bevelNormal(depth, rimWidth);
+        vec2 surfaceNormal = bevelNormal(depth, rimWidth);
         // Scale the projected ray enough to fold the image at the rim, with a soft limit on small shapes.
         float reach = 4.0 * Optics.x;
         float travel = reach / (1.0 + reach / halfShort) / sqrt(1.5 * 1.5 - 1.0);
-        rayTravel = -normal * travel;
-        bent += rayTravel * raySlope(surfaceNormal, 1.50);
+        bent -= normal * travel * raySlope(surfaceNormal, 1.50);
     } else if (!snell) {
-        bent = pixel - normal * Optics.x * rim * (0.55 + 0.45 * rim)
-                - local * Optics.y * 0.11 * rim * (1.0 - 0.65 * rim);
+        float bend = Optics.x * (0.55 + 0.45 * rim);
+        float lens = rimWidth * Optics.y * 0.25 * (1.0 - 0.65 * rim);
+        bent -= normal * (bend + lens) * rim;
     }
 
     vec3 sharp = scene(bent);
     vec2 displacement = bent - pixel;
     vec2 position = local / Geometry.zw;
-    // Keep straight-edge midpoints neutral and fade in channel separation toward the corners.
-    float corner = abs(position.x * position.y);
-    if (snell && Mode.y > 1 && corner > 0.10 && dot(displacement, displacement) > 0.01) {
-        float dispersion = (Mode.y > 2 ? 0.045 : 0.030) * smoothstep(0.10, 0.70, corner);
-        sharp.r = scene(pixel + rayTravel * raySlope(surfaceNormal, 1.50 - dispersion)).r;
-        sharp.b = scene(pixel + rayTravel * raySlope(surfaceNormal, 1.50 + dispersion)).b;
+    if (snell && Mode.y > 1 && dot(displacement, displacement) > 0.01) {
+        // GlassSurface samples each channel at a different scale of the same displacement.
+        // Normalize its -180/-170/-160 scales around the green ray and soften at straight joins.
+        float dispersion = (Mode.y > 2 ? 10.0 : 7.5) / 170.0 * curvedRim(normal);
+        if (dispersion > 0.0) {
+            vec2 fringe = displacement * dispersion;
+            sharp.r = scene(bent + fringe).r;
+            sharp.b = scene(bent - fringe).b;
+        }
     }
     float transmission = Material.x;
     vec3 transmitted = sharp;

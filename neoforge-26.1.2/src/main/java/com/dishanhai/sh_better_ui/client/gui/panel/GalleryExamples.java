@@ -9,6 +9,42 @@ final class GalleryExamples {
 
     static @Nullable String code(String id) {
         return switch (id) {
+            case JellyRadioDemo.ID -> JellyRadioDemo.CODE;
+            case "prompt_bar" -> PromptBarDemo.CODE;
+            case "call_chip" -> CallChipDemo.EXAMPLE;
+            case "fuse_button" -> FuseButtonDemo.EXAMPLE;
+            case SwipeRowDemo.ID -> SwipeRowDemo.EXAMPLE;
+            case "code_slots" -> """
+                    import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+                    import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+                    import com.dishanhai.sh_better_ui.client.gui.scaled.UiCodeSlots;
+                    import net.minecraft.network.chat.Component;
+
+                    private void addCodeSlots(int x, int y) {
+                        var slots = ShBetterUiApi.controls().codeSlots(new Bounds(x, y, 184, 24), 6,
+                                Component.translatable("sh_better_ui.code_slots.label"),
+                                ShBetterUiApi.settings().preferences());
+                        slots.setOnComplete(code -> slots.setStatus("123456".equals(code)
+                                ? UiCodeSlots.Status.SUCCESS : UiCodeSlots.Status.ERROR));
+                        addRenderableWidget(slots);
+                    }
+                    """;
+            case "hold_button" -> """
+                    import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+                    import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+                    import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
+                    import com.dishanhai.sh_better_ui.kernel.api.input.HoldGesture;
+                    import net.minecraft.network.chat.Component;
+
+                    private void addHoldButton(int x, int y, Runnable confirm) {
+                        var button = ShBetterUiApi.controls().holdButton(new Bounds(x, y, 160, 28),
+                                Component.translatable("sh_better_ui.hold_button.right"),
+                                Component.translatable("sh_better_ui.hold_button.done"),
+                                HoldGesture.Timing.DEFAULT, new UiHoldButton.Appearance(UiHoldButton.Direction.RIGHT),
+                                ShBetterUiApi.settings().preferences(), confirm, null);
+                        addRenderableWidget(button);
+                    }
+                    """;
             case "button" -> """
                     import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
                     import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -47,6 +83,22 @@ final class GalleryExamples {
                         addRenderableWidget(toggle.button());
                     }
                     """.formatted(id.equals("capsule_toggle") ? "LIQUID_GLASS" : "DEFAULT");
+            case SloshGaugeDemo.ID -> SloshGaugeDemo.CODE;
+            case "rubber_segment" -> """
+                    import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+                    import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+                    import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+                    import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
+                    import net.minecraft.network.chat.Component;
+                    import java.util.List;
+
+                    private void addSegment(int x, int y, List<Component> labels, java.util.function.IntConsumer onSelect) {
+                        var options = labels.stream().map(label -> new UiSectionBar.Section(label, GraphicIcon.ORGANIZE)).toList();
+                        var control = ShBetterUiApi.controls().rubberSegment(new Bounds(x, y, 200, 28),
+                                getTitle(), options, 0, ShBetterUiApi.settings().preferences(), onSelect);
+                        addRenderableWidget(control);
+                    }
+                    """;
             case "slider" -> """
                     import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
                     import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;

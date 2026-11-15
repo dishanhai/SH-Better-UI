@@ -3,6 +3,26 @@
 
 `kernel.api.page` 是纯 Java 17 契约。页面定义由稳定 ID、Schema 版本、页面类型、固定控件树、数据字段、动作和选项组成。每次打开页面由运行时创建独立实例及作用域。
 
+## NeoForge 26.x 本地声明式页面
+
+NeoForge 26.1.2 和 26.2 共用本地页面运行时。消费模组通过 `context.engine().require(PageService.KEY)` 获取服务，在内核 UI 线程用自己的模块上下文调用 `register` 和 `open`。注册前可用 `pageTypes()` 和 `components()` 选择目标页和备用节点。
+
+- 当前页面类型为 `SCREEN`，可用节点为 `column`、`text`、`button`、`spacer`。按钮支持无载荷的 `LOCAL` 动作。数据字段可以绑定文本、按钮标签、可见性和启用状态。页面正文可以滚动，数据更新后按稳定 ID 恢复仍可交互的节点焦点。
+- `Instance.displayed()` 记录首次原生呈现，`closed()` 交付最终快照。Escape、返回按钮、实例关闭和注册撤销均结束页面。原生界面切换结束当前页面，调用方可以在结束后打开新页面。
+- 其他页面类型、第三方组件工厂、富文本、逐节点自适应文字策略与远程页面仍待接入。下文的服务端动作示例适用于已接入远程运行时的平台。
+
+独立消费 JAR 烟测从本地打包 JAR 加载 UUK，覆盖能力查询、无效页面和数据拒绝、首次呈现、Tab 滚动、按键提交、数字字段绑定、焦点恢复、Escape、原生界面替换与注册撤销。验收输出位于目标模块的 `build/widget-smoke/<版本>/default-pages/declarative-page.txt`。显式指定 OpenGL 时，目录为 `opengl-pages`。
+
+2026-11-15，26.1.2 与 26.2 完整构建和发布 JAR 校验通过。独立消费模组在 26.1.2 OpenGL、26.2 Vulkan 和 26.2 OpenGL 三条路线通过烟测。
+
+```bash
+bash neoforge-1.21.1/gradlew -p neoforge-26.1.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePages --no-daemon
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePages --no-daemon
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePages -PwidgetSmokeBackend=opengl --no-daemon
+```
+
+## 页面模型示例
+
 ```java
 UiId exchange = UiId.parse("example:exchange");
 
@@ -24,6 +44,23 @@ new UiPageValidator().requireValid(page, true);
 - `UiBuiltinComponents.descriptors()` 提供内置控件的属性目录。平台通过独立能力映射公布已接入的渲染器。
 - 自定义控件描述随 `ScopeHandle` 注册及释放。远程引用需要客户端显式允许控件和相应属性。图标和图片的远程字面量采用命名空间资源 ID。
 - 预开页降级可选择已支持的替代控件，保持稳定 ID 和子树。动作节点要求原控件可用。可隐藏的节点须为非根节点，且其子树不含动作。
+
+## 下拉选择
+
+Forge 1.20.1 与 NeoForge 1.21.1 的原生 `dropdown` 使用 GlideSelect 交互。选项按顺序提供，`selected` 和动作载荷使用从 0 开始的索引。只有选中与当前值不同的项才提交动作。
+
+```java
+column.child("format", "dropdown", select -> select
+        .property("options", new UiValue.Sequence(List.of(
+                new UiValue.Text("PNG"), new UiValue.Text("JPG"))))
+        .property("tags", new UiValue.Sequence(List.of(
+                new UiValue.Text("无损"), new UiValue.Text("体积较小"))))
+        .bind("selected", "export.format"));
+```
+
+可选属性包括 `tags`（按索引对应选项）、`placeholder`（绑定索引没有匹配项时显示）、`menuWidth`（默认 176 GUI 单位）、`placement`（`Choice`，默认 `bottom`）、`align`（`Choice`，默认 `left`）和 `rememberPosition`（默认开启）。空间不足时菜单会翻转或缩短为可滚动列表。
+
+在选项上按下后可拖到另一行，松开时提交该行。键盘可用方向键、Home、End 和按首字查找，Enter 或空格确认，Esc 或 Tab 收起。
 
 ## 序列化与离线验证
 

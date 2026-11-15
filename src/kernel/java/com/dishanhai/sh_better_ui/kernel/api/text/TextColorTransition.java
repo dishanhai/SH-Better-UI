@@ -4,7 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.api.text;
 import static com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference.MAX_TRANSITION_STEP_NANOS;
 import static com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityReference.TRANSITION_NANOS;
 
-/** A rate-limited sRGB transition. The shader uses the same microsecond interpolation. */
+/** A rate-limited sRGB transition with smoothstep easing. The shader mirrors its interpolation. */
 final class TextColorTransition {
     private int from;
     private int target;
@@ -33,14 +33,15 @@ final class TextColorTransition {
         if (from == target || elapsed <= 0) return from;
         if (elapsed >= TRANSITION_NANOS) return target;
         int micros = elapsed / 1000;
-        return (target & 0xff000000) | channel(from, target, 16, micros) << 16
-                | channel(from, target, 8, micros) << 8 | channel(from, target, 0, micros);
+        float progress = micros / (float) (TRANSITION_NANOS / 1000);
+        float eased = progress * progress * (3f - 2f * progress);
+        return (target & 0xff000000) | channel(from, target, 16, eased) << 16
+                | channel(from, target, 8, eased) << 8 | channel(from, target, 0, eased);
     }
 
-    private static int channel(int from, int target, int shift, int micros) {
-        int duration = TRANSITION_NANOS / 1000;
+    private static int channel(int from, int target, int shift, float eased) {
         int first = (from >>> shift) & 255;
         int last = (target >>> shift) & 255;
-        return (first * (duration - micros) + last * micros + duration / 2) / duration;
+        return Math.round(first + (last - first) * eased);
     }
 }

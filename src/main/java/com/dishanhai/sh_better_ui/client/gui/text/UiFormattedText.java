@@ -126,12 +126,16 @@ public final class UiFormattedText {
             int fill = glyph.style().getColor() == null ? argb : glyph.style().getColor().getValue();
             int protection = palette == null ? 0 : palette.outlineColor(fill);
             if (protection != 0) {
+                int textAlpha = argb >>> 24;
+                int outlineAlpha = (protection >>> 24) * (textAlpha < 4 ? 255 : textAlpha) / 255;
+                if (outlineAlpha < 4) continue;
+                int outlineArgb = outlineAlpha << 24 | (protection & 0xffffff);
                 var outline = FormattedCharSequence.codepoint(glyph.codePoint(),
                         glyph.style().withColor(protection & 0xffffff));
                 for (float offset = -.5f; offset <= .5f; offset++) {
-                    font.drawInBatch(outline, positions[i] + offset, y + glyph.y(), argb, false,
+                    font.drawInBatch(outline, positions[i] + offset, y + glyph.y(), outlineArgb, false,
                             pose, buffers, mode, 0, light);
-                    font.drawInBatch(outline, positions[i], y + glyph.y() + offset, argb, false,
+                    font.drawInBatch(outline, positions[i], y + glyph.y() + offset, outlineArgb, false,
                             pose, buffers, mode, 0, light);
                 }
             } else if (glyph.outline()) {

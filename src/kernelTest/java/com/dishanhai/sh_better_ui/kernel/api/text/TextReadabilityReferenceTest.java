@@ -176,7 +176,7 @@ class TextReadabilityReferenceTest {
         assertEquals(WHITE, evaluate(low, state, accepted).fillArgb());
 
         var early = evaluate(low, state, accepted + 40_000_000L);
-        assertEquals(0xffdfdfdf, early.fillArgb());
+        assertEquals(0xfff4f4f4, early.fillArgb());
         assertEquals(BLACK, early.pendingArgb());
         assertEquals(BACKING, early.protection());
         assertFalse(early.diagnostics().contains(WAITING_FOR_STABILITY));
@@ -191,7 +191,7 @@ class TextReadabilityReferenceTest {
         long recovery = accepted + 320_000_001L;
         assertEquals(BLACK, evaluate(recovered, state, recovery).fillArgb());
         assertEquals(BLACK, evaluate(recovered, state, recovery + WINDOW).fillArgb());
-        assertEquals(0xff202020, evaluate(recovered, state, recovery + WINDOW + 40_000_000L).fillArgb());
+        assertEquals(0xff0b0b0b, evaluate(recovered, state, recovery + WINDOW + 40_000_000L).fillArgb());
     }
 
     @Test
@@ -206,11 +206,11 @@ class TextReadabilityReferenceTest {
 
         long afterStall = 1_000_000_000L;
         int intermediate = evaluate(bright, state, afterStall).fillArgb();
-        assertEquals(0xffdfdfdf, intermediate);
+        assertEquals(0xfff4f4f4, intermediate);
         assertEquals(intermediate, evaluate(bright, state, afterStall).fillArgb());
         assertEquals(intermediate, evaluate(dark, state, afterStall + 1).fillArgb());
         assertEquals(intermediate, evaluate(dark, state, afterStall + WINDOW + 1).fillArgb());
-        assertEquals(0xffe3e3e3, evaluate(dark, state, afterStall + WINDOW + 40_000_001L).fillArgb());
+        assertEquals(0xfff4f4f4, evaluate(dark, state, afterStall + WINDOW + 40_000_001L).fillArgb());
     }
 
     @Test
@@ -223,7 +223,7 @@ class TextReadabilityReferenceTest {
         evaluate(declared, state, WINDOW);
         long intermediateAt = WINDOW + 40_000_000L;
         int fill = evaluate(declared, state, intermediateAt).fillArgb();
-        assertEquals(0xffdfdfdf, fill);
+        assertEquals(0xfff4f4f4, fill);
 
         long changedAt = intermediateAt + 1;
         var changed = evaluate(actual, state, changedAt);
@@ -232,7 +232,7 @@ class TextReadabilityReferenceTest {
         assertEquals(BLACK, changed.pendingArgb());
         assertTrue(changed.diagnostics().contains(WAITING_FOR_STABILITY));
         assertEquals(fill, evaluate(actual, state, changedAt + WINDOW).fillArgb());
-        assertEquals(0xffc3c3c3, evaluate(actual, state, changedAt + WINDOW + 40_000_000L).fillArgb());
+        assertEquals(0xffeaeaea, evaluate(actual, state, changedAt + WINDOW + 40_000_000L).fillArgb());
     }
 
     @Test
@@ -242,10 +242,10 @@ class TextReadabilityReferenceTest {
         var state = new State();
         assertNull(state.displayedFill());
         state.seedDisplayedFill(gpuFill);
-        assertEquals(0xffdfdfdf, evaluate(bright, state, 0).fillArgb());
+        assertEquals(0xfff4f4f4, evaluate(bright, state, 0).fillArgb());
         assertEquals(gpuFill, evaluate(bright, state, WINDOW).fillArgb());
-        assertEquals(0xffc3c3c3, evaluate(bright, state, WINDOW + 40_000_000).fillArgb());
-        assertEquals(Integer.valueOf(0xffc3c3c3), state.displayedFill());
+        assertEquals(0xffeaeaea, evaluate(bright, state, WINDOW + 40_000_000).fillArgb());
+        assertEquals(Integer.valueOf(0xffeaeaea), state.displayedFill());
         state.reset();
         assertNull(state.displayedFill());
     }
@@ -266,7 +266,7 @@ class TextReadabilityReferenceTest {
         assertEquals(DECLARED, evaluate(missing, state, 2 * WINDOW - 1).source());
         assertEquals(WHITE, evaluate(low, state, 2 * WINDOW).fillArgb());
         assertEquals(WHITE, evaluate(low, state, 3 * WINDOW).fillArgb());
-        assertEquals(0xffdfdfdf, evaluate(low, state, 3 * WINDOW + 40_000_000L).fillArgb());
+        assertEquals(0xfff4f4f4, evaluate(low, state, 3 * WINDOW + 40_000_000L).fillArgb());
 
         state.reset();
         assertEquals(WHITE, evaluate(low, state, 4 * WINDOW).fillArgb());

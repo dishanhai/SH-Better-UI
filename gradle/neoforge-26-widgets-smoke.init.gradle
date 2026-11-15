@@ -20,6 +20,16 @@ gradle.beforeProject { p ->
         boolean longLabels = layoutReview && layoutScale == '4'
         boolean readabilityHud = p.hasProperty('widgetSmokeReadabilityHud')
         boolean readability = readabilityHud || p.hasProperty('widgetSmokeReadability')
+        boolean previewDiscovery = p.hasProperty('widgetSmokePreviewDiscovery')
+        boolean pages = p.hasProperty('widgetSmokePages')
+        boolean centeredMenu = p.hasProperty('widgetSmokeCenteredMenu')
+        if (previewDiscovery && (layoutReview || readability)) {
+            throw new GradleException('Preview discovery uses its own smoke profile')
+        }
+        if (pages && (previewDiscovery || layoutReview || readability || centeredMenu)) {
+            throw new GradleException('Declarative pages use their own smoke profile')
+        }
+        boolean packagedConsumer = previewDiscovery || pages
         boolean narrator = p.hasProperty('widgetSmokeNarrator')
         String narratorAudio = p.findProperty('widgetSmokeNarratorAudio')
         if (narrator && layoutReview) throw new GradleException('Narrator smoke uses the standard gallery profile')
@@ -37,19 +47,39 @@ gradle.beforeProject { p ->
         String profile = vulkanFallback ? 'vulkan-fallback' : dualBackend && earlyWindow ? "${backend}-early-window" : backend
         if (layoutReview) profile += longLabels ? '-layout-4' : '-layout'
         if (readability) profile += readabilityHud ? "-text-readability-hud" : "-text-readability"
+        if (previewDiscovery) profile += '-preview-discovery'
+        if (pages) profile += '-pages'
+        if (centeredMenu) profile += '-centered-menu'
         if (narrator) profile += '-narrator'
         File directory = p.layout.buildDirectory.dir("widget-smoke/${p.version}/${profile}").get().asFile
         File missingVulkanDriver = new File(directory, 'missing-vulkan-icd.json')
-        def consumer = p.neoForge.mods.create('shbui_widgets_smoke') {
-            sourceSet sources
+        def consumerJar
+        def launcher
+        def consumer
+        if (packagedConsumer) {
+            consumerJar = p.tasks.register('widgetSmokeJar', Jar) {
+                archiveFileName.set('shbui_widgets_smoke.jar')
+                destinationDirectory.set(p.layout.buildDirectory.dir('widget-smoke/artifacts'))
+                from sources.output
+            }
+            launcher = p.sourceSets.create('widgetSmokeLauncher')
+            p.neoForge.addModdingDependenciesTo(launcher)
+            p.dependencies.add(launcher.implementationConfigurationName,
+                    "thedarkcolour:kotlinforforge-neoforge:${p.kff_version}")
+        } else {
+            consumer = p.neoForge.mods.create('shbui_widgets_smoke') { sourceSet sources }
         }
         p.neoForge.runs.create('widgetSmoke') {
             client()
-            loadedMods.set([consumer])
+            loadedMods.set(packagedConsumer ? [] : [consumer])
+            if (packagedConsumer) sourceSet.set(launcher)
             gameDirectory.set(directory)
             systemProperty 'shbui.widgetSmoke.expectedBackend', expected
             if (readability) systemProperty 'shbui.widgetSmoke.readability', 'true'
             if (readabilityHud) systemProperty 'shbui.widgetSmoke.readabilityHud', 'true'
+            if (previewDiscovery) systemProperty 'shbui.widgetSmoke.previewDiscovery', 'true'
+            if (pages) systemProperty 'shbui.widgetSmoke.pages', 'true'
+            if (centeredMenu) systemProperty 'shbui.widgetSmoke.centeredMenu', 'true'
             if (narrator) systemProperty 'shbui.widgetSmoke.narrator', 'true'
             if (narratorAudio != null) systemProperty 'shbui.widgetSmoke.narratorAudio', p.file(narratorAudio).absolutePath
             if (layoutReview) {
@@ -67,6 +97,7 @@ gradle.beforeProject { p ->
         p.tasks.named('compileWidgetSmokeJava').configure { dependsOn(library) }
         def stageLibrary = p.tasks.register('stageWidgetSmokeLibrary', Sync) {
             from library.flatMap { it.archiveFile }
+            if (packagedConsumer) from consumerJar.flatMap { it.archiveFile }
             into new File(directory, 'mods')
         }
         def stageLongLabels = p.tasks.register('stageWidgetSmokeLongLabels', Sync) {
@@ -78,8 +109,16 @@ gradle.beforeProject { p ->
             if (longLabels) dependsOn(stageLongLabels)
             def readabilityImages = [new File(directory, 'text-readability-26.png')]
             if (readabilityHud) readabilityImages += new File(directory, 'text-readability-26-hud.png')
+            def previewEvidence = ['preview-discovery.txt', 'preview-discovery-stopped.txt'].collect {
+                new File(directory, it)
+            }
+            def menuEvidence = new File(directory, 'centered-menu.png')
+            def pageEvidence = new File(directory, 'declarative-page.txt')
             doFirst {
                 if (readability) readabilityImages.each { java.nio.file.Files.deleteIfExists(it.toPath()) }
+                if (previewDiscovery) previewEvidence.each { java.nio.file.Files.deleteIfExists(it.toPath()) }
+                if (centeredMenu) java.nio.file.Files.deleteIfExists(menuEvidence.toPath())
+                if (pages) java.nio.file.Files.deleteIfExists(pageEvidence.toPath())
                 if (vulkanFallback && missingVulkanDriver.exists()) {
                     throw new GradleException("Fallback requires a missing driver manifest: ${missingVulkanDriver}")
                 }
@@ -92,6 +131,15 @@ gradle.beforeProject { p ->
             doLast {
                 if (readability && !readabilityImages.every { it.isFile() }) {
                     throw new GradleException("Missing text readability smoke screenshots: ${readabilityImages.findAll { !it.isFile() }}")
+                }
+                if (previewDiscovery && !previewEvidence.every { it.isFile() }) {
+                    throw new GradleException("Preview discovery smoke did not finish. See ${directory}")
+                }
+                if (centeredMenu && !menuEvidence.isFile()) {
+                    throw new GradleException("Centered menu smoke did not finish. See ${directory}")
+                }
+                if (pages && !pageEvidence.isFile()) {
+                    throw new GradleException("Declarative page smoke did not finish. See ${directory}")
                 }
             }
         }

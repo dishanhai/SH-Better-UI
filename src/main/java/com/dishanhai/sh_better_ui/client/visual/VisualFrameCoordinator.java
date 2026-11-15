@@ -31,6 +31,7 @@ import java.util.IdentityHashMap;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Consumer;
+import java.util.function.Predicate;
 
 import static com.dishanhai.sh_better_ui.client.visual.VisualEffectResult.*;
 
@@ -43,7 +44,13 @@ public final class VisualFrameCoordinator {
 
     public static VisualLayoutBinding bind(Screen owner, long mountGeneration, ScopeHandle scope, AlignmentLayout layout,
                                            Consumer<VisualLayoutBinding.FrameTime> sample) {
-        var binding = new Binding(owner, mountGeneration, scope, layout, sample);
+        return bind(owner, mountGeneration, scope, layout, sample, candidate -> candidate == scope);
+    }
+
+    /** Internal binding entry for the kernel's owned-scope ancestry check. */
+    public static VisualLayoutBinding bind(Screen owner, long mountGeneration, ScopeHandle scope, AlignmentLayout layout,
+                                           Consumer<VisualLayoutBinding.FrameTime> sample, Predicate<ScopeHandle> ownsScope) {
+        var binding = new Binding(owner, mountGeneration, scope, layout, sample, ownsScope);
         scope.track(binding);
         return binding;
     }
@@ -104,7 +111,7 @@ public final class VisualFrameCoordinator {
                 try {
                     item.draw().accept(frame);
                 } catch (RuntimeException | LinkageError | AssertionError failure) {
-                    if (item.node() != null) frame.report(item.node(), "foreground", failure);
+                    if (item.node() != null) frame.failNode(item.node(), "foreground", failure);
                     else ShBetterUi.LOGGER.error("Screen foreground failed screen={} frame={}",
                             frame.screenName, frame.id, failure);
                 }
@@ -125,25 +132,35 @@ public final class VisualFrameCoordinator {
 
     static void drawNodeForeground(Frame frame, FrameViewSnapshot snapshot, Node layoutNode,
                                    Consumer<VisualNodePass.DrawContext> draw, Consumer<GuiGraphics> afterClip) {
-        if (!frame.hasSnapshot(snapshot) || !frame.target.equals(VisualCanvas.target())) return;
-        var node = snapshot.entry(layoutNode);
-        var graphics = frame.graphics;
-        VisualCanvas.draw(graphics, frame.target, snapshot.clip(), node.view(), canvas -> {
-            var context = new VisualNodePass.DrawContext(snapshot, node, frame.preferences, canvas);
-            try {
-                ThemeEffects.preview(frame.settings, () -> UiTheme.preview(frame.palette, () -> draw.accept(context)));
-            } finally {
-                context.expire();
-            }
-        });
-        if (afterClip != null && frame.hasSnapshot(snapshot)) {
-            GuiStateGuard.draw(() -> {
+        try {
+            if (!frame.hasSnapshot(snapshot) || snapshot.failed(layoutNode)
+                    || !frame.target.equals(VisualCanvas.target())) return;
+            var node = snapshot.entry(layoutNode);
+            VisualCanvas.draw(frame.graphics, frame.target, snapshot.clip(), node.view(), canvas -> {
+                var context = new VisualNodePass.DrawContext(snapshot, node, frame.preferences, canvas);
                 try {
-                    afterClip.accept(graphics);
+                    ThemeEffects.preview(frame.settings, () -> UiTheme.preview(frame.palette, () -> draw.accept(context)));
                 } finally {
-                    graphics.flush();
+                    context.expire();
                 }
             });
+        } catch (RuntimeException | LinkageError | AssertionError failure) {
+            frame.failNode(layoutNode, "foreground", failure);
+            return;
+        }
+        if (afterClip != null && frame.hasSnapshot(snapshot)) {
+            var graphics = frame.graphics;
+            try {
+                GuiStateGuard.draw(() -> {
+                    try {
+                        afterClip.accept(graphics);
+                    } finally {
+                        graphics.flush();
+                    }
+                });
+            } catch (RuntimeException | LinkageError | AssertionError failure) {
+                frame.report(layoutNode, "foreground overlay", failure);
+            }
         }
     }
 
@@ -177,16 +194,19 @@ public final class VisualFrameCoordinator {
         final ScopeHandle scope;
         private AlignmentLayout layout;
         private Consumer<FrameTime> sample;
+        private Predicate<ScopeHandle> ownsScope;
         FrameViewSnapshot snapshot;
         long lastReportFrame;
         int suppressedFailures;
 
-        Binding(Screen owner, long mountGeneration, ScopeHandle scope, AlignmentLayout layout, Consumer<FrameTime> sample) {
+        Binding(Screen owner, long mountGeneration, ScopeHandle scope, AlignmentLayout layout, Consumer<FrameTime> sample,
+                Predicate<ScopeHandle> ownsScope) {
             this.owner = new WeakReference<>(Objects.requireNonNull(owner));
             this.mountGeneration = mountGeneration;
             this.scope = scope;
             this.layout = Objects.requireNonNull(layout);
             this.sample = Objects.requireNonNull(sample);
+            this.ownsScope = Objects.requireNonNull(ownsScope);
         }
 
         @Override public boolean isActive() {
@@ -199,6 +219,7 @@ public final class VisualFrameCoordinator {
             RenderSystem.assertOnRenderThread();
             layout = null;
             sample = null;
+            ownsScope = null;
             snapshot = null;
             var frame = current;
             if (frame != null && frame.binding == this) frame.discard(this);
@@ -213,6 +234,8 @@ public final class VisualFrameCoordinator {
             var frame = current;
             return frame != null && frame.binding == this && frame.hasSnapshot(candidate) ? frame : null;
         }
+
+        boolean ownsScope(ScopeHandle candidate) { return ownsScope != null && ownsScope.test(candidate); }
 
         @Override
         public void renderScreen(UiFrame input, Consumer<LayoutPass> draw) {
@@ -287,7 +310,7 @@ public final class VisualFrameCoordinator {
                     frame.foreground.subList(checkpoint, frame.foreground.size()).clear();
                 }
                 if (frame.blur != null && frame.blur.binding() == frame.binding) frame.blur = previousBlur;
-                frame.report(node, "node", failure);
+                frame.failNode(node, "node", failure);
             } finally {
                 pass.expire();
             }
@@ -388,6 +411,11 @@ public final class VisualFrameCoordinator {
                 widget.setX(position.x());
                 widget.setY(position.y());
             });
+        }
+
+        void failNode(Node node, String effect, Throwable failure) {
+            if (snapshot != null && !finished) snapshot.markFailed(node);
+            report(node, effect, failure);
         }
 
         void report(Node node, String effect, Throwable failure) {

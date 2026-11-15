@@ -20,11 +20,13 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.MouseButtonInfo;
 import net.minecraft.network.chat.Component;
 import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.EventPriority;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.fml.common.EventBusSubscriber;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.neoforge.client.event.RenderFrameEvent;
 import net.neoforged.neoforge.client.event.lifecycle.ClientStartedEvent;
+import net.neoforged.neoforge.client.event.lifecycle.ClientStoppingEvent;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
@@ -51,10 +53,27 @@ public final class WidgetsSmoke {
         started = true;
     }
 
+    @SubscribeEvent(priority = EventPriority.LOWEST)
+    public static void stop(ClientStoppingEvent event) {
+        if (PreviewDiscoverySmoke.ENABLED) PreviewDiscoverySmoke.stopped(event.getClient());
+    }
+
     @SubscribeEvent
     public static void capture(RenderFrameEvent.Post event) {
         var minecraft = Minecraft.getInstance();
         if (!started) return;
+        if (Boolean.getBoolean("shbui.widgetSmoke.pages")) {
+            DeclarativePageSmoke.frame(minecraft);
+            return;
+        }
+        if (Boolean.getBoolean("shbui.widgetSmoke.centeredMenu")) {
+            CenteredMenuSmoke.frame(minecraft);
+            return;
+        }
+        if (PreviewDiscoverySmoke.ENABLED) {
+            PreviewDiscoverySmoke.frame(minecraft);
+            return;
+        }
         if (Boolean.getBoolean("shbui.widgetSmoke.readability")) {
             ReadabilitySmoke.frame(minecraft);
             return;

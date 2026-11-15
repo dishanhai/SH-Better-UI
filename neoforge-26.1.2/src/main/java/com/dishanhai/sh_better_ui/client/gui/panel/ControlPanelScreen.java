@@ -10,10 +10,12 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.dishanhai.sh_better_ui.kernel.api.config.ConfigPage;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant;
 import net.minecraft.client.Minecraft;
@@ -72,6 +74,7 @@ public final class ControlPanelScreen extends Screen {
     private UiButton back;
     private @Nullable UiButton defaults;
     private @Nullable UiButton apply;
+    private @Nullable UiButton glassParameters;
     private @Nullable UiButton up;
     private @Nullable UiButton down;
     private int tab;
@@ -161,6 +164,7 @@ public final class ControlPanelScreen extends Screen {
     }
 
     private void initRows() {
+        glassParameters = null;
         rows.forEach(this::removeWidget);
         if (up != null) removeWidget(up);
         if (down != null) removeWidget(down);
@@ -176,15 +180,8 @@ public final class ControlPanelScreen extends Screen {
                 toggle("optical_glass", "optical_glass.tooltip", ControlPanelSettings::glassEnabled,
                         (settings, enabled) -> settings.withGlass(settings.backgroundBlur(), enabled,
                                 settings.glassBlur(), settings.glassRefraction(), settings.glassRim()));
-                slider("radius", ControlPanelSettings::glassBlur,
-                        (settings, value) -> settings.withGlass(settings.backgroundBlur(), settings.glassEnabled(),
-                                value, settings.glassRefraction(), settings.glassRim()));
-                slider("refraction", ControlPanelSettings::glassRefraction,
-                        (settings, value) -> settings.withGlass(settings.backgroundBlur(), settings.glassEnabled(),
-                                settings.glassBlur(), value, settings.glassRim()));
-                slider("rim", ControlPanelSettings::glassRim,
-                        (settings, value) -> settings.withGlass(settings.backgroundBlur(), settings.glassEnabled(),
-                                settings.glassBlur(), settings.glassRefraction(), value));
+                glassParameters = toolButton(label("glass_parameters"), GraphicIcon.SETTINGS, this::openGlassParameters);
+                glassParameters.setPreview(label("glass_parameters.tooltip"));
             }
             case 1 -> {
                 toggle("contrast", "contrast.tooltip", ControlPanelSettings::highContrast,
@@ -195,14 +192,13 @@ public final class ControlPanelScreen extends Screen {
                         (settings, enabled) -> settings.withDisplay(settings.highContrast(), settings.reducedMotion(), enabled));
             }
             case 2 -> {
-                for (var mode : THEMES) {
-                    var key = "theme." + mode.name().toLowerCase(java.util.Locale.ROOT);
-                    var choice = button(contentX, contentY, contentWidth, label(key),
-                            () -> edit(draft.withTheme(draft.theme().withMode(mode))), false);
-                    choice.setLeadingIcon(UiTheme.icon(mode));
-                    refreshRows.add(() -> choice.setSelected(draft.theme().mode() == mode));
-                    rows.add(choice);
-                }
+                var modes = THEMES.stream().map(mode -> new UiSectionBar.Section(
+                        label("theme.mode." + mode.name().toLowerCase(java.util.Locale.ROOT)), UiTheme.icon(mode))).toList();
+                var segment = ShBetterUiApi.controls().rubberSegment(new Bounds(contentX, contentY, contentWidth, ROW_HEIGHT),
+                        label("theme.mode"), modes, THEMES.indexOf(draft.theme().mode()), preferences,
+                        index -> edit(draft.withTheme(draft.theme().withMode(THEMES.get(index)))));
+                refreshRows.add(() -> segment.select(THEMES.indexOf(draft.theme().mode())));
+                rows.add(segment);
             }
             case TOOLS_TAB -> initTools();
             default -> throw new IllegalStateException("Invalid panel tab");
@@ -353,18 +349,28 @@ public final class ControlPanelScreen extends Screen {
         refreshRows.add(() -> control.setValue(value.test(draft)));
     }
 
-    private void slider(String key, ToIntFunction<ControlPanelSettings> value,
-                        BiFunction<ControlPanelSettings, Integer, ControlPanelSettings> update) {
-        var control = ShBetterUiApi.controls().slider(new Bounds(contentX, contentY, contentWidth, ROW_HEIGHT),
-                0, ControlPanelSettings.MAX_GLASS_SCALE, 5, value.applyAsInt(draft), preferences,
-                percent -> label("scale", label(key), percent), percent -> edit(update.apply(draft, percent)));
-        control.setTooltip(Tooltip.create(label(key + ".tooltip")));
-        control.setOnCommit(percent -> {}, percent -> edit(update.apply(draft, percent)));
-        rows.add(addRenderableWidget(control));
-        refreshRows.add(() -> {
-            control.setValue(value.applyAsInt(draft));
-            control.active = draft.glassEnabled() && !preferences.highContrast();
-        });
+    private void openGlassParameters() {
+        var fields = List.of(
+                glassField("radius", ControlPanelSettings::glassBlur, (s, value) ->
+                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), value, s.glassRefraction(), s.glassRim())),
+                glassField("refraction", ControlPanelSettings::glassRefraction, (s, value) ->
+                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), s.glassBlur(), value, s.glassRim())),
+                glassField("rim", ControlPanelSettings::glassRim, (s, value) ->
+                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), s.glassBlur(), s.glassRefraction(), value)));
+        var page = new ConfigPage<>(label("glass_parameters"), label("glass_parameters.tooltip"), fields, List.of());
+        ControlPanelPlatform.show(minecraft, page.screen(this, draft, value -> {
+            draft = value;
+            beforeReset = null;
+            status = null;
+            return true;
+        }, () -> glassParameters));
+    }
+
+    private static ConfigPage.NumberOption<ControlPanelSettings> glassField(String key,
+            ToIntFunction<ControlPanelSettings> read, BiFunction<ControlPanelSettings, Integer, ControlPanelSettings> edit) {
+        return new ConfigPage.NumberOption<>(key, label(key), label(key + ".tooltip"), 0,
+                ControlPanelSettings.MAX_GLASS_SCALE, true, read::applyAsInt,
+                (settings, value) -> edit.apply(settings, (int) value));
     }
 
     private UiButton button(int x, int y, int width, Component text, Runnable action, boolean primary) {
@@ -459,6 +465,7 @@ public final class ControlPanelScreen extends Screen {
         syncStyle();
         for (var widget : children()) {
             if (widget instanceof UiButton button) button.setPreferences(preferences);
+            if (widget instanceof UiRubberSegment segment) segment.setPreferences(preferences);
             if (widget instanceof UiSlider slider) slider.setPreferences(preferences);
         }
         refreshRows.forEach(Runnable::run);
@@ -498,11 +505,25 @@ public final class ControlPanelScreen extends Screen {
 
     private void cancelDrag() {
         if (getFocused() instanceof UiSlider slider) slider.cancelEdit();
+        if (getFocused() instanceof UiRubberSegment segment) segment.cancelDrag();
         setDragging(false);
     }
 
     @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == 0 && getFocused() instanceof UiRubberSegment segment && segment.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        return super.mouseReleased(event);
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && getFocused() instanceof UiRubberSegment segment && segment.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
         if (event.isEscape() && getFocused() instanceof UiSlider slider && slider.keyPressed(event)) {
             setDragging(false);
             return true;

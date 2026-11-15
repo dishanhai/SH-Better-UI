@@ -13,7 +13,7 @@ final class UiExpansionOverlay {
 
     static void render(GuiGraphics graphics, UiButton source, UiLocalModal.Content content,
                        UiLocalModal.Frame frame, GuiRect outline, Bounds start,
-                       float expansion, int mouseX, int mouseY, float partialTick) {
+                       float expansion, boolean centeredMenu, int mouseX, int mouseY, float partialTick) {
         if (outline.isEmpty()) return;
         float x = outline.getX(), y = outline.getY(), width = outline.getW(), height = outline.getH();
         graphics.flush();
@@ -23,24 +23,31 @@ final class UiExpansionOverlay {
             graphics.enableScissor((int) Math.floor(x), (int) Math.floor(y),
                     (int) Math.ceil(x + width), (int) Math.ceil(y + height));
             try {
-                int surface = frame.preferences().highContrast() ? DarkModeTheme.backgroundColor()
-                        : DarkModeTheme.surfaceColor();
-                if (expansion < 0.58f && !frame.preferences().highContrast()) {
-                    surface = GuiMotion.lerpColor(source.expansionFill(frame.nowMs()), surface, expansion / 0.58f);
+                if (centeredMenu && UiTheme.current().liquidGlass()) {
+                    LiquidGlassTheme.centeredMenu(graphics, outline, frame.radius(), frame.preferences(),
+                            expansion, frame.focused());
+                } else {
+                    int surface = frame.preferences().highContrast() ? DarkModeTheme.backgroundColor()
+                            : DarkModeTheme.surfaceColor();
+                    if (!centeredMenu && expansion < 0.58f && !frame.preferences().highContrast()) {
+                        surface = GuiMotion.lerpColor(source.expansionFill(frame.nowMs()), surface, expansion / 0.58f);
+                    }
+                    int focus = frame.preferences().highContrast() ? DarkModeTheme.textColor() : LiquidGlassTheme.accentColor();
+                    int edge = DarkModeTheme.hoverBorderColor();
+                    float highlight = frame.state() == UiExpansionController.State.ACTIVATING ? frame.phaseProgress() : 1f;
+                    RoundedCorners.draw(graphics, x, y, width, height, frame.radius(),
+                            frame.focused() && frame.preferences().highContrast() ? 2f : 1f,
+                            frame.focused() ? GuiMotion.lerpColor(edge, focus, highlight) : edge, surface);
                 }
-                int focus = frame.preferences().highContrast() ? DarkModeTheme.textColor() : LiquidGlassTheme.accentColor();
-                int edge = DarkModeTheme.hoverBorderColor();
-                float highlight = frame.state() == UiExpansionController.State.ACTIVATING ? frame.phaseProgress() : 1f;
-                RoundedCorners.draw(graphics, x, y, width, height, frame.radius(),
-                        frame.focused() && frame.preferences().highContrast() ? 2f : 1f,
-                        frame.focused() ? GuiMotion.lerpColor(edge, focus, highlight) : edge, surface);
                 if (expansion == 1f) {
                     boolean hover = frame.state() == UiExpansionController.State.ACTIVE
                             && UiExpansionController.contains(outline, frame.radius(), mouseX, mouseY);
                     content.render(graphics, frame, hover ? mouseX : -1, hover ? mouseY : -1, partialTick);
                 } else {
                     float opacity = content.animatesContents() ? contentOpacity(expansion) : 0f;
-                    if (opacity < 1f) drawTitle(graphics, source.getMessage(), outline, start, 1f - opacity);
+                    if (!centeredMenu && opacity < 1f) {
+                        drawTitle(graphics, source.getMessage(), outline, start, 1f - opacity);
+                    }
                     if (opacity > 0f) drawTransitionContent(graphics, content, frame, outline, opacity, partialTick);
                 }
             } finally {
@@ -56,8 +63,7 @@ final class UiExpansionOverlay {
     }
 
     static float contentOpacity(float expansion) {
-        float t = GuiMotion.clamp01((expansion - 0.58f) / 0.38f);
-        return t * t * (3f - 2f * t);
+        return UiExpansionController.menuContentOpacity(expansion);
     }
 
     private static void drawTitle(GuiGraphics graphics, Component title, GuiRect outline, Bounds source, float opacity) {

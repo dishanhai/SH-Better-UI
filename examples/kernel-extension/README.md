@@ -12,6 +12,16 @@
 - 模組宣告可選的 `UIApis.SYSTEM_SCREEN_READER`。缺少該能力時，按鈕使用 Minecraft 內建旁白。動態主題不可用時，畫面使用既有預設樣式。
 - [探索描述檔](common/src/main/resources/META-INF/sh_better_ui.modules) 由 Loader 從模組自己的 JAR 讀取。實體畫面關閉時，引擎關閉掛載的樹及元件作用域。引擎停止時，模組也會銷毀可能仍開啟的畫面。
 
+## 自動發現開發者預覽
+
+裝入本範例後，開啟 SHBUI 控制面板 → 開發者面板 → 控制項圖庫，點選上方的範例名稱開啟目錄，搜尋 `shbui_kernel_example:gallery_toggle` 或「範例模組開關」。用滑鼠或 Tab／Enter 切換開關。
+
+Forge 1.20.1 的獨立客戶端已驗證自動登記、依 ID 搜尋、鍵盤及滑鼠操作、全螢幕和 GUI 縮放後保留狀態、返回焦點及退出時撤銷。互動以高對比和減少動效設定執行。
+
+現有的 Loader 描述檔會讓 UUK 發現 `ExampleUiModule`。模組實作 `DeveloperPreviewProvider` 並宣告一筆 `PreviewSpec`。UUK 在模組成功啟動後加入目錄，在模組作用域關閉時撤銷，選取預覽時才建立場景。請使用本工作區新建置且包含 `DeveloperPreviewProvider` 的 SH-Better-UI JAR。
+
+NeoForge 26.1.2 和 26.2 使用相同的發現約定，請用 26.x 的原生預覽場景介面。 [26.x 獨立範例與驗收命令](../../docs/NEOFORGE_26_GALLERY_GAPS.md#第三方预览自动发现)
+
 ## 宣告式頁面
 
 從標題畫面或暫停選單選擇「宣告式頁面」。本機預覽以 `PageService.register` 註冊固定控件樹，使用 `open` 建立實例，按下兌換後以 `update` 更新該實例的測試點數。在遊戲中開啟時，頁面還可掛載或解除 HUD，並發出通知。HUD 與通知使用同一份頁面 API 的被動根節點，由現有即時表面服務呈現。 [ClientPageExamples](common/src/main/java/com/dishanhai/shbui_kernel_example/ClientPageExamples.java)
@@ -46,17 +56,17 @@
 
 ## 建置
 
-從儲存庫根目錄以 Git Bash 執行。先建置含頁面及文字可讀性 API 的 SH-Better-UI 1.0.7 雙端依賴 JAR。兩端使用 Java 21 和 Kotlin 2.2.21，Forge 使用 Gradle 8.8 並輸出 Java 17 位元組碼，NeoForge 使用 Gradle 9.2.1 並輸出 Java 21。Forge 預設在工作區的 `libs/` 尋找 KotlinForForge 4.12.0，NeoForge 使用 Maven 上的 KotlinForForge 5.10.0。依賴尚未下載時需在線執行一次。`build` 只編譯和封裝範例。
+從儲存庫根目錄以 Git Bash 執行。先建置含頁面、文字可讀性和開發者預覽 API 的 SH-Better-UI 1.0.11 雙端依賴 JAR。兩端使用 Java 21 和 Kotlin 2.2.21，Forge 使用 Gradle 8.8 並輸出 Java 17 位元組碼，NeoForge 使用 Gradle 9.2.1 並輸出 Java 21。Forge 預設在工作區的 `libs/` 尋找 KotlinForForge 4.12.0，NeoForge 使用 Maven 上的 KotlinForForge 5.10.0。依賴尚未下載時需在線執行一次。`build` 只編譯和封裝範例。
 
 ```bash
 ./gradle-install/gradle-8.8/bin/gradle -p examples/kernel-extension/forge build --offline --no-daemon --console=plain
-./neoforge/gradlew -p examples/kernel-extension/neoforge build --offline --no-daemon --console=plain
+./neoforge-1.21.1/gradlew -p examples/kernel-extension/neoforge build --offline --no-daemon --console=plain
 ```
 
 | 平台 | 編譯依賴（預設） | 正式範例成品 |
 | --- | --- | --- |
-| Forge | `build/libs/sh_better_ui-1.0.7-dev.jar` | `forge/build/libs/shbui-kernel-example-forge-1.0.0.jar` |
-| NeoForge | `neoforge/build/libs/sh_better_ui-neoforge-1.21.1-1.0.7.jar` | `neoforge/build/libs/shbui-kernel-example-neoforge-1.0.0.jar` |
+| Forge | `build/libs/sh_better_ui-1.0.11-dev.jar` | `forge/build/libs/shbui-kernel-example-forge-1.0.0.jar` |
+| NeoForge | `neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-1.0.11.jar` | `neoforge/build/libs/shbui-kernel-example-neoforge-1.0.0.jar` |
 
 將整個範例資料夾複製到另一個位置時，可以用本機 Gradle 從 `forge/` 或 `neoforge/` 建置，並用 `-PshBetterUiJar=<絕對路徑>` 選擇 SDK JAR。Forge 開發啟動也可用 `-PkotlinForForgeJar=<絕對路徑>` 指定 KotlinForForge JAR。Forge 的開發環境使用 Mojmap 的 `-dev.jar`，正式啟動器使用重新映射過的正式 JAR。正式安裝時，把範例、對應版本的 SH-Better-UI 和 KotlinForForge 各自放進 `mods/`。
 
@@ -64,7 +74,7 @@
 
 ```bash
 ./gradle-install/gradle-8.8/bin/gradle -p examples/kernel-extension/forge runClient -PexampleSmoke --offline --no-daemon --console=plain
-./neoforge/gradlew -p examples/kernel-extension/neoforge runClient -PexampleSmoke --offline --no-daemon --console=plain
+./neoforge-1.21.1/gradlew -p examples/kernel-extension/neoforge runClient -PexampleSmoke --offline --no-daemon --console=plain
 ```
 
 啟動工作將範例和程式庫 JAR 複製到各範例工程的 `build/example-smoke/mods/`。Forge 使用 Java 17 啟動 Mojmap 的兩份開發 JAR，另複製 KotlinForForge 的發行 JAR。NeoForge 使用 Java 21 啟動兩份正式 JAR，並由 ModDevGradle 將 KotlinForForge Maven 依賴加入啟動 classpath。

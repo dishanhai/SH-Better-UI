@@ -13,9 +13,7 @@ import com.dishanhai.sh_better_ui.kernel.api.page.UiNode;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.AbstractWidget;
-import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.network.chat.Component;
-import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -68,12 +66,16 @@ final class NativePageInputs {
                 screen.context().preferences(), percent -> Component.translatable("sh_better_ui.pages.slider_value",
                         label[0], percent),
                 percent -> view.edit(node, ancestors, new UiValue.Decimal(percent / 100.0)));
-        slider.setOnCommit(percent -> view.commit(node, ancestors, new UiValue.Decimal(percent / 100.0)),
-                percent -> view.cancelEdit(node, new UiValue.Decimal(percent / 100.0)));
+        slider.setOnCommit(percent -> view.commitSlider(node, ancestors, new UiValue.Decimal(percent / 100.0)),
+                percent -> view.cancelEdit(node, new UiValue.Decimal(percent / 100.0)),
+                () -> view.acceptsInput(node, ancestors));
         return new Control(slider, data -> {
             label[0] = NativePageView.text(NativePageView.value(node, "label", data));
-            UiValue value = view.input(node, "value", data);
-            slider.setValue(value instanceof UiValue.Decimal decimal ? (int) Math.round(100 * decimal.value()) : 0);
+            // Reconcile the latest bound value after the pointer gesture settles.
+            if (!slider.isEditing()) {
+                UiValue value = view.input(node, "value", data);
+                slider.setValue(value instanceof UiValue.Decimal decimal ? (int) Math.round(100 * decimal.value()) : 0);
+            }
             slider.refreshLabel();
         });
     }
@@ -101,21 +103,14 @@ final class NativePageInputs {
             }
             return new Control(finder, ignored -> {});
         }
-        var editor = new EditBox(minecraft.font, 0, 0, width, height, title) {
-            @Override
-            public boolean keyPressed(int key, int scanCode, int modifiers) {
-                if (active && isFocused() && node.action().isPresent()
-                        && (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER)) {
-                    applyText(getValue(), input -> view.commit(node, ancestors, input));
-                    return true;
-                }
-                return super.keyPressed(key, scanCode, modifiers);
-            }
-        };
-        editor.setMaxLength(256);
+        var editor = screen.context().controls().textField(minecraft.font, new Bounds(0, 0, width, height),
+                title, 256, screen.context().preferences());
         editor.setHint(hint.getString().isEmpty() ? title : hint);
         editor.setValue(NativePageView.text(view.input(node, "value", Map.of())).getString());
-        editor.setResponder(value -> applyText(value, input -> view.edit(node, ancestors, input)));
+        editor.setOnChange(value -> applyText(value, input -> view.edit(node, ancestors, input)));
+        if (node.action().isPresent()) {
+            editor.setOnSubmit(value -> applyText(value, input -> view.commit(node, ancestors, input)));
+        }
         return new Control(editor, ignored -> {});
     }
 
@@ -133,6 +128,15 @@ final class NativePageInputs {
         }
         List<Component> labels = ghost ? candidates.stream().map(NativePageInputs::itemLabel).toList()
                 : sequence(node.properties().get("options")).stream().map(NativePageView::text).toList();
+        NativePageOptions.Glide glide = ghost ? null : new NativePageOptions.Glide(
+                sequence(node.properties().get("tags")).stream().map(NativePageView::text).toList(),
+                NativePageView.number(node.properties().get("menuWidth"), 176),
+                new UiValue.Choice("top").equals(node.properties().get("placement")),
+                new UiValue.Choice("right").equals(node.properties().get("align")),
+                !new UiValue.Bool(false).equals(node.properties().get("rememberPosition")));
+        var placeholder = node.properties().containsKey("placeholder")
+                ? NativePageView.text(node.properties().get("placeholder"))
+                : Component.translatable("sh_better_ui.pages.select_value");
         UiValue fallback = ghost ? EMPTY_ITEM : new UiValue.Int(0);
         String key = ghost ? "item" : "selected";
         UiValue[] current = {fallback};
@@ -140,9 +144,9 @@ final class NativePageInputs {
         source[0] = screen.context().controls().button(new Bounds(0, 0, width, height), Component.empty(),
                 button -> {
                     if (view.acceptsInput(node, ancestors)) {
-                        NativePageOptions.open(screen, view.options(), source[0], labels, candidates.indexOf(current[0]),
-                                view.textLabel(node, ancestors, source[0]),
-                                index -> view.commit(node, ancestors, candidates.get(index)));
+                        NativePageOptions.open(screen, view.options(), source[0], labels,
+                                () -> candidates.indexOf(current[0]), view.textLabel(node, ancestors, source[0]),
+                                glide, index -> view.commit(node, ancestors, candidates.get(index)));
                     }
                 }, screen.context().preferences(), false, UiStyle.DEFAULT);
         source[0].setSampleBackground(false);
@@ -152,7 +156,7 @@ final class NativePageInputs {
             current[0] = value == null ? fallback : value;
             int selected = candidates.indexOf(current[0]);
             Component label = selected >= 0 ? labels.get(selected)
-                    : ghost ? itemLabel(current[0]) : Component.translatable("sh_better_ui.pages.select_value");
+                    : ghost ? itemLabel(current[0]) : placeholder;
             source[0].setMessage(label);
             source[0].active &= !labels.isEmpty();
         });

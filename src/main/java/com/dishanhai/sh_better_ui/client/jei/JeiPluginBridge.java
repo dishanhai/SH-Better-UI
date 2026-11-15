@@ -327,6 +327,11 @@ public final class JeiPluginBridge implements IModPlugin {
             return drawable.getRect().getHeight();
         }
 
+        @Override public int outerWidth() { return drawable.getRectWithBorder().getWidth(); }
+        @Override public int outerHeight() { return drawable.getRectWithBorder().getHeight(); }
+        @Override public int contentOffsetX() { return drawable.getRect().getX() - drawable.getRectWithBorder().getX(); }
+        @Override public int contentOffsetY() { return drawable.getRect().getY() - drawable.getRectWithBorder().getY(); }
+
         @Override
         public void render(GuiGraphics graphics, int x, int y, int mouseX, int mouseY) {
             if (!ingredient.visible()) return;

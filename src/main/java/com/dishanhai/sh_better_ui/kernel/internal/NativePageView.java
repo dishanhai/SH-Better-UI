@@ -31,6 +31,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.EditBox;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.layouts.GridLayout;
 import net.minecraft.client.gui.layouts.Layout;
@@ -119,8 +120,13 @@ final class NativePageView {
     void restoreFocus(UiScreen screen, String nodeId) {
         if (nodeId == null) return;
         bindings.stream().filter(binding -> binding.node.id().equals(nodeId))
-                .map(Binding::widget).filter(widget -> widget.active && widget.visible).findFirst()
+                .filter(binding -> focusEligible(binding, page.snapshot().data())).map(Binding::widget).findFirst()
                 .ifPresent(screen::setFocused);
+    }
+
+    private static boolean focusEligible(Binding binding, Map<String, UiValue> data) {
+        return binding.widget.visible && inheritedFlag(binding.node, binding.parents, "enabled", data)
+                && (!binding.node.typeId().path().equals("button") || binding.node.action().isPresent());
     }
 
     Optional<AbstractWidget> actionWidget(String nodeId) {
@@ -175,6 +181,10 @@ final class NativePageView {
         }
         for (var binding : bindings) {
             if (binding.widget instanceof NativePageList list) list.retireTextRows();
+            if (binding.widget instanceof UiSlider slider && slider.isEditing()) {
+                slider.cancelEdit();
+                screen.setDragging(false);
+            }
         }
         bindings.clear();
         boxes.clear();
@@ -350,9 +360,9 @@ final class NativePageView {
             if (fits) graphics.fill(rootLayout.getX() - 6, content.y() - 6,
                     rootLayout.getX() + rootLayout.getWidth() + 6, content.bottom() + 6, DarkModeTheme.surfaceColor());
         }
-        if (!Minecraft.getInstance().isWindowActive() && screen.isDragging()) {
+        if (!Minecraft.getInstance().isWindowActive()) {
             if (screen.getFocused() instanceof UiSlider slider) slider.cancelEdit();
-            screen.setDragging(false);
+            if (screen.isDragging()) screen.setDragging(false);
         }
         refresh(screen);
         revealFocus(screen);
@@ -367,7 +377,8 @@ final class NativePageView {
                 case PENDING -> "sh_better_ui.pages.action.pending";
                 case SUCCEEDED -> "sh_better_ui.pages.action.succeeded";
                 case FAILED -> "sh_better_ui.pages.action.failed";
-                case TIMED_OUT -> "sh_better_ui.pages.action.timed_out";
+                case TIMED_OUT -> page.actionAvailable() ? "sh_better_ui.pages.action.timed_out"
+                        : "sh_better_ui.pages.action.outcome_unknown";
                 case CANCELLED -> "sh_better_ui.pages.action.cancelled";
             };
             if (!page.snapshot().synchronizedData()) status = "sh_better_ui.pages.syncing";
@@ -378,6 +389,24 @@ final class NativePageView {
     }
 
     void presented(UiScreen screen, UiFrame frame) {
+        if (screen.getFocused() instanceof AbstractWidget focused && !focused.active
+                && Minecraft.getInstance().getLastInputType().isKeyboard()) {
+            for (var binding : bindings) {
+                if (binding.widget != focused || !focusEligible(binding, page.snapshot().data())) continue;
+                var clip = clip(binding.parents);
+                if (clip.width() > 0 && clip.height() > 0) {
+                    var graphics = frame.graphics();
+                    graphics.enableScissor(clip.x(), clip.y(), clip.right(), clip.bottom());
+                    try {
+                        graphics.renderOutline(focused.getX(), focused.getY(), focused.getWidth(), focused.getHeight(),
+                                DarkModeTheme.textColor());
+                    } finally {
+                        graphics.disableScissor();
+                    }
+                }
+                break;
+            }
+        }
         if (fits && frame.viewport().height() > 0) page.presented();
     }
 
@@ -392,12 +421,17 @@ final class NativePageView {
             var data = snapshot.data();
             widget.visible = fits && widget.getWidth() > 0 && widget.getHeight() > 0
                     && inheritedFlag(node, binding.parents, "visible", data);
-            widget.active = widget.visible && (node.action().isEmpty()
-                    || snapshot.synchronizedData() && page.actionAvailable())
-                    && inheritedFlag(node, binding.parents, "enabled", data);
-            if (node.typeId().path().equals("button") && node.action().isEmpty()) widget.active = false;
+            boolean focusEligible = focusEligible(binding, data);
+            widget.active = focusEligible && (node.action().isEmpty()
+                    || snapshot.synchronizedData() && page.actionAvailable());
+            // A focused EditBox can still accept text when inactive unless its editor is locked too.
+            if (node.action().isPresent() && widget instanceof EditBox editor) editor.setEditable(widget.active);
+            if (!widget.active && widget instanceof UiSlider slider && slider.isEditing()) {
+                slider.cancelEdit();
+                if (screen.getFocused() == slider) screen.setDragging(false);
+            }
             binding.update.accept(data);
-            if ((!widget.active || !widget.visible) && screen.getFocused() == widget) screen.setFocused(null);
+            if (!focusEligible && screen.getFocused() == widget) screen.setFocused(null);
             var tooltip = text(value(node, "tooltip", data));
             if (!tooltip.getString().isEmpty()) widget.setTooltip(Tooltip.create(tooltip));
             else if (widget instanceof PassiveWidget passive) passive.setDefaultTooltip();
@@ -506,8 +540,14 @@ final class NativePageView {
         }
     }
 
+    void commitSlider(UiNode node, List<UiNode> ancestors, UiValue.Decimal value) {
+        // A refresh may already have processed the drag preview and deferred its bound value.
+        localDirty = true;
+        commit(node, ancestors, value);
+    }
+
     void cancelEdit(UiNode node, UiValue previous) {
-        drafts.put(node.id(), previous);
+        drafts.replace(node.id(), previous);
         uncommitted.remove(node.id());
         localDirty = true;
     }
@@ -587,6 +627,12 @@ final class NativePageView {
         }
 
         @Override public boolean mouseClicked(double x, double y, int button) { return false; }
+
+        @Override
+        public boolean isMouseOver(double x, double y) {
+            // A passive stack layer can describe what's drawn even when its enabled binding is false.
+            return visible && x >= getX() && x < getX() + getWidth() && y >= getY() && y < getY() + getHeight();
+        }
 
         void update(UiNode node, Map<String, UiValue> data, UiPreferences preferences) {
             var message = text(value(node, "text", data));

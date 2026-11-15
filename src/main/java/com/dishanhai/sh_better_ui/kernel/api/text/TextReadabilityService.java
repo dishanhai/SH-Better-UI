@@ -37,6 +37,17 @@ public interface TextReadabilityService extends UIService {
     /** Draws in the current content pass, or submits to its layer's foreground when protection is enabled. */
     Result submit(ModuleContext module, Request request);
 
+    /**
+     * Supplies the final paint result for a queued request in its live foreground pass. The callback runs once
+     * after painting and may draw a fallback for RENDER_UNAVAILABLE or RENDER_FAILED. Restore any graphics
+     * state changed by the callback. For a synchronous result use the return value. A request invalidated
+     * by a closed scope, expired frame or changed layout is discarded without calling the callback.
+     */
+    default Result submit(ModuleContext module, Request request,
+                          java.util.function.BiConsumer<GuiGraphics, Result> completed) {
+        throw new UnsupportedOperationException("This text backend does not report queued paint results");
+    }
+
     /** Schedules a callback after this layer's background effects, in Z and registration order. */
     Result foreground(ModuleContext module, ScopeHandle scope, int z, Consumer<RenderService.Context> draw);
 

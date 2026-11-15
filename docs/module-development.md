@@ -73,6 +73,22 @@ public final class DemoModule implements UIModule {
 
 使用 `.dependency(moduleId, versions, required)` 指定模組相依，或用 `.requiredCapability(...)`、`.optionalCapability(...)` 指定功能相依。相容提供者會先於消費者啟動。缺少必要依賴時擴充會被拒絕或阻擋。缺少選用依賴時檢查 `capabilities().resolve(...)` 或 `find(...)`，走本地備援。對可卸除提供者，請在下一次使用時確認有效性。 [能力系統](capability-system.md)
 
+## 自動發現開發者預覽
+
+讓描述檔中宣告的用戶端模組實作 `DeveloperPreviewProvider`，並從 `developerPreviews()` 傳回 `List<PreviewSpec>`。預覽 ID 的命名空間須與模組 ID 一致，`titleKey` 指向模組語言檔，場景則由 `PreviewSpec` 的工廠建立。UUK 在模組成功啟動後將宣告加入控制項或材質圖庫的目錄和搜尋結果，模組作用域關閉時撤銷。選取預覽時才呼叫場景工廠。
+
+[範例模組及使用步驟](../examples/kernel-extension/README.md#自動發現開發者預覽)
+
+NeoForge 26.1.2 和 26.2 使用同一個描述檔與 `DeveloperPreviewProvider`。用對應版本的 SH-Better-UI JAR 編譯；場景使用 26.x 的 `PreviewContext`、`GuiGraphicsExtractor` 和 `controls()`。 [26.x 範例與驗收命令](NEOFORGE_26_GALLERY_GAPS.md#第三方预览自动发现)
+
+## 自動發現伺服器能力（NeoForge 1.21.1）
+
+在模組 JAR 中提供 `META-INF/sh_better_ui.automation`，每行為 Loader mod ID 和公開實作類全名。格式、大小上限和模組來源驗證沿用用戶端描述檔規則。實作類須提供公開無參數建構式、實作 `ServerCapabilityModule`，並可在獨立伺服器載入。
+
+伺服器啟動時，UUK 呼叫 `register(MinecraftServer, Registrar)`。模組 ID 和能力 ID 必須屬於宣告模組的命名空間，能力描述須使用相同的提供者 ID 和版本。重複的模組 ID 會被拒絕。註冊失敗會撤銷該模組已註冊的能力，伺服器停止會釋放全部能力。Registrar 的有效期到該次呼叫結束。
+
+伺服器端消費者以 `ServerCapabilities.forPlayer(player)` 取得目前在線玩家的目錄，再用 `find(id, contractVersion)` 和 `invoke(reference, request)` 查詢及執行能力。提供者以 `caller.playerId()` 識別呼叫者，應在服務端校驗對目標資源的實際權限。玩家離線時目錄失效。目前通用頁面生成和腳本編排仍在開發中。
+
 ## 可執行範例
 
 `shbui_kernel_example:controls` 提供型別化 `CounterService` 和自訂能力，透過 `SCREENS` 掛載原生頁面，使用 `THEME` 讀取主題並套用自己的 `STEP` 設定。缺少系統螢幕閱讀器能力時沿用 Minecraft 按鈕旁白。Forge 與 NeoForge 範例分別產出消費模組 JAR，使用對應的 SH-Better-UI 作為獨立依賴。 [範例專案與命令](../examples/kernel-extension/README.md) · [平台相容性](platform-compatibility.md)

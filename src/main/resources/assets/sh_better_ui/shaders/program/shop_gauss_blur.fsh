@@ -10,7 +10,7 @@
 // 注意：纯色面板做高斯完全看不出来，波必须带折射位移和高光才有表现。
 //
 // 玻璃层（GlassTint / GlassParams / GlassEdge，全零等价于旧行为），全部乘 Progress 随模糊淡入：
-//   第一趟（H）：靠近 box 边缘的采样向内偏移，做出透镜边的折射；
+//   折射：普通矩形在 H 趟偏移；圆角玻璃在 V 趟按轮廓偏移；
 //   最后一趟（V）：饱和度、色调、提亮、静态颗粒、内缘亮边，以及 Hole 外缘的柔阴影。
 uniform sampler2D DiffuseSampler;
 uniform vec2 InSize;
@@ -274,8 +274,8 @@ void main() {
         lo += oneTexel * 0.5;
         hi = max(lo, hi - oneTexel * 0.5);
     }
-    if (firstPass && GlassEdge.x > 0.0) {
-        // 透镜边：越靠边越多地采到内侧的内容，边缘看起来被拉伸、弯折。
+    if ((rounded ? lastPass : firstPass) && GlassEdge.x > 0.0) {
+        // V 趟由当前片元的法线决定圆角位移，避免混合相邻行已经偏移的不同轮廓。
         baseUv += inward * (GlassEdge.x * k) / InSize;
     }
     if (waveActive) {

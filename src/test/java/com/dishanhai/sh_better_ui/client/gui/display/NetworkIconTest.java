@@ -245,6 +245,12 @@ class NetworkIconTest {
                 GraphicIcon.SELECT_ALL, GraphicIcon.SELECT_PARTIAL));
     }
 
+    @Test
+    void ae2OrderAndStockIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.AE2_ORDER, GraphicIcon.AE2_PATTERN_UPLOAD,
+                GraphicIcon.AE2_ORDERABLE, GraphicIcon.AE2_STOCK));
+    }
+
     private static void assertIconTextures(List<GraphicIcon> icons) throws IOException {
         for (var icon : icons) {
             var id = icon.texture();

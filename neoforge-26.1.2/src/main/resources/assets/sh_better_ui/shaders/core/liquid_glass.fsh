@@ -42,6 +42,14 @@ vec2 refractedOffset(vec2 outward, float depth, float bevelWidth, float halfShor
     return -outward * travel * (ray.x / ray.y);
 }
 
+float curvedRim(vec2 normal) {
+    if (radius <= 0.0) return 0.0;
+    vec2 straight = smoothstep(vec2(0.0), vec2(1.0), halfSize - radius);
+    vec2 curved = smoothstep(vec2(0.0), vec2(0.55), abs(normal));
+    vec2 weight = mix(vec2(1.0), curved, straight);
+    return weight.x * weight.y;
+}
+
 void main() {
     vec2 corner = abs(localPosition) - (halfSize - radius);
     vec2 outside = max(corner, 0.0);
@@ -68,10 +76,31 @@ void main() {
     float transmission = refractionBlurTransmissionLensing.z;
     float lensing = refractionBlurTransmissionLensing.w;
     vec2 bend = refractedOffset(outward, inwardDistance, bevelWidth, halfShort, refraction, lensing);
-    vec4 scene = sampleBackdrop(screenUv + localToUv * bend, localToUv, blurRadius);
+    // Keep the bent contour legible in frosted glass, with the full blur on the flat face.
+    float bevel = bevelWidth > 0.0
+        ? 1.0 - smoothstep(0.0, bevelWidth, inwardDistance) : 0.0;
+    vec2 bentUv = screenUv + localToUv * bend;
+    float effectiveBlur = blurRadius * (1.0 - 0.9 * bevel);
+    vec4 scene = sampleBackdrop(bentUv, localToUv, effectiveBlur);
     if (scene.a == 0.0) {
         fragColor = vec4(tint.rgb, tint.a * coverage * opacity);
         return;
+    }
+
+    if (dot(bend, bend) > 0.01) {
+        // Match the managed glass's balanced GlassSurface channel offsets at curved edges.
+        float dispersion = (7.5 / 170.0) * curvedRim(outward);
+        if (dispersion > 0.0) {
+            vec2 fringe = localToUv * (bend * dispersion);
+            vec2 split = vec2(texture(Sampler0, bentUv + fringe).r, texture(Sampler0, bentUv - fringe).b);
+            if (effectiveBlur < 0.06) {
+                scene.rb = split;
+            } else {
+                vec2 sharp = texture(Sampler0, bentUv).rb;
+                // Keep the Gaussian taps shared and attenuate sharp fringes as the surface frosts.
+                scene.rb = clamp(scene.rb + (split - sharp) * (1.0 - smoothstep(0.06, 2.0, effectiveBlur)), 0.0, 1.0);
+            }
+        }
     }
 
     float luma = dot(scene.rgb, vec3(0.2126, 0.7152, 0.0722));

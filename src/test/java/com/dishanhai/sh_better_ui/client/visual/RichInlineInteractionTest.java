@@ -1,6 +1,22 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.client.api.InteractionApi;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
+import com.dishanhai.sh_better_ui.kernel.api.APIRegistry;
+import com.dishanhai.sh_better_ui.kernel.api.CapabilityResolver;
+import com.dishanhai.sh_better_ui.kernel.api.InputService;
+import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
+import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
+import com.dishanhai.sh_better_ui.kernel.api.NativeInput;
+import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
+import com.dishanhai.sh_better_ui.kernel.api.ServiceKey;
+import com.dishanhai.sh_better_ui.kernel.api.ServiceRegistrar;
+import com.dishanhai.sh_better_ui.kernel.api.Subscription;
+import com.dishanhai.sh_better_ui.kernel.api.UIApis;
+import com.dishanhai.sh_better_ui.kernel.api.UIEngine;
+import com.dishanhai.sh_better_ui.kernel.api.UILifecycle;
+import com.dishanhai.sh_better_ui.kernel.api.UIService;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichLayoutSnapshot.Fragment;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichLayoutSnapshot.Rect;
@@ -16,6 +32,7 @@ import java.util.List;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Predicate;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.lwjgl.glfw.GLFW.*;
@@ -80,6 +97,63 @@ class RichInlineInteractionTest {
         assertFalse(interaction.release(160, 50, LEFT));
         assertEquals(List.of(100), values);
         assertEquals(100, interaction.state(SLIDER).sliderValue());
+    }
+
+    @Test void scopedCaptureUsesTheClaimAndCancelsWhenTheServiceRevokesIt() {
+        var interaction = new RichInlineInteraction(new Geometry(), () -> 0);
+        var values = new ArrayList<Integer>();
+        interaction.onSlider(SLIDER.id(), values::add);
+        var input = new CaptureService();
+        var module = new CaptureModule(input);
+
+        assertFalse(interaction.capture(module, module.scope(), input.claim, LEFT));
+        assertTrue(interaction.press(104, 8, LEFT));
+        assertTrue(interaction.capture(module, module.scope(), input.claim, LEFT));
+        assertSame(module, input.module);
+        assertSame(module.scope(), input.node);
+        assertEquals(LEFT, input.button);
+        assertFalse(interaction.capture(module, module.scope(), input.claim, LEFT));
+
+        var revoked = input.handler;
+        revoked.drag(160, 50);
+        assertEquals(100, interaction.state(SLIDER).sliderValue());
+        revoked.cancel();
+        assertEquals(40, interaction.state(SLIDER).sliderValue());
+        assertTrue(values.isEmpty());
+
+        assertTrue(interaction.press(104, 8, LEFT));
+        assertTrue(interaction.capture(module, module.scope(), input.claim, LEFT));
+        int nextPreview = interaction.state(SLIDER).sliderValue();
+        revoked.drag(160, 50);
+        revoked.release(160, 50);
+        assertEquals(nextPreview, interaction.state(SLIDER).sliderValue());
+        assertTrue(interaction.release(160, 50, LEFT));
+        assertTrue(values.isEmpty());
+        input.handler.release(160, 50);
+        input.handler.release(160, 50);
+        assertEquals(List.of(100), values);
+    }
+
+    @Test void rejectedScopedCaptureRollsBackAndDoesNotCommitOnRelease() {
+        var interaction = new RichInlineInteraction(new Geometry(), () -> 0);
+        var values = new ArrayList<Integer>();
+        interaction.onSlider(SLIDER.id(), values::add);
+        var input = new CaptureService();
+        var module = new CaptureModule(input);
+
+        input.accepted = false;
+        assertTrue(interaction.press(120, 8, LEFT));
+        assertFalse(interaction.capture(module, module.scope(), input.claim, LEFT));
+        assertFalse(interaction.release(160, 50, LEFT));
+        assertEquals(40, interaction.state(SLIDER).sliderValue());
+
+        input.denial = new SecurityException("missing pointer grant");
+        assertTrue(interaction.press(120, 8, LEFT));
+        assertSame(input.denial, assertThrows(SecurityException.class,
+                () -> interaction.capture(module, module.scope(), input.claim, LEFT)));
+        assertFalse(interaction.release(160, 50, LEFT));
+        assertEquals(40, interaction.state(SLIDER).sliderValue());
+        assertTrue(values.isEmpty());
     }
 
     @Test void visibleFocusOrderLetsTabLeaveTheViewAndIgnoresButtonKeyRepeat() {
@@ -154,6 +228,52 @@ class RichInlineInteractionTest {
 
     private static RichObjectNode node(String name, RichObjectNode.Content content) {
         return new RichObjectNode(new UiId("test", name), content, 1, 1, 16, name);
+    }
+
+    private record CaptureModule(CaptureService input) implements ModuleContext, UIEngine {
+        @Override public UIEngine engine() { return this; }
+        @Override public ScopeHandle scope() { return input.scope; }
+        @Override public ModuleDescriptor descriptor() { throw new UnsupportedOperationException(); }
+        @Override public ServiceRegistrar services() { throw new UnsupportedOperationException(); }
+        @Override public APIRegistry registry() { throw new UnsupportedOperationException(); }
+        @Override public CapabilityResolver capabilities() { throw new UnsupportedOperationException(); }
+        @Override public UILifecycle lifecycle() { throw new UnsupportedOperationException(); }
+
+        @Override public <T extends UIService> T require(ServiceKey<T> key) {
+            assertEquals(UIApis.INPUT, key);
+            return key.type().cast(input);
+        }
+    }
+
+    private static final class CaptureService implements InputService {
+        private final ScopeHandle scope = (ScopeHandle) java.lang.reflect.Proxy.newProxyInstance(
+                ScopeHandle.class.getClassLoader(), new Class<?>[]{ScopeHandle.class}, (proxy, method, args) -> {
+                    throw new UnsupportedOperationException(method.getName());
+                });
+        private final UiId claim = new UiId("test", "rich_pointer");
+        private ModuleContext module;
+        private ScopeHandle node;
+        private int button;
+        private UiPointerCapture.Handler handler;
+        private boolean accepted = true;
+        private SecurityException denial;
+
+        @Override public InteractionApi interactions() { throw new UnsupportedOperationException(); }
+        @Override public Subscription target(ModuleContext module, ScopeHandle node, int layer,
+                                             Predicate<NativeInput> hit) {
+            throw new UnsupportedOperationException();
+        }
+
+        @Override public boolean capture(ModuleContext module, ScopeHandle node, UiId claim, int button,
+                                         UiPointerCapture.Handler handler) {
+            this.module = module;
+            this.node = node;
+            assertEquals(this.claim, claim);
+            this.button = button;
+            if (denial != null) throw denial;
+            if (accepted) this.handler = handler;
+            return accepted;
+        }
     }
 
     private static final class Geometry implements RichInlineInteraction.Geometry {

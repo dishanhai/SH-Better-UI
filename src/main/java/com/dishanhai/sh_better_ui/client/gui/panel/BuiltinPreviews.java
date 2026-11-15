@@ -16,12 +16,23 @@ public final class BuiltinPreviews {
         for (var sample : DeveloperSamples.values()) {
             registry.register(sample.spec);
         }
+        LatticeLoaderPreview.registerInto(registry, message -> Minecraft.getInstance().getNarrator().say(message));
         DeveloperBottomSheetPreview.registerInto(registry);
         DeveloperAnimationPreview.registerInto(registry);
         VisualAlignmentPreview.registerInto(registry);
         AppearanceGalleryPreview.registerInto(registry);
         NativeEffectPreviews.registerInto(registry);
+        PhotonKnotPreview.registerInto(registry);
         GestureEffectPreviews.registerInto(registry);
+        FolderFloatPreview.registerInto(registry);
+        registry.register(new PreviewSpec("sh_better_ui:" + BranchedMenuDemo.ID, PreviewSpec.Category.CONTROLS,
+                BranchedMenuDemo.ORDER, BranchedMenuDemo.TITLE, BranchedMenuDemo.HEIGHT, 0, "",
+                BranchedMenuGalleryPreview::new));
+        registry.register(new PreviewSpec("sh_better_ui:shredder", PreviewSpec.Category.CONTROLS, 28,
+                ShredderDemo.TITLE, ShredderGalleryPreview.PREFERRED_HEIGHT, 0, "", ShredderGalleryPreview::new));
+        TextReadabilityPreview.registerInto(registry);
+        registry.register(new PreviewSpec("sh_better_ui:glide_select", PreviewSpec.Category.CONTROLS, 29,
+                GlideSelectPreview.TITLE, GlideSelectPreview.PREFERRED_HEIGHT, 0, "", GlideSelectPreview::new));
         registry.register(new PreviewSpec("sh_better_ui:live_activity", PreviewSpec.Category.CONTROLS, 26,
                 "sh_better_ui.live.preview.title", () -> host -> {
                     var area = host.viewport();

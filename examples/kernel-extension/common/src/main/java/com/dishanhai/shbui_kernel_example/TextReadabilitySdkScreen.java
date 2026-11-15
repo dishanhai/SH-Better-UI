@@ -74,11 +74,24 @@ final class TextReadabilitySdkScreen extends Screen {
         }
         super.render(graphics, mouseX, mouseY, partialTick);
 
-        // Draw a measured visual run. The declared color gives the service a fallback if sampling is unavailable.
-        service.submit(module, request(QUEUED, label("readability.queued"), 27));
+        var queuedLabel = label("readability.queued");
+        var queued = request(QUEUED, queuedLabel, 27);
+        var result = service.submit(module, queued, (foreground, finalResult) ->
+                drawFallback(foreground, queuedLabel, 27, finalResult));
+        drawFallback(graphics, queuedLabel, 27, result);
         // The callback receives the current foreground context for this exact scope.
         var immediate = request(IMMEDIATE, label("readability.immediate"), 52);
         service.foreground(module, tree, 1, context -> service.drawNow(module, context, immediate));
+    }
+
+    private void drawFallback(GuiGraphics graphics, Component text, int y, Result result) {
+        if (result != Result.RENDER_UNAVAILABLE && result != Result.RENDER_FAILED) return;
+        graphics.enableScissor(MARGIN, 0, Math.max(MARGIN, width - MARGIN), height);
+        try {
+            graphics.drawString(font, text, MARGIN, y, INK, true);
+        } finally {
+            graphics.disableScissor();
+        }
     }
 
     private Request request(TextId id, Component text, int y) {

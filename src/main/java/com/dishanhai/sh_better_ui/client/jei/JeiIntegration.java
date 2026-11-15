@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui.client.jei;
 
+import com.dishanhai.sh_better_ui.client.gui.layout.TooltipBounds;
+import com.dishanhai.sh_better_ui.client.gui.layout.BoundedTooltipGraphics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -46,6 +48,20 @@ public final class JeiIntegration {
                 graphics.renderTooltip(Minecraft.getInstance().font, lines, Optional.empty(), mouseX, mouseY);
             }
         }
+
+        /** Wraps and places the native ingredient tooltip before the exclusive right boundary. */
+        default void renderTooltip(GuiGraphics graphics, int mouseX, int mouseY, int rightBoundary) {
+            int right = TooltipBounds.rightEdge(graphics.guiWidth(), rightBoundary);
+            var bounded = new BoundedTooltipGraphics(graphics, right);
+            graphics.flush();
+            graphics.enableScissor(0, 0, right, graphics.guiHeight());
+            try {
+                renderTooltip(bounded, Math.min(mouseX, right), mouseY);
+            } finally {
+                bounded.flush();
+                graphics.disableScissor();
+            }
+        }
     }
 
     public interface Recipe {
@@ -56,6 +72,11 @@ public final class JeiIntegration {
     public interface RecipeLayout {
         int width();
         int height();
+        /** Full drawable bounds include JEI's background and border. */
+        default int outerWidth() { return width(); }
+        default int outerHeight() { return height(); }
+        default int contentOffsetX() { return 0; }
+        default int contentOffsetY() { return 0; }
         void render(GuiGraphics graphics, int x, int y, int mouseX, int mouseY);
         void renderOverlays(GuiGraphics graphics, int mouseX, int mouseY);
         void tick();

@@ -24,9 +24,9 @@ Forge 1.20.1 與 NeoForge 1.21.1 使用同一套 Java API。進入世界後執�
 | `InlineNode`、`TextRun(UiId, String, RichStyle)`、`ImageNode(UiId, UiId, int, int, String)` | `TextRun(UiId, String)` 仍可使用。`RichStyle.EMPTY` 繼承宿主預設顏色和字型。圖片參數依序為節點 ID、素材 ID、宣告寬／高和替代文字。寬高須為正。`RichTextView.image` 接受 Minecraft `ResourceLocation` 並轉成純資料 ID。 |
 | `RichTextLayout.layout(document, maxWidth, font)` | 算出 `RichLayoutSnapshot`；寬度使用邏輯 GUI 單位，零寬回傳空快照。`FontMetrics` 必須提供正 ascent、非負 descent 及非負且隨字素前綴單調的文字寬度；若使用原生 Minecraft 字型，在客戶端渲染執行緒量測。 |
 | `RichLayoutSnapshot`、`LineBox`、`Fragment`、`Rect` | 列表不可修改，所有位置相對於內容原點。`Fragment.textOffset()` 是文字片段在原始 run 的 UTF-16 偏移，舊三參數建構式仍可用。`hitTest` 查詢半開矩形。`visibleLines(top, bottom)` 用二分搜尋回傳相交行。 |
-| `client.visual.RichTextView.attach(module, scope, node)` | 於客戶端渲染執行緒掛載。傳入模組有權使用的 `ScopeHandle`、現有 `AlignmentLayout.Node`，以及與它們相符的視覺綁定。Screen 仍只有一份 `bindVisual`；多個視圖可共用同一個 pass。 |
+| `client.visual.RichTextView.attach(module, scope, node)` | 於客戶端渲染執行緒掛載。`scope` 必須是模組在本次 Screen 掛載中用於 `bindVisual` 的作用域，或該作用域之下同模組且仍開啟的子作用域。Screen 只有一份 `bindVisual`，各子作用域的視圖可共用同一個 pass 並獨立釋放。`node` 使用該綁定的 `AlignmentLayout.Node`。 |
 | `prepare(document, font, maxWidth)`、`draw(pass, argb)` | 在 `bindVisual` 的取樣回呼內先 `prepare` 再安排節點；在既有 `LayoutPass` 內繪製。對節點設置從 `(0,0)` 起且寬度不超過 `maxWidth` 的 `AlignmentFrame` 局部裁剪。`argb` 是預設文字顏色；圖像使用自身 RGBA。 |
-| `currentSnapshot()`、`hitTest(guiX, guiY)` | 在客戶端渲染執行緒讀取最後成功繪製且仍有效的 presentation；可取得外層幀、局部幾何、轉換與資源世代。命中接受 Screen GUI 座標，不消費事件。首次呈現前、完全裁剪、作用域關閉或重載後未再繪製時回傳空結果。 |
+| `currentSnapshot()`、`hitTest(guiX, guiY)` | 在客戶端渲染執行緒讀取最後成功繪製且仍有效的 presentation，可取得外層幀、局部幾何、轉換與資源世代。命中接受 Screen GUI 座標，不消費事件。首次呈現前、完全裁剪、所屬視覺節點繪製失敗、作用域關閉或重載後未再繪製時回傳空結果。 |
 | `invalidate()`、`isActive()`、`close()` | 視口重設前可清除量測和呈現；尺寸、文件、字型或資源世代變更會使原結果失效。可提前關閉；作用域關閉時自動釋放資源觀察及快取。 |
 | `view.bindRemoteImage(textureId, uri, policy)` | 渲染執行緒上的顯式授權，將一個本機貼圖別名交給 HTTPS 媒體管線。下載完成前照常保留占位。作用域關閉取消工作，資源重載保留別名授權並重新取得。 |
 | `view.mediaStatus(textureId)` | 渲染執行緒上的最新狀態。未請求、排隊或解碼中、可用及失敗分別以 `UNREQUESTED`、`LOADING`、`READY`、`UNAVAILABLE` 表示。當幀繪製狀態以 `Presentation.availableTextures()` 為準。 |
@@ -44,7 +44,8 @@ var document = new RichDocument(List.of(
                 ResourceLocation.tryParse("minecraft:textures/item/diamond.png"),
                 16, 16, diamondAlt.getString()),
         new TextRun(new UiId("example", "tail"), tail.getString())));
-var view = RichTextView.attach(module, tree, node);
+var component = tree.openChild(ScopeKind.COMPONENT, new UiId("example", "rich_content"));
+var view = RichTextView.attach(module, component, node);
 var binding = module.engine().require(UIApis.LAYOUT).bindVisual(module, tree, layout, time -> {
     int w = contentWidth();
     var content = view.prepare(document, font, w);
@@ -93,6 +94,30 @@ view.interaction().onButton(id, this::accept);
 `RichObjectNode` 包含 `Frames`、`Item`、`Block`、`Fluid`、`Entity`、`Icon`、`Button`、`Slider`。宣告比例和邏輯高度決定位置，缺失內容使用同一盒。物品可由宿主呼叫 `bindItem` 綁定同 ID 的原生 stack 副本。以 `onSlider` 收到放開後的提交，或鍵盤步進；`onGesture` 為選用次要、雙擊及長按，`draggable` 和 `onDrop` 交換節點 ID。回呼屬掛載的客戶端執行緒，關閉時清除。
 
 宿主按原生焦點及 UUK 的遮擋順序轉送 `press`、`drag`、`release`、`keyPressed`、`keyReleased`；已處理事件應直接回傳。Screen 在按下成功時可呼叫 `capture(screen, button)`，沿用 UUK 的指標捕獲和取消。當焦點移出呼叫 `clearFocus`，用 `narrate` 和 `renderTooltip` 接原生旁白與 Tooltip。採用可信回呼時，遊戲動作仍由宿主原有權限流程決定。
+
+### 以模組作用域捕獲指標
+
+在模組描述中宣告 `POINTER_CAPTURE` 資源，並在原生 Screen 掛載的樹或元件作用域取得 `CAPTURE_INPUT` 與 `BLOCK_VANILLA_INPUT` 授權。以掛載時使用的模組身分、節點和宣告的資源 ID 捕獲已接受的按下。範例沿用上方按鈕的 `id`，`componentScope` 是富文字視圖所屬的掛載節點。
+
+```java
+var claim = UiId.parse("example:rich_pointer");
+var engine = module.engine();
+var interaction = view.interaction();
+engine.require(UIApis.INPUT).target(module, componentScope, 0,
+        event -> event instanceof NativeInput.Pointer pointer
+                && pointer.action() == NativeInput.PointerAction.PRESS
+                && view.hitTest(pointer.x(), pointer.y()).filter(hit -> hit.node().id().equals(id)).isPresent());
+engine.events().subscribe(InputService.EVENT, componentScope, UIEventPhase.TARGET, 0, event -> {
+    if (event.payload() instanceof NativeInput.Pointer pointer
+            && pointer.action() == NativeInput.PointerAction.PRESS
+            && interaction.press(pointer.x(), pointer.y(), pointer.button())
+            && interaction.capture(module, componentScope, claim, pointer.button())) {
+        event.consume();
+    }
+});
+```
+
+捕獲成功後，由原生橋接傳送拖動和放開。作用域關閉或撤回授權時，共用捕獲服務會取消手勢並接住該按鍵尚未送達的放開。資源槽已被占用時 `capture` 回傳 `false`，缺少必要權限時拋出權限異常，兩者都會清除該次暫存手勢。採用舊 Screen 入口的宿主仍可透過 `capture(screen, button)` 使用原有派送。
 
 ## 視覺配置
 

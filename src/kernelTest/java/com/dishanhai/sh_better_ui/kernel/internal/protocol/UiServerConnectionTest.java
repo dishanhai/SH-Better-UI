@@ -53,6 +53,28 @@ final class UiServerConnectionTest {
             .build();
 
     @Test
+    void visiblePageLeasesRequireDisplayAndEndOnSuspensionRevocationOrClose() {
+        var wire = new Wire();
+        wire.startFromClient();
+        var permitted = new AtomicBoolean(true);
+        wire.server.open(PAGE, balance(100), ignored -> {}, permitted::get);
+        UUID id = assertInstanceOf(PageOpen.class, wire.readOne()).instanceId();
+        assertTrue(wire.server.visiblePages(EXCHANGE).isEmpty());
+        wire.client.send(new PageOpened(id, UiOpenResult.Status.DISPLAYED, Optional.empty()));
+        assertEquals(List.of(id), wire.server.visiblePages(EXCHANGE));
+        wire.client.send(new PageVisibility(id, true));
+        assertTrue(wire.server.visiblePages(EXCHANGE).isEmpty());
+        wire.client.send(new PageVisibility(id, false));
+        wire.readOne();
+        assertEquals(List.of(id), wire.server.visiblePages(EXCHANGE));
+        permitted.set(false);
+        assertTrue(wire.server.visiblePages(EXCHANGE).isEmpty());
+        permitted.set(true);
+        wire.server.closePage(id);
+        assertTrue(wire.server.visiblePages(EXCHANGE).isEmpty());
+    }
+
+    @Test
     void openWaitsForClientDisplayAndResolvesTimeoutRejectionAndClosure() {
         var wire = new Wire();
         assertEquals(Optional.of(UiErrorCode.CLIENT_UNAVAILABLE),
@@ -210,6 +232,35 @@ final class UiServerConnectionTest {
             wire.client.send(action(page, first, 0, 1));
             assertEquals(UiActionState.SUCCEEDED, assertInstanceOf(ActionResult.class, wire.readOne()).state());
             assertEquals(1, accepted.get());
+        }
+    }
+
+    @Test
+    void missingReceiptForUnchangedRevisionReplaysOnlyWithinTheOriginalPageInstance() throws Exception {
+        var wire = new Wire();
+        wire.startFromClient();
+        UUID page = wire.open();
+        var request = action(page, UUID.randomUUID(), 0, 1);
+        var operations = new AtomicInteger();
+        try (var registration = wire.server.registerAction(BUY, ignored -> true, context -> {
+            operations.incrementAndGet();
+            return UiServerConnection.ActionOutcome.success(Map.of());
+        })) {
+            wire.client.send(request);
+            assertEquals(1, operations.get());
+            wire.toClient.clear();
+
+            wire.advance(8);
+            wire.client.send(request);
+            assertEquals(new ActionResult(page, request.requestId(), UiActionState.SUCCEEDED, Optional.empty()), wire.readOne());
+            assertEquals(1, operations.get());
+
+            wire.advance(30 * 60);
+            assertEquals(page, assertInstanceOf(PageClose.class, wire.readOne()).instanceId());
+            assertNotEquals(page, wire.open());
+            wire.client.send(request);
+            assertEquals(Optional.of(UiErrorCode.SESSION_EXPIRED), assertInstanceOf(ActionResult.class, wire.readOne()).error());
+            assertEquals(1, operations.get());
         }
     }
 

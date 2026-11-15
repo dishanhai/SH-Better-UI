@@ -30,9 +30,14 @@ public final class UiHudPanel {
     private final TextReadabilityPalette palette = new TextReadabilityPalette();
 
     public UiHudPanel(Font font, List<Row> rows) {
+        this(font, rows, 0);
+    }
+
+    /** Reserves additional text space in unscaled GUI pixels for changing HUD values. */
+    public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth) {
         this.rows = List.copyOf(rows);
         int textWidth = this.rows.stream().mapToInt(row -> font.width(row.text())).max().orElse(0);
-        width = TEXT_X + textWidth + PADDING;
+        width = TEXT_X + Math.max(textWidth, minimumTextWidth) + PADDING;
         height = this.rows.size() * rowHeight(font) + 2 * PADDING;
     }
 
@@ -61,15 +66,47 @@ public final class UiHudPanel {
 
     /** Use a stable, distinct sample ID for each HUD panel and its editor preview. */
     public void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, UiId sampleId) {
-        draw(graphics, font, preferences, x, y, scale, sampleId, false);
+        draw(graphics, font, preferences, x, y, scale, sampleId, false, -1);
+    }
+
+    /** Draws the normal HUD surface with a separately emphasized row, or no row for -1. */
+    public void drawSelected(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, int selected) {
+        draw(graphics, font, preferences, x, y, scale, null, false, selected);
     }
 
     /** Draws a bordered, strongly blurred popover suitable for interactive overlays. */
     public void drawPopover(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale) {
-        draw(graphics, font, preferences, x, y, scale, null, true);
+        draw(graphics, font, preferences, x, y, scale, null, true, -1);
     }
 
-    private void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, UiId sampleId, boolean popover) {
+    private void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale, UiId sampleId, boolean popover, int selected) {
+        draw(graphics, font, preferences, x, y, scale, sampleId, popover, selected, true, false);
+    }
+
+    /**
+     * Draws one HUD surface at the current animated bounds, then reveals the selected row and
+     * content clipped to those bounds. The surface uses the same material as {@link #drawSelected}.
+     */
+    public void drawReveal(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale,
+                           int selected, int frameX, int frameY, int frameWidth, int frameHeight, float progress) {
+        if (isEmpty() || frameWidth <= 0 || frameHeight <= 0 || progress <= 0) return;
+        int textColor = LiquidGlassTheme.textColor();
+        boolean glass = preferences.useBackdropBlur()
+                && paintGlass(graphics, frameX, frameY, frameWidth, frameHeight, 6 * scale, 5 * scale, textColor);
+        if (!glass) {
+            LiquidGlassTheme.plate(graphics, frameX, frameY, frameWidth, frameHeight, 5 * scale,
+                    preferences.highContrast() ? textColor : DarkModeTheme.borderColor(),
+                    DarkModeTheme.surfaceColor(), preferences);
+        }
+        if (progress >= 0.5f) {
+            graphics.enableScissor(frameX, frameY, frameX + frameWidth, frameY + frameHeight);
+            try { draw(graphics, font, preferences, x, y, scale, null, false, selected, false, glass); }
+            finally { graphics.disableScissor(); }
+        }
+    }
+
+    private void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale,
+                      UiId sampleId, boolean popover, int selected, boolean paintBackground, boolean existingGlass) {
         if (isEmpty()) return;
         var pose = graphics.pose();
         pose.pushPose();
@@ -78,16 +115,16 @@ public final class UiHudPanel {
             pose.scale(scale, scale, 1);
             int textColor = LiquidGlassTheme.textColor();
             boolean useGlass = preferences.useBackdropBlur();
-            boolean glass = !popover && useGlass && paintGlass(graphics, textColor);
+            boolean glass = !popover && (paintBackground ? useGlass && paintGlass(graphics, textColor) : existingGlass);
             int darkest;
             int lightest;
             if (popover) {
-                LiquidGlassTheme.layeredPopover(graphics, 0, 0, width, height, preferences, 1f);
+                if (paintBackground) LiquidGlassTheme.layeredPopover(graphics, 0, 0, width, height, preferences, 1f);
                 darkest = 0xff000000;
                 lightest = 0xff555555;
             } else if (!glass) {
                 int backdrop = DarkModeTheme.surfaceColor();
-                LiquidGlassTheme.plate(graphics, 0, 0, width, height,
+                if (paintBackground) LiquidGlassTheme.plate(graphics, 0, 0, width, height,
                         preferences.highContrast() ? textColor : DarkModeTheme.borderColor(),
                         backdrop, preferences);
                 darkest = GuiMotion.lerpColor(0xff000000, backdrop | 0xff000000, (backdrop >>> 24) / 255f);
@@ -99,13 +136,17 @@ public final class UiHudPanel {
                 darkest = luma >= 128 ? 0xff000000 : 0xff757575;
                 lightest = luma >= 128 ? 0xff767676 : 0xffffffff;
             }
+            int rowHeight = rowHeight(font);
+            if (selected >= 0 && selected < rows.size()) {
+                LiquidGlassTheme.layeredPopover(graphics, PADDING - 2, PADDING + selected * rowHeight,
+                        width - 2 * PADDING + 4, rowHeight, preferences, 1f);
+            }
             var sampleRegion = glass
                     ? new Rect(TEXT_X, PADDING, width - TEXT_X - PADDING, height - 2 * PADDING) : null;
             var framePalette = ClientUiKernel.prepareHudText(graphics, sampleId, sampleRegion,
                     darkest, lightest, palette);
             int authoredTextColor = textColor;
             textColor = framePalette.baseColor(textColor);
-            int rowHeight = rowHeight(font);
             int iconY = PADDING + (rowHeight - ICON_SIZE) / 2;
             pose.pushPose();
             try {
@@ -147,9 +188,15 @@ public final class UiHudPanel {
     }
 
     private boolean paintGlass(GuiGraphics graphics, int textColor) {
-        var region = GlassRegion.rounded(0, 0, width, height, 6);
-        var foreground = new GlassDraw.ForegroundBounds(PADDING - 1, PADDING - 1,
-                width - 2 * PADDING + 2, height - 2 * PADDING + 2);
+        return paintGlass(graphics, 0, 0, width, height, 6, PADDING - 1, textColor);
+    }
+
+    private static boolean paintGlass(GuiGraphics graphics, int x, int y, int width, int height,
+                                      float radius, float padding, int textColor) {
+        var region = GlassRegion.rounded(x, y, width, height, radius);
+        float inset = Math.min(padding, (Math.min(width, height) - 1) / 2f);
+        var foreground = new GlassDraw.ForegroundBounds(x + inset, y + inset,
+                Math.max(0, width - 2 * inset), Math.max(0, height - 2 * inset));
         return LiquidGlassTheme.clearSurface(graphics, region, foreground, textColor);
     }
 

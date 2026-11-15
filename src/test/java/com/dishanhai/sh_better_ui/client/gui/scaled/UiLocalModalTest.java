@@ -1,6 +1,10 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.api.UiScreenBuilder;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.AfterEach;
@@ -133,19 +137,19 @@ class UiLocalModalTest {
     @Test
     void pointerKeepsItsPressOwnerAndDrainsAfterInterruption() {
         var router = new UiLocalInputRouter<>(List.of("under", "other"), (target, x, y) -> x >= 0);
-        assertNull(router.dragTarget(0, -1, 0));
+        assertNull(router.dragTarget(0));
         assertEquals("other", router.hit(0, 0));
         router.capture(0, "slide");
-        assertEquals("slide", router.dragTarget(0, -1, 0));
-        assertEquals("slide", router.releaseTarget(0, 0, 0));
-        assertNull(router.releaseTarget(0, -1, 0));
+        assertEquals("slide", router.dragTarget(0));
+        assertEquals("slide", router.forget(0));
+        assertNull(router.forget(0));
         router.capture(1, "slide");
         router.capture(0, "other");
         var drained = new ArrayList<Integer>();
         router.drain("slide", drained::add);
         assertEquals(List.of(1), drained);
-        assertNull(router.releaseTarget(1, -1, 0));
-        assertEquals("other", router.releaseTarget(0, -1, 0));
+        assertNull(router.forget(1));
+        assertEquals("other", router.forget(0));
     }
 
     @Test
@@ -179,6 +183,78 @@ class UiLocalModalTest {
         assertEquals(60, neighbor.getX());
         assertEquals(SOURCE.width(), source.getWidth());
         assertSame(source, host.getFocused());
+    }
+
+    @Test
+    void nativeDragReachesItsReleaseAfterEnteringTheLocalModal() {
+        assertTrue(openSlide(source, RIGHT, UiSlideConfirm.LocalConfig.DEFAULT));
+        frame(320);
+        assertFalse(modal.mouseClicked(170, 21, LEFT));
+        host.setDragging(true);
+
+        assertTrue(modal.blocksPointer(90, 21));
+        assertFalse(modal.mouseDragged(90, 21, LEFT));
+        assertFalse(modal.mouseReleased(90, 21, LEFT));
+        assertTrue(host.isDragging());
+        assertEquals(0, confirmations);
+    }
+
+    @Test
+    void oneButtonsLocalPressDoesNotStealAnotherButtonsNativeDrag() {
+        int right = GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+        assertTrue(openSlide(source, RIGHT, UiSlideConfirm.LocalConfig.DEFAULT));
+        frame(320);
+        assertFalse(modal.mouseClicked(170, 21, LEFT));
+        host.setDragging(true);
+        assertTrue(modal.mouseClicked(90, 21, right));
+
+        assertTrue(modal.mouseDragged(170, 21, right));
+        assertFalse(modal.mouseDragged(90, 21, LEFT));
+        assertTrue(modal.mouseReleased(170, 21, right));
+        assertFalse(modal.mouseReleased(90, 21, LEFT));
+        assertTrue(host.isDragging());
+        assertFalse(modal.mouseReleased(90, 21, right));
+    }
+
+    @Test
+    void localRightClickPreservesTheFocusedNativeDragAndItsRelease() {
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false).build();
+        screen.width = VIEWPORT.width();
+        screen.height = VIEWPORT.height();
+        var trigger = screen.add(new UiButton(SOURCE.x(), SOURCE.y(), SOURCE.width(), SOURCE.height(),
+                Component.empty(), ignored -> {}, UiPreferences.DEFAULT, false));
+        var nativeControl = screen.add(new DragWidget());
+        var local = new UiLocalModal(screen, UiPreferences.DEFAULT, () -> scale, () -> now);
+        int right = GLFW.GLFW_MOUSE_BUTTON_RIGHT;
+        try {
+            assertTrue(local.open(trigger, VIEWPORT, RIGHT, CONFIG, session -> new UiLocalModal.Content() {
+                @Override
+                public void render(GuiGraphics graphics, UiLocalModal.Frame frame, int x, int y, float partialTick) {}
+
+                @Override
+                public boolean mousePressed(double x, double y, int button, long time) {
+                    return button == right;
+                }
+            }, () -> {}));
+            now = 320;
+            local.prepareRender();
+            assertFalse(local.mouseClicked(170, 21, LEFT));
+            assertTrue(screen.mouseClicked(170, 21, LEFT));
+            assertTrue(local.mouseClicked(90, 21, right));
+            assertSame(nativeControl, screen.getFocused());
+
+            assertFalse(local.mouseDragged(90, 21, LEFT));
+            assertTrue(screen.mouseDragged(90, 21, LEFT, -80, 0));
+            assertTrue(local.mouseReleased(170, 21, right));
+            assertFalse(local.mouseReleased(90, 21, LEFT));
+            assertTrue(screen.mouseReleased(90, 21, LEFT));
+            assertFalse(screen.isDragging());
+            assertEquals(1, nativeControl.drags);
+            assertEquals(1, nativeControl.releases);
+        } finally {
+            local.interrupt();
+            UiPointerCapture.release(screen, right, 0, 0);
+        }
     }
 
     @Test
@@ -279,6 +355,38 @@ class UiLocalModalTest {
     private boolean openSlide(UiButton from, UiExpansionController.Placement placement,
                               UiSlideConfirm.LocalConfig config) {
         return modal.openSlide(from, VIEWPORT, placement, CONFIG, config, Component.empty(), () -> confirmations++);
+    }
+
+    private static final class DragWidget extends AbstractWidget {
+        private int drags;
+        private int releases;
+
+        private DragWidget() {
+            super(155, 10, 40, 22, Component.empty());
+        }
+
+        @Override
+        public boolean mouseClicked(double x, double y, int button) {
+            return button == LEFT && isMouseOver(x, y);
+        }
+
+        @Override
+        public boolean mouseDragged(double x, double y, int button, double dx, double dy) {
+            drags++;
+            return true;
+        }
+
+        @Override
+        public boolean mouseReleased(double x, double y, int button) {
+            releases++;
+            return true;
+        }
+
+        @Override
+        protected void renderWidget(GuiGraphics graphics, int x, int y, float partialTick) {}
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput narration) {}
     }
 
     private static final class Host extends Screen {

@@ -56,17 +56,17 @@ final class GalleryFieldMesh {
     void quad(float ax, float ay, float bx, float by, float cx, float cy, float dx, float dy,
               int a, int b, int c, int d) {
         if (((a | b | c | d) >>> 24) == 0) return;
-        if (size == colors.length) {
-            colors = Arrays.copyOf(colors, size * 2);
-            positions = Arrays.copyOf(positions, size * 4);
-        }
         vertex(ax, ay, a);
         vertex(bx, by, b);
         vertex(cx, cy, c);
         vertex(dx, dy, d);
     }
 
-    private void vertex(float x, float y, int color) {
+    void vertex(float x, float y, int color) {
+        if (size == colors.length) {
+            colors = Arrays.copyOf(colors, size * 2);
+            positions = Arrays.copyOf(positions, size * 4);
+        }
         positions[size * 2] = x;
         positions[size * 2 + 1] = y;
         colors[size++] = color;
@@ -75,8 +75,13 @@ final class GalleryFieldMesh {
     void submit(GuiGraphicsExtractor graphics, Bounds area) {
         if (size == 0) return;
         var pose = new Matrix3x2f(graphics.pose()).translate(area.x(), area.y());
-        var bounds = new ScreenRectangle(area.x(), area.y(), area.width(), area.height());
+        if (!pose.isFinite() || pose.determinant() == 0) return;
+        var bounds = new ScreenRectangle(0, 0, area.width(), area.height()).transformMaxBounds(pose);
         var clip = graphics.peekScissorStack();
+        if (clip != null) {
+            bounds = bounds.intersection(clip);
+            if (bounds == null) return;
+        }
         graphics.submitGuiElementRenderState(new State(positions, colors, size, pose, clip, bounds));
     }
 

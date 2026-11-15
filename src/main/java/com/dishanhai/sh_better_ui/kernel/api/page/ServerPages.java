@@ -13,6 +13,7 @@ import net.minecraft.server.MinecraftServer;
 import net.minecraft.server.level.ServerPlayer;
 
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
@@ -73,6 +74,11 @@ public final class ServerPages {
 
     public static boolean close(ServerPlayer player, UUID instance) {
         return NativePageServer.close(player, instance);
+    }
+
+    /** Server-thread snapshot; suspended, closed, unauthorized and expired pages are excluded. */
+    public static List<UUID> visibleInstances(ServerPlayer player, UiId page) {
+        return NativePageServer.visiblePages(player, page);
     }
 
     public record ActionHandler(Predicate<ServerPlayer> mayAct, Function<Action, Outcome> execute,

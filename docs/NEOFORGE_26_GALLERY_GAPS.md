@@ -53,6 +53,20 @@ var registration = ShBetterUiApi.client().registerDeveloperPreview(new PreviewSp
 
 以工作区 `1.0.9-alpha.8` 构建两版并检查打包内容，每版 102 项常规测试及 357 项内核测试通过，包含 11 个示例的实际编译。26.1.2 OpenGL 与 26.2 Vulkan 的隔离客户端通过分类、搜索／清除焦点、代码复制、直接入口、放大与返回、76 项目录和独立样例控件边界检查，也通过模组列表与世界内 F8 入口。26.1.2 另通过 GUI Scale 4 长文案与资源重载布局检查。尚未用实际整合包或其他 GPU 验收。
 
+## 第三方预览自动发现
+
+NeoForge 26.1.2 和 26.2 的消费模组在自己的 JAR 中通过 `META-INF/sh_better_ui.modules` 声明 `DeveloperPreviewProvider` 实现。UUK 在模块启动成功后将 `PreviewSpec` 加入开发者目录，打开条目时才创建原生场景，模块作用域关闭时自动撤下。用对应版本 SH-Better-UI 编译，再从控制面板的「工具 → 开发者面板 → 控件图库」搜索完整 ID。 [接入约定](module-development.md#自動發現開發者預覽) · [26.x 消费模组源码](../neoforge-26.1.2/src/widgetSmoke/java/com/dishanhai/shbui_widgets_smoke/PreviewDiscoverySmoke.java) · [描述文件](../neoforge-26.1.2/src/widgetSmoke/resources/META-INF/sh_better_ui.modules)
+
+以下命令从储存库根目录运行，使用隔离实例加载 SH-Better-UI 与消费模组的两份独立 JAR。通过时实例自动退出，在各平台的 `build/widget-smoke/` 下写入 `preview-discovery.txt` 和 `preview-discovery-stopped.txt`。
+
+```bash
+bash neoforge-1.21.1/gradlew -p neoforge-26.1.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePreviewDiscovery -PwidgetSmokeNarrator
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePreviewDiscovery -PwidgetSmokeNarrator -PwidgetSmokeBackend=vulkan
+bash neoforge-1.21.1/gradlew -p neoforge-26.2 -I ../gradle/neoforge-26-widgets-smoke.init.gradle runWidgetSmoke -PwidgetSmokePreviewDiscovery -PwidgetSmokeNarrator -PwidgetSmokeBackend=opengl
+```
+
+26.1.2 OpenGL、26.2 Vulkan 和 26.2 OpenGL 均完成实机烟测。覆盖惰性创建、本地化条目的完整 ID 搜索、高对比和减少动效、键鼠切换、全屏与 GUI Scale 2 → 1 后的状态、资源重载、Esc 返回焦点、公开全屏入口和退出撤销。两版均核对了按钮名称及开关状态，并通过 Minecraft 旁白入口提交朗读。系统音频回录和整合包验收待补。
+
 ## 最终审核修复
 
 - `live_activity` 复用 `ActivityService.Content` 和 `SEEK` 动作模型。图库内可用键鼠展开活动详情、预览和提交进度。Esc 可取消拖动，重排保留进度及焦点，关闭后恢复目录焦点。全局活动调度、常驻 HUD、快捷键及网络仍待移植。
@@ -120,8 +134,8 @@ var registration = ShBetterUiApi.client().registerDeveloperPreview(new PreviewSp
 
 | 范围 | 待补内容 |
 | --- | --- |
-| 图库宿主 | 已有分类搜索、目录返回状态、样例放大、11 个可复制的内置示例和第三方场景登记。仍须补固定尺寸的内嵌预览、样例前后切换、原版代码抽屉、覆盖层和其余可用 API 的示例，并在客户端验证第三方登记、撤销、重载及父页焦点。 |
-| 公开路由 | 已提供统一登记表、ID 列表、全屏样例和基于 `MaterialCatalog` 的材质 ID／别名及注册世代路由。需在实际消费模组中验证登记撤销、目录替换和返回路径。 |
+| 图库宿主 | 已有分类搜索、目录返回状态、样例放大、11 个可复制的内置示例和第三方场景登记。仍须补固定尺寸的内嵌预览、样例前后切换、原版代码抽屉、覆盖层和其余可用 API 的示例。 |
+| 公开路由 | 已提供统一登记表、ID 列表、全屏样例和基于 `MaterialCatalog` 的材质 ID／别名及注册世代路由。材质目录替换仍需在实际消费模组复验。 |
 | 屏幕和输入 | 补 `ShBetterUiApi.screen()`、统一 `UiScreen`／`UiFrame` 宿主、覆盖层、指针捕获和主题／背景／布局／动效接口。新场景可复用现有 `controls()` 和 `GuiGeometry`，再按需求接通 `interactions()`、`layout()`、`motion()` 等分组。 |
 | 原生渲染 | 补 `graphics()`、`materials()`、旧 `blur()` 区域接口以及对应 shader 和资源。把绘制接入 `GuiGraphicsExtractor` 和原生管线，核对姿态、裁剪、层级、同帧采样及释放。共享源码和资源须纳入 [26.x 打包白名单](../gradle/neoforge-26-port.gradle)。 |
 | 内核与控制面板 | 26.x 已接通平台视口、材质元数据、项目编辑和基础帧调度。待补内核渲染服务的原生阶段、声明式页面、富文本、HUD／停靠、活动通知和可选网络。面板待补自定义背景／效果编辑和 HUD 玻璃调校，验收应用、取消及重启恢复。 |
@@ -130,7 +144,7 @@ var registration = ShBetterUiApi.client().registerDeveloperPreview(new PreviewSp
 ## 尚待实测
 
 - [ ] 涉及启动和窗口的改动另测显式 OpenGL、NeoForge 早期窗口和 GLFW 65540。
-- [ ] 复验第三方登记后的直接全屏入口与返回路径。继续覆盖实际 GUI 缩放下的正反向 Tab、方向键、Enter／Space、Esc 和拖动取消。
+- [ ] 补第三方场景异常重试、材质目录替换，以及实际 GUI 缩放下的 Shift+Tab、方向键、Space 和拖动取消。
 - [ ] 补各类样例的系统旁白实测，覆盖焦点、候选、状态变化、确认和取消，以及中文语音。alpha.8 的 Windows 进程回环实测覆盖英文「模式 2」，其他场景仍需分别验收。
 - [ ] 用实际字体／资源包及整合包复验 GUI Scale 3／4、长标签、中文输入、高对比和减少动效。覆盖资源重载、退出／返回和前景可读性。
 - [ ] 补多 GPU、渲染／着色器模组和第三方叠层兼容性。重点检查 `GuiRendererBlurMixin` 的注入共存、局部效果边界和资源重载。高密度玻璃及粒子场需记录 GPU 耗时、显存和持续运行表现。

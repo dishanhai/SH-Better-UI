@@ -81,12 +81,19 @@ public final class UiBuiltinComponents {
                     "label", optional(LABEL, false),
                     "payloadField", PAYLOAD_FIELD));
         }
-        for (String name : Set.of("dropdown", "tab_bar")) {
-            add(components, name, false, true, true, Map.of(
-                    "options", required(UiValueSchema.list(LABEL, 64), false),
-                    "selected", optional(UiValueSchema.integer(0, 63), true),
-                    "payloadField", PAYLOAD_FIELD));
-        }
+        var choice = Map.of(
+                "options", required(UiValueSchema.list(LABEL, 64), false),
+                "selected", optional(UiValueSchema.integer(0, 63), true),
+                "payloadField", PAYLOAD_FIELD);
+        add(components, "tab_bar", false, true, true, choice);
+        var dropdown = new HashMap<>(choice);
+        dropdown.put("tags", optional(UiValueSchema.list(LABEL, 64), false));
+        dropdown.put("placeholder", optional(LABEL, false));
+        dropdown.put("menuWidth", optional(UiValueSchema.integer(1, 8192), false));
+        dropdown.put("placement", optional(UiValueSchema.choice(Set.of("top", "bottom")), false));
+        dropdown.put("align", optional(UiValueSchema.choice(Set.of("left", "right")), false));
+        dropdown.put("rememberPosition", optional(UiValueSchema.bool(), false));
+        add(components, "dropdown", false, true, true, dropdown);
         for (String name : Set.of("list_view", "virtual_list")) {
             add(components, name, false, false, true, Map.of(
                     "items", required(UiValueSchema.list(LABEL, 512), true),

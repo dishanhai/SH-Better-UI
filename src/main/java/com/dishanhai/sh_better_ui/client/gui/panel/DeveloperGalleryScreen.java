@@ -27,6 +27,15 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiFuseButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeRow;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiFolderFloat;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiJellyRadio;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiCallChip;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPromptBar;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSkeleton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTextDetails;
@@ -599,6 +608,8 @@ final class DeveloperGalleryScreen extends Screen {
     }
 
     private void cancelGestures() {
+        if (getFocused() instanceof UiRubberSegment segment) segment.cancelDrag();
+        if (getFocused() instanceof UiJellyRadio radio) radio.cancelPress();
         UiLocalModal.interrupt(this);
         UiPointerCapture.cancel(this);
         setDragging(false);
@@ -969,6 +980,37 @@ final class DeveloperGalleryScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_ESCAPE) {
+            if (previewInteractive() && getFocused() instanceof UiFolderFloat<?> folder
+                    && folder.keyPressed(key, scan, modifiers)) {
+                setDragging(false);
+                return true;
+            }
+            if (previewInteractive() && getFocused() instanceof UiFuseButton fuse && fuse.keyPressed(key, scan, modifiers)) return true;
+            if (previewInteractive() && getFocused() instanceof UiSwipeRow row && row.keyPressed(key, scan, modifiers)) {
+                setDragging(false);
+                return true;
+            }
+            if (getFocused() instanceof UiHoldButton hold && hold.cancelHold()) {
+                setDragging(false);
+                return true;
+            }
+            if (getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
+                setDragging(false);
+                return true;
+            }
+            if ((getFocused() instanceof UiRubberSegment segment && segment.cancelDrag())
+                    || (getFocused() instanceof UiJellyRadio radio && radio.cancelPress())) {
+                setDragging(false);
+                return true;
+            }
+            if (getFocused() instanceof UiCallChip chip && chip.cancelPress()) {
+                setDragging(false);
+                return true;
+            }
+            if (previewInteractive() && getFocused() instanceof UiPromptBar prompt && prompt.dismissPopup()) {
+                setDragging(false);
+                return true;
+            }
             if (previewInteractive() && getFocused() instanceof SearchField<?> field && field.dismissSuggestions()) return true;
             if (codeToggle != null && (codeDrawer.targetAnchor() != 0 || openCodeOnEntry && !entrance.active())) {
                 setCodeDrawerOpen(false);
@@ -993,6 +1035,60 @@ final class DeveloperGalleryScreen extends Screen {
     @Override
     public boolean keyReleased(int key, int scan, int modifiers) {
         return hasStalePreviewFocus() || super.keyReleased(key, scan, modifiers);
+    }
+
+    @Override
+    public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && getFocused() instanceof UiSloshGauge gauge) {
+            if (!previewInteractive()) gauge.cancelDrag();
+            if (gauge.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiSwipeRow row) {
+            if (!previewInteractive()) row.cancelPress();
+            if (row.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && getFocused() instanceof UiFuseButton fuse) {
+            if (!previewInteractive()) fuse.cancelPress();
+            if (fuse.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiCallChip chip) {
+            if (!previewInteractive()) chip.cancelPress();
+            if (chip.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiHoldButton hold) {
+            if (!previewInteractive()) hold.cancelHold();
+            if (hold.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiJellyRadio radio) {
+            if (!previewInteractive()) radio.cancelPress();
+            if (radio.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiRubberSegment segment) {
+            if (!previewInteractive()) segment.cancelDrag();
+            if (segment.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        return super.mouseReleased(x, y, button);
     }
 
     @Override

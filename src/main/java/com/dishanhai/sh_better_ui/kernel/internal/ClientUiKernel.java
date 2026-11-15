@@ -408,6 +408,7 @@ public final class ClientUiKernel implements AutoCloseable {
 
     public static void screenInitialized(Screen owner) {
         if (hasNativeAuthority()) {
+            active.pageNetwork.screenInitialized();
             active.screens.initialized(owner);
             active.focus.reconcile();
         }
@@ -460,6 +461,21 @@ public final class ClientUiKernel implements AutoCloseable {
         boolean sent = active.pageNetwork.requestPage(page);
         minecraft.player.sendSystemMessage(Component.translatable(sent
                 ? "sh_better_ui.pages.request.sent" : "sh_better_ui.pages.request.unavailable", page.toString()));
+    }
+
+    /** An explicit native entry may request a page without closing its current screen first. */
+    public static boolean requestServerPage(Minecraft minecraft, UiId page, Screen owner) {
+        return hasNativeAuthority() && minecraft.player != null && owner == minecraft.screen
+                && active.pageNetwork.requestPage(page, owner);
+    }
+
+    public static java.util.Optional<com.dishanhai.sh_better_ui.kernel.api.page.PageService.Snapshot> activeServerPage() {
+        return hasNativeAuthority() ? active.pages.activeRemoteSnapshot() : java.util.Optional.empty();
+    }
+
+    public static boolean submitServerPageAction(java.util.UUID instance, UiId action,
+                                                 Map<String, com.dishanhai.sh_better_ui.kernel.api.page.UiValue> payload) {
+        return hasNativeAuthority() && active.pages.submitRemoteAction(instance, action, payload);
     }
 
     public static void showPageTrace(Minecraft minecraft) {
@@ -851,7 +867,7 @@ public final class ClientUiKernel implements AutoCloseable {
                 BuiltinLiveSurface.class.getName(), live, BuiltinLiveSurface.GRANTS, false, true));
         candidates.addAll(extensions);
         candidates.add(dock.candidate());
-        kernel.startNative(candidates);
+        kernel.startNative(candidates, (extension, context) -> ClientDeveloperPreviews.mount(kernel, extension, context));
         var client = new ClientUiKernel(kernel, module.context, animation, layout, input, screens, focus, collision,
                 rendering, resources, spatial, correctness, live, liveSettings, materialCatalog, collapse, dock, pages, hud,
                 textReadability, module.pendingLegacySettings);

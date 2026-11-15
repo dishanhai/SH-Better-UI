@@ -35,7 +35,12 @@ public final class SearchIndex<T> {
         }
     }
 
-    public record Suggestion<T>(Entry<T> entry, String completion, String label) {
+    /** matchRank is query-local: a smaller value is a better match; it is not a global score. */
+    public record Suggestion<T>(Entry<T> entry, String completion, String label, int matchRank) {
+        public Suggestion(Entry<T> entry, String completion, String label) {
+            this(entry, completion, label, 0);
+        }
+
         public Suggestion(Entry<T> entry, String completion) {
             this(entry, completion, entry.name());
         }
@@ -213,7 +218,7 @@ public final class SearchIndex<T> {
             }
             List<Suggestion<T>> bucket = ranked.get(rank);
             if (bucket.size() < limit && fillable) {
-                bucket.add(new Suggestion<>(entry, completion));
+                bucket.add(new Suggestion<>(entry, completion, entry.name(), rank));
             }
             if (rank == 0 && bucket.size() == limit) break;
         }
@@ -246,7 +251,7 @@ public final class SearchIndex<T> {
                 if (!acceptsCompletion.test(completion)) continue;
                 var previous = unique.get(label);
                 if (previous == null || rank < previous.rank()) {
-                    unique.put(label, new RankedSuggestion<>(rank, new Suggestion<>(candidate.entry(), completion, label)));
+                    unique.put(label, new RankedSuggestion<>(rank, new Suggestion<>(candidate.entry(), completion, label, rank)));
                 }
             }
         }

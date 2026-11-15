@@ -4,6 +4,9 @@ package com.dishanhai.sh_better_ui.client.visual;
 import com.dishanhai.sh_better_ui.client.gui.selection.IngredientValues;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.jei.JeiIntegration.Ingredient;
+import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
+import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
+import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichExtensionNode;
@@ -33,6 +36,7 @@ import java.util.Set;
 import java.util.function.Consumer;
 import java.util.function.IntConsumer;
 import java.util.function.LongSupplier;
+import java.util.function.Predicate;
 
 /** Per-view native input state. The owning Screen or UUK input target delivers events once, in host z order. */
 public final class RichInlineInteraction {
@@ -61,7 +65,7 @@ public final class RichInlineInteraction {
     }
     private record Click(UiId id, long time, double x, double y) {}
     private record Value(Slider slider, int value) {}
-    private record NativeCapture(Screen screen, int button) {}
+    private record NativeCapture(Screen legacyScreen, int button) {}
 
     private final Geometry geometry;
     private final LongSupplier time;
@@ -192,13 +196,32 @@ public final class RichInlineInteraction {
     /** Attach an accepted press to the host's existing native capture, when the host is a Screen. */
     public boolean capture(Screen screen, int button) {
         Objects.requireNonNull(screen);
+        return capture(screen, button, handler -> UiPointerCapture.start(screen, button, handler));
+    }
+
+    /**
+     * Attaches an accepted press to the mounted UUK node's permission-checked native capture.
+     * The module must declare the claim and hold capture and vanilla-blocking grants for the node.
+     * If acquisition is refused or throws, the tentative press is discarded. After acquisition the
+     * native bridge delivers drag and release, and the service cancels the gesture on revocation.
+     */
+    public boolean capture(ModuleContext module, ScopeHandle node, UiId claim, int button) {
+        Objects.requireNonNull(module, "module");
+        Objects.requireNonNull(node, "node");
+        Objects.requireNonNull(claim, "claim");
+        return capture(null, button, handler -> module.engine().require(UIApis.INPUT)
+                .capture(module, node, claim, button, handler));
+    }
+
+    private boolean capture(Screen legacyScreen, int button, Predicate<UiPointerCapture.Handler> acquire) {
         if (drag == null || drag.button() != button || nativeCapture != null) return false;
-        var capture = new NativeCapture(screen, button);
+        var acceptedPress = drag;
+        var capture = new NativeCapture(legacyScreen, button);
         var weak = new WeakReference<>(this);
-        boolean accepted = UiPointerCapture.start(screen, button, new UiPointerCapture.Handler() {
+        var handler = new UiPointerCapture.Handler() {
             @Override public void drag(double x, double y) {
                 var active = weak.get();
-                if (active != null) active.drag(x, y, button);
+                if (active != null && active.nativeCapture == capture) active.drag(x, y, button);
             }
 
             @Override public void release(double x, double y) {
@@ -209,7 +232,7 @@ public final class RichInlineInteraction {
                         active.releaseLocal(x, y, button);
                     }
                 } finally {
-                    screen.setDragging(false);
+                    if (legacyScreen != null) legacyScreen.setDragging(false);
                 }
             }
 
@@ -219,11 +242,20 @@ public final class RichInlineInteraction {
                     active.nativeCapture = null;
                     active.cancel();
                 }
-                screen.setDragging(false);
+                if (legacyScreen != null) legacyScreen.setDragging(false);
             }
-        });
-        if (accepted) nativeCapture = capture;
-        return accepted;
+        };
+        boolean accepted = false;
+        try {
+            accepted = acquire.test(handler);
+            if (accepted) nativeCapture = capture;
+            return accepted;
+        } finally {
+            if (!accepted && legacyScreen == null && drag == acceptedPress) {
+                click = null;
+                resetDrag();
+            }
+        }
     }
 
     public boolean drag(double x, double y, int button) {
@@ -246,9 +278,12 @@ public final class RichInlineInteraction {
 
     public boolean release(double x, double y, int button) {
         var capture = nativeCapture;
-        if (capture != null && capture.button() == button && UiPointerCapture.release(capture.screen(), button, x, y)) {
-            drainingButtons &= ~(1 << button);
-            return true;
+        if (capture != null && capture.button() == button) {
+            if (capture.legacyScreen() == null) return true;
+            if (UiPointerCapture.release(capture.legacyScreen(), button, x, y)) {
+                drainingButtons &= ~(1 << button);
+                return true;
+            }
         }
         return releaseLocal(x, y, button);
     }
@@ -531,7 +566,7 @@ public final class RichInlineInteraction {
         closed = true;
         clearFocus();
         if (nativeCapture != null) {
-            UiPointerCapture.cancel(nativeCapture.screen());
+            if (nativeCapture.legacyScreen() != null) UiPointerCapture.cancel(nativeCapture.legacyScreen());
             nativeCapture = null;
         }
         drainingButtons = 0;

@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.api;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
 import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -10,6 +11,8 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.components.Renderable;
 import net.minecraft.client.gui.narration.NarratableEntry;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.input.KeyEvent;
+import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
 
 import java.util.function.Consumer;
@@ -47,9 +50,36 @@ public final class UiScreen extends Screen {
     @Override public void onClose() { NativePort.show(Minecraft.getInstance(), parent); }
     @Override public boolean isPauseScreen() { return pausesGame; }
     @Override protected void init() { init.accept(this); }
-    @Override protected void repositionElements() { rebuildWidgets(); }
+    @Override protected void repositionElements() {
+        if (getFocused() instanceof UiSloshGauge gauge) gauge.cancelDrag();
+        rebuildWidgets();
+    }
     @Override public void tick() { tick.accept(this); }
-    @Override public void removed() { removed.accept(this); }
+    @Override public void removed() {
+        try {
+            if (getFocused() instanceof UiSloshGauge gauge) gauge.cancelDrag();
+        } finally {
+            removed.accept(this);
+        }
+    }
+
+    @Override
+    public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
+        return super.keyPressed(event);
+    }
+
+    @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (getFocused() instanceof UiSloshGauge gauge && gauge.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        return super.mouseReleased(event);
+    }
 
     public Bounds viewport() { return new Bounds(0, 0, width, height); }
     public <T extends GuiEventListener & Renderable & NarratableEntry> T add(T widget) {

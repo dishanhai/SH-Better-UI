@@ -468,7 +468,7 @@ public final class GaussBlur {
 
     /**
      * 登记本帧要压在模糊之上的内容（tooltip、提示横幅、悬浮按钮）。Screen.render 里只登记不画，
-     * {@link #onScreenRenderPost} 里模糊跑完再用事件自带的 GuiGraphics 调 {@code draw}。
+     * {@link #onScreenRenderPost(Screen, GuiGraphics, float)} 里模糊跑完再用当前帧的 GuiGraphics 调 {@code draw}。
      * 每帧都要重新登记；后登记的取代先登记的。{@code draw} 拿到的 GuiGraphics 姿态是单位矩阵，
      * 缩放/偏移和 Z 层要自己加。
      */
@@ -483,25 +483,29 @@ public final class GaussBlur {
         topLayerOwner = null;
     }
 
+    /** @deprecated Loader-specific compatibility entry point. The native event bridge owns frame completion. */
+    @Deprecated
+    public static void onScreenRenderPost(ScreenEvent.Render.Post event) {
+        onScreenRenderPost(event.getScreen(), event.getGuiGraphics(), event.getPartialTick());
+    }
+
     /**
      * 界面帧末执行：先跑模糊，再画压在模糊之上的上层内容。
      * 上层放在 finally 里，模糊不可用或抛异常时 tooltip 照样出来。
      */
-    public static void onScreenRenderPost(ScreenEvent.Render.Post event) {
+    public static void onScreenRenderPost(Screen screen, GuiGraphics graphics, float partialTick) {
         Consumer<GuiGraphics> top = topLayer;
         Screen topOwner = topLayerOwner;
         clearTopLayer();
         try {
-            runBlurPasses(event);
+            runBlurPasses(screen, graphics, partialTick);
         } finally {
-            runTopLayer(event, top, topOwner);
+            runTopLayer(screen, graphics, top, topOwner);
         }
     }
 
-    private static void runTopLayer(ScreenEvent.Render.Post event, Consumer<GuiGraphics> top, Screen owner) {
-        if (top == null || owner == null || event.getScreen() != owner) return;
-        GuiGraphics g = event.getGuiGraphics();
-        if (g == null) return;
+    private static void runTopLayer(Screen screen, GuiGraphics g, Consumer<GuiGraphics> top, Screen owner) {
+        if (top == null || owner == null || screen != owner || g == null) return;
         try {
             top.accept(g);
             // 事件之后 GameRenderer 才会再 flush 一次；这里先落盘，别的 Post 监听读主画面时已经是完整的。
@@ -518,7 +522,7 @@ public final class GaussBlur {
      * 必须先 flush，否则商店最后一批 quad 还在 GuiGraphics 的缓冲里，
      * 后处理读到的是不完整的画面。
      */
-    private static void runBlurPasses(ScreenEvent.Render.Post event) {
+    private static void runBlurPasses(Screen screen, GuiGraphics graphics, float partialTick) {
         boolean managed = managedPrimary;
         boolean hadRequest = requested;
         boolean smooth = requestSmooth;
@@ -548,11 +552,8 @@ public final class GaussBlur {
         boolean primary = hadRequest && rect != null && strength > 0.01f;
         boolean extra = hadExtra && rect2 != null && strength2 > 0.01f;
         if (!primary && !extra && !hadWave) return;
-        if (!isAllowed(event.getScreen())) return;
-        if (event.getGuiGraphics() != null) {
-            event.getGuiGraphics().flush();
-        }
-        float partialTick = event.getPartialTick();
+        if (!isAllowed(screen)) return;
+        if (graphics != null) graphics.flush();
         Minecraft mc = Minecraft.getInstance();
         if (primary) {
             Runnable primaryPass = () -> render(mc, strength, radius, rect,

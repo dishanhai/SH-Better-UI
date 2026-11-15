@@ -1,6 +1,11 @@
 // Author: dishanhai
 package com.dishanhai.shbui_kernel_example;
 
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
+import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.search.SearchField;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityRequest;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleLifecycle;
@@ -15,18 +20,23 @@ import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
+import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
+import java.util.Optional;
 
 /** Optional packaged-client check. Enable it only in the example's isolated run directory. */
 final class ExampleSmoke {
     private static final String OUTPUT = System.getProperty("shbui.example.smoke");
     private static ExampleUiModule module;
     private static Screen title;
+    private static DeveloperPanelScreen developer;
+    private static Screen gallery;
+    private static int galleryScale;
     private static LiveExamplesSmoke live;
     private static RichTextSdkSmoke richText;
     private static Stage stage = Stage.START;
@@ -36,7 +46,11 @@ final class ExampleSmoke {
     private static boolean done;
     private static boolean passed;
 
-    private enum Stage { START, ACT, LIVE, CAPTURE_AND_CLOSE, REOPEN, RICH_TEXT, TEXT_READABILITY }
+    private enum Stage {
+        START, OPEN_GALLERY, OPEN_DIRECTORY, SEARCH_PREVIEW, TOGGLE_PREVIEW, FULLSCREEN_PREVIEW,
+        RESIZE_PREVIEW, RETURN_FROM_PREVIEW,
+        ACT, LIVE, CAPTURE_AND_CLOSE, REOPEN, RICH_TEXT, TEXT_READABILITY
+    }
 
     private ExampleSmoke() {}
 
@@ -64,6 +78,73 @@ final class ExampleSmoke {
                 case START -> {
                     if (!(client.screen instanceof TitleScreen)) return;
                     verifyAndOpen(client);
+                    stage = Stage.OPEN_GALLERY;
+                }
+                case OPEN_GALLERY -> {
+                    var category = PreviewSpec.Category.CONTROLS;
+                    press(developer, button(developer, Component.translatable(category.titleKey())));
+                    gallery = client.screen;
+                    require(gallery != developer, "The controls gallery did not open");
+                    stage = Stage.OPEN_DIRECTORY;
+                }
+                case OPEN_DIRECTORY -> {
+                    var category = PreviewSpec.Category.CONTROLS;
+                    var samples = ShBetterUiApi.developerPreviews().entries().stream()
+                            .filter(spec -> spec.category() == category).toList();
+                    press(gallery, button(gallery, galleryLabel("sample_page",
+                            Component.translatable(samples.get(0).titleKey()), 1, samples.size())));
+                    require(client.screen != gallery, "The preview directory did not open");
+                    stage = Stage.SEARCH_PREVIEW;
+                }
+                case SEARCH_PREVIEW -> {
+                    Screen directory = client.screen;
+                    var search = directory.children().stream().filter(SearchField.class::isInstance)
+                            .map(SearchField.class::cast).findFirst().orElseThrow();
+                    search.setValue(ExampleUiModule.GALLERY_TOGGLE_ID);
+                    press(directory, button(directory, ExampleUiModule.label("preview.toggle.title")));
+                    require(client.screen == gallery, "The searched preview did not open");
+                    stage = Stage.TOGGLE_PREVIEW;
+                }
+                case TOGGLE_PREVIEW -> {
+                    press(gallery, button(gallery, toggleLabel(false)));
+                    require(button(gallery, toggleLabel(true)).active, "The preview toggle did not update");
+                    press(gallery, button(gallery, galleryLabel("fullscreen")));
+                    stage = Stage.FULLSCREEN_PREVIEW;
+                }
+                case FULLSCREEN_PREVIEW -> {
+                    if (findButton(gallery, galleryLabel("exit_fullscreen")).isEmpty()) return;
+                    require(button(gallery, toggleLabel(true)).active, "Fullscreen lost the preview's toggle value");
+                    galleryScale = client.options.guiScale().get();
+                    double oldScale = client.getWindow().getGuiScale();
+                    client.options.guiScale().set(oldScale == 1 ? 2 : 1);
+                    client.resizeDisplay();
+                    require(client.getWindow().getGuiScale() != oldScale, "The preview did not change GUI scale");
+                    stage = Stage.RESIZE_PREVIEW;
+                }
+                case RESIZE_PREVIEW -> {
+                    Button toggle = button(gallery, toggleLabel(true));
+                    double x = toggle.getX() + toggle.getWidth() / 2.0;
+                    double y = toggle.getY() + toggle.getHeight() / 2.0;
+                    require(gallery.mouseClicked(x, y, GLFW.GLFW_MOUSE_BUTTON_LEFT),
+                            "The preview toggle did not receive the pointer after resize");
+                    gallery.mouseReleased(x, y, GLFW.GLFW_MOUSE_BUTTON_LEFT);
+                    require(button(gallery, toggleLabel(false)).active, "The resized preview toggle did not update");
+                    require(gallery.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0), "Escape did not close fullscreen");
+                    stage = Stage.RETURN_FROM_PREVIEW;
+                }
+                case RETURN_FROM_PREVIEW -> {
+                    if (client.screen == gallery) {
+                        if (findButton(gallery, galleryLabel("fullscreen")).isPresent()) gallery.onClose();
+                        return;
+                    }
+                    require(client.screen == developer
+                                    && developer.getFocused() == button(developer,
+                                            Component.translatable(PreviewSpec.Category.CONTROLS.titleKey())),
+                            "Returning from the preview did not restore the developer panel focus");
+                    client.setScreen(title);
+                    client.options.guiScale().set(galleryScale);
+                    client.resizeDisplay();
+                    press(title, ExampleClient.titleEntry(title).orElseThrow());
                     stage = Stage.ACT;
                 }
                 case ACT -> {
@@ -129,6 +210,8 @@ final class ExampleSmoke {
         require(!exampleJar.equals(libraryJar), "The extension and library share a JAR");
         require(ui.lifecycle().snapshot().modules().get(ExampleUiModule.ID) == ModuleLifecycle.RUNNING,
                 "The discovered module is not running");
+        require(DeveloperPanelScreen.sampleIds().contains(ExampleUiModule.GALLERY_TOGGLE_ID),
+                "The developer panel did not discover the extension preview");
         var capabilities = ui.capabilities().resolve(new CapabilityRequest(
                 Map.of(ExampleUiModule.CONTROLS, VersionRange.ANY),
                 Map.of(UIApis.SYSTEM_SCREEN_READER, VersionRange.ANY)));
@@ -140,7 +223,8 @@ final class ExampleSmoke {
                         && ui.find(LiveSurfaceService.KEY).isPresent(), "The public live services are unavailable");
 
         title = client.screen;
-        press(title, ExampleClient.titleEntry(title).orElseThrow());
+        developer = ShBetterUiApi.settings().developerPanel(title, new UiPreferences(true, true, false));
+        client.setScreen(developer);
     }
 
     private static void act(Minecraft client) {
@@ -187,7 +271,9 @@ final class ExampleSmoke {
 
     private static void writeSuccess() throws IOException {
         Files.writeString(Path.of(OUTPUT, "success.txt"),
-                "Named extension and library JARs, custom service, optional fallback, scoped config, keyboard, undo, and screen cleanup passed.\n"
+                "Named extension and library JARs, discovered developer preview, custom service, optional fallback, scoped config, keyboard, undo, and screen cleanup passed.\n"
+                        + "Developer gallery passed: ID search, keyboard and pointer toggle, fullscreen state, GUI scaling, "
+                        + "Escape and return focus with high contrast and reduced motion enabled.\n"
                         + "The mounted status row drew Liquid Glass through the public RenderService.\n"
                         + "Live examples passed: music publication/pause/resume, local crafting cancellation/completion notification, "
                         + "machine energy/progress, priority preemption/restoration, screen scope cleanup, and connection watch toggle across reopen.\n"
@@ -200,8 +286,10 @@ final class ExampleSmoke {
 
     static void shutdown() {
         if (OUTPUT == null || !passed || module == null || !module.stopped() || UnifiedUI.isAvailable()) return;
+        require(!DeveloperPanelScreen.sampleIds().contains(ExampleUiModule.GALLERY_TOGGLE_ID),
+                "The developer panel still listed the stopped extension preview");
         try {
-            Files.writeString(Path.of(OUTPUT, "stopped.txt"), "Extension stopped and facade withdrawn.\n");
+            Files.writeString(Path.of(OUTPUT, "stopped.txt"), "Extension stopped, preview withdrawn, and facade withdrawn.\n");
         } catch (IOException failure) {
             throw new IllegalStateException("Could not record extension shutdown", failure);
         }
@@ -210,6 +298,23 @@ final class ExampleSmoke {
     static void press(Screen screen, Button button) {
         screen.setFocused(button);
         require(screen.keyPressed(GLFW.GLFW_KEY_ENTER, 0, 0), "Enter did not activate a focused button");
+    }
+
+    private static Button button(Screen screen, Component label) {
+        return findButton(screen, label).orElseThrow(() -> new IllegalStateException("Missing button: " + label));
+    }
+
+    private static Optional<Button> findButton(Screen screen, Component label) {
+        return screen.children().stream().filter(Button.class::isInstance).map(Button.class::cast)
+                .filter(candidate -> candidate.visible && candidate.getMessage().equals(label)).findFirst();
+    }
+
+    private static Component galleryLabel(String key, Object... args) {
+        return Component.translatable("sh_better_ui.panel.developer.gallery." + key, args);
+    }
+
+    private static Component toggleLabel(boolean enabled) {
+        return ExampleUiModule.label("preview.toggle.state", Component.translatable(enabled ? "options.on" : "options.off"));
     }
 
     private static String jarLocation(Class<?> type) {

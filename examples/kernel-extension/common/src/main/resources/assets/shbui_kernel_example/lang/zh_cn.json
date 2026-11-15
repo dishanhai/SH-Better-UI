@@ -1,5 +1,7 @@
 {
   "shbui_kernel_example.rich_text.title": "富文本 SDK",
+  "shbui_kernel_example.preview.toggle.title": "示例模组开关",
+  "shbui_kernel_example.preview.toggle.state": "预览开关：%s",
   "shbui_kernel_example.readability.title": "文本可读性",
   "shbui_kernel_example.readability.queued": "排队绘制的前景文字",
   "shbui_kernel_example.readability.immediate": "在前景回调中立即绘制",

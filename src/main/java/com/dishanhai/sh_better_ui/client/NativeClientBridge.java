@@ -169,7 +169,7 @@ public final class NativeClientBridge {
             var overlay = UiOverlayHost.current(screen);
             var local = UiLocalModal.current(screen);
             handled = overlay != null && overlay.charTyped(character.codeUnit(), character.modifiers())
-                    || local != null && local.focusedCovered();
+                    || local != null && local.charTyped(character.codeUnit(), character.modifiers());
         }
         return handled || ClientUiKernel.nativeInput(screen, event);
     }

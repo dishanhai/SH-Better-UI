@@ -27,6 +27,6 @@ side="BOTH"
 [[dependencies.shbui_kernel_example]]
 modId="sh_better_ui"
 mandatory=true
-versionRange="[1.0.7,)"
+versionRange="[1.0.11,)"
 ordering="AFTER"
 side="CLIENT"

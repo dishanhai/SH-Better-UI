@@ -112,7 +112,7 @@ public final class UiClient {
     @SubscribeEvent(priority = EventPriority.LOWEST)
     public static void onScreenRenderPost(ScreenEvent.Render.Post event) {
         NativeClientBridge.composeScreenPost(event.getScreen(), event.getGuiGraphics(),
-                () -> GaussBlur.onScreenRenderPost(event));
+                () -> GaussBlur.onScreenRenderPost(event.getScreen(), event.getGuiGraphics(), event.getPartialTick()));
         UiClientRendering.renderScreenOverlays(event.getScreen(), event.getGuiGraphics(), event.getMouseX(),
                 event.getMouseY(), event.getPartialTick());
         NativeClientBridge.render(event.getScreen(), event.getGuiGraphics(), event.getPartialTick());

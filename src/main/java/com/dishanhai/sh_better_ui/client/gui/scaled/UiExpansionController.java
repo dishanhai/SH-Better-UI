@@ -8,6 +8,7 @@ import java.util.function.DoubleUnaryOperator;
 
 /** 山海：局部扩展的几何与状态机。时间采用单调毫秒，所有坐标采用 GUI 单位。 */
 public final class UiExpansionController {
+    private static final float MENU_BLUR_RADIUS = 10f;
     private static final Morph LINEAR = new Morph() {
         @Override
         public Bounds bounds(Bounds source, Bounds target, float progress) {
@@ -20,6 +21,21 @@ public final class UiExpansionController {
                     GuiMotion.lerp(source.y(), target.y(), progress),
                     GuiMotion.lerp(source.width(), target.width(), progress),
                     GuiMotion.lerp(source.height(), target.height(), progress));
+        }
+    };
+    private static final Morph CENTERED = new Morph() {
+        @Override
+        public Bounds bounds(Bounds source, Bounds target, float progress) {
+            return rounded(outline(source, target, progress));
+        }
+
+        @Override
+        public GuiRect outline(Bounds source, Bounds target, float progress) {
+            float seed = Math.min(12f, Math.min(target.width(), target.height()));
+            float width = GuiMotion.lerp(seed, target.width(), progress);
+            float height = GuiMotion.lerp(seed, target.height(), progress);
+            return new GuiRect(target.x() + (target.width() - width) * 0.5f,
+                    target.y() + (target.height() - height) * 0.5f, width, height);
         }
     };
 
@@ -65,6 +81,12 @@ public final class UiExpansionController {
                 new Phase(220, UiExpansionController::smoothstep),
                 LINEAR, Float.MAX_VALUE);
 
+        /** 以最终菜单中心为锚点展开与收起，液态玻璃主题使用专用的材质过渡。 */
+        public static final Config CENTERED_MENU = new Config(
+                new Phase(0, t -> t), new Phase(240, UiExpansionController::easeOut),
+                new Phase(0, t -> t), new Phase(0, t -> t),
+                new Phase(140, UiExpansionController::easeOut), CENTERED, 10f);
+
         public Config {
             Objects.requireNonNull(activation);
             Objects.requireNonNull(expansion);
@@ -99,7 +121,7 @@ public final class UiExpansionController {
         this.config = Objects.requireNonNull(config);
         this.reducedMotion = reducedMotion;
         envelope = envelope(source, target);
-        sourceOutline = rectangle(source);
+        sourceOutline = centeredMenu() ? CENTERED.outline(source, target, 0f) : rectangle(source);
         targetOutline = rectangle(target);
         outline = sourceOutline;
         openingStarted = now;
@@ -109,7 +131,7 @@ public final class UiExpansionController {
 
     public State state() { return state; }
     public Bounds frame() {
-        if (progress == 0f) return source;
+        if (progress == 0f && !centeredMenu()) return source;
         if (progress == 1f) return target;
         return rounded(outline);
     }
@@ -118,6 +140,28 @@ public final class UiExpansionController {
     public Bounds envelope() { return envelope; }
     public float progress() { return progress; }
     public float phaseProgress() { return phaseProgress; }
+
+    boolean centeredMenu() { return config.morph() == CENTERED; }
+
+    float radius() {
+        if (!centeredMenu() || progress == 1f) return config.radius();
+        float round = Math.min(outline.getW(), outline.getH()) * 0.5f;
+        return GuiMotion.lerp(round, Math.min(round, config.radius()), progress);
+    }
+
+    static float menuContentOpacity(float progress) {
+        return (float) smoothstep(GuiMotion.clamp01((progress - 0.58f) / 0.38f));
+    }
+
+    static float menuBloom(float progress, UiPreferences preferences) {
+        if (preferences.highContrast() || preferences.reducedMotion()) return 0f;
+        float p = GuiMotion.clamp01(progress);
+        return 4f * p * (1f - p);
+    }
+
+    static float menuBlurRadius(float bloom) {
+        return MENU_BLUR_RADIUS + 8f * bloom;
+    }
 
     public Bounds advance(long now) {
         while (true) {
@@ -207,6 +251,11 @@ public final class UiExpansionController {
     }
 
     private static double smoothstep(double t) { return t * t * (3 - 2 * t); }
+
+    private static double easeOut(double t) {
+        double remaining = 1 - t;
+        return 1 - remaining * remaining * remaining;
+    }
 
     private static Bounds rounded(GuiRect outline) {
         return new Bounds(Math.round(outline.getX()), Math.round(outline.getY()),

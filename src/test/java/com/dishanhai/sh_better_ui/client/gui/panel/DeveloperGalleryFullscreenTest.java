@@ -22,7 +22,9 @@ class DeveloperGalleryFullscreenTest {
         var settings = ShBetterUiApi.settings();
         var registry = ShBetterUiApi.developerPreviews();
         var ids = settings.developerSampleIds();
-        assertEquals(List.of("underlined_tabs", "stepper"), ids.subList(0, 2));
+        assertTrue(ids.containsAll(List.of("underlined_tabs", "stepper")));
+        assertTrue(ids.indexOf("underlined_tabs") < ids.indexOf("stepper"));
+        assertEquals(PreviewSpec.Category.CONTROLS, registry.find("bell_toggle").orElseThrow().category());
         assertTrue(ids.containsAll(List.of("bottom_sheet", "interruptible_animation", "electric_logo", "status_icon",
                 "code_rain", "laser_flow", "effect_appearance", "ascii_field", "shape_waves", "visual_reveal")));
         assertEquals(registry.ids(), ids);

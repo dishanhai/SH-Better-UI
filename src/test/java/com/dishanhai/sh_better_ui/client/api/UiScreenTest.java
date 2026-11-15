@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import net.minecraft.client.gui.GuiGraphics;
@@ -21,6 +22,92 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
+    @Test
+    void stackUsesTheSameTargetForHitsClicksScrollAndRelease() {
+        var lower = new StackWidget();
+        var upper = new StackWidget();
+        var otherStack = new StackWidget();
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> {
+                    page.addClipped(lower, () -> new Bounds(0, 0, 60, 40), "main");
+                    page.addClipped(otherStack, () -> new Bounds(0, 0, 60, 40), "other");
+                    page.addClipped(upper, () -> new Bounds(10, 0, 20, 40), "main");
+                }).build();
+        screen.width = 60;
+        screen.height = 40;
+        screen.init();
+
+        assertSame(upper, screen.getChildAt(15, 10).orElseThrow());
+        assertTrue(screen.mouseScrolled(15, 10, 0, -1));
+        assertTrue(screen.mouseClicked(15, 10, 0));
+        assertSame(upper, screen.getFocused());
+        assertTrue(screen.mouseReleased(55, 35, 0));
+        assertEquals(1, upper.clicks);
+        assertEquals(1, upper.releases);
+        assertEquals(1, upper.scrolls);
+        assertEquals(0, lower.clicks);
+        assertEquals(0, lower.scrolls);
+        assertEquals(0, otherStack.clicks);
+        assertSame(lower, screen.getChildAt(5, 10).orElseThrow());
+
+        upper.transparent = true;
+        assertSame(lower, screen.getChildAt(15, 10).orElseThrow());
+        upper.transparent = false;
+        upper.visible = false;
+        assertSame(lower, screen.getChildAt(15, 10).orElseThrow());
+        upper.visible = true;
+        upper.active = false;
+        assertSame(lower, screen.getChildAt(15, 10).orElseThrow());
+        assertTrue(screen.mouseClicked(15, 10, 0));
+        assertSame(lower, screen.getFocused());
+        assertTrue(screen.mouseReleased(15, 10, 0));
+        screen.removed();
+    }
+
+    private static final class StackWidget extends AbstractWidget {
+        private int clicks;
+        private int releases;
+        private int scrolls;
+        private boolean transparent;
+
+        private StackWidget() {
+            super(0, 0, 40, 30, Component.empty());
+        }
+
+        @Override
+        public boolean isMouseOver(double x, double y) {
+            return !transparent && super.isMouseOver(x, y);
+        }
+
+        @Override
+        public boolean mouseClicked(double x, double y, int button) {
+            if (!isMouseOver(x, y)) return false;
+            clicks++;
+            return true;
+        }
+
+        @Override
+        public boolean mouseReleased(double x, double y, int button) {
+            releases++;
+            return true;
+        }
+
+        public boolean mouseScrolled(double x, double y, double vertical) {
+            scrolls++;
+            return true;
+        }
+
+        public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+            return mouseScrolled(x, y, vertical);
+        }
+
+        @Override
+        protected void renderWidget(GuiGraphics graphics, int x, int y, float partialTick) {}
+
+        @Override
+        protected void updateWidgetNarration(NarrationElementOutput narration) {}
+    }
+
     @Test
     void clipsWidgetHitsButDeliversReleaseToTheDraggingWidget() {
         int[] clicksAndReleases = new int[2];

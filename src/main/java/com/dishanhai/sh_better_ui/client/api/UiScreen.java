@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
@@ -18,14 +19,17 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
+import org.lwjgl.glfw.GLFW;
 
 import java.util.Collection;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /** 山海：通过回调组合现有 API 的原生界面，每次打开独立持有并释放上下文。 */
@@ -109,7 +113,9 @@ public final class UiScreen extends Screen {
         return addClipped(widget, clip, null);
     }
 
-    /** Widgets sharing a stack ID are picked in reverse paint order within their stack. */
+    /** Widgets sharing a stack ID are picked in reverse paint order within their stack.
+     * Pointer targets follow each widget's hit test and effective clip.
+     */
     public <T extends AbstractWidget> T addClipped(T widget, Supplier<Bounds> clip, String stackId) {
         if (disposed) throw new IllegalStateException("Disposed UI screen");
         Objects.requireNonNull(widget, "widget");
@@ -296,6 +302,10 @@ public final class UiScreen extends Screen {
             parent = screen.parent;
             returnFocus = screen.returnFocus;
         }
+        if (parent instanceof net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<?> container) {
+            var player = net.minecraft.client.Minecraft.getInstance().player;
+            if (player == null || player.containerMenu != container.getMenu()) return new ReturnTarget(null, null);
+        }
         return new ReturnTarget(parent, returnFocus);
     }
 
@@ -309,6 +319,7 @@ public final class UiScreen extends Screen {
             Throwable failure = null;
             try {
                 if (previousBackdrop != null) previousBackdrop.reset();
+                if (getFocused() instanceof UiSloshGauge gauge) gauge.cancelDrag();
                 if (context != null) definition.onRemoved().accept(this);
             } catch (RuntimeException | Error error) {
                 failure = error;
@@ -337,22 +348,7 @@ public final class UiScreen extends Screen {
         if (viewport().contains(mouseX, mouseY)) {
             if (widgetViewport != null && !widgetViewport.contains(mouseX, mouseY)) return Optional.empty();
             if (widgetClips.isEmpty()) return super.getChildAt(mouseX, mouseY);
-            var widgets = children();
-            for (int i = 0; i < widgets.size(); i++) {
-                var child = widgets.get(i);
-                if (!isWidgetTarget(child, mouseX, mouseY)) continue;
-                String stack = widgetStacks.get(child);
-                if (stack != null) {
-                    for (int layer = widgets.size() - 1; layer > i; layer--) {
-                        var candidate = widgets.get(layer);
-                        if (stack.equals(widgetStacks.get(candidate)) && isWidgetTarget(candidate, mouseX, mouseY)) {
-                            return Optional.of(candidate);
-                        }
-                    }
-                }
-                return Optional.of(child);
-            }
-            return Optional.empty();
+            return Optional.ofNullable(findWidgetTarget(mouseX, mouseY, child -> true));
         }
         if (back != null && back.isMouseOver(mouseX, mouseY)) return Optional.of(back);
         return Optional.empty();
@@ -364,19 +360,43 @@ public final class UiScreen extends Screen {
         if (viewport().contains(mouseX, mouseY)) {
             if (widgetViewport != null && !widgetViewport.contains(mouseX, mouseY)) return false;
             if (widgetClips.isEmpty()) return super.mouseClicked(mouseX, mouseY, button);
+            if (!widgetStacks.isEmpty()) {
+                return findWidgetTarget(mouseX, mouseY, child -> clickWidget(child, mouseX, mouseY, button)) != null;
+            }
             for (var child : children()) {
-                if (!inWidgetClip(child, mouseX, mouseY) || !child.mouseClicked(mouseX, mouseY, button)) continue;
-                if (!disposed && !removed) {
-                    setFocused(child);
-                    if (button == 0) setDragging(true);
-                }
-                return true;
+                if (inWidgetClip(child, mouseX, mouseY) && clickWidget(child, mouseX, mouseY, button)) return true;
             }
             return false;
         }
-        if (back == null || !back.mouseClicked(mouseX, mouseY, button)) return false;
-        if (!disposed && !removed) {
-            setFocused(back);
+        return back != null && clickWidget(back, mouseX, mouseY, button);
+    }
+
+    private GuiEventListener findWidgetTarget(double x, double y, Predicate<GuiEventListener> accept) {
+        var widgets = children();
+        var testedStacks = new HashSet<String>();
+        for (int i = 0; i < widgets.size(); i++) {
+            var child = widgets.get(i);
+            if (!isWidgetTarget(child, x, y)) continue;
+            String stack = widgetStacks.get(child);
+            if (stack != null) {
+                if (!testedStacks.add(stack)) continue;
+                for (int layer = widgets.size() - 1; layer > i; layer--) {
+                    var candidate = widgets.get(layer);
+                    if (stack.equals(widgetStacks.get(candidate)) && isWidgetTarget(candidate, x, y)) {
+                        child = candidate;
+                        break;
+                    }
+                }
+            }
+            if (accept.test(child)) return child;
+        }
+        return null;
+    }
+
+    private boolean clickWidget(GuiEventListener child, double x, double y, int button) {
+        if (!child.mouseClicked(x, y, button)) return false;
+        if (!disposed && !removed && children().contains(child)) {
+            setFocused(child);
             if (button == 0) setDragging(true);
         }
         return true;
@@ -388,12 +408,7 @@ public final class UiScreen extends Screen {
     }
 
     private boolean isWidgetTarget(GuiEventListener child, double x, double y) {
-        if (!inWidgetClip(child, x, y)) return false;
-        if (widgetStacks.containsKey(child) && child instanceof AbstractWidget widget) {
-            return widget.visible && x >= widget.getX() && x < widget.getX() + widget.getWidth()
-                    && y >= widget.getY() && y < widget.getY() + widget.getHeight();
-        }
-        return child.isMouseOver(x, y);
+        return inWidgetClip(child, x, y) && child.isMouseOver(x, y);
     }
 
     public boolean mouseScrolled(double mouseX, double mouseY, double vertical) {
@@ -408,6 +423,15 @@ public final class UiScreen extends Screen {
         }
         return widgetViewport != null && widgetViewport.contains(mouseX, mouseY)
                 && widgetScroll.scroll(mouseX, mouseY, horizontal, vertical);
+    }
+
+    @Override
+    public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (key == GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
+        return super.keyPressed(key, scanCode, modifiers);
     }
 
     @Override

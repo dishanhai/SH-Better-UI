@@ -438,6 +438,8 @@ Forge 与 NeoForge 的原生 `Screen` 可使用 `client.gui.display` 下的图�
 
 内置图标的 64×64 透明副本位于 `sh_better_ui:textures/gui/display_64/<图标名>.png`，与 16×16 原图同名。副本按最近邻放大 4 倍，适用于按 64×64 读取完整纹理的调用方。内置 `GraphicIcon` 常数引用 16×16 原图。
 
+AE2 界面可用 `AE2_ORDER`（下单）、`AE2_PATTERN_UPLOAD`（样板上传）、`AE2_ORDERABLE`（可下单）和 `AE2_STOCK`（AE 库存）。对应纹理名为 `ae2_order.png`、`ae2_pattern_upload.png`、`ae2_orderable.png`、`ae2_stock.png`。
+
 商城界面可用 `PRODUCT_CARD`（商品卡片）、`PRODUCT`（商品）、`PRODUCT_OUTPUT`（商品产出）、`PRODUCT_INPUT`（商品输入）、`MY_PROFILE`（我的）、`MY_FAVORITES`（我的收藏）、`HIDE`（隐藏）、`SELECT_ALL`（全部）和 `SELECT_PARTIAL`（部分）。工具与功能入口可用 `RENDER`（渲染）、`TOOL`（工具）、`TOOLBAR`（工具栏）、`INSTALL`（安装）、`COMPATIBILITY`（兼容）和 `QUANTUM`（量子）。
 
 文件类图标有 `FOLDER`（文件夹）、`FILE`（通用文件）、`DOCUMENT`（文档）、`FILE_EXE`（.exe）、`FILE_MD`（.md）、`FILE_JAVA`（.java）和 `FILE_KT`（.kt）。模组与配方界面可用 `KUBEJS`（按 [KubeJS 项目图标](https://modrinth.com/mod/kubejs)重绘）、`AE2_PATTERN`（AE2 样板）和 `CRAFTING`（合成）。商店入口可用 `SHOP`。

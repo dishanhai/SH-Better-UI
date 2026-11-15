@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.api;
 
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalog;
+import com.dishanhai.sh_better_ui.kernel.api.system.ComputerStatusService;
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService;
 
 /** Native service keys supported by the NeoForge 26 client port. */
@@ -13,6 +14,8 @@ public final class UIApis {
     public static final CapabilityKey NATIVE_SCREEN = new CapabilityKey(SCREENS.id());
     public static final ServiceKey<HudService> HUD = key("hud", HudService.class);
     public static final CapabilityKey NATIVE_HUD = new CapabilityKey(HUD.id());
+    public static final ServiceKey<ComputerStatusService> COMPUTER_STATUS = ComputerStatusService.KEY;
+    public static final CapabilityKey COMPUTER_STATUS_READ = ComputerStatusService.CAPABILITY;
     public static final ServiceKey<TextReadabilityService> TEXT_READABILITY =
             key("text_readability", TextReadabilityService.class);
     public static final CapabilityKey TEXT_READABILITY_POLICY = new CapabilityKey(TEXT_READABILITY.id());

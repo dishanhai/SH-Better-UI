@@ -4,7 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.api.richtext;
 import java.util.Arrays;
 
 /** Default extended grapheme boundaries (Unicode 17.0, UAX #29 §3.1.1). */
-final class RichTextGraphemes {
+public final class RichTextGraphemes {
     private static final int TYPE_MASK = 0x0F;
     private static final int INDIC_MASK = 0x30;
     private static final int PICTOGRAPHIC = 0x40;
@@ -16,7 +16,7 @@ final class RichTextGraphemes {
     private RichTextGraphemes() {}
 
     /** Positive UTF-16 offsets of all cluster ends in ascending order. */
-    static int[] ends(String text) {
+    public static int[] ends(String text) {
         int[] ends = new int[text.length()];
         if (text.isEmpty()) return ends;
         var cursor = new Cursor(text);

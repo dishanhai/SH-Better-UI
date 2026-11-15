@@ -24,6 +24,13 @@ repositories {
     }
 }
 
+repositories {
+    maven {
+        url = 'https://api.modrinth.com/maven'
+        content { includeModule 'maven.modrinth', 'ae2' }
+    }
+}
+
 // Share stable drawing and motion API; only loader/render entry points are overridden.
 def platformFiles = ['com/dishanhai/sh_better_ui/ShBetterUi.java',
         'com/dishanhai/sh_better_ui/kernel/internal/live/network/PlatformLiveActivityNetwork.java',
@@ -74,6 +81,7 @@ neoForge {
     mods { sh_better_ui { sourceSet sourceSets.main } }
 }
 dependencies {
+    compileOnly('maven.modrinth:ae2:19.2.18') { transitive = false }
     implementation "thedarkcolour:kotlinforforge-neoforge:${kff_version}"
     compileOnly 'mezz.jei:jei-1.21.1-common-api:19.69.0.456'
     compileOnly('dev.latvian.mods:kubejs-neoforge:2101.7.2-build.381') { transitive = false }
@@ -95,7 +103,17 @@ tasks.withType(Test).configureEach {
 ext.sourceRoot = projectDir.parentFile
 apply from: '../gradle/kernel.gradle'
 
+// The worker is an opaque resource, never a mod dependency or part of the game classpath.
+tasks.register('buildAutomationWorker', GradleBuild) {
+    dir = file('../uuk-script-worker')
+    tasks = ['test', 'verifyWorkerJar']
+}
+
 processResources {
+    dependsOn 'buildAutomationWorker'
+    from('../uuk-script-worker/build/libs/uuk-script-worker.jar') {
+        into 'sh_better_ui/automation'
+    }
     from('../LICENSE')
     inputs.property('mod_version', mod_version)
     inputs.property('neo_version', neo_version)
@@ -116,6 +134,7 @@ tasks.register('verifyLibraryJar') {
         def zip = new java.util.zip.ZipFile(archive)
         try {
             ['META-INF/neoforge.mods.toml', 'com/dishanhai/sh_better_ui/ShBetterUi.class',
+             'sh_better_ui/automation/uuk-script-worker.jar',
              'com/dishanhai/sh_better_ui/client/api/ShBetterUiApi.class',
              'com/dishanhai/sh_better_ui/client/api/PlatformUiApi.class',
              'com/dishanhai/sh_better_ui/client/api/PlatformUiApi$LdLib.class',

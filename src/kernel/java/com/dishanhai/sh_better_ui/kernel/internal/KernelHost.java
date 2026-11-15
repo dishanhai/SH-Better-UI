@@ -12,6 +12,7 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.concurrent.Executor;
+import java.util.function.BiConsumer;
 import java.util.function.LongSupplier;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
@@ -298,14 +299,19 @@ final class KernelHost implements AutoCloseable {
     }
 
     void start(Collection<ModuleDiscovery.Candidate> candidates) {
-        start(candidates, false);
+        start(candidates, false, (module, context) -> {});
     }
 
     void startNative(Collection<ModuleDiscovery.Candidate> candidates) {
-        start(candidates, true);
+        startNative(candidates, (module, context) -> {});
     }
 
-    private void start(Collection<ModuleDiscovery.Candidate> candidates, boolean isolateExtensions) {
+    void startNative(Collection<ModuleDiscovery.Candidate> candidates, BiConsumer<UIModule, ModuleContext> afterStart) {
+        start(candidates, true, afterStart);
+    }
+
+    private void start(Collection<ModuleDiscovery.Candidate> candidates, boolean isolateExtensions,
+                       BiConsumer<UIModule, ModuleContext> afterStart) {
         assertOwner();
         lifecycle.transition(EngineState.DISCOVERING);
         try {
@@ -321,7 +327,7 @@ final class KernelHost implements AutoCloseable {
             lifecycle.transition(EngineState.RESOLVING);
             registry.freeze();
             lifecycle.transition(EngineState.INITIALIZING);
-            initialize();
+            initialize(afterStart);
 
             published = capture(running.keySet());
             mounted.values().forEach(module -> module.startupView = null);
@@ -474,7 +480,7 @@ final class KernelHost implements AutoCloseable {
         }
     }
 
-    private void initialize() {
+    private void initialize(BiConsumer<UIModule, ModuleContext> afterStart) {
         for (var context : mounted.values()) {
             var module = context.module;
             UiId id = module.id();
@@ -492,6 +498,7 @@ final class KernelHost implements AutoCloseable {
             lifecycle.transition(id, ModuleLifecycle.STARTING);
             try {
                 module.implementation().start(context);
+                afterStart.accept(module.implementation(), context);
                 lifecycle.transition(id, ModuleLifecycle.RUNNING);
                 running.put(id, module);
             } catch (RuntimeException | LinkageError | AssertionError failure) {

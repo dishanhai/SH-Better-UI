@@ -3,6 +3,8 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Rect;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Transform;
+import com.dishanhai.sh_better_ui.client.UiFrameScheduler;
+import com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityStatus;
 import com.dishanhai.sh_better_ui.kernel.api.RenderService;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
@@ -16,9 +18,16 @@ import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService.Request
 import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService.Result;
 import com.dishanhai.sh_better_ui.theme.token.ThemeTokens;
 import net.minecraft.util.FormattedCharSequence;
+import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Set;
+import java.util.function.BiConsumer;
+import java.util.function.Supplier;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -26,6 +35,42 @@ class ClientTextReadabilityTest {
     private static final Rect BOUNDS = new Rect(1, 2, 20, 9);
     private static final Rect VIEWPORT = new Rect(0, 0, 100, 100);
     private static final TextId TITLE = new TextId(id("title"));
+
+    @Test
+    void queuedTextReportsFinalFailureOnceInItsForegroundPass() throws ReflectiveOperationException {
+        try (var fixture = fixture()) {
+            var owner = new Screen(Component.empty()) {};
+            var screens = fixture.client.screens();
+            screens.show(owner);
+            var scope = screens.mountTrusted(fixture.module, owner, id("mounted"));
+            var service = fixture.module.engine().require(UIApis.TEXT_READABILITY);
+            service.configure(fixture.module, scope, new TextReadabilityPolicy(false, true, null, null, null));
+            var results = new ArrayList<Result>();
+            var base = request(scope, TITLE);
+            var fading = new Request(scope, TITLE, base.run(), base.style(), base.transform(), base.clip(), .5f);
+            var begin = UiFrameScheduler.class.getDeclaredMethod("beginFrame", long.class, Supplier.class);
+            var abort = UiFrameScheduler.class.getDeclaredMethod("abortFrame");
+            begin.setAccessible(true);
+            abort.setAccessible(true);
+            begin.invoke(null, 1L, (Supplier<Screen>) () -> owner);
+            try {
+                VisualFrameCoordinator.begin(owner, null, 0);
+                BiConsumer<GuiGraphics, Result> completed = (graphics, result) -> results.add(result);
+                assertEquals(Result.SUBMITTED, service.submit(fixture.module, fading, completed));
+                assertEquals(Result.ALREADY_CONSUMED, service.submit(fixture.module, fading, completed));
+                assertTrue(results.isEmpty());
+                VisualFrameCoordinator.prepareBlur(owner, null);
+                VisualFrameCoordinator.drawForeground(owner, null);
+                VisualFrameCoordinator.drawForeground(owner, null);
+                assertEquals(List.of(Result.RENDER_UNAVAILABLE), results);
+                assertEquals(Result.RENDER_UNAVAILABLE, service.diagnostics(fixture.module, scope, TITLE)
+                        .orElseThrow().result());
+            } finally {
+                VisualFrameCoordinator.end();
+                abort.invoke(null);
+            }
+        }
+    }
 
     @Test
     void registersPolicyAndResolvesIndependentSwitchesAndPopupLayers() {

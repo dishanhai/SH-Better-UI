@@ -11,6 +11,7 @@ import com.dishanhai.sh_better_ui.client.glass.PixelRect;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RevealProfile;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffects;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.VisualReveal;
 import com.dishanhai.sh_better_ui.config.GlassBackdropSettings;
 import net.minecraft.client.gui.GuiGraphics;
@@ -38,6 +39,17 @@ public final class BlurApi {
 
     public boolean isReady() {
         return GaussBlur.isReady();
+    }
+
+    public boolean background(GuiGraphics graphics) {
+        return background(graphics, UiPreferences.configured());
+    }
+
+    /** Apply backdrop blur immediately. Call in the background pass, before submitting foreground. */
+    public boolean background(GuiGraphics graphics, UiPreferences preferences) {
+        return preferences.useBackdropBlur() && GlassBlur.tryBackdrop(graphics,
+                new GuiRect(0, 0, graphics.guiWidth(), graphics.guiHeight()), 1f,
+                GlassStyle.NONE, GaussBlur.BLUR_RADIUS_VIRTUAL, 0f, GlassBackdropSettings.DEFAULT);
     }
 
     public void backdrop(GuiGraphics graphics, GuiRect area) {

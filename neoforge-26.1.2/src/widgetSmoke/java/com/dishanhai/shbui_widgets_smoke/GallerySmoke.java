@@ -606,7 +606,7 @@ final class GallerySmoke {
         expected.addAll(CONTROLS);
         expected.addAll(List.of("backdrop_blur", "liquid_glass", "capsule_toggle", "mode_indicators", "text_details",
                 "search", "dialog", "liquid_button", "dark_button", "network_tab", "clear_glass", "frosted_glass",
-                "reset_icon", "settings_icon", "copy_icon", "status_icon", "frame_timeline"));
+                "reset_icon", "settings_icon", "copy_icon", "status_icon", "frame_timeline", "glide_select"));
         String prefix = GALLERY + "sample.";
         var actual = new TreeSet<String>();
         do {
@@ -1259,7 +1259,7 @@ final class GallerySmoke {
                 slider.getY() + slider.getHeight() / 2.0, new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0));
     }
 
-    private static String narration(AbstractWidget widget) {
+    static String narration(AbstractWidget widget) {
         var collector = new ScreenNarrationCollector();
         collector.update(widget::updateNarration);
         return collector.collectNarrationText(true);
@@ -1361,7 +1361,7 @@ final class GallerySmoke {
         throw new IllegalStateException("Gallery sample missing: " + id);
     }
 
-    private static void focusByTab(Screen screen, AbstractWidget target) {
+    static void focusByTab(Screen screen, AbstractWidget target) {
         for (int remaining = screen.children().size(); remaining > 0 && screen.getFocused() != target; remaining--) {
             screen.keyPressed(key(GLFW.GLFW_KEY_TAB));
         }
@@ -1375,7 +1375,7 @@ final class GallerySmoke {
                 "return restores sample focus: " + name);
     }
 
-    private static KeyEvent key(int value) { return new KeyEvent(value, 0, 0); }
+    static KeyEvent key(int value) { return new KeyEvent(value, 0, 0); }
 
     private static AbstractWidget findVisible(Screen screen, String id) {
         return screen.children().stream().filter(AbstractWidget.class::isInstance).map(AbstractWidget.class::cast)
@@ -1384,15 +1384,15 @@ final class GallerySmoke {
                 .findFirst().orElse(null);
     }
 
-    private static AbstractWidget visible(Screen screen, String id) {
+    static AbstractWidget visible(Screen screen, String id) {
         var widget = findVisible(screen, id);
         if (widget == null) throw new IllegalStateException("Visible gallery control missing: " + id);
         return widget;
     }
 
-    private static void click(Screen screen, String id) { click(screen, visible(screen, id)); }
+    static void click(Screen screen, String id) { click(screen, visible(screen, id)); }
 
-    private static void click(Screen screen, AbstractWidget widget) {
+    static void click(Screen screen, AbstractWidget widget) {
         require(widget.active && widget.visible, "sample control is active");
         click(screen, new MouseButtonEvent(widget.getX() + widget.getWidth() / 2.0,
                 widget.getY() + widget.getHeight() / 2.0, new MouseButtonInfo(GLFW.GLFW_MOUSE_BUTTON_LEFT, 0)));

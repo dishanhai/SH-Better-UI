@@ -1,6 +1,8 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
+import com.dishanhai.sh_better_ui.kernel.api.screen.LayeredScreen;
+
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
@@ -263,7 +265,7 @@ final class NativeEffectPreviews implements PreviewScene {
         }
     }
 
-    private static final class CrossfadeScreen extends Screen {
+    private static final class CrossfadeScreen extends LayeredScreen {
         private final Screen previous;
         private final Button source;
         private final UiPreferences preferences;
@@ -284,12 +286,15 @@ final class NativeEffectPreviews implements PreviewScene {
         }
 
         @Override
-        public void render(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
+        protected void renderBackdrop(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             float progress = Math.min(1f, (PageTransition.nowMs() - started) / 650f);
             transition.renderCrossfade(previous, g, partialTick, preferences, progress, 1f,
                     () -> g.fill(0, 0, width, height, 0xff30435d));
+        }
+
+        @Override
+        protected void renderForeground(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             g.drawCenteredString(font, getTitle(), width / 2, height / 2 - 14, 0xffffffff);
-            super.render(g, mouseX, mouseY, partialTick);
         }
 
         @Override

@@ -24,14 +24,24 @@ public final class PreviewRegistry {
     private final Map<String, Entry> byId = new HashMap<>();
     private volatile List<PreviewSpec> snapshot = List.of();
 
-    public synchronized Registration register(PreviewSpec spec) {
-        Objects.requireNonNull(spec);
-        var entry = new Entry(spec);
-        if (byId.putIfAbsent(spec.id(), entry) != null) {
-            throw new IllegalStateException("Developer preview already registered: " + spec.id());
+    public Registration register(PreviewSpec spec) {
+        return registerAll(List.of(spec));
+    }
+
+    /** Registers all declarations together, or leaves the current directory intact on an ID conflict. */
+    public synchronized Registration registerAll(List<PreviewSpec> specs) {
+        var additions = new HashMap<String, Entry>();
+        for (var spec : specs) {
+            var entry = new Entry(spec);
+            if (byId.containsKey(spec.id()) || additions.putIfAbsent(spec.id(), entry) != null) {
+                throw new IllegalStateException("Developer preview already registered: " + spec.id());
+            }
         }
-        refreshSnapshot();
-        return entry;
+        if (!additions.isEmpty()) {
+            byId.putAll(additions);
+            refreshSnapshot();
+        }
+        return () -> unregister(additions);
     }
 
     /** 按分类、顺序和 ID 排列，注册变化前复用同一个只读快照。 */
@@ -56,22 +66,21 @@ public final class PreviewRegistry {
         snapshot = byId.values().stream().map(entry -> entry.spec).sorted(ORDER).toList();
     }
 
-    private synchronized void unregister(Entry entry) {
-        if (byId.remove(entry.spec.id(), entry)) refreshSnapshot();
+    private synchronized void unregister(Map<String, Entry> entries) {
+        boolean changed = false;
+        for (var entry : entries.entrySet()) {
+            changed |= byId.remove(entry.getKey(), entry.getValue());
+        }
+        if (changed) refreshSnapshot();
     }
 
-    private final class Entry implements Registration {
+    private static final class Entry {
         private final PreviewSpec spec;
 
         private Entry(PreviewSpec spec) {
             // 同一个声明撤销再登记时，活动图库也需要识别新的注册世代。
             this.spec = new PreviewSpec(spec.id(), spec.category(), spec.order(), spec.titleKey(),
                     spec.preferredHeight(), spec.toolbarRightInset(), spec.code(), spec.factory());
-        }
-
-        @Override
-        public void close() {
-            unregister(this);
         }
     }
 }
