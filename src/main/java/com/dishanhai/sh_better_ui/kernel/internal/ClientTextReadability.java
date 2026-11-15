@@ -35,6 +35,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Predicate;
 
@@ -115,12 +116,17 @@ final class ClientTextReadability implements TextReadabilityService {
 
     @Override
     public Result submit(ModuleContext module, Request request) {
-        return render(module, null, request, false);
+        return render(module, null, request, false, null);
+    }
+
+    @Override
+    public Result submit(ModuleContext module, Request request, BiConsumer<GuiGraphics, Result> completed) {
+        return render(module, null, request, false, Objects.requireNonNull(completed, "completed"));
     }
 
     @Override
     public Result drawNow(ModuleContext module, RenderService.Context context, Request request) {
-        return render(module, context, request, true);
+        return render(module, context, request, true, null);
     }
 
     @Override
@@ -274,7 +280,8 @@ final class ClientTextReadability implements TextReadabilityService {
         consumed.replaceAll((request, pending) -> null);
     }
 
-    private Result render(ModuleContext module, RenderService.Context context, Request request, boolean immediate) {
+    private Result render(ModuleContext module, RenderService.Context context, Request request, boolean immediate,
+                          BiConsumer<GuiGraphics, Result> completed) {
         host.moduleAccess(module);
         if (request == null) return Result.INVALID_REQUEST;
         if (!request.scope().isOpen()) return Result.SCOPE_CLOSED;
@@ -307,7 +314,16 @@ final class ClientTextReadability implements TextReadabilityService {
         if (!immediate && painted.policy.foregroundProtection()) {
             consumed.put(request, painted);
             enqueue(frame, popup, request.foregroundZ(), graphics -> {
-                if (consumed.replace(request, painted, null)) paint(painted, graphics);
+                if (!consumed.replace(request, painted, null)) return;
+                var result = paint(painted, graphics);
+                if (completed != null && result != Result.SCOPE_CLOSED && result != Result.STALE_LAYOUT
+                        && node.isOpen() && frame.isCurrent()) {
+                    try {
+                        completed.accept(graphics, result);
+                    } catch (RuntimeException | LinkageError | AssertionError failure) {
+                        host.report("Text foreground completion " + node.id(), failure);
+                    }
+                }
             });
             return report(painted, Result.SUBMITTED);
         }

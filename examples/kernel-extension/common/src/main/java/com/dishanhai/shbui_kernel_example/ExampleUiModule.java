@@ -4,6 +4,8 @@ package com.dishanhai.shbui_kernel_example;
 import com.dishanhai.sh_better_ui.client.api.UiScreen;
 import com.dishanhai.sh_better_ui.client.api.UiScreenBuilder;
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
+import com.dishanhai.sh_better_ui.client.api.preview.DeveloperPreviewProvider;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
@@ -24,7 +26,6 @@ import com.dishanhai.sh_better_ui.kernel.api.ServiceDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.TaskHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.UIConfigCenter;
-import com.dishanhai.sh_better_ui.kernel.api.UIModule;
 import com.dishanhai.sh_better_ui.kernel.api.UIPermission;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.UiVersion;
@@ -51,9 +52,10 @@ import java.util.Set;
 import java.util.function.Supplier;
 
 /** Discovered from this mod's META-INF/sh_better_ui.modules on both loaders. */
-public final class ExampleUiModule implements UIModule {
+public final class ExampleUiModule implements DeveloperPreviewProvider {
     public static final String MOD_ID = "shbui_kernel_example";
     public static final UiId ID = id("controls");
+    static final String GALLERY_TOGGLE_ID = id("gallery_toggle").toString();
     public static final CapabilityKey CONTROLS = new CapabilityKey(ID);
     private static final UiId STATUS_MOTION = id("status_motion");
     public static final ConfigKey<Integer> STEP = ConfigKey.of(id("step"), Integer.class, 1,
@@ -86,6 +88,12 @@ public final class ExampleUiModule implements UIModule {
 
     static CraftingBackend craftingBackend() { return craftingBackend; }
     static boolean localCraftingBackend(CraftingBackend backend) { return backend == LOCAL_CRAFTING; }
+
+    @Override
+    public List<PreviewSpec> developerPreviews() {
+        return List.of(new PreviewSpec(GALLERY_TOGGLE_ID, PreviewSpec.Category.CONTROLS,
+                1000, MOD_ID + ".preview.toggle.title", GalleryTogglePreview::new));
+    }
 
     @Override
     public ModuleDescriptor descriptor() {

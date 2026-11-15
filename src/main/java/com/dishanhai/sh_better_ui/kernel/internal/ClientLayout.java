@@ -77,7 +77,13 @@ final class ClientLayout implements LayoutService {
         if (existing != null && existing.isActive()) {
             throw new IllegalStateException("The Screen mount already owns a visual layout");
         }
-        var binding = VisualFrameCoordinator.bind(owner, mount, target, layout, sample);
+        var binding = VisualFrameCoordinator.bind(owner, mount, target, layout, sample, candidate -> {
+            try {
+                return host.ownedNode(module, candidate).isWithin(target);
+            } catch (SecurityException | IllegalStateException | IllegalArgumentException rejected) {
+                return false;
+            }
+        });
         visualBindings.put(mount, binding);
         target.track(() -> visualBindings.remove(mount, binding));
         return binding;

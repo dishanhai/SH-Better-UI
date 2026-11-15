@@ -28,6 +28,8 @@ GPU 狀態用 2,048 個整數槽保存，無穩定 ID 的文字走無狀態路�
 
 第三方 Screen 透過 `UIApis.SCREENS` 掛載本模組的 UI tree，再使用 `UIApis.TEXT_READABILITY` 配置作用域。以 `Run` 傳入已排版的視覺序列、原點和範圍。預設用 `submit`。要即時繪製時，由 `foreground` 取得當幀的作用域上下文，再呼叫 `drawNow`。可在 [Java Screen 範例](../examples/kernel-extension/common/src/main/java/com/dishanhai/shbui_kernel_example/TextReadabilitySdkScreen.java) 查看完整入口。
 
+Forge 1.20.1／NeoForge 1.21.1 可用 `submit(module, request, completed)` 接收排隊文字的最終結果。只有回傳 `SUBMITTED` 的請求會在有效前景 pass 呼叫 `completed`。若回呼收到 `RENDER_UNAVAILABLE` 或 `RENDER_FAILED`，可用當幀的 `GuiGraphics` 繪製保留裁切的回退文字。同步結果直接從方法回傳，失效的作用域或幀會丟棄排程。回呼使用完畢後應恢復所修改的繪圖狀態。
+
 `/shbettertextreadability` 開關遊戲內疊層。將指標移到接入服務的文字上可查看文字範圍、裁剪、階段結果、採樣狀態、對比與保護原因。Java／Kotlin 可用 `setGpuDiagnostics(module, scope, true)` 開啟自己的子樹採集。詳細結果透過固定容量的 PBO 和 fence 延後返回，來源幀與待回傳幀分開標記。作用域關閉、資料列回收、目標或資源失效時，舊結果不會傳入新世代。停用診斷後停止送出詳細讀回。
 
 開啟 `localColor` 後，`submit` 與 `drawNow` 可在同一個原生 `FormattedCharSequence` 內依視覺字形簇選色。服務沿用 Minecraft 已重排的 sink 順序與字型的逐字形浮點 advance，保留 inline style，並把基底字與組合記號留在同一簇。各簇從同一份繪字前的背景取樣，共用既有幀預算，各自保有穩定狀態。父 run 有任何簇完成 GPU 分析時，診斷的採樣狀態為 `LOCAL_GPU`。Java／Kotlin 可用 `clusterDiagnostics(module, scope, textId)` 按視覺順序取得最新各簇診斷。取樣配額不足或暫時不可用時，已量測的簇沿用各自的填色並執行 CPU 回退。

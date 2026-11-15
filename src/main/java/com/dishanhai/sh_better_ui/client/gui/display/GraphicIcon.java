@@ -145,6 +145,10 @@ public record GraphicIcon(ResourceLocation texture, GraphicIconShader shader, Gr
     public static final GraphicIcon AE2 = builtIn("ae2");
     public static final GraphicIcon QUANTUM = builtIn("quantum");
     public static final GraphicIcon AE2_PATTERN = builtIn("ae2_pattern");
+    public static final GraphicIcon AE2_ORDER = builtIn("ae2_order");
+    public static final GraphicIcon AE2_PATTERN_UPLOAD = builtIn("ae2_pattern_upload");
+    public static final GraphicIcon AE2_ORDERABLE = builtIn("ae2_orderable");
+    public static final GraphicIcon AE2_STOCK = builtIn("ae2_stock");
     public static final GraphicIcon QUICK_PATTERN_ENCODE = builtIn("quick_pattern_encode");
     public static final GraphicIcon QUICK = builtIn("quick");
     public static final GraphicIcon CLOUD_PATTERN_LIBRARY = builtIn("cloud_pattern_library");

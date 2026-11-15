@@ -1,1 +1,3 @@
 shbui_widgets_smoke com.dishanhai.shbui_widgets_smoke.ReadabilitySmoke
+shbui_widgets_smoke com.dishanhai.shbui_widgets_smoke.PreviewDiscoverySmoke
+shbui_widgets_smoke com.dishanhai.shbui_widgets_smoke.DeclarativePageSmoke

@@ -6,8 +6,15 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiFolderFloat;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiFuseButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeRow;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiJellyRadio;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -60,12 +67,12 @@ abstract class GallerySampleScreen extends Screen {
         panel = new Bounds((width - panelWidth) / 2, (height - panelHeight) / 2, panelWidth, panelHeight);
         int footer = panel.bottom() - INSET - FOOTER_HEIGHT;
         int contentY = panel.y() + 35;
-        compact = panelWidth < 156 || panelHeight < 126 || !previewAvailable();
         initialFocus = null;
         fullscreenButton = null;
         codeButton = null;
         body = new Bounds(panel.x() + INSET, contentY, Math.max(0, panel.width() - INSET * 2),
                 Math.max(0, footer - contentY - 5));
+        compact = panelWidth < 156 || panelHeight < 126 || body.height() < minimumBodyHeight() || !previewAvailable();
         if (compact) {
             back = addButton(new Bounds(panel.x(), Math.max(0, panel.bottom() - FOOTER_HEIGHT),
                     panelWidth, FOOTER_HEIGHT), CommonComponents.GUI_BACK, ignored -> onClose(), false);
@@ -105,6 +112,8 @@ abstract class GallerySampleScreen extends Screen {
     }
 
     protected abstract void initSample();
+
+    protected int minimumBodyHeight() { return 0; }
 
     protected void beforeSampleInit() {}
 
@@ -162,7 +171,55 @@ abstract class GallerySampleScreen extends Screen {
     }
 
     @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (getFocused() instanceof UiSloshGauge gauge && gauge.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (getFocused() instanceof UiSwipeRow row && row.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (getFocused() instanceof UiFuseButton fuse && fuse.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (event.button() == 0 && getFocused() instanceof UiHoldButton hold && hold.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (event.button() == 0 && ((getFocused() instanceof UiRubberSegment segment && segment.mouseReleased(event))
+                || (getFocused() instanceof UiJellyRadio radio && radio.mouseReleased(event)))) {
+            setDragging(false);
+            return true;
+        }
+        return super.mouseReleased(event);
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && getFocused() instanceof UiFolderFloat<?> folder && folder.keyPressed(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (event.isEscape() && getFocused() instanceof UiFuseButton fuse && fuse.keyPressed(event)) return true;
+        if (event.isEscape() && getFocused() instanceof UiSwipeRow row && row.keyPressed(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (event.isEscape() && getFocused() instanceof UiHoldButton hold && hold.cancelHold()) {
+            setDragging(false);
+            return true;
+        }
+        if (event.isEscape() && ((getFocused() instanceof UiRubberSegment segment && segment.cancelDrag())
+                || (getFocused() instanceof UiJellyRadio radio && radio.cancelPress()))) {
+            setDragging(false);
+            return true;
+        }
+        if (event.isEscape() && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
         if (event.isEscape() && getFocused() instanceof UiSlider slider && slider.keyPressed(event)) {
             setDragging(false);
             return true;
@@ -220,6 +277,10 @@ abstract class GallerySampleScreen extends Screen {
     private void cancelEdits() {
         for (var child : children()) {
             if (child instanceof UiSlider slider) slider.cancelEdit();
+            if (child instanceof UiSloshGauge gauge) gauge.cancelDrag();
+            if (child instanceof UiRubberSegment segment) segment.cancelDrag();
+            if (child instanceof UiJellyRadio radio) radio.cancelPress();
+            if (child instanceof UiHoldButton hold) hold.cancelHold();
         }
         cancelInteraction();
         setDragging(false);

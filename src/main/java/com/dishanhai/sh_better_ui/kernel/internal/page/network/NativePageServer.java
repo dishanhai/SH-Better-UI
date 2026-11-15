@@ -270,6 +270,11 @@ public final class NativePageServer {
         return peer != null && peer.session.closePage(instance);
     }
 
+    public static List<UUID> visiblePages(ServerPlayer player, UiId page) {
+        var peer = peer(player);
+        return peer == null ? List.of() : peer.session.visiblePages(page);
+    }
+
     private static Peer peer(ServerPlayer player) {
         ownerThread(player.server);
         var registry = SERVERS.get(player.server);

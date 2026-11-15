@@ -33,6 +33,7 @@ import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSkeleton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
@@ -42,6 +43,7 @@ import com.dishanhai.sh_better_ui.config.DynamicThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.google.gson.JsonObject;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
+import com.dishanhai.sh_better_ui.kernel.api.config.ConfigPage;
 import com.dishanhai.sh_better_ui.kernel.api.UnifiedUI;
 import net.minecraft.client.gui.components.EditBox;
 import com.dishanhai.sh_better_ui.config.GlassBackdropSettings;
@@ -59,7 +61,8 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.ArrayList;
-import java.util.EnumMap;
+import java.math.BigDecimal;
+import java.util.Arrays;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -79,10 +82,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private static final int HEADER_HEIGHT = 64;
     private static final int CONFIG_HEADER_HEIGHT = 94;
     private static final int FOOTER_HEIGHT = 46;
-    private static final int GLASS_STACK_HEIGHT = 190;
-    private static final int GLASS_SIDE_HEIGHT = 146;
+    private static final int GLASS_STACK_HEIGHT = 122;
+    private static final int GLASS_SIDE_HEIGHT = 116;
+    private static final int MAX_CONTENT_HEIGHT = 190;
     private static final int SCROLLBAR_WIDTH = 5;
     private static final float BODY_RADIUS = 5f;
+    private static final List<ThemeSettings.Mode> THEMES = List.of(ThemeSettings.Mode.DARK, ThemeSettings.Mode.LIGHT,
+            ThemeSettings.Mode.CUSTOM, ThemeSettings.Mode.LIQUID_GLASS, ThemeSettings.Mode.HUD_GLASS);
     private static final List<Section> SECTIONS = List.of(Section.values());
     private static final List<UiSectionBar.Section> TABS = SECTIONS.stream().map(section -> section.tab).toList();
     private static final List<Area> AREAS = List.of(Area.values());
@@ -96,7 +102,6 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private final KeyMapping keyMapping;
     private final Predicate<ClientUiSettings> save;
     private final Map<AbstractWidget, Integer> rows = new LinkedHashMap<>();
-    private final EnumMap<Scale, UiSlider> sliders = new EnumMap<>(Scale.class);
     private final List<ToggleOption> options = new ArrayList<>();
     private final List<SliderOption> optionSliders = new ArrayList<>();
     private final List<ModOverviewGroup> overviewGroups = new ArrayList<>();
@@ -117,6 +122,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private UiScrollableSectionBar sections;
     private UiScrollableSectionBar navigation;
     private UiToggleButton enabled;
+    private UiButton glassParameters;
     private UiToggleButton sampling;
     private UiToggleButton contrast;
     private UiToggleButton motion;
@@ -160,7 +166,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private UiButton themeConfigure;
     private boolean restoreThemeConfigureFocus;
     private EditBox dynamicThemeId;
-    private UiButton themeMode;
+    private UiRubberSegment themeMode;
     private UiButton hudBackground;
     private UiSlider hudBlur;
     private UiTheme previewTheme;
@@ -212,7 +218,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
         panelWidth = Math.min(MAX_WIDTH, width - 12);
         sidePreview = panelWidth >= 388;
-        panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + GLASS_STACK_HEIGHT + FOOTER_HEIGHT);
+        panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         if (!entered) {
@@ -243,14 +249,15 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void clearPage() {
+        if (themeMode != null) themeMode.cancelDrag();
         rows.keySet().forEach(this::removeWidget);
         rows.clear();
-        sliders.clear();
         options.clear();
         optionSliders.clear();
         overviewGroups.clear();
         developer = null;
         enabled = null;
+        glassParameters = null;
         sampling = null;
         contrast = null;
         motion = null;
@@ -307,24 +314,24 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void addGlassControls(int x) {
-        int columnWidth = (glassWidth - GAP) / 2;
-        int right = x + columnWidth + GAP;
-        int rightWidth = glassWidth - columnWidth - GAP;
         enabled = toggle(x, 16, glassWidth, "enabled", value -> label("enabled", onOff(value)),
                 value -> editBackdrop(draft.settings().backdrop().withEnabled(value)));
         enabled.setIcons(GraphicIcon.ENABLE, GraphicIcon.DISABLE);
-        Scale[] scales = Scale.values();
-        for (int i = 0; i < scales.length; i++) {
-            boolean firstColumn = i % 2 == 0;
-            Scale scale = scales[i];
-            var area = new Bounds(firstColumn ? x : right, 42 + i / 2 * 26,
-                    firstColumn ? columnWidth : rightWidth, BUTTON_HEIGHT);
-            var slider = new UiSlider(area, 0, scale.maxPercent, 1, scale.percent(draft.settings().backdrop()),
-                    preferences, percent -> label("scale", label(scale.key), percent),
-                    percent -> editBackdrop(scale.write(draft.settings().backdrop(), percent / 100f)));
-            slider.setTooltip(Tooltip.create(label(scale.key + ".tooltip")));
-            sliders.put(scale, row(slider));
-        }
+        glassParameters = row(button(x, 42, glassWidth, label("glass_parameters"), GraphicIcon.SETTINGS,
+                false, this::openGlassParameters));
+        glassParameters.setPreview(label("glass_parameters.tooltip"));
+    }
+
+    private void openGlassParameters() {
+        var fields = Arrays.stream(Scale.values()).map(Scale::option).toList();
+        var page = new ConfigPage<>(label("glass_parameters"), label("glass_parameters.tooltip"), fields, List.of());
+        minecraft.setScreen(page.screen(this, draft.settings().backdrop(), value -> {
+            // The parent widgets are rebuilt when the child returns.
+            draft = new Draft(draft.settings().withBackdrop(value), draft.shortcut());
+            beforeReset = null;
+            status = null;
+            return true;
+        }, () -> glassParameters));
     }
 
     private void addDisplayControls(int x) {
@@ -341,19 +348,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         musicToggle = toggle(x, 42, contentWidth, "background_music",
                 value -> label("background_music", onOff(value)), this::setBackgroundMusic);
         musicToggle.button().setLeadingIcon(GraphicIcon.MUSIC);
-        var mode = draft.settings().theme().mode();
-        themeMode = row(button(x, 68, contentWidth, themeLabel(mode), UiTheme.icon(mode), false, () -> {
-            var settings = draft.settings();
-            var next = switch (settings.theme().mode()) {
-                case DARK -> ThemeSettings.Mode.LIGHT;
-                case LIGHT -> ThemeSettings.Mode.CUSTOM;
-                case CUSTOM -> ThemeSettings.Mode.LIQUID_GLASS;
-                case LIQUID_GLASS -> ThemeSettings.Mode.HUD_GLASS;
-                case HUD_GLASS -> ThemeSettings.Mode.DARK;
-            };
-            edit(new Draft(settings.withTheme(settings.theme().withMode(next)), draft.shortcut()));
-        }));
-        themeMode.setPreview(label("theme.tooltip"));
+        var modes = THEMES.stream().map(mode -> new UiSectionBar.Section(themeLabel(mode), UiTheme.icon(mode))).toList();
+        themeMode = row(ShBetterUiApi.controls().rubberSegment(new Bounds(x, 68, contentWidth, BUTTON_HEIGHT),
+                label("theme.mode"), modes, THEMES.indexOf(draft.settings().theme().mode()), preferences, index -> {
+                    var settings = draft.settings();
+                    edit(new Draft(settings.withTheme(settings.theme().withMode(THEMES.get(index))), draft.shortcut()));
+                }));
         addThemeEditor(x);
         hudBackground = row(button(x, 94, (contentWidth - GAP) / 2, hudBackgroundLabel(), GraphicIcon.CUSTOM_THEME,
                 false, this::nextHudBackground));
@@ -488,11 +488,11 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private static Component themeLabel(ThemeSettings.Mode mode) {
         return label(switch (mode) {
-            case DARK -> "theme.dark";
-            case LIGHT -> "theme.light";
-            case CUSTOM -> "theme.custom";
-            case LIQUID_GLASS -> "theme.liquid_glass";
-            case HUD_GLASS -> "theme.hud_glass";
+            case DARK -> "theme.mode.dark";
+            case LIGHT -> "theme.mode.light";
+            case CUSTOM -> "theme.mode.custom";
+            case LIQUID_GLASS -> "theme.mode.liquid_glass";
+            case HUD_GLASS -> "theme.mode.hud_glass";
         });
     }
 
@@ -721,7 +721,6 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         status = null;
         syncThemeEditor();
         if (dynamicThemeId != null) dynamicThemeId.setValue(draft.settings().dynamicTheme().fixedTheme());
-        sliders.forEach((scale, slider) -> slider.setValue(scale.percent(draft.settings().backdrop())));
         optionSliders.forEach(option -> option.control().setValue(option.read().getAsInt()));
         refreshActions();
     }
@@ -740,6 +739,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             preferences = nextPreferences;
             for (GuiEventListener listener : children()) {
                 if (listener instanceof UiButton button) button.setPreferences(preferences);
+                else if (listener instanceof UiRubberSegment segment) segment.setPreferences(preferences);
                 else if (listener instanceof UiSlider slider) slider.setPreferences(preferences);
                 else if (listener instanceof UiScrollableSectionBar bar) bar.setPreferences(preferences);
                 else if (listener instanceof ModOverviewGroup group) group.setPreferences(preferences);
@@ -760,8 +760,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 motion.setValue(settings.reducedMotion());
                 refreshMusicToggle();
                 var mode = settings.theme().mode();
-                themeMode.setMessage(themeLabel(mode));
-                themeMode.setLeadingIcon(UiTheme.icon(mode));
+                themeMode.select(THEMES.indexOf(mode));
                 boolean custom = mode == ThemeSettings.Mode.CUSTOM;
                 boolean hud = mode == ThemeSettings.Mode.HUD_GLASS;
                 themeGroup.active = custom;
@@ -844,6 +843,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
         if (pageHandoff.active() && rows.containsKey(getFocused()) && (key == GLFW.GLFW_KEY_ENTER
                 || key == GLFW.GLFW_KEY_KP_ENTER || key == GLFW.GLFW_KEY_SPACE)) return true;
+        if (key == GLFW.GLFW_KEY_ESCAPE && themeMode != null && themeMode.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
         if (fits && key == GLFW.GLFW_KEY_ESCAPE && (navigation.keyPressed(key, scanCode, modifiers)
                 || sections.visible && sections.keyPressed(key, scanCode, modifiers))) {
             setDragging(false);
@@ -1035,6 +1038,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             applyRequestedSection();
             return handled;
         }
+        if (button == 0 && isDragging() && getFocused() instanceof UiRubberSegment segment) {
+            setDragging(false);
+            return segment.mouseReleased(x, y, button);
+        }
         if (button == 0 && isDragging() && getFocused() instanceof UiSlider slider) {
             setDragging(false);
             return slider.mouseReleased(x, y, button);
@@ -1111,6 +1118,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         scrollGrab = -1;
         if (sections != null) sections.cancelDrag();
         if (navigation != null) navigation.cancelDrag();
+        if (themeMode != null) themeMode.cancelDrag();
         entrance.close(preferences, () -> minecraft.setScreen(parent));
         if (!fits) entrance.finish();
     }
@@ -1122,6 +1130,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     @Override
     public void removed() {
+        if (themeMode != null) themeMode.cancelDrag();
         themeEffectPreview.close();
         pageHandoff.clear();
         returning.clearHandoff();
@@ -1298,7 +1307,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         int originalX = sidePreview ? x + glassWidth + 2 * GAP : x;
         int sampleWidth = sidePreview ? x + contentWidth - originalX : (glassWidth - GAP) / 2;
         int previewX = sidePreview ? originalX : x + sampleWidth + GAP;
-        int originalY = origin + (sidePreview ? 17 : 158);
+        int originalY = origin + (sidePreview ? 17 : 90);
         int previewY = sidePreview ? origin + 75 : originalY;
         int sampleHeight = sidePreview ? 36 : 28;
         drawSample(graphics, originalX, originalY, sampleWidth, sampleHeight);
@@ -1407,8 +1416,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             this.maxPercent = maxPercent;
         }
 
-        private int percent(GlassBackdropSettings settings) {
-            return Math.round(read(settings) * 100);
+        private ConfigPage.NumberOption<GlassBackdropSettings> option() {
+            return new ConfigPage.NumberOption<>(key, label(key), label(key + ".tooltip"), 0, maxPercent, false,
+                    settings -> new BigDecimal(Float.toString(read(settings))).movePointRight(2).doubleValue(),
+                    (settings, value) -> write(settings, (float) (value / 100)));
         }
 
         private float read(GlassBackdropSettings settings) {

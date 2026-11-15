@@ -21,7 +21,9 @@ def sharedSources = [
         'client/audio/MusicAnalyzer.java',
         'client/audio/MusicMotion.java',
         'client/audio/MusicRhythm.java',
+        'client/api/preview/DeveloperPreviewProvider.java',
         'client/api/preview/PreviewRegistry.java',
+        'kernel/api/config/ConfigPage.java',
         'config/ControlFeedbackSettings.java',
         'config/LiveSurfaceConfig.java',
         'config/TabScrollSettings.java',
@@ -38,15 +40,34 @@ def sharedSources = [
         'client/gui/layout/AlignmentTargetMotion.java',
         'client/gui/layout/PixelAlignment.java',
         'client/gui/layout/PopupArea.java',
+        'client/gui/layout/TooltipBounds.java',
         'client/gui/layout/TextureMetrics.java',
         'client/gui/layout/VisualAlignment.java',
+        'client/gui/panel/BranchedMenuDemo.java',
+        'client/gui/panel/FuseButtonDemo.java',
+        'client/gui/panel/SwipeRowDemo.java',
+        'client/gui/panel/LatticeLoaderPreview.java',
+        'client/gui/panel/PhotonKnotPreview.java',
+        'client/gui/panel/ConfigPageDraft.java',
+        'client/gui/panel/ConfigPageScreen.java',
+        'client/gui/panel/FolderFloatPreview.java',
+        'client/gui/panel/PromptBarDemo.java',
+        'client/gui/panel/ShredderDemo.java',
         'client/gui/scaled/ButtonFeedback.java',
+        'client/gui/scaled/HoldButtonPaint.java',
+        'client/gui/scaled/FuseButtonPaint.java',
+        'client/gui/scaled/FuseButtonStyle.java',
+        'client/gui/scaled/BellToggleMotion.java',
+        'client/gui/panel/CallChipDemo.java',
+        'client/gui/scaled/CodeSlotsPaint.java',
+        'client/gui/scaled/CodeSlotsState.java',
         'client/gui/scaled/AntigravityField.java',
         'client/gui/scaled/AntigravityPalette.java',
         'client/gui/scaled/AntigravityProfile.java',
         'client/gui/scaled/CodeRainProfile.java',
         'client/gui/scaled/DotMatrixLens.java',
         'client/gui/scaled/DotMatrixProfile.java',
+        'client/gui/scaled/FolderFloatControl.java',
         'client/gui/scaled/GuiMotion.java',
         'client/gui/scaled/InterruptibleAnimation.java',
         'client/gui/scaled/LaserFlowProfile.java',
@@ -54,23 +75,38 @@ def sharedSources = [
         'client/gui/scaled/LightRaysProfile.java',
         'client/gui/scaled/PatternWavesProfile.java',
         'client/gui/scaled/PointerDrag.java',
+        'client/gui/scaled/SwipeGesture.java',
+        'client/gui/scaled/UiSwipeRow.java',
         'client/gui/scaled/PopupMotion.java',
         'client/gui/scaled/RepeatCurve.java',
+        'client/gui/scaled/RubberSegmentState.java',
+        'client/gui/scaled/SloshGaugePaint.java',
+        'client/gui/panel/SloshGaugeDemo.java',
+        'client/gui/scaled/JellyRadioState.java',
+        'client/gui/scaled/UiJellyRadio.java',
+        'client/gui/panel/JellyRadioDemo.java',
         'client/gui/scaled/SpringTable.java',
         'client/gui/scaled/TabScrollState.java',
         'client/gui/scaled/ThemeButtonStyle.java',
         'client/gui/scaled/UiAttention.java',
+        'client/gui/scaled/UiLatticeLoader.java',
+        'client/gui/scaled/UiBranchedMenu.java',
         'client/gui/scaled/UiDisclosure.java',
+        'client/gui/scaled/UiExpansionController.java',
         'client/gui/scaled/UiMath.java',
         'client/gui/scaled/UiPointerTracker.java',
+        'client/gui/scaled/UiPromptBar.java',
         'client/gui/scaled/UiStepperState.java',
         'client/gui/scaled/UiStyle.java',
+        'client/gui/scaled/UiTextField.java',
         'client/gui/scaled/UiTabSelection.java',
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
         'client/gui/search/PinyinSearch.java',
         'client/gui/search/SearchIndex.java',
         'client/gui/search/SearchQuery.java',
+        'client/system/AsyncComputerStatus.java',
+        'client/system/WindowsGpuStatus.java',
         'client/gui/text/LegacyTextParser.java',
         'client/gui/text/TextGlyphEffects.java',
         'client/gui/text/TextPalettes.java',
@@ -84,6 +120,7 @@ def sharedSources = [
         'client/lyrics/core/sync/TrackIdentity.java',
         'kernel/api/text/TextReadabilityPalette.java',
         'kernel/internal/BuiltinService.java',
+        'kernel/internal/ClientDeveloperPreviews.java',
         'kernel/internal/ClientMaterialCatalog.java',
         'kernel/internal/MaterialPresetCodec.java',
         'kernel/internal/NativeModuleSources.java',
@@ -99,7 +136,7 @@ sourceSets.main.java {
 }
 kotlin.sourceSets.main.kotlin {
     srcDir('../src/main/kotlin')
-    include("${packagePath}/kernel/api/page/PageDsl.kt")
+    include("${packagePath}/kernel/api/page/PageDsl.kt", "${packagePath}/client/glass/GlassGeometry.kt")
 }
 sourceSets.test {
     java {
@@ -107,13 +144,20 @@ sourceSets.test {
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
+        include("${packagePath}/client/gui/scaled/PopupMotionTest.java")
+        include("${packagePath}/client/gui/scaled/UiPromptBarTest.java")
+        include("${packagePath}/client/gui/scaled/CenteredMenuMotionTest.java")
         include("${packagePath}/client/gui/scaled/SpringTableTest.java")
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
+        include("${packagePath}/client/gui/scaled/HudTextPaletteTest.java")
+        include("${packagePath}/client/gui/scaled/UiBranchedMenuTest.java")
         include("${packagePath}/client/gui/scaled/TabScrollStateTest.java")
         include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
+        include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
+        include("${packagePath}/client/gui/panel/ShredderDemoTest.java")
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
     }
@@ -180,6 +224,7 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/SettingsApi.class",
                     "${packagePath}/client/api/UiClientApi.class",
                     "${packagePath}/client/api/UiFrame.class",
+                    "${packagePath}/client/api/preview/DeveloperPreviewProvider.class",
                     "${packagePath}/client/api/preview/PreviewRegistry.class",
                     "${packagePath}/client/api/preview/PreviewSpec.class",
                     "${packagePath}/client/api/preview/PreviewScene.class",
@@ -208,6 +253,10 @@ tasks.register('verifyLibraryJar') {
                     'assets/sh_better_ui/shaders/core/gallery_spatial_reveal.fsh',
                     "${packagePath}/client/gui/display/GraphicIcon.class",
                     "${packagePath}/client/gui/scaled/UiButton.class",
+                    "${packagePath}/client/gui/scaled/UiHoldButton.class",
+                    "${packagePath}/kernel/api/input/HoldGesture.class",
+                    "${packagePath}/client/gui/scaled/UiCenteredMenu.class",
+                    "${packagePath}/client/gui/scaled/UiExpansionController.class",
                     "${packagePath}/client/gui/scaled/UiToggleButton.class",
                     "${packagePath}/client/gui/scaled/UiSlider.class",
                     "${packagePath}/client/gui/scaled/UiStepper.class",
@@ -225,6 +274,9 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/kernel/internal/ClientTextReadability.class",
                     "${packagePath}/client/blur/mixin/GuiRendererReadbackMixin.class",
                     "${packagePath}/kernel/api/page/PageDslKt.class",
+                    "${packagePath}/kernel/api/page/PageService.class",
+                    "${packagePath}/kernel/internal/ClientPages.class",
+                    "${packagePath}/kernel/internal/NativePageScreen.class",
                     'assets/sh_better_ui/material_catalog/catalog.json'
             ] + portMixinConfigs).each { entry ->
                 if (zip.getEntry(entry) == null) throw new GradleException("Missing library entry: ${entry}")

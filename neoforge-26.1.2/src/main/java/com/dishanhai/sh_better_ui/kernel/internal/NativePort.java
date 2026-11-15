@@ -18,6 +18,7 @@ public final class NativePort {
 
     public static Screen screen(Minecraft client) { return client.screen; }
     public static void show(Minecraft client, Screen screen) { client.setScreen(screen); }
+    static boolean hasOverlay(Minecraft client) { return client.getOverlay() != null; }
 
     static GpuTexture colorTarget(Minecraft client) {
         return client.getMainRenderTarget().getColorTexture();

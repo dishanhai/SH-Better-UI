@@ -36,12 +36,16 @@ public final class UiLocalModal {
         /** 允许前景内容在几何切换期间按目标坐标绘制，由管理器缩放并淡入淡出。 */
         default boolean animatesContents() { return false; }
 
+        /** 锚定弹层可保留触发按钮，并在点击外部或离开焦点时收起。 */
+        default boolean dismissesOnOutsidePress() { return false; }
+
         /** 返回 true 时获得该按键的拖动与放开，即使指针移出轮廓。 */
         default boolean mousePressed(double x, double y, int button, long now) { return false; }
         default void mouseDragged(double x, double y, int button, long now) {}
         default void mouseReleased(double x, double y, int button, long now) {}
         default void mouseScrolled(double x, double y, double deltaX, double deltaY) {}
         default boolean keyPressed(int key, int scanCode, int modifiers, long now) { return false; }
+        default boolean charTyped(char character, int modifiers, long now) { return false; }
         default void keyReleased(int key, int scanCode, int modifiers, long now) {}
         default void cancel(long now) {}
         default void close() {}
@@ -112,7 +116,7 @@ public final class UiLocalModal {
                 return false;
             }
         }
-        var session = new Session(source, start, scale, expansion, config.radius(), onConfirm);
+        var session = new Session(source, start, scale, expansion, onConfirm);
         creatingContent = true;
         try {
             session.content = Objects.requireNonNull(factory.apply(session));
@@ -193,7 +197,7 @@ public final class UiLocalModal {
             try {
                 UiExpansionOverlay.render(graphics, session.source, session.content,
                         session.frame(frameTime), session.expansion.outline(), session.start,
-                        session.expansion.progress(), mouseX, mouseY, partialTick);
+                        session.expansion.progress(), session.expansion.centeredMenu(), mouseX, mouseY, partialTick);
             } catch (RuntimeException | Error error) {
                 fail(session, error);
                 throw error;
@@ -210,6 +214,14 @@ public final class UiLocalModal {
             if (previous.contentButton == button) previous.cancel();
         }
         var session = pointer.hit(x, y);
+        var popup = outsidePopup(session);
+        if (popup != null) {
+            popup.cancel();
+            if (popup.start.contains(x, y)) {
+                pointer.capture(button, popup);
+                return true;
+            }
+        }
         if (session == null) return false;
         pointer.capture(button, session);
         if (session.state() == State.ACTIVE && session.contentButton == NO_BUTTON) {
@@ -217,7 +229,7 @@ public final class UiLocalModal {
                 if (session.content.mousePressed(x, y, button, clock.getAsLong())
                         && session.state() == State.ACTIVE) {
                     session.contentButton = button;
-                    owner.setFocused(session.source);
+                    if (!owner.isDragging()) owner.setFocused(session.source);
                 }
             });
         }
@@ -225,7 +237,7 @@ public final class UiLocalModal {
     }
 
     public boolean mouseDragged(double x, double y, int button) {
-        var session = pointer.dragTarget(button, x, y);
+        var session = pointer.dragTarget(button);
         if (session == null) return false;
         if (session.contentButton == button && session.state() == State.ACTIVE) {
             session.dispatch(() -> session.content.mouseDragged(x, y, button, clock.getAsLong()));
@@ -234,11 +246,9 @@ public final class UiLocalModal {
     }
 
     public boolean mouseReleased(double x, double y, int button) {
-        var session = pointer.releaseTarget(button, x, y);
+        var session = pointer.forget(button);
         if (session == null) return false;
         clearNativeDrag(session, button);
-        // 底层原生拖动若移进覆盖轮廓，仍须清除 Screen 的拖动标志。
-        if (button == GLFW.GLFW_MOUSE_BUTTON_LEFT && owner.isDragging()) owner.setDragging(false);
         if (session.contentButton == button && session.state() == State.ACTIVE) {
             session.contentButton = NO_BUTTON;
             session.dispatch(() -> session.content.mouseReleased(x, y, button, clock.getAsLong()));
@@ -259,6 +269,10 @@ public final class UiLocalModal {
         if (swallowedKeys.contains(key)) return true;
         var focused = owner.getFocused();
         var session = forSource(focused);
+        if (key == GLFW.GLFW_KEY_TAB && session != null && session.content.dismissesOnOutsidePress()) {
+            session.cancel();
+            return false;
+        }
         if (key == GLFW.GLFW_KEY_ESCAPE && !sessions.isEmpty()) {
             swallowedKeys.add(key);
             (session == null ? sessions.get(sessions.size() - 1) : session).cancel();
@@ -300,6 +314,12 @@ public final class UiLocalModal {
         return true;
     }
 
+    public boolean charTyped(char character, int modifiers) {
+        var session = forSource(owner.getFocused());
+        if (session == null || session.state() != State.ACTIVE) return focusedCovered();
+        return session.dispatch(() -> session.content.charTyped(character, modifiers, clock.getAsLong()));
+    }
+
     public boolean focusedCovered() {
         if (!(owner.getFocused() instanceof AbstractWidget widget) || forSource(widget) != null) return false;
         return blocksPointer(widget.getX() + widget.getWidth() * 0.5, widget.getY() + widget.getHeight() * 0.5);
@@ -311,7 +331,8 @@ public final class UiLocalModal {
 
     static boolean hidesSource(UiButton button) {
         var modal = current.get();
-        return modal != null && modal.forSource(button) != null;
+        var session = modal == null ? null : modal.forSource(button);
+        return session != null && !session.content.dismissesOnOutsidePress();
     }
 
     static boolean coversMouse(double x, double y) {
@@ -336,6 +357,7 @@ public final class UiLocalModal {
         for (int i = sessions.size() - 1; i >= 0; i--) {
             var session = sessions.get(i);
             if (!session.available(scale)) finish(session, true);
+            else if (session.content.dismissesOnOutsidePress() && owner.getFocused() != session.source) session.cancel();
         }
         if (keyboard != null && owner.getFocused() != keyboard.source) keyboard.cancel();
     }
@@ -355,6 +377,14 @@ public final class UiLocalModal {
         for (int i = 0; i < sessions.size(); i++) {
             var session = sessions.get(i);
             if (session.source == source) return session;
+        }
+        return null;
+    }
+
+    private Session outsidePopup(Session hit) {
+        for (int i = sessions.size() - 1; i >= 0; i--) {
+            var session = sessions.get(i);
+            if (session != hit && session.content.dismissesOnOutsidePress()) return session;
         }
         return null;
     }
@@ -409,19 +439,17 @@ public final class UiLocalModal {
         private final int screenHeight = owner.height;
         private final double guiScale;
         private final UiExpansionController expansion;
-        private final float radius;
         private final Runnable onConfirm;
         private Content content;
         private int sourceButton = NO_BUTTON;
         private int contentButton = NO_BUTTON;
 
-        private Session(UiButton source, Bounds start, double guiScale, UiExpansionController expansion, float radius,
+        private Session(UiButton source, Bounds start, double guiScale, UiExpansionController expansion,
                         Runnable onConfirm) {
             this.source = source;
             this.start = start;
             this.guiScale = guiScale;
             this.expansion = expansion;
-            this.radius = radius;
             this.onConfirm = onConfirm;
         }
 
@@ -452,12 +480,12 @@ public final class UiLocalModal {
         }
 
         private Frame frame(long now) {
-            return new Frame(expansion.target(), state(), radius, expansion.phaseProgress(), source.isFocused(),
+            return new Frame(expansion.target(), state(), expansion.radius(), expansion.phaseProgress(), source.isFocused(),
                     now, preferences);
         }
 
         private boolean contains(double x, double y) {
-            return UiExpansionController.contains(expansion.outline(), radius, x, y);
+            return UiExpansionController.contains(expansion.outline(), expansion.radius(), x, y);
         }
 
         private boolean available(double scale) {
@@ -468,8 +496,15 @@ public final class UiLocalModal {
         }
 
         private void dispatch(Runnable action) {
-            try {
+            dispatch(() -> {
                 action.run();
+                return null;
+            });
+        }
+
+        private <T> T dispatch(java.util.function.Supplier<T> action) {
+            try {
+                return action.get();
             } catch (RuntimeException | Error error) {
                 fail(this, error);
                 throw error;

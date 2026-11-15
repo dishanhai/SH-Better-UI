@@ -25,8 +25,8 @@ class GalleryExamplesTest {
         assertNotNull(compiler);
         String classpath = System.getProperty("shbui.examples.compileClasspath");
         assertNotNull(classpath);
-        for (String id : List.of("button", "toggle", "capsule_toggle", "slider", "disclosure", "sections",
-                "scrollable_sections", "underlined_tabs", "stepper", "dialog", "toast")) {
+        for (String id : List.of(JellyRadioDemo.ID, SwipeRowDemo.ID, "button", "fuse_button", "toggle", "capsule_toggle", "slider", "disclosure", "sections",
+                "scrollable_sections", "underlined_tabs", "stepper", "dialog", "toast", "code_slots", "hold_button", "rubber_segment", "call_chip")) {
             String example = GalleryExamples.code(id);
             assertNotNull(example, id);
             int boundary = example.indexOf("\n\n");

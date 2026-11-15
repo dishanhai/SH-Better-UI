@@ -19,4 +19,20 @@ class PopupMotionTest {
         assertEquals(140, complete.width());
         assertEquals(80, complete.x());
     }
+
+    @Test void capsuleStaysWithinSmallTargetAndReverseKeepsCurrentBounds() {
+        var motion = new PopupMotion();
+        var seed = motion.sample(true, 20, 30, 12, 6, 1, false);
+        assertEquals(12, seed.width());
+        assertEquals(6, seed.height());
+        motion.reset();
+        motion.sample(true, 10, 20, 120, 80, 10, false);
+        var opening = motion.sample(true, 10, 20, 120, 80, 90, false);
+        var closing = motion.sample(false, 10, 20, 120, 80, 90, false);
+        assertEquals(opening.x(), closing.x(), 0.001f);
+        assertEquals(opening.y(), closing.y(), 0.001f);
+        assertEquals(opening.width(), closing.width(), 0.001f);
+        assertEquals(opening.height(), closing.height(), 0.001f);
+        assertEquals(opening.progress(), closing.progress(), 0.001f);
+    }
 }

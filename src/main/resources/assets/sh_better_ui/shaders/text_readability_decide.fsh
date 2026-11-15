@@ -130,7 +130,9 @@ uint transitionFill(uint from, uint target, uint progress) {
     if (from == target || progress == 0u) return from;
     uint duration = uint(TransitionTiming.x) / 1000u;
     uint micros = progress / 1000u;
-    uvec3 rgb = (channels(from) * (duration - micros) + channels(target) * micros + duration / 2u) / duration;
+    float t = float(micros) / float(duration);
+    float eased = t * t * (3.0 - 2.0 * t);
+    uvec3 rgb = uvec3(round(mix(vec3(channels(from)), vec3(channels(target)), eased)));
     return (target & 0xFF000000u) | (rgb.r << 16u) | (rgb.g << 8u) | rgb.b;
 }
 

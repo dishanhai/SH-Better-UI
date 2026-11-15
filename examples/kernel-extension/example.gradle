@@ -34,7 +34,8 @@ def checkLibrary = tasks.register('verifyExampleDependency') {
             required += ['ActivityService', 'NotificationService', 'LiveSurfaceService'].collect {
                 "com/dishanhai/sh_better_ui/kernel/api/live/${it}.class"
             }
-            required += ['com/dishanhai/sh_better_ui/client/visual/RichTextView.class',
+            required += ['com/dishanhai/sh_better_ui/client/api/preview/DeveloperPreviewProvider.class',
+                         'com/dishanhai/sh_better_ui/client/visual/RichTextView.class',
                          'com/dishanhai/sh_better_ui/client/visual/RichTextExtensions.class',
                          'com/dishanhai/sh_better_ui/kernel/api/richtext/RichDocumentCodec.class',
                          'com/dishanhai/sh_better_ui/kernel/api/project/ProjectEdits.class',
@@ -55,6 +56,7 @@ project.ext.verifyArchive = { File archive ->
     new java.util.zip.ZipFile(archive).withCloseable { zip ->
         def required = [metadata, 'pack.mcmeta', 'META-INF/sh_better_ui.modules',
                         'com/dishanhai/shbui_kernel_example/ExampleUiModule.class',
+                        'com/dishanhai/shbui_kernel_example/GalleryTogglePreview.class',
                         'com/dishanhai/shbui_kernel_example/LiveActivityExamples.class',
                         'com/dishanhai/shbui_kernel_example/LiveExamplesSmoke.class',
                         'com/dishanhai/shbui_kernel_example/ConnectionExample.class',

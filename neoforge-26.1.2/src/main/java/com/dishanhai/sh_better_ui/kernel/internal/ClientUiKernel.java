@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.ShBetterUi;
+import com.dishanhai.sh_better_ui.client.system.AsyncComputerStatus;
 import com.dishanhai.sh_better_ui.config.LiveSurfaceConfig;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityKey;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
@@ -10,12 +11,14 @@ import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UIPlatform;
 import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalog;
+import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.api.project.ProjectEdits;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.resources.Identifier;
 import net.minecraft.server.packs.resources.ResourceManagerReloadListener;
+import net.minecraft.util.Util;
 import net.neoforged.api.distmarker.Dist;
 import net.neoforged.bus.api.SubscribeEvent;
 import net.neoforged.bus.api.EventPriority;
@@ -73,10 +76,15 @@ public final class ClientUiKernel {
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.HUD, clientHud, UIApis.NATIVE_HUD));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COMPUTER_STATUS,
+                new AsyncComputerStatus(() -> minecraft.gameDirectory.toPath(), Util.ioPool()),
+                UIApis.COMPUTER_STATUS_READ));
+        candidates.add(BuiltinService.candidate(PLATFORMS, PageService.KEY, new ClientPages(kernel),
+                new CapabilityKey(PageService.KEY.id())));
         candidates.add(BuiltinService.candidate(PLATFORMS, MaterialCatalog.KEY, materialCatalog,
                 new CapabilityKey(MaterialCatalog.KEY.id())));
         candidates.add(BuiltinService.candidate(PLATFORMS, ProjectEdits.KEY, new ProjectEditsRuntime(kernel)));
-        kernel.startNative(candidates);
+        kernel.startNative(candidates, (extension, context) -> ClientDeveloperPreviews.mount(kernel, extension, context));
         host = kernel;
         catalog = materialCatalog;
         screens = clientScreens;

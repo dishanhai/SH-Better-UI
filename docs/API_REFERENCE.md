@@ -190,6 +190,8 @@ KubeJS 客户端脚本使用自动绑定的 `SHUI`，提供同一套分组和构
 
 通过 `UnifiedUI.get().require(UIApis.LAYOUT).bindVisual(module, scope, layout, sampler)` 将一个 `AlignmentLayout` 绑定到当前模块拥有的 Screen 树或组件范围。首次渲染前在原生 `Screen.init()` 挂载，调整尺寸时复用同一个开放范围，移除再打开时重新挂载。提前释放可调用 `binding.close()`。范围或 Screen 关闭会自动失效。
 
+每个 Screen 挂载允许一个活动视觉绑定。同一模块在绑定范围及其后代可各自附着 `RichTextView`，在同一个视觉 pass 使用快照。节点绘制回调发生异常时，该节点在当帧的 `hitTest` 返回 false，其他节点继续呈现，下一帧重新判断。
+
 ### 帧与输入
 
 - 在活动 `Screen.render` 或 `UiScreenBuilder.onRender` 中调用 `binding.renderScreen(frame, pass -> ...)`。先画供 backdrop 取样的背景。每次 Screen 挂载只允许一个活动绑定，每帧只允许进入一次，重复或递归进入会报错。所有入口在客户端线程使用。
@@ -212,6 +214,8 @@ KubeJS 客户端脚本使用自动绑定的 `SHUI`，提供同一套分组和构
 | `visual.foreground(z, draw)` | Screen Post 模糊后 | 按 Z 升序，同 Z 保持登记顺序。回调得到本帧 GUI 绘制上下文、原快照、局部坐标、裁剪和偏好。模糊停用或无请求时照常执行。 |
 
 `BlurApi.requestManagedPixels(graphics, area, strength, radiusPixels, style)` 是独立低层入口。`PixelRect` 用 framebuffer 左上原点、整数边界和物理像素。用现有的 `BlurApi.allowScreen(predicate)` 在客户端初始化登记可后处理的 Screen。一个 Screen 帧只有一个受管主请求，重复返回 `CONFLICT`。旧主请求有优先权，先存在时受管请求返回冲突，后来登记时会在消费前取得主槽。`ACCEPTED` 表示该帧登记成功，后处理仍受活动范围、目标与 shader 可用性约束。旧附加请求、点击波与 `deferTopLayer` 仍由原消费路径执行。
+
+Forge 1.20.1／NeoForge 1.21.1 的平台事件桥负责调用 `GaussBlur.onScreenRenderPost(Screen, GuiGraphics, float)`。原来接收各加载器 `ScreenEvent.Render.Post` 的重载已标记废弃，供旧调用方继续链接；普通消费方提交请求即可。
 
 空区域返回 `EMPTY_REGION`，裁剪后不可见返回 `FULLY_CLIPPED`。旋转、倾斜、翻转等不受矩形 framebuffer 路径支持的姿态返回 `UNSUPPORTED_TRANSFORM`。非法强度、半径、尺寸或坐标以参数异常报告。HUD 或 Screen Post 消费点之后的低层受管请求返回 `OUTSIDE_SCREEN_PHASE`。HUD 可用独立的即时 backdrop、`VisualReveal.drawTextureChecked`、`drawRadialGradient` 与原生普通绘制。
 
@@ -356,6 +360,8 @@ public final class VisualCompositionScreen extends Screen {
 
 在 `Screen.init()` 注册原生控件。拖拽控制器按实际绘制区域命中，事件返回已消费时结束该次分派。库的客户端事件负责 `UiOverlayHost`、`UiPointerCapture` 与 `UiToast` 的通用调度。
 
+`ShBetterUiApi.controls().holdButton(...)` 创建长按确认按钮。以 `Bounds` 指定 GUI 尺寸，传入本地化的待确认和已确认文案，再用 `addRenderableWidget(button)` 注册。默认长按 2 秒确认，提前松开后填充在 200 毫秒内退回，确认后 1.2 秒自动复位。`HoldGesture.Timing` 可更改这三个时长，复位时长为 0 时需要调用 `button.reset()`。`UiHoldButton.Appearance` 可设置向右或向上填充、圆角、按压缩放、波浪、发光和配色。短按回调可传 `null`。如果宿主先处理 Esc 返回或复用已移除的控件，应先调用 `button.cancelHold()`。
+
 | 用途 | 入口与调用约定 |
 | --- | --- |
 | 按钮、图标与模式 | `UiButton` 支持 `setSelected()`、`setPreview()`、`setIcon()`、`setLeadingIcon()`、`setModeIndicators()`。液态玻璃按钮可用 `setBackgroundBlurRadius()` 调整 GUI 单位半径。`UiToggleButton.button()` 返回可注册的双态控件，`UiSectionBar.buttons()` 和 `select()` 用于分区页签。 |
@@ -474,6 +480,8 @@ var registration = ShBetterUiApi.client().registerDeveloperPreview(new PreviewSp
 ## 搜索、JEI 与素材选取
 
 宿主已有查询语法时，使用 `SearchIndex.searchPlainText(query)`／`searchPlainText(query, scope)`：只按空白分词，`@`、`#`、引号均为普通文字，仍复用名称、ID、别名与拼音匹配。`suggestPlainText(query, orderedCandidates, limit)` 采用同一纯文本语义；`suggest(query, orderedCandidates, limit)` 保留共享筛选语法。两者同档按宿主候选顺序排列并忽略未知值。宿主已按标签、提示或其他语义筛选后，使用 `suggestMatches(query, orderedMatches, limit)` 仅排名，不再次过滤。纯文本及外部匹配联想直接补全原名称或 ID，不添加筛选语法或引号。对空名称做 ID 展示回退的宿主，可用构造重载 `SearchIndex(entries, displayOnlyNames)` 将回退名称标记为仅展示；它不参与名称匹配或排名，`Entry` 的非空名称契约及原构造保持兼容。
+
+搜索生成的 `Suggestion.matchRank()` 表示本次查询内的匹配档位，数值越小越优先；宿主可以只在相同档位内按使用频率或其他偏好排序。不同查询或不同查询模式的档位不能当作全局分数比较。旧的两参数和三参数构造仍可使用，手动构造时默认档位为 0。
 
 | 用途 | 入口与调用约定 |
 | --- | --- |
@@ -730,6 +738,20 @@ shapes.draw(graphics, new Bounds(16, 16, 240, 120), ShBetterUiApi.interactions()
 `RichDocument` 可混排样式文本、资源包图像、原生游戏物件、向量图标、行内控件和自定义节点。可通过 Builder、被动标记、JSON／Codec 或 Minecraft Component 组装。`RichTextView` 接入现有 `LayoutService.bindVisual`，以同一份呈现快照绘制、选取与查询命中。Forge 和 NeoForge 可在游戏中执行 `/shbetterrichtext` 试用交互和视觉效果，或执行 `/shbetterrichsync` 试用异步媒体与整合服务器的权威数值。 [接入 API](RICH_TEXT_API.md) · [排版](RICH_TEXT_LAYOUT.md) · [资源与重载](RICH_TEXT_MEDIA.md) · [扩展](RICH_TEXT_EXTENSION.md) · [服务器同步](RICH_TEXT_NETWORK.md) · [验证](RICH_TEXT_TESTING.md) · [阶段进度](RICH_TEXT_PROGRESS.md)
 
 ## 滚动设置区域与分组入口
+
+### 数值配置页
+
+`com.dishanhai.sh_better_ui.kernel.api.config.ConfigPage<T>` 在 Forge 1.20.1 和 NeoForge 客户端构建可视化配置页。调用方提供不可变设置快照、各字段的读取与复制更新函数，以及最终提交的回调。`NumberOption` 描述整数或小数范围，`Preset` 只覆盖其指定的字段。字段标题和说明接受本地化的富文本 `Component`，文本类型的 UUK `RichDocument` 可经 `ConfigPage.richText(document)` 转换。
+
+`page.screen(parent, snapshot, commit, returnFocus)` 返回原生 `Screen`。有效的变更在点“完成”时交给 `commit`，回调返回 `false` 时保留草稿供重试。父页需要统一应用时，可在回调中仅更新父页草稿。取消会确认是否丢弃修改。父页重建后，`returnFocus` 应返回新的入口控件。
+
+SHCLIB 的百工高级配置以四种挖掘速度绑定预设，并把完成结果暂存回控制中心。结构参考 [YACL 的配置项与绑定](https://docs.isxander.dev/yet-another-config-lib/gui-builder/getting-started)，持久化继续由消费方负责。
+
+`kernel.api.screen.LayeredScreen` 依次执行 `renderBackdrop`、`renderForeground` 和原生控件。只在 `renderBackdrop` 调用 `ShBetterUiApi.blur().background(graphics)`，把文字、卡片与前景装饰放进 `renderForeground`。这样背景模糊能正常开启，前景也可以保持清晰。
+
+`ShBetterUiApi.controls().textField(font, bounds, label, maxLength, preferences)` 创建 UUK 单行输入框，宿主将其注册为控件即可获得焦点、旁白、文字选择、剪贴板和撤销重做。`setValue` 同步宿主数据，`setOnChange` 接收用户编辑，`setOnSubmit` 接收回车，`setError` 接收本地化的校验说明或 `null`。无需 Minecraft 的编辑状态可直接使用 `kernel.api.input.SingleLineEdit`。
+
+### 滚动容器
 
 `kernel.api.layout.VerticalScroll` 管理视口尺寸、偏移边界、滚动条滑块和拖动取消；`SplitActionRow.of(width, disclosureWidth, gap)` 返回互不重叠的主操作和右侧入口区域。它们不依赖 Minecraft，适用于各宿主。
 

@@ -120,9 +120,13 @@ public final class UiHudRichText {
             int fill = glyph.style().getColor() == null ? color : glyph.style().getColor().getValue();
             int protection = palette.outlineColor(fill);
             if (glyph.outline() || protection != 0) {
-                var outline = FormattedCharSequence.codepoint(glyph.codePoint(), glyph.style().withColor(protection & 0xFFFFFF));
-                for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
-                    if (ox != 0 || oy != 0) graphics.text(font, outline, gx + ox, gy + oy, color, false);
+                int outlineAlpha = protection == 0 ? color >>> 24 : (protection >>> 24) * (color >>> 24) / 255;
+                if (outlineAlpha >= 4) {
+                    int outlineArgb = outlineAlpha << 24 | (protection & 0xFFFFFF);
+                    var outline = FormattedCharSequence.codepoint(glyph.codePoint(), glyph.style().withColor(protection & 0xFFFFFF));
+                    for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
+                        if (ox != 0 || oy != 0) graphics.text(font, outline, gx + ox, gy + oy, outlineArgb, false);
+                    }
                 }
             }
             graphics.text(font, sequence, gx, gy, color, false);

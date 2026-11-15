@@ -105,7 +105,7 @@ public final class RichTextView implements Subscription {
         scope.track(this);
     }
 
-    /** Attach to the same owned Screen scope used for the visual layout binding. */
+    /** Attach to the visual layout's owned scope or one of its owned descendants on the same Screen mount. */
     public static RichTextView attach(ModuleContext module, ScopeHandle scope, Node node) {
         RenderSystem.assertOnRenderThread();
         return new RichTextView(Objects.requireNonNull(module, "module"), scope, node);
@@ -242,8 +242,8 @@ public final class RichTextView implements Subscription {
         if (scrollY < 0) throw new IllegalArgumentException("Negative scroll offset");
         var content = Objects.requireNonNull(prepared, "Prepare rich text before drawing");
         var frame = pass.snapshot();
-        if (frame.scopeGeneration() != scope.generation() || !frame.scopeId().equals(scope.id())) {
-            throw new IllegalArgumentException("Rich text requires the visual layout of its own Screen scope");
+        if (!frame.acceptsScope(scope)) {
+            throw new IllegalArgumentException("Rich text requires an active visual layout on its own scope or an ancestor");
         }
         painted = null;
         var ready = images.resolve(content.source(), Minecraft.getInstance().getResourceManager(),
@@ -454,6 +454,7 @@ public final class RichTextView implements Subscription {
     private Optional<Painted> currentPainted() {
         RenderSystem.assertOnRenderThread();
         return isActive() && painted != null && painted.presentation().frame().isCurrent()
+                && !painted.presentation().frame().failed(node)
                 ? Optional.of(painted) : Optional.empty();
     }
 

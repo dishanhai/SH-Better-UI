@@ -39,7 +39,13 @@ public final class LiquidGlassTheme {
     /** 自绘控件的内层底板；背景由宿主根板取样，避免每个内层重复采样。 */
     public static void plate(GuiGraphics g, int x, int y, int width, int height, int edge, int fill,
                              UiPreferences preferences) {
-        surface(g, x, y, width, height, 5f, preferences, false, GlassStyle.LIQUID_REGULAR,
+        plate(g, x, y, width, height, 5f, edge, fill, preferences);
+    }
+
+    /** A HUD plate with an explicit GUI-space radius, including during scaled reveals. */
+    public static void plate(GuiGraphics g, int x, int y, int width, int height, float radius, int edge, int fill,
+                             UiPreferences preferences) {
+        surface(g, x, y, width, height, radius, preferences, false, GlassStyle.LIQUID_REGULAR,
                 POPOVER_BLUR_RADIUS, 1f, fill, edge, false, 1f, false);
     }
 
@@ -127,6 +133,21 @@ public final class LiquidGlassTheme {
         surface(g, x, y, width, height, POPOVER_RADIUS, preferences, true,
                 GlassStyle.LIQUID_REGULAR, POPOVER_BLUR_RADIUS, blurStrength,
                 UiTheme.current().controlFill(LAYERED_POPOVER_FILL, 0f), edgeColor(), false, 1f, false);
+    }
+
+    static void centeredMenu(GuiGraphics g, GuiRect rect, float radius, UiPreferences preferences,
+                             float progress, boolean focused) {
+        float glow = UiExpansionController.menuBloom(progress, preferences);
+        float blurRadius = UiExpansionController.menuBlurRadius(glow);
+        float x = rect.getX(), y = rect.getY(), w = rect.getW(), h = rect.getH();
+        surface(g, x, y, w, h, radius, preferences, true, GlassStyle.LIQUID_REGULAR, blurRadius, 1f,
+                popoverFill(), edgeColor(), false, 1f, focused);
+        if (glow <= 0f) return;
+        int color = accentColor() & 0xFFFFFF;
+        RoundedCorners.draw(g, x, y, w, h, radius, 3f,
+                color | (Math.round(20f * glow) << 24), 0, false);
+        RoundedCorners.draw(g, x, y, w, h, radius, 1.5f,
+                color | (Math.round(76f * glow) << 24), 0, false);
     }
 
     static void morphPopover(GuiGraphics g, FluidMorph frame, UiPreferences preferences, DarkModeTheme.State state,

@@ -115,17 +115,18 @@ tasks.register('devJar', Jar) {
     from sourceSets.main.output
     manifest.attributes('MixinConfigs': 'sh_better_ui.text.mixins.json,sh_better_ui.text_compat.mixins.json,sh_better_ui.kernel.mixins.json')
 }
+def releaseJarName = "${mod_id}-forge-${minecraft_version}-${mod_version}.jar"
 tasks.register('releaseJar', Copy) {
     dependsOn 'reobfJar'
     from layout.buildDirectory.file('reobfJar/output.jar')
     into layout.buildDirectory.dir('libs')
-    rename { "${mod_id}-${mod_version}.jar" }
+    rename { releaseJarName }
 }
 
 tasks.register('verifyLibraryJar') {
     dependsOn 'releaseJar'
     doLast {
-        def artifact = layout.buildDirectory.file("libs/${mod_id}-${mod_version}.jar").get().asFile
+        def artifact = layout.buildDirectory.file("libs/${releaseJarName}").get().asFile
         def zip = new java.util.zip.ZipFile(artifact)
         try {
             def required = ['META-INF/mods.toml', 'pack.mcmeta', 'kubejs.plugins.txt',

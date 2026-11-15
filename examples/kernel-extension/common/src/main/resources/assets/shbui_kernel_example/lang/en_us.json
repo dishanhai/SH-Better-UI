@@ -1,5 +1,7 @@
 {
   "shbui_kernel_example.title": "UI Kernel Example",
+  "shbui_kernel_example.preview.toggle.title": "Example Mod Toggle",
+  "shbui_kernel_example.preview.toggle.state": "Preview toggle: %s",
   "shbui_kernel_example.pages.entry": "Declarative Pages",
   "shbui_kernel_example.pages.title": "Local exchange preview",
   "shbui_kernel_example.pages.reward": "Spend a test credit to preview a data update.",

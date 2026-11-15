@@ -27,6 +27,14 @@ class DeveloperPreviewRegistryTest {
         var registry = ShBetterUiApi.developerPreviews();
         assertEquals(registry.ids(), ShBetterUiApi.settings().developerSampleIds());
         assertTrue(registry.ids().contains("live_activity"));
+        var bell = registry.find("bell_toggle").orElseThrow();
+        assertEquals(PreviewSpec.Category.CONTROLS, bell.category());
+        assertEquals("sh_better_ui.panel.developer.gallery.sample.bell_toggle", bell.titleKey());
+        assertEquals(PreviewSpec.Category.CONTROLS, registry.find("branched_menu").orElseThrow().category());
+        assertEquals(PreviewSpec.Category.CONTROLS, registry.find("glide_select").orElseThrow().category());
+        assertEquals(registry.find("code_slots").orElseThrow(), registry.entries().stream()
+                .filter(spec -> spec.category() == PreviewSpec.Category.CONTROLS)
+                .findFirst().orElseThrow());
         try (var stream = getClass().getResourceAsStream("/assets/sh_better_ui/material_catalog/catalog.json")) {
             assertNotNull(stream);
             var catalog = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();

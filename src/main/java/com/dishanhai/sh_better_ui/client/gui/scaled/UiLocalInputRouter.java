@@ -33,15 +33,7 @@ final class UiLocalInputRouter<T> {
 
     T forget(int button) { return captured.remove(button); }
 
-    T dragTarget(int button, double x, double y) {
-        T target = captured.get(button);
-        return target == null ? hit(x, y) : target;
-    }
-
-    T releaseTarget(int button, double x, double y) {
-        T target = forget(button);
-        return target == null ? hit(x, y) : target;
-    }
+    T dragTarget(int button) { return captured.get(button); }
 
     void drain(T target, IntConsumer release) {
         captured.entrySet().removeIf(entry -> {

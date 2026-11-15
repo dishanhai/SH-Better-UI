@@ -30,6 +30,7 @@ import com.dishanhai.sh_better_ui.kernel.api.protocol.UiActionState;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiActionPrompt;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiErrorCode;
 import com.dishanhai.sh_better_ui.kernel.api.protocol.UiProtocolCapabilities;
+import com.dishanhai.sh_better_ui.kernel.api.protocol.UiProtocolMessage.ActionRequest;
 import com.dishanhai.sh_better_ui.kernel.internal.page.PageDataState;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.ConfirmScreen;
@@ -284,6 +285,52 @@ final class ClientPages implements PageService, UIModule {
         return current;
     }
 
+    /** Native extensions may inspect only the currently displayed remote foreground page. */
+    Optional<Snapshot> activeRemoteSnapshot() {
+        host.assertOwner();
+        return currentRemotePage() == null ? Optional.empty() : Optional.of(active.snapshot());
+    }
+
+    boolean submitRemoteAction(UUID instance, UiId actionId, Map<String, UiValue> payload) {
+        host.assertOwner();
+        var page = currentRemotePage();
+        if (page == null || !page.id.equals(instance) || !page.actionAvailable()) return false;
+        var action = page.definition.actions().get(actionId);
+        if (action == null || action.policy() == UiActionPolicy.LOCAL) return false;
+        try {
+            action.payloadSchema().validate(payload, true);
+            // Use the same transport callback as declarative controls. CONFIRMED still receives
+            // the server's challenge and uses the existing confirmation screen.
+            page.act(UiNode.builtin("native_action", "button").label("").action(actionId).build(), payload);
+            return true;
+        } catch (IllegalArgumentException invalid) {
+            return false;
+        }
+    }
+
+    private OpenPage currentRemotePage() {
+        var page = active;
+        if (page == null) return null;
+        var client = Minecraft.getInstance();
+        return client != null && nativeActionEligible(page.snapshot(), page.remote, page.scope.isOpen(),
+                page.screen != null && page.screen == client.screen, client.getOverlay() == null,
+                client.isWindowActive()) ? page : null;
+    }
+
+    static boolean nativeActionEligible(Snapshot snapshot, boolean remote, boolean scopeOpen,
+                                        boolean currentScreen, boolean noOverlay, boolean windowFocused) {
+        return snapshot != null && remote && scopeOpen && currentScreen && noOverlay && windowFocused
+                && snapshot.state() == State.ACTIVE && snapshot.synchronizedData();
+    }
+
+    boolean canOpenRequested(UiPageType type, net.minecraft.client.gui.screens.Screen owner) {
+        host.assertOwner();
+        var client = Minecraft.getInstance();
+        return owner != null && client.screen == owner && client.getOverlay() == null
+                && type == UiPageType.SCREEN && available(type) && screens.hasClientSession()
+                && active == null && instances.values().stream().noneMatch(page -> page.state == State.SUSPENDED);
+    }
+
     private static boolean isForeground(UiPageType type) {
         return type == UiPageType.SCREEN || type == UiPageType.MODAL;
     }
@@ -471,8 +518,8 @@ final class ClientPages implements PageService, UIModule {
         private boolean nativeRemoval;
         private String savedFocus;
         private ConfirmScreen confirmation;
-        private UUID request;
-        private UiId pendingAction;
+        private ActionRequest request;
+        private boolean replayed;
         private boolean waitingForAuthority;
         private long deadline;
         private UiActionState actionState = UiActionState.IDLE;
@@ -583,36 +630,58 @@ final class ClientPages implements PageService, UIModule {
             maxRenderNanos = Math.max(maxRenderNanos, System.nanoTime() - start);
         }
 
-        boolean actionAvailable() { return actionState != UiActionState.PENDING; }
+        boolean actionAvailable() { return request == null; }
 
         UiActionState actionState() { return actionState; }
 
-        boolean hasRequest(UUID requestId) { return requestId.equals(request); }
+        boolean hasRequest(UUID requestId) { return request != null && requestId.equals(request.requestId()); }
+        boolean replayedRequest() { return replayed; }
 
-        void request(UUID requestId, UiId actionId, long expiry) {
-            request = requestId;
-            pendingAction = actionId;
+        ActionRequest request(UiId actionId, Map<String, UiValue> payload, long expiry) {
+            if (!actionAvailable() || state != State.ACTIVE || !scope.isOpen()) return null;
+            request = new ActionRequest(id, UUID.randomUUID(), actionId, data.revision(), payload);
+            replayed = false;
             deadline = expiry;
             actionState = UiActionState.PENDING;
             publish();
+            return request;
         }
 
         void result(UUID requestId, UiActionState result) {
-            if (request == null || !request.equals(requestId) || result == UiActionState.PENDING
+            if (!hasRequest(requestId) || result == UiActionState.PENDING
                     || result == UiActionState.IDLE) return;
             request = null;
-            pendingAction = null;
+            replayed = false;
             actionState = result;
             dismissConfirmation(true);
             publish();
         }
 
-        void tick(long now) {
+        void unknownResult(UUID requestId) {
+            if (!hasRequest(requestId)) return;
+            actionState = UiActionState.TIMED_OUT;
+            dismissConfirmation(true);
+            publish();
+        }
+
+        ActionRequest tick(long now, long retryTimeout) {
             if (confirmation != null && Minecraft.getInstance().screen != confirmation) {
                 close();
-                return;
+                return null;
             }
-            if (request != null && now - deadline >= 0) result(request, UiActionState.TIMED_OUT);
+            if (!scope.isOpen() || request == null || actionState != UiActionState.PENDING || now - deadline < 0) return null;
+            if (confirmation != null) {
+                confirmation.onClose();
+                return null;
+            }
+            if (state != State.ACTIVE) return null;
+            if (!replayed) {
+                replayed = true;
+                deadline = now + retryTimeout;
+                return request;
+            }
+            unknownResult(request.requestId());
+            return null;
         }
 
         private boolean canSuspend() {
@@ -650,18 +719,19 @@ final class ClientPages implements PageService, UIModule {
 
         boolean confirm(UUID requestId, UiActionPrompt prompt, long expires, Consumer<Boolean> response) {
             var minecraft = Minecraft.getInstance();
-            if (confirmation != null || state != State.ACTIVE || !scope.isOpen() || !requestId.equals(request)
-                    || pendingAction == null || definition.actions().get(pendingAction).policy() != UiActionPolicy.CONFIRMED
+            if (confirmation != null || state != State.ACTIVE || !scope.isOpen() || !hasRequest(requestId)
+                    || definition.actions().get(request.actionId()).policy() != UiActionPolicy.CONFIRMED
                     || screen == null || minecraft.screen != screen || minecraft.getOverlay() != null
                     || !snapshot.synchronizedData()) return false;
             saveFocus();
             deadline = expires;
+            actionState = UiActionState.PENDING;
             state = State.SUSPENDED;
             var message = Component.translatable("sh_better_ui.pages.action.confirm_details",
                     Component.literal(prompt.subject()), Long.toString(prompt.quantity()),
                     Component.literal(prompt.consequence()));
             confirmation = new ActionConfirmScreen(message, accepted -> {
-                if (confirmation == null || minecraft.screen != confirmation || !requestId.equals(request)
+                if (confirmation == null || minecraft.screen != confirmation || !hasRequest(requestId)
                         || !scope.isOpen()) return;
                 dismissConfirmation(true);
                 response.accept(accepted);
@@ -672,7 +742,7 @@ final class ClientPages implements PageService, UIModule {
         }
 
         void extendRequest(UUID requestId, long expires) {
-            if (requestId.equals(request)) deadline = expires;
+            if (hasRequest(requestId)) deadline = expires;
         }
 
         private void dismissConfirmation(boolean returnToPage) {
@@ -710,6 +780,7 @@ final class ClientPages implements PageService, UIModule {
             if (active == this) active = null;
             instances.remove(id, this);
             if (state != State.FAILED) state = State.CLOSED;
+            request = null;
             if (PageStudioReport.CAPTURE && view != null) recentStudioPage = studioPage();
             publish();
             try {

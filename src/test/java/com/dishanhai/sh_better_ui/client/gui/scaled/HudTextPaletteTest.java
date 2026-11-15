@@ -20,7 +20,53 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class HudTextPaletteTest {
     @Test
-    void adaptsInlineBlueOnTheSampledGlassAndKeepsGlyphStyles() {
+    void semanticColorsKeepTheirHueWhenTheGlassFallbackNeedsAnOutline() {
+        for (int color : new int[]{0xff55ffff, 0xff55ff55}) {
+            var palette = new TextReadabilityPalette();
+            palette.update(null, 0xff000000, 0xff767676, 0);
+            assertNotEquals(color, palette.baseColor(color));
+            assertEquals(color, palette.color(color));
+            assertEquals(color, palette.animatedColor(color));
+            assertEquals(0xff000000, palette.outlineColor(color));
+        }
+    }
+
+    @Test
+    void mixedBrightAndDarkSamplesKeepSemanticGlyphColorsAndNativeStyles() {
+        var palette = new TextReadabilityPalette();
+        palette.update(sample(new int[]{0xff000000, 0xffffffff, 0xff000000, 0xffffffff},
+                Stage.POST_MATERIAL_PRE_TEXT), 0xff000000, 0xff767676, 0);
+
+        var style = Style.EMPTY.withColor(0x55ffff).withBold(true).withUnderlined(true);
+        var glyphs = FormattedCharSequence.codepoint('常', style);
+        palette.glyphs(glyphs).accept((index, adapted, codePoint) -> {
+            assertEquals(style, adapted);
+            assertEquals('常', codePoint);
+            return true;
+        });
+        assertEquals(0xff000000, palette.outlineColor(palette.color(0xff55ffff)));
+    }
+
+    @Test
+    void semanticColorsStayAuthoredThroughoutBackdropTransitions() {
+        var palette = new TextReadabilityPalette();
+        long now = 0;
+        for (int backdrop : new int[]{0xff000000, 0xffffffff, 0xff757575, 0xff000000}) {
+            var observation = sample(backdrop);
+            for (int frame = 0; frame < 20; frame++) {
+                palette.update(observation, 0xff000000, 0xff767676, now);
+                palette.baseColor(0xffffffff);
+                for (int color : new int[]{0xff55ffff, 0xff55ff55, 0xff347fee, 0xffff55ff}) {
+                    assertEquals(color, palette.color(color));
+                    assertEquals(color, palette.animatedColor(color));
+                }
+                now += 40_000_000L;
+            }
+        }
+    }
+
+    @Test
+    void protectsInlineBlueOnTheSampledGlassAndKeepsAuthoredColorAndStyles() {
         var palette = new TextReadabilityPalette();
         int blue = 0xff347fee;
         int glass = 0xff5672a4;
@@ -31,20 +77,19 @@ class HudTextPaletteTest {
             assertTrue(style.isBold());
             assertEquals('9', codePoint);
             int adjusted = 0xff000000 | style.getColor().getValue();
-            assertNotEquals(blue, adjusted);
-            assertTrue(contrast(adjusted, glass) >= 4.5);
+            assertEquals(blue, adjusted);
+            assertTrue(palette.outlineColor(adjusted) >>> 24 > 0);
             return true;
         });
     }
 
     @Test
-    void baseAndInlineFillsRejectFlashesAndRenderIntermediateColors() {
+    void baseAndNeutralInlineFillsRejectFlashesAndRenderIntermediateColors() {
         var palette = new TextReadabilityPalette();
         int white = 0xffffffff;
         int black = 0xff000000;
-        int blue = 0xff347fee;
         var bright = sample(white);
-        var glyph = FormattedCharSequence.codepoint('9', Style.EMPTY.withColor(blue & 0xffffff).withBold(true));
+        var glyph = FormattedCharSequence.codepoint('9', Style.EMPTY.withColor(black & 0xffffff).withBold(true));
         palette.update(null, black, black, 0);
         assertEquals(white, palette.baseColor(white));
         int oldInline = inlineColor(palette, glyph);
@@ -60,9 +105,9 @@ class HudTextPaletteTest {
             assertEquals(oldInline, inlineColor(palette, glyph));
         }
         palette.update(bright, black, black, 1_000_000_000L);
-        assertEquals(0xffdfdfdf, palette.baseColor(white));
-        assertEquals(0xffdfdfdf, palette.baseColor(white));
-        assertEquals(black, palette.outlineColor(0xffdfdfdf));
+        assertEquals(0xfff4f4f4, palette.baseColor(white));
+        assertEquals(0xfff4f4f4, palette.baseColor(white));
+        assertEquals(black, palette.outlineColor(0xfff4f4f4));
         int middleInline = inlineColor(palette, glyph);
         assertNotEquals(oldInline, middleInline);
         for (int frame = 1; frame <= 7; frame++) {
@@ -76,35 +121,110 @@ class HudTextPaletteTest {
     }
 
     @Test
-    void animatedColorsRetainAuthorTimingAndBlendBothBackdropMappings() {
+    void baseFillKeepsItsSelectedPolarityAcrossSmallSlowBackdropFluctuations() {
+        var palette = new TextReadabilityPalette();
+        int white = 0xffffffff;
+        int black = 0xff000000;
+        palette.update(null, 0xff757575, 0xff757575, 0);
+        assertEquals(white, palette.baseColor(white));
+        long now = 0;
+        for (int cycle = 0; cycle < 6; cycle++) {
+            int backdrop = cycle % 2 == 0 ? 0xff777777 : 0xff767676;
+            for (int frame = 0; frame < 20; frame++) {
+                now += 16_000_000L;
+                palette.update(null, backdrop, backdrop, now);
+                assertEquals(white, palette.baseColor(white), "Threshold noise must not restart inversion");
+            }
+        }
+        for (int frame = 0; frame < 40; frame++) {
+            now += 16_000_000L;
+            palette.update(null, white, white, now);
+            palette.baseColor(white);
+        }
+        assertEquals(black, palette.baseColor(white));
+        for (int frame = 0; frame < 40; frame++) {
+            now += 16_000_000L;
+            palette.update(null, 0xff767676, 0xff767676, now);
+            assertEquals(black, palette.baseColor(white), "Returning to the boundary must keep the committed polarity");
+        }
+    }
+
+    @Test
+    void aPendingReversalDoesNotFreezeTheCommittedFillTransition() {
+        var palette = new TextReadabilityPalette();
+        int white = 0xffffffff;
+        int black = 0xff000000;
+        palette.update(null, black, black, 0);
+        palette.baseColor(white);
+        palette.update(null, white, white, 10_000_000L);
+        palette.baseColor(white);
+        palette.update(null, white, white, 130_000_000L);
+        palette.baseColor(white);
+        palette.update(null, white, white, 170_000_000L);
+        int before = palette.baseColor(white);
+        palette.update(null, black, black, 186_000_000L);
+        int after = palette.baseColor(white);
+        assertTrue((after & 255) < (before & 255), "An unconfirmed candidate must not stop the active gradient");
+        assertEquals(after, palette.baseColor(white));
+    }
+
+    @Test
+    void outlineOpacityChangesContinuouslyAcrossTheContrastThreshold() {
+        var palette = new TextReadabilityPalette();
+        int white = 0xffffffff;
+        palette.update(null, 0xff767676, 0xff767676, 0);
+        int first = palette.outlineColor(white);
+        palette.update(null, 0xff777777, 0xff777777, 16_000_000L);
+        int second = palette.outlineColor(white);
+
+        assertTrue(Math.abs((first >>> 24) - (second >>> 24)) <= 16,
+                "A one-level backdrop change must not toggle an opaque outline");
+    }
+
+    @Test
+    void outlineRetainsContrastingInkThroughTheFillTransitionMidpoint() {
+        var palette = new TextReadabilityPalette();
+        palette.update(null, 0xff757575, 0xff757575, 0);
+        for (int level = 0; level <= 255; level++) {
+            int fill = 0xff000000 | level * 0x010101;
+            int outline = palette.outlineColor(fill);
+            if (outline == 0) continue;
+            assertTrue((outline >>> 24) >= 4, "Native Font must receive an explicit outline alpha");
+            assertTrue(contrast(fill, outline) >= 4.5,
+                    "A fading outline must retain contrasting ink through the intermediate grays");
+        }
+    }
+
+    @Test
+    void animatedNeutralColorsRetainAuthorTimingAndBlendBothBackdropMappings() {
         var palette = new TextReadabilityPalette();
         int black = 0xff000000;
         int white = 0xffffffff;
-        int red = 0xffff8080;
+        int gray = 0xff808080;
         var bright = sample(white);
         palette.update(null, black, black, 0);
         assertEquals(white, palette.animatedColor(white));
-        assertEquals(red, palette.animatedColor(red));
+        assertEquals(gray, palette.animatedColor(gray));
 
         palette.update(bright, black, black, 10_000_000L);
         assertEquals(white, palette.animatedColor(white));
         palette.update(null, black, black, 90_000_000L);
-        assertEquals(red, palette.animatedColor(red));
+        assertEquals(gray, palette.animatedColor(gray));
 
         palette.update(bright, black, black, 100_000_000L);
         palette.update(bright, black, black, 220_000_000L);
         assertEquals(white, palette.animatedColor(white));
-        assertEquals(red, palette.animatedColor(red));
+        assertEquals(gray, palette.animatedColor(gray));
         palette.update(bright, black, black, 1_000_000_000L);
-        assertEquals(0xffdfdfdf, palette.animatedColor(white));
-        int adjustedRed = TextReadabilityReference.readableFill(red, 1, 1, 4.5);
-        assertNotEquals(red, palette.animatedColor(red));
-        assertNotEquals(adjustedRed, palette.animatedColor(red));
+        assertEquals(0xfff4f4f4, palette.animatedColor(white));
+        int adjustedGray = TextReadabilityReference.readableFill(gray, 1, 1, 4.5);
+        assertNotEquals(gray, palette.animatedColor(gray));
+        assertNotEquals(adjustedGray, palette.animatedColor(gray));
         for (int frame = 1; frame <= 7; frame++) {
             palette.update(bright, black, black, 1_000_000_000L + frame * 40_000_000L);
         }
         assertEquals(black, palette.animatedColor(white));
-        assertEquals(adjustedRed, palette.animatedColor(red));
+        assertEquals(adjustedGray, palette.animatedColor(gray));
     }
 
     @Test
@@ -133,7 +253,7 @@ class HudTextPaletteTest {
     }
 
     @Test
-    void anIsolatedBrighterSampleStillConstrainsTheSharedTextColor() {
+    void anIsolatedBrighterSampleProtectsAuthoredColorsWithAnOutline() {
         var palette = new TextReadabilityPalette();
         int[] pixels = new int[16];
         Arrays.fill(pixels, 0xff34476b);
@@ -142,8 +262,8 @@ class HudTextPaletteTest {
         palette.update(sample(pixels, Stage.POST_MATERIAL_PRE_TEXT), 0xff000000, 0xff767676);
         for (int original : new int[]{0xfff7f7fa, 0xff347fee}) {
             int fill = palette.color(original);
-            assertTrue(contrast(fill, pixels[0]) >= 4.5);
-            assertTrue(contrast(fill, skyBehindGlass) >= 4.5);
+            assertEquals(original, fill);
+            assertTrue(palette.outlineColor(fill) >>> 24 > 0);
         }
     }
 

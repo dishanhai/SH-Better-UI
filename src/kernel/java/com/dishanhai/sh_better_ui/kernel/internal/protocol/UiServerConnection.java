@@ -366,6 +366,16 @@ public final class UiServerConnection implements AutoCloseable {
         return pages.values().stream().anyMatch(session -> session.page.id().equals(pageId));
     }
 
+    /** Displayed, authorized and unsuspended instances, suitable for server-owned page leases. */
+    public List<UUID> visiblePages(UiId pageId) {
+        checkThread();
+        long now = clock.getAsLong();
+        return List.copyOf(pages.values()).stream()
+                .filter(session -> session.page.id().equals(pageId)
+                        && session.interactive(now) && authorized(session))
+                .map(session -> session.id).toList();
+    }
+
     public boolean closePage(UUID instanceId) {
         checkThread();
         return removePage(instanceId, true);

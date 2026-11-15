@@ -1,0 +1,49 @@
+// Author: dishanhai
+plugins { id 'java' }
+group = 'com.dishanhai'
+version = '1'
+java { toolchain.languageVersion = JavaLanguageVersion.of(21) }
+repositories { mavenCentral() }
+dependencies {
+    implementation 'org.mozilla:rhino:1.9.1'
+    testImplementation platform('org.junit:junit-bom:5.10.2')
+    testImplementation 'org.junit.jupiter:junit-jupiter'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+// Compile the dependency-free parent supervisor here too, without Minecraft/NeoForge.
+sourceSets.test.java {
+    srcDir '../neoforge-1.21.1/src/main/java'
+    include 'com/dishanhai/sh_better_ui/automation/script/**'
+    include 'com/dishanhai/uuk/worker/**'
+}
+tasks.withType(JavaCompile).configureEach { options.encoding = 'UTF-8' }
+jar {
+    archiveFileName = 'uuk-script-worker.jar'
+    manifest.attributes('Main-Class': 'com.dishanhai.uuk.worker.ScriptWorkerMain',
+            'Implementation-Vendor': 'dishanhai', 'Rhino-Version': '1.9.1')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    from { configurations.runtimeClasspath.collect { zipTree(it) } }
+    exclude 'META-INF/*.SF', 'META-INF/*.RSA', 'META-INF/*.DSA', 'module-info.class', 'META-INF/versions/**/module-info.class'
+    from('../LICENSE') { rename { 'LICENSE-SH-Better-UI' } }
+}
+test {
+    dependsOn jar
+    useJUnitPlatform()
+    systemProperty 'uuk.worker.jar', tasks.jar.archiveFile.get().asFile.absolutePath
+}
+tasks.register('verifyWorkerJar') {
+    dependsOn jar
+    doLast {
+        def zip = new java.util.zip.ZipFile(tasks.jar.archiveFile.get().asFile)
+        try {
+            ['com/dishanhai/uuk/worker/ScriptWorkerMain.class', 'org/mozilla/javascript/Context.class',
+             'LICENSE-RHINO.txt', 'THIRD-PARTY-NOTICES.md'].each {
+                if (!zip.getEntry(it)) throw new GradleException("Missing worker entry: ${it}")
+            }
+            if (zip.entries().any { it.name.startsWith('net/minecraft/') || it.name.startsWith('dev/latvian/') || it.name.startsWith('net/neoforged/') }) {
+                throw new GradleException('Worker must not contain Minecraft, NeoForge or KubeJS classes')
+            }
+        } finally { zip.close() }
+    }
+}
+tasks.named('check') { dependsOn 'verifyWorkerJar' }

@@ -4,12 +4,14 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 import com.dishanhai.sh_better_ui.client.api.UiApiContext;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
+import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 
 import java.util.ArrayList;
@@ -18,6 +20,28 @@ import java.util.List;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PreviewInteractionTest {
+    @Test
+    void glideSelectIsAnInteractiveControlPreview() {
+        var registry = new PreviewRegistry();
+        BuiltinPreviews.registerInto(registry);
+        var spec = registry.find("glide_select").orElseThrow();
+        assertEquals(PreviewSpec.Category.CONTROLS, spec.category());
+        try (var context = new UiApiContext(); var scene = spec.factory().get()) {
+            TransitionHost host = new TransitionHost() {
+                private final Screen screen = new Screen(Component.empty()) {};
+                @Override public Screen screen() { return screen; }
+                @Override public UiApiContext context() { return context; }
+            };
+            scene.layout(host);
+            assertEquals(1, host.widgets.size());
+            var trigger = host.widgets.getFirst();
+            assertTrue(trigger.active);
+            assertTrue(host.viewport().contains(trigger.getX(), trigger.getY()));
+            assertEquals(Component.translatable("sh_better_ui.panel.developer.gallery.glide_select.png"),
+                    trigger.getMessage());
+        }
+    }
+
     @Test
     void transitionDuringLayoutDoesNotPermanentlyDisablePreviewButtons() {
         var registry = new PreviewRegistry();
@@ -32,7 +56,7 @@ class PreviewInteractionTest {
         }
     }
 
-    private static final class TransitionHost implements PreviewContext {
+    private static class TransitionHost implements PreviewContext {
         private final List<AbstractWidget> widgets = new ArrayList<>();
         @Override public Screen screen() { return null; }
         @Override public Bounds viewport() { return new Bounds(0, 0, 200, 140); }

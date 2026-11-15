@@ -22,6 +22,8 @@ Declare `sh_better_ui` in your loader metadata. Compile against the library as a
 
 Register widgets in `Screen.init()` or a `UiScreenBuilder.onInit` callback. Draw the background before the widgets and overlays afterward. Use the same GUI bounds for rendering and hit testing. Pass localized `Component` values for labels, tooltips and narration.
 
+`ShBetterUiApi.controls().holdButton(...)` creates a native hold-to-confirm button. Supply GUI `Bounds` and localized idle and confirmed labels, then mount it with `addRenderableWidget(button)`. `HoldGesture.Timing` defaults to a 2-second hold, a 200 ms release, and a 1.2-second reset. A zero reset delay keeps the confirmed state until `button.reset()`. `UiHoldButton.Appearance` controls direction, corner radius, press scale, wave, glow, and colors. Pass `null` to omit the tap callback. Call `button.cancelHold()` before a host handles Escape or reuses a removed widget.
+
 | API | Use |
 | --- | --- |
 | `ShBetterUiApi.screen(...)` | Create a `UiScreen` with native controls, a content viewport, back navigation and focus restoration. Provide `returnFocus(...)` when the parent rebuilds the original control. |
@@ -35,6 +37,8 @@ Register widgets in `Screen.init()` or a `UiScreenBuilder.onInit` callback. Draw
 | `audio()`, `lyrics()` | Analyze PCM, opt into Windows output loopback, or render synchronized lyrics using a supported feed. |
 | `client()`, `extensions()` | Dispatch short callbacks to the client thread or register typed, per-context factories. Track disposable resources with `UiApiContext.manage(...)`. |
 | `platform()` | Access version-specific fluid, tooltip and LDLib adapters. |
+
+Search-generated `SearchIndex.Suggestion.matchRank()` is a query-local quality tier: lower is better. Hosts may use frequency or other preferences to order suggestions within the same tier. Tiers from different queries or modes are not global scores. The existing two- and three-argument constructors remain available and default the tier to 0.
 
 [Screen interactions](SCREEN_INTERACTIONS.md) · [Visual alignment](VISUAL_ALIGNMENT.md) · [Dynamic themes](DYNAMIC_THEMES.md) · [Music rhythm](music-rhythm.md) · [Lyrics](lyrics.md) · [KubeJS](KUBEJS.md)
 

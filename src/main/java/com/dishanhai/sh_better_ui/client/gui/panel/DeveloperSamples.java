@@ -16,6 +16,8 @@ import static com.dishanhai.sh_better_ui.client.gui.panel.GalleryPreviewLayout.D
 /** 山海：开发者图库使用的控件、材质和对应 Java 接入示例。 */
 enum DeveloperSamples {
     BUTTON("button", CONTROLS, 2, UiStyle.DEFAULT),
+    FUSE_BUTTON("fuse_button", 2, FuseButtonDemo.HEIGHT, FuseButtonPreview::new, FuseButtonDemo.EXAMPLE),
+    SWIPE_ROW(SwipeRowDemo.ID, 2, SwipeRowDemo.HEIGHT, SwipeRowPreview::new, SwipeRowDemo.EXAMPLE),
     TOGGLE("toggle", 3, ControlPreviewScenes.Toggle::new, """
             import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
             import com.dishanhai.sh_better_ui.client.gui.scaled.NetworkToggle;
@@ -404,6 +406,59 @@ enum DeveloperSamples {
                 }
             }
             """),
+    PROMPT_BAR("prompt_bar", 32, PromptBarDemo.HEIGHT, PromptBarPreview::new, PromptBarDemo.CODE),
+    CODE_SLOTS("code_slots", -1, 88, CodeSlotsPreview::new, """
+            import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+            import com.dishanhai.sh_better_ui.client.gui.scaled.UiCodeSlots;
+            import net.minecraft.network.chat.Component;
+
+            private void addCodeSlots(int x, int y) {
+                var slots = ShBetterUiApi.controls().codeSlots(new Bounds(x, y, 184, 24), 6,
+                        Component.translatable("sh_better_ui.code_slots.label"),
+                        ShBetterUiApi.settings().preferences());
+                slots.setOnComplete(code -> slots.setStatus("123456".equals(code)
+                        ? UiCodeSlots.Status.SUCCESS : UiCodeSlots.Status.ERROR));
+                addRenderableWidget(slots);
+            }
+            """),
+    BELL_TOGGLE("bell_toggle", 29, 76, BellTogglePreview::new, ""),
+    CALL_CHIP("call_chip", 33, 72, CallChipPreview::new, CallChipDemo.EXAMPLE),
+    HOLD_BUTTON("hold_button", 31, 68, HoldButtonPreview::new, """
+            import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+            import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
+            import com.dishanhai.sh_better_ui.kernel.api.input.HoldGesture;
+            import net.minecraft.network.chat.Component;
+
+            private void addHoldButton(int x, int y, Runnable confirm) {
+                var button = ShBetterUiApi.controls().holdButton(new Bounds(x, y, 160, 28),
+                        Component.translatable("sh_better_ui.hold_button.right"),
+                        Component.translatable("sh_better_ui.hold_button.done"),
+                        HoldGesture.Timing.DEFAULT, new UiHoldButton.Appearance(UiHoldButton.Direction.RIGHT),
+                        ShBetterUiApi.settings().preferences(), confirm, null);
+                addRenderableWidget(button);
+            }
+            """),
+    SLOSH_GAUGE(SloshGaugeDemo.ID, SloshGaugeDemo.ORDER,
+            SloshGaugeDemo.MIN_HEIGHT, SloshGaugePreview::new, SloshGaugeDemo.CODE),
+    RUBBER_SEGMENT("rubber_segment", 30, 64, RubberSegmentPreview::new, """
+            import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+            import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+            import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
+            import net.minecraft.network.chat.Component;
+            import java.util.List;
+
+            private void addSegment(int x, int y, List<Component> labels, java.util.function.IntConsumer onSelect) {
+                var options = labels.stream().map(label -> new UiSectionBar.Section(label, GraphicIcon.ORGANIZE)).toList();
+                var control = ShBetterUiApi.controls().rubberSegment(new Bounds(x, y, 200, 28),
+                        getTitle(), options, 0, ShBetterUiApi.settings().preferences(), onSelect);
+                addRenderableWidget(control);
+            }
+            """),
+    JELLY_RADIO(JellyRadioDemo.ID, JellyRadioDemo.ORDER, JellyRadioDemo.HEIGHT,
+            JellyRadioPreview::new, JellyRadioDemo.CODE),
     SEARCH("search", 22, ControlPreviewScenes.Search::new, """
             import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
             import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;

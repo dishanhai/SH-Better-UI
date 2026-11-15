@@ -70,6 +70,9 @@ final class ClientPageNetwork {
     private boolean priorityModal;
     private boolean interactionAllowed;
     private UiInteractionProof explicitRequest;
+    private net.minecraft.client.gui.screens.Screen explicitRequestOwner;
+    private long screenGeneration;
+    private long explicitRequestGeneration;
     private long explicitRequestStarted;
 
     ClientPageNetwork(ClientPages pages) { this.pages = pages; }
@@ -161,13 +164,20 @@ final class ClientPageNetwork {
     }
 
     boolean requestPage(UiId page) {
+        return requestPage(page, null);
+    }
+
+    boolean requestPage(UiId page, net.minecraft.client.gui.screens.Screen owner) {
         var minecraft = Minecraft.getInstance();
-        if (!supports(UiProtocol.INTERACTION_OPEN) || minecraft.screen != null || minecraft.getOverlay() != null
+        if (!supports(UiProtocol.INTERACTION_OPEN) || minecraft.screen != owner || minecraft.getOverlay() != null
                 || minecraft.level == null || explicitRequest != null) return false;
+        if (owner != null && !pages.canOpenRequested(UiPageType.SCREEN, owner)) return false;
         long now = System.nanoTime();
         var proof = interactions.observe(new UiInteractionTarget.Page(page), now);
         if (proof.isEmpty()) return false;
         explicitRequest = proof.orElseThrow();
+        explicitRequestOwner = owner;
+        explicitRequestGeneration = screenGeneration;
         explicitRequestStarted = now;
         send(new InteractionRequest(explicitRequest));
         return negotiated;
@@ -207,7 +217,9 @@ final class ClientPageNetwork {
             finishExplicitRequest(UiErrorCode.OPEN_TIMEOUT);
         }
         for (var surface : List.copyOf(mounted.values())) {
-            surface.page.tick(now);
+            var replay = surface.page.tick(now, TIMEOUT);
+            // The server retains every receipt until this page instance ends and rejects expired instances.
+            if (replay != null && mounted.get(replay.instanceId()) == surface) send(replay);
             if (!surface.page.snapshot().synchronizedData() && surface.syncRetryPending
                     && now - surface.syncRetryAt >= 0 && now - surface.syncDeadline < 0) {
                 surface.syncRetryPending = false;
@@ -342,15 +354,20 @@ final class ClientPageNetwork {
             if (surface != null) surface.page.restore(snapshot.revision(), snapshot.data());
         } else if (payload instanceof ActionResult result) {
             var surface = mounted.get(result.instanceId());
-            if (surface != null) {
-                if (surface.page.hasRequest(result.requestId())
-                        && result.error().filter(error -> error == UiErrorCode.REVISION_MISMATCH).isPresent()
+            if (surface != null && surface.page.hasRequest(result.requestId())) {
+                if (surface.page.replayedRequest() && result.error().filter(ClientPageNetwork::ambiguousReplay).isPresent()) {
+                    surface.page.unknownResult(result.requestId());
+                    return;
+                }
+                if (result.error().filter(error -> error == UiErrorCode.REVISION_MISMATCH).isPresent()
                         && surface.page.snapshot().synchronizedData()) {
                     surface.page.requireSynchronization();
                     requestSnapshot(surface);
                 }
                 if (surface.challenge != null && surface.challenge.requestId().equals(result.requestId())) {
                     surface.challenge = null;
+                    surface.confirmationReply = null;
+                    surface.confirmationReplayed = false;
                 }
                 surface.page.result(result.requestId(), result.state());
             }
@@ -372,6 +389,15 @@ final class ClientPageNetwork {
         }
     }
 
+    private static boolean ambiguousReplay(UiErrorCode error) {
+        // A replay can fail before the server reads its receipt, even for an already executed action.
+        return switch (error) {
+            case SESSION_EXPIRED, SESSION_CLOSED, ACTION_INVALID, PERMISSION_DENIED, ACTION_BUSY,
+                    ACTION_TIMEOUT, RATE_LIMITED, INTERNAL_ERROR -> true;
+            default -> false;
+        };
+    }
+
     private void requestSnapshot(Mounted surface) {
         long now = System.nanoTime();
         surface.syncDeadline = now + TIMEOUT;
@@ -383,6 +409,7 @@ final class ClientPageNetwork {
     private void finishExplicitRequest(UiErrorCode error) {
         var proof = explicitRequest;
         explicitRequest = null;
+        explicitRequestOwner = null;
         var player = Minecraft.getInstance().player;
         if (error != null && player != null && proof != null && proof.target() instanceof UiInteractionTarget.Page page) {
             player.sendSystemMessage(Component.translatable("sh_better_ui.pages.request.rejected",
@@ -392,18 +419,28 @@ final class ClientPageNetwork {
 
     private void confirmAction(ActionChallenge challenge) {
         var surface = mounted.get(challenge.instanceId());
-        if (surface == null || surface.challenge != null) return;
+        if (surface == null || !surface.page.hasRequest(challenge.requestId())) return;
+        if (surface.challenge != null) {
+            if (surface.challenge.equals(challenge) && surface.confirmationReply != null && !surface.confirmationReplayed) {
+                surface.confirmationReplayed = true;
+                surface.page.extendRequest(challenge.requestId(), System.nanoTime() + TIMEOUT);
+                send(surface.confirmationReply);
+            }
+            return;
+        }
         surface.challenge = challenge;
         boolean shown = surface.page.confirm(challenge.requestId(), challenge.prompt(),
                 System.nanoTime() + CONFIRMATION_TIMEOUT, accepted -> {
                     if (mounted.get(challenge.instanceId()) != surface || surface.challenge != challenge) return;
                     surface.page.extendRequest(challenge.requestId(), System.nanoTime() + TIMEOUT);
-                    send(new ActionConfirm(challenge.instanceId(), challenge.requestId(), challenge.token(), accepted));
+                    replyToChallenge(surface, challenge, accepted);
                 });
-        if (!shown) {
-            surface.challenge = null;
-            send(new ActionConfirm(challenge.instanceId(), challenge.requestId(), challenge.token(), false));
-        }
+        if (!shown) replyToChallenge(surface, challenge, false);
+    }
+
+    private void replyToChallenge(Mounted surface, ActionChallenge challenge, boolean accepted) {
+        surface.confirmationReply = new ActionConfirm(challenge.instanceId(), challenge.requestId(), challenge.token(), accepted);
+        send(surface.confirmationReply);
     }
 
     private void open(PageOpen open) {
@@ -461,7 +498,9 @@ final class ClientPageNetwork {
         send(new PageOpened(id, UiOpenResult.Status.AUTHORIZED, Optional.empty()));
         if (!negotiated) return;
         var request = new Queued(open, deadline, origin);
-        if (!pages.canOpenRemote(open.page().type(), open.highPriority())) {
+        boolean requestedFromCurrentScreen = origin == Authorization.REQUEST && explicitRequestOwner != null
+                && pages.canOpenRequested(open.page().type(), explicitRequestOwner);
+        if (!requestedFromCurrentScreen && !pages.canOpenRemote(open.page().type(), open.highPriority())) {
             if (queued.size() >= 2) reject(id, UiErrorCode.RESOURCE_LIMIT_EXCEEDED);
             else queued.put(id, request);
             return;
@@ -472,7 +511,8 @@ final class ClientPageNetwork {
     private boolean interactionTargetCurrent(UiInteractionTarget target) {
         var level = Minecraft.getInstance().level;
         if (level == null) return false;
-        if (target instanceof UiInteractionTarget.Page) return true;
+        if (target instanceof UiInteractionTarget.Page) return Minecraft.getInstance().screen == explicitRequestOwner
+                && screenGeneration == explicitRequestGeneration;
         if (!interactionAllowed) return false;
         var dimension = UiId.parse(level.dimension().location().toString());
         if (target instanceof UiInteractionTarget.Block block) return block.dimension().equals(dimension);
@@ -491,9 +531,8 @@ final class ClientPageNetwork {
             var created = pages.openRemote(id, open.page(), open.data(), covered, (action, payload) -> {
                 var surface = mounted.get(id);
                 if (surface == null) return;
-                var requestId = UUID.randomUUID();
-                surface.page.request(requestId, action, System.nanoTime() + TIMEOUT);
-                send(new ActionRequest(id, requestId, action, surface.page.data.revision(), payload));
+                var actionRequest = surface.page.request(action, payload, System.nanoTime() + TIMEOUT);
+                if (actionRequest != null) send(actionRequest);
             }, () -> {
                 var surface = mounted.remove(id);
                 if (surface != null && surface.displayed && !surface.peerClosed) {
@@ -572,6 +611,7 @@ final class ClientPageNetwork {
         queued.clear();
         interactions.clear();
         explicitRequest = null;
+        explicitRequestOwner = null;
         for (var surface : List.copyOf(mounted.values())) {
             surface.peerClosed = true;
             surface.page.close();
@@ -579,6 +619,8 @@ final class ClientPageNetwork {
     }
 
     private enum Authorization { PUSH, PRIORITY, TARGET, REQUEST }
+
+    void screenInitialized() { screenGeneration++; }
 
     private record Queued(PageOpen open, long deadline, Authorization origin) {}
 
@@ -597,6 +639,8 @@ final class ClientPageNetwork {
         boolean displayed;
         boolean peerClosed;
         ActionChallenge challenge;
+        ActionConfirm confirmationReply;
+        boolean confirmationReplayed;
 
         Mounted(ClientPages.OpenPage page, long deadline, Authorization origin) {
             this.page = page;

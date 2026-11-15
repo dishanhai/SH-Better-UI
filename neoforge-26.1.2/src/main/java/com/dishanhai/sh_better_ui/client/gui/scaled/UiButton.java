@@ -55,6 +55,7 @@ public final class UiButton extends Button {
     private int modeIndicatorCount;
     private int selectedModeIndex = -1;
     private @Nullable Tooltip tooltip;
+    private @Nullable Component narrationLabel;
     private Tooltip labelTooltip;
     private @Nullable GraphicIcon icon;
     private boolean iconWithLabel;
@@ -187,9 +188,13 @@ public final class UiButton extends Button {
         return selectedModeIndex;
     }
 
+    public void setNarrationLabel(@Nullable Component label) {
+        narrationLabel = label == null ? null : label.copy();
+    }
+
     @Override
     protected MutableComponent createNarrationMessage() {
-        var narration = super.createNarrationMessage();
+        var narration = narrationLabel == null ? super.createNarrationMessage() : wrapDefaultNarrationMessage(narrationLabel);
         return selected ? CommonComponents.joinForNarration(narration,
                 Component.translatable("sh_better_ui.control.selected")) : narration;
     }

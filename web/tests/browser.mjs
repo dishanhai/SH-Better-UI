@@ -173,6 +173,43 @@ async function probeRenderer() {
       bent: trace(read({ ...options, a: { ...transparent, refraction: base.refraction } })),
     };
   });
+  // R/G encode source X/Y. A tangential shift is visible even if the contour itself is unchanged.
+  for (let y = 0; y < height; y++) {
+    for (let x = 0; x < width; x++) {
+      const index = (y * width + x) * 4;
+      ramp[index] = Math.max(0, Math.min(255, 172 + 0.75 * (x - 320)));
+      ramp[index + 1] = Math.max(0, Math.min(255, 172 + 0.75 * (y - 192)));
+      ramp[index + 2] = ramp[index];
+    }
+  }
+  gl.bindTexture(gl.TEXTURE_2D, renderer.sourceTexture);
+  gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, width, height, gl.RGBA, gl.UNSIGNED_BYTE, ramp);
+  const shapeFrame = replayFrame(fixture, 800);
+  shapeFrame.movingRect = { x: 0, y: 0, width: 0, height: 0 };
+  const shapeProbes = [
+    { shape: 'CAPSULE', width: 220, height: 64, points: [[370, 162], [419, 170], [320, 192]] },
+    { shape: 'CAPSULE', width: 64, height: 220, points: [[290, 242], [298, 291], [320, 192]] },
+    { shape: 'ELLIPSE', width: 64, height: 64, points: [[350, 192], [342, 170], [320, 192]] },
+    { shape: 'ELLIPSE', width: 168, height: 64, points: [[400, 192], [380, 170], [320, 192]] },
+  ].map(({ shape, width, height, points }) => {
+    fixture.surface = { x: 320 - width / 2, y: 192 - height / 2, width, height, radius: 32, shape };
+    const pixels = (opticalProfile, refraction, quality = 'PERFORMANCE', lensing = base.lensing) => {
+      const data = read({ frame: shapeFrame, a: { ...transparent, foreground: 'DARK', refraction, lensing, quality }, opticalProfile });
+      return points.map(([x, y]) => sample(data, x, y).slice(0, 3));
+    };
+    return Object.fromEntries(['legacy', 'snell'].map(profile => {
+      const straight = pixels(profile, 0, 'PERFORMANCE', 0);
+      const bent = pixels(profile, 16);
+      const dispersed = pixels(profile, 16, 'ULTRA');
+      const lensOnly = pixels(profile, 0, 'PERFORMANCE', 1);
+      return [profile, {
+        shift: bent.map((channels, i) => channels.slice(0, 2).map((v, c) => v - straight[i][c])),
+        lensOnly: lensOnly[0].slice(0, 2).map((v, c) => v - straight[0][c]),
+        dispersion: dispersed.map(([r, , b]) => Math.abs(r - b)),
+        fringe: dispersed[0].map((value, channel) => value - bent[0][channel]),
+      }];
+    }));
+  });
   fixture.surface = panel;
   const midX = panel.x + panel.width / 2;
   const whiteX = midX + 48;
@@ -206,7 +243,7 @@ async function probeRenderer() {
   renderer.dispose();
   const released = !gl.isTexture(resources.capture) && !gl.isFramebuffer(resources.framebuffer) && !gl.isProgram(resources.program)
     && renderer.diagnostics().captureBytes === 0;
-  return { repeated, parameters, center, bevel, tuning, folds, edgeChroma, cornerChroma, rimLighting, whiteRimDelta,
+  return { repeated, parameters, center, bevel, tuning, folds, shapeProbes, edgeChroma, cornerChroma, rimLighting, whiteRimDelta,
     compareModes, contrast, fallback, alpha, alphaDiff, keyframes, inputResponse,
     stepResponse, zoomResponse, beforeDpi, afterDpi, resolution, timer, released, device, version,
     medianCpuFrameMs: samples.toSorted((a, b) => a - b)[Math.floor(samples.length / 2)] };
@@ -259,6 +296,29 @@ try {
       `${shape} bevel did not reverse the backdrop sample order at the default refraction: ${straight} -> ${bent}`);
     assert.equal(bent[2], straight[2], `${shape} bevel displaced the flat face`);
   }
+  const [horizontal, vertical, circle, ellipse] = results.shapeProbes;
+  for (const profile of ['legacy', 'snell']) {
+    const [acrossTop, end] = horizontal[profile].shift;
+    const [acrossLeft, bottom] = vertical[profile].shift;
+    assert.ok(Math.abs(acrossTop[0]) <= 1 && acrossTop[1] > 3, `${profile} capsule top: ${acrossTop}`);
+    assert.ok(acrossLeft[0] > 3 && Math.abs(acrossLeft[1]) <= 1, `${profile} capsule left: ${acrossLeft}`);
+    assert.ok(end[0] < -3 && end[1] > 3 && Math.abs(end[0] + end[1]) <= 2, `${profile} capsule end: ${end}`);
+    assert.ok(bottom[0] > 3 && bottom[1] < -3 && Math.abs(bottom[0] + bottom[1]) <= 2, `${profile} vertical capsule end: ${bottom}`);
+    const [, diagonal] = circle[profile].shift;
+    assert.ok(diagonal[0] < -3 && diagonal[1] > 3 && Math.abs(diagonal[0] + diagonal[1]) <= 2, `${profile} circle: ${diagonal}`);
+    const [, oval] = ellipse[profile].shift;
+    assert.ok(oval[0] < -2 && oval[1] > 4 && Math.abs(oval[0] + 0.42 * oval[1]) <= 1.5, `${profile} ellipse: ${oval}`);
+    for (const probe of results.shapeProbes) assert.deepEqual(probe[profile].shift[2], [0, 0]);
+  }
+  assert.ok(horizontal.legacy.lensOnly[1] > 0 && horizontal.legacy.lensOnly[0] === 0,
+    `Lensing alone on a horizontal capsule: ${horizontal.legacy.lensOnly}`);
+  assert.ok(vertical.legacy.lensOnly[0] > 0 && vertical.legacy.lensOnly[1] === 0,
+    `Lensing alone on a vertical capsule: ${vertical.legacy.lensOnly}`);
+  assert.equal(horizontal.snell.dispersion[0], 0, 'The straight part of a capsule split color channels');
+  assert.ok(circle.snell.dispersion[0] >= 1, 'The circular rim lost dispersion on its horizontal axis');
+  const [redFringe, greenFringe, blueFringe] = circle.snell.fringe;
+  assert.ok(redFringe <= 0 && greenFringe === 0 && blueFringe >= 0 && redFringe < blueFringe,
+    `The circular rim did not sample red farther inward and blue farther outward than green: ${circle.snell.fringe}`);
   assert.ok(results.bevel.vsLegacy.changedPixels > 50, 'Snell rendering did not change the optical surface');
   assert.ok(results.bevel.refraction.changedPixels > 50, 'The Snell bevel did not displace background pixels');
   assert.ok(results.bevel.dispersion.changedPixels > 50, 'Balanced Snell glass did not separate color channels');

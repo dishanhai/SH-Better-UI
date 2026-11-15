@@ -180,6 +180,10 @@ public final class DeveloperGalleryScreen extends Screen {
 
     /** Built-in descriptors share discovery and ordering with extension registrations. */
     public static void registerBuiltins(PreviewRegistry registry) {
+        FolderFloatPreview.registerInto(registry);
+        PhotonKnotPreview.registerInto(registry);
+        LatticeLoaderPreview.registerInto(registry,
+                message -> Minecraft.getInstance().getNarrator().saySystemNow(message));
         for (var sample : SAMPLES) {
             var category = sample.category() == Category.CONTROLS
                     ? PreviewSpec.Category.CONTROLS : PreviewSpec.Category.MATERIALS;
@@ -1016,6 +1020,8 @@ public final class DeveloperGalleryScreen extends Screen {
         TOGGLE("toggle", GraphicIcon.SWITCH),
         SLIDER("slider", GraphicIcon.SETTINGS),
         DISCLOSURE("disclosure", GraphicIcon.EXPAND),
+        BRANCHED_MENU(BranchedMenuDemo.ID, GraphicIcon.TOOLBAR, GalleryBranchedMenuSample::new),
+        GLIDE_SELECT("glide_select", GraphicIcon.EXPAND, GalleryCenteredMenuSample::new),
         SECTIONS("sections", GraphicIcon.TOOLBAR),
         SCROLLABLE_SECTIONS("scrollable_sections", GraphicIcon.SORT),
         UNDERLINED_TABS("underlined_tabs", GraphicIcon.ORGANIZE),
@@ -1025,6 +1031,10 @@ public final class DeveloperGalleryScreen extends Screen {
         CAPSULE_TOGGLE("capsule_toggle", GraphicIcon.SWITCH),
         MODE_INDICATORS("mode_indicators", GraphicIcon.ORGANIZE),
         TEXT_DETAILS("text_details", GraphicIcon.DOCUMENT),
+        CODE_SLOTS("code_slots", GraphicIcon.CODE, GalleryCodeSlotsSample::new),
+        PROMPT_BAR("prompt_bar", GraphicIcon.TEXT_INPUT, GalleryPromptBarSample::new),
+        FUSE_BUTTON("fuse_button", GraphicIcon.ARCHIVE, GalleryFuseButtonSample::new),
+        SWIPE_ROW(SwipeRowDemo.ID, GraphicIcon.ARCHIVE, GallerySwipeRowSample::new),
         SEARCH("search", GraphicIcon.SEARCH),
         DIALOG("dialog", GraphicIcon.WARNING),
         LIQUID_BUTTON("liquid_button", GraphicIcon.CUSTOM_THEME),
@@ -1044,6 +1054,13 @@ public final class DeveloperGalleryScreen extends Screen {
         LOADING_SKELETON("loading_skeleton", GraphicIcon.DOCUMENT, GalleryControlSamples::new),
         ATTENTION_INDICATOR("attention_indicator", GraphicIcon.ORGANIZE, GalleryControlSamples::new),
         GRADIENT_CARD("gradient_card", GraphicIcon.CUSTOM_THEME, GalleryControlSamples::new),
+        SHREDDER("shredder", GraphicIcon.DELETE, GalleryShredderSample::new),
+        HOLD_BUTTON("hold_button", GraphicIcon.RUN, GalleryHoldButtonSample::new),
+        SLOSH_GAUGE(SloshGaugeDemo.ID, GraphicIcon.ORGANIZE, GallerySloshGaugeSample::new),
+        RUBBER_SEGMENT("rubber_segment", GraphicIcon.ORGANIZE, GalleryRubberSegmentSample::new),
+        JELLY_RADIO(JellyRadioDemo.ID, GraphicIcon.ORGANIZE, GalleryJellyRadioSample::new),
+        BELL_TOGGLE("bell_toggle", GraphicIcon.INFO, GalleryBellToggleSample::new),
+        CALL_CHIP("call_chip", GraphicIcon.CODE, GalleryCallChipSample::new),
         SLIDE_CONFIRM("slide_confirm", GraphicIcon.SUCCESS, GalleryGestureSamples::new),
         LOCAL_MODAL("local_modal", GraphicIcon.EXPAND, GalleryGestureSamples::new),
         BOTTOM_SHEET("bottom_sheet", GraphicIcon.EXPAND, GalleryGestureSamples::new),
@@ -1107,10 +1124,11 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case BUTTON, TOGGLE, SLIDER, DISCLOSURE, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
-                        STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, SEARCH, DIALOG, FRAME_TIMELINE,
-                        DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM,
-                        LOCAL_MODAL, BOTTOM_SHEET, INTERRUPTIBLE_ANIMATION, PAGE_SLIDE, RECIPE_TRANSITION,
+                case JELLY_RADIO -> Category.CONTROLS;
+                case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
+                        STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
+                        DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
+                        BELL_TOGGLE, CALL_CHIP, RUBBER_SEGMENT, SLOSH_GAUGE, HOLD_BUTTON, LOCAL_MODAL, BOTTOM_SHEET, INTERRUPTIBLE_ANIMATION, PAGE_SLIDE, RECIPE_TRANSITION,
                         TOAST, VISUAL_ALIGNMENT, ELECTRIC_LOGO, ANTIGRAVITY, LIGHT_RAYS, PATTERN_WAVES,
                         LIVE_ACTIVITY -> Category.CONTROLS;
                 default -> Category.MATERIALS;
@@ -1121,7 +1139,7 @@ public final class DeveloperGalleryScreen extends Screen {
             return switch (this) {
                 case UNDERLINED_TABS, DOT_MATRIX, LIQUID_GLASS -> 0;
                 case STEPPER, LIQUID_BUTTON -> 1;
-                case BUTTON, DARK_BUTTON -> 2;
+                case BUTTON, SWIPE_ROW, FUSE_BUTTON, DARK_BUTTON -> 2;
                 case TOGGLE, GRADIENT_CARD -> 3;
                 case SECTIONS, NETWORK_TAB -> 4;
                 case SCROLLABLE_SECTIONS, DISCLOSURE, CLEAR_GLASS -> 5;
@@ -1146,6 +1164,16 @@ public final class DeveloperGalleryScreen extends Screen {
                 case TOAST -> 24;
                 case LOCAL_MODAL -> 25;
                 case LIVE_ACTIVITY -> 26;
+                case CODE_SLOTS -> -1;
+                case PROMPT_BAR -> 32;
+                case SHREDDER -> 28;
+                case BELL_TOGGLE, GLIDE_SELECT -> 29;
+                case RUBBER_SEGMENT -> 30;
+                case SLOSH_GAUGE -> SloshGaugeDemo.ORDER;
+                case JELLY_RADIO -> JellyRadioDemo.ORDER;
+                case HOLD_BUTTON -> 31;
+                case CALL_CHIP -> 33;
+                case BRANCHED_MENU -> BranchedMenuDemo.ORDER;
                 case DYNAMIC_THEME -> 260;
                 case CLICK_RIPPLE -> 301;
                 case FLOW_BORDER -> 302;

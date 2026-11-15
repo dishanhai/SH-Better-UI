@@ -8,5 +8,6 @@ public enum ScopeKind {
     SCREEN,
     UI_TREE,
     COMPONENT,
-    RESOURCE_RELOAD
+    RESOURCE_RELOAD,
+    SERVER_SESSION
 }

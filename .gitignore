@@ -60,6 +60,8 @@ __pycache__/
 !/docs/performance-report.md
 /web/dist/
 /web/node_modules/
+/web/.env.local
+/web/reactbits/
 /examples/material-catalog-consumer/**/build/
 /examples/material-catalog-consumer/**/.gradle/
 /src_collection/

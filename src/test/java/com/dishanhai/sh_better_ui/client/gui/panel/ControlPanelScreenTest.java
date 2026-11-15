@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiCapsuleReveal;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
@@ -45,6 +46,29 @@ class ControlPanelScreenTest {
         assertNull(findButton(screen, "links.github"));
         assertTrue(button(screen, "apply").active);
         assertNotNull(button(screen, "hover_animation"));
+    }
+
+    @Test
+    void themeSegmentKeyboardSelectionStaysInTheDraftWhenReopeningTheDisplayTab() {
+        var saved = ClientUiSettings.current();
+        var screen = compactScreen();
+        switchTab(screen, "display");
+        var segment = screen.children().stream().filter(UiRubberSegment.class::isInstance)
+                .map(UiRubberSegment.class::cast).findFirst().orElseThrow();
+        int initial = segment.selectedIndex();
+        int key = initial == 0 ? GLFW.GLFW_KEY_END : GLFW.GLFW_KEY_HOME;
+        screen.setFocused(segment);
+        assertTrue(screen.keyPressed(key, 0, 0));
+        int changed = segment.selectedIndex();
+        assertNotEquals(initial, changed);
+        assertEquals(saved, ClientUiSettings.current());
+        assertTrue(button(screen, "apply").active);
+
+        switchTab(screen, "glass");
+        switchTab(screen, "display");
+        var rebuilt = screen.children().stream().filter(UiRubberSegment.class::isInstance)
+                .map(UiRubberSegment.class::cast).findFirst().orElseThrow();
+        assertEquals(changed, rebuilt.selectedIndex());
     }
 
     @Test
@@ -197,11 +221,12 @@ class ControlPanelScreenTest {
         var backdrop = button(screen, "enabled");
         boolean initialBlur = ClientUiSettings.current().backdrop().enabled();
         boolean initialDense = ClientUiSettings.current().backdrop().denseSampling();
-        assertEquals(8, visibleSliders(screen));
+        var glassParameters = button(screen, "glass_parameters");
         backdrop.onPress();
         assertEquals(!initialBlur, backdrop.isSelected());
         switchTab(screen, "developer_config");
         assertFalse(screen.children().contains(backdrop));
+        assertFalse(screen.children().contains(glassParameters));
         var sampling = button(screen, "sampling");
         assertEquals(2, sampling.getModeIndicatorCount());
         assertEquals(initialDense ? 1 : 0, sampling.getSelectedModeIndex());
@@ -225,7 +250,7 @@ class ControlPanelScreenTest {
         assertEquals(0, visibleSliders(screen));
 
         switchTab(screen, "glass");
-        assertEquals(8, visibleSliders(screen));
+        assertNotSame(glassParameters, button(screen, "glass_parameters"));
         assertEquals(!initialBlur, button(screen, "enabled").isSelected());
         assertTrue(button(screen, "apply").active);
         switchTab(screen, "developer_config");

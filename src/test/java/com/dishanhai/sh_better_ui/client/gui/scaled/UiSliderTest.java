@@ -77,6 +77,52 @@ class UiSliderTest {
     }
 
     @Test
+    void checkedPointerEditCommitsTheFinalValueOnce() {
+        var committed = new ArrayList<Integer>();
+        var cancelled = new ArrayList<Integer>();
+        var slider = slider(0, 100, 1, 20, new ArrayList<>());
+        slider.setOnCommit(committed::add, cancelled::add, () -> true);
+        slider.onClick(54, 25);
+        slider.mouseDragged(134, 25, GLFW.GLFW_MOUSE_BUTTON_LEFT, 80, 0);
+        slider.finishPointerEdit();
+        slider.finishPointerEdit();
+
+        assertEquals(List.of(60), committed);
+        assertTrue(cancelled.isEmpty());
+        assertFalse(slider.isEditing());
+    }
+
+    @Test
+    void checkedPointerEditRestoresStartWhenCommitBecomesInvalid() {
+        var committed = new ArrayList<Integer>();
+        var cancelled = new ArrayList<Integer>();
+        var slider = slider(0, 100, 1, 20, new ArrayList<>());
+        slider.setOnCommit(committed::add, cancelled::add, () -> false);
+        slider.onClick(134, 25);
+        slider.finishPointerEdit();
+        slider.mouseDragged(174, 25, GLFW.GLFW_MOUSE_BUTTON_LEFT, 40, 0);
+
+        assertEquals(20, slider.value());
+        assertEquals(List.of(20), cancelled);
+        assertTrue(committed.isEmpty());
+    }
+
+    @Test
+    void returningToTheStartSettlesThePointerEditWithoutCommitting() {
+        var committed = new ArrayList<Integer>();
+        var cancelled = new ArrayList<Integer>();
+        var slider = slider(0, 100, 1, 20, new ArrayList<>());
+        slider.setOnCommit(committed::add, cancelled::add, () -> true);
+        slider.onClick(134, 25);
+        slider.mouseDragged(54, 25, GLFW.GLFW_MOUSE_BUTTON_LEFT, -80, 0);
+        slider.finishPointerEdit();
+
+        assertEquals(20, slider.value());
+        assertEquals(List.of(20), cancelled);
+        assertTrue(committed.isEmpty());
+    }
+
+    @Test
     void fullIntegerSpanDoesNotOverflow() {
         var changed = new ArrayList<Integer>();
         var slider = slider(Integer.MIN_VALUE, Integer.MAX_VALUE, Integer.MAX_VALUE, 0, changed);

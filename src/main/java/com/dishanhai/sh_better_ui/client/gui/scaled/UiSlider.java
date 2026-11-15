@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 
 import java.util.Objects;
+import java.util.function.BooleanSupplier;
 import java.util.function.IntConsumer;
 import java.util.function.IntFunction;
 
@@ -34,6 +35,7 @@ public final class UiSlider extends AbstractSliderButton {
     private Tooltip valueTooltip;
     private IntConsumer onCommit;
     private IntConsumer onCancel;
+    private BooleanSupplier acceptsPointerCommit;
     private Integer pressedValue;
     private NativeTextReadability.Label readableLabel;
 
@@ -80,6 +82,17 @@ public final class UiSlider extends AbstractSliderButton {
     public void setOnCommit(IntConsumer commit, IntConsumer cancel) {
         onCommit = Objects.requireNonNull(commit, "commit");
         onCancel = Objects.requireNonNull(cancel, "cancel");
+        acceptsPointerCommit = null;
+    }
+
+    /** Checks whether a pointer edit can still commit. The cancel callback also settles unchanged edits. */
+    public void setOnCommit(IntConsumer commit, IntConsumer cancel, BooleanSupplier acceptsPointerCommit) {
+        setOnCommit(commit, cancel);
+        this.acceptsPointerCommit = Objects.requireNonNull(acceptsPointerCommit, "acceptsPointerCommit");
+    }
+
+    public boolean isEditing() {
+        return pressedValue != null;
     }
 
     @Override
@@ -89,11 +102,28 @@ public final class UiSlider extends AbstractSliderButton {
     }
 
     @Override
+    protected void onDrag(double x, double y, double dragX, double dragY) {
+        if (acceptsPointerCommit == null || isEditing() && active && visible) super.onDrag(x, y, dragX, dragY);
+    }
+
+    @Override
     public void onRelease(double x, double y) {
         super.onRelease(x, y);
+        finishPointerEdit();
+    }
+
+    void finishPointerEdit() {
         Integer previous = pressedValue;
-        pressedValue = null;
-        if (previous != null && active && visible && previous != currentValue) onCommit.accept(currentValue);
+        if (previous == null) return;
+        if (active && visible && previous != currentValue
+                && (acceptsPointerCommit == null || acceptsPointerCommit.getAsBoolean())) {
+            pressedValue = null;
+            onCommit.accept(currentValue);
+        } else if (acceptsPointerCommit != null) {
+            cancelEdit();
+        } else {
+            pressedValue = null;
+        }
     }
 
     @Override
@@ -107,7 +137,7 @@ public final class UiSlider extends AbstractSliderButton {
         if (pressedValue != null) {
             int previous = pressedValue;
             pressedValue = null;
-            if (previous != currentValue) {
+            if (previous != currentValue || acceptsPointerCommit != null) {
                 setValue(previous);
                 onCancel.accept(previous);
             }
@@ -121,6 +151,7 @@ public final class UiSlider extends AbstractSliderButton {
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
         if (!active || !visible) return false;
+        if (acceptsPointerCommit != null && isEditing()) return false;
         keyDirection = key == GLFW.GLFW_KEY_LEFT ? -1 : key == GLFW.GLFW_KEY_RIGHT ? 1 : 0;
         int previous = currentValue;
         try {
