@@ -230,12 +230,14 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         int x = left + PADDING;
         int innerWidth = panelWidth - 2 * PADDING;
         int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
-        navigation = addRenderableWidget(new UiScrollableSectionBar(new Bounds(x, top + 35, innerWidth, BUTTON_HEIGHT),
+        navigation = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
+                new Bounds(x, top + 35, innerWidth, BUTTON_HEIGHT),
                 preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
-                draft.settings().tabs(), mainTabWidth));
-        sections = addRenderableWidget(new UiScrollableSectionBar(new Bounds(x, top + 65, innerWidth, BUTTON_HEIGHT),
+                draft.settings().tabs(), mainTabWidth).withJellyRadio());
+        sections = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
+                new Bounds(x, top + 65, innerWidth, BUTTON_HEIGHT),
                 preferences, TABS, selectedSection.ordinal(), index -> requestedSection = SECTIONS.get(index),
-                draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH));
+                draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH).withJellyRadio());
         addFooter(x, innerWidth);
         buildPage();
         if (restoreThemeConfigureFocus && themeConfigure != null && minecraft != null && minecraft.screen == this) {

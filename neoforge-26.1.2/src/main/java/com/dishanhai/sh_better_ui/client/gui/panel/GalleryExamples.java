@@ -10,6 +10,7 @@ final class GalleryExamples {
     static @Nullable String code(String id) {
         return switch (id) {
             case JellyRadioDemo.ID -> JellyRadioDemo.CODE;
+            case ShortcutKeycapsDemo.ID -> ShortcutKeycapsDemo.CODE;
             case "prompt_bar" -> PromptBarDemo.CODE;
             case "call_chip" -> CallChipDemo.EXAMPLE;
             case "fuse_button" -> FuseButtonDemo.EXAMPLE;

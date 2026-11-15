@@ -1,0 +1,41 @@
+{
+  "date": "2026-11-14",
+  "branch": "codex/uuk-automation",
+  "phase": "integrated-increment",
+  "spec": ".omc/specs/deep-interview-uuk-auto-discovery.md",
+  "implementation": "docs/UUK_AUTOMATION_IMPLEMENTATION_2026-11-14.md",
+  "neoforge": {
+    "command": "./gradlew --no-daemon test kernelTest build",
+    "exitCode": 0,
+    "test": 1051,
+    "kernelTest": 403,
+    "workerTest": 13
+  },
+  "reviews": {
+    "spec": "passed after fixes",
+    "quality": "source approved after fixes"
+  },
+  "gameAcceptance": false,
+  "deployed": false,
+  "fullReleaseComplete": false,
+  "forge": {
+    "command": "gradle-install/gradle-8.8/bin/gradle --no-daemon compileJava compileTestJava kernelTest test",
+    "exitCode": 0,
+    "results": [
+      {
+        "dir": "build/test-results/test",
+        "tests": 1041,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      },
+      {
+        "dir": "build/test-results/kernelTest",
+        "tests": 403,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0
+      }
+    ]
+  }
+}

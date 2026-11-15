@@ -17,6 +17,7 @@ import org.lwjgl.glfw.GLFW;
 
 import java.time.Duration;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.List;
 import java.util.Objects;
 import java.util.function.IntConsumer;
@@ -35,6 +36,9 @@ public final class UiScrollableSectionBar extends AbstractWidget {
     private static final int DECORATION_PADDING = 4;
     public static final int DEFAULT_TAB_WIDTH = 104;
     private final List<UiButton> buttons;
+    private final List<UiSectionBar.Section> entries;
+    private UiPreferences preferences;
+    private JellyRadioState jelly;
     private final UiButton previous;
     private final UiButton next;
     private final TabScrollState scrolling = new TabScrollState();
@@ -59,12 +63,12 @@ public final class UiScrollableSectionBar extends AbstractWidget {
         super(area.x(), area.y(), area.width(), area.height(), CommonComponents.EMPTY);
         checkArea(area);
         if (tabWidth < GraphicIcon.PIXELS) throw new IllegalArgumentException();
-        Objects.requireNonNull(preferences);
+        this.preferences = Objects.requireNonNull(preferences);
         setTooltipDelay(Duration.ofMillis(preferences.feedback().tooltipDelayMs()));
         this.settings = Objects.requireNonNull(settings);
         this.onSelect = Objects.requireNonNull(onSelect);
         this.tabWidth = tabWidth;
-        var entries = List.copyOf(sections);
+        entries = List.copyOf(sections);
         Objects.checkIndex(selectedIndex, entries.size());
         var widgets = new ArrayList<UiButton>(entries.size());
         for (int index = 0; index < entries.size(); index++) {
@@ -98,6 +102,28 @@ public final class UiScrollableSectionBar extends AbstractWidget {
         return button;
     }
 
+    /** Fits the tab slots to the row and uses UUK jelly radio chips. */
+    public static UiScrollableSectionBar fittedJellyRadio(Bounds area, UiPreferences preferences,
+            List<UiSectionBar.Section> sections, int selectedIndex, IntConsumer onSelect) {
+        int count = sections.size();
+        Objects.checkIndex(selectedIndex, count);
+        int width = Math.max(GraphicIcon.PIXELS, (area.width() - GAP * (count - 1)) / count);
+        return new UiScrollableSectionBar(area, preferences, sections, selectedIndex, onSelect,
+                TabScrollSettings.DEFAULT, width).withJellyRadio();
+    }
+
+    /** Uses UUK jelly radio chips while keeping this bar’s scrolling and input behavior. */
+    public UiScrollableSectionBar withJellyRadio() {
+        if (jelly != null) return this;
+        boolean[] enabled = new boolean[buttons.size()];
+        Arrays.fill(enabled, true);
+        jelly = new JellyRadioState(enabled, selected);
+        buttons.forEach(button -> {
+            if (button.getTooltip() == null) button.setTooltip(Tooltip.create(button.getMessage()));
+        });
+        return this;
+    }
+
     /** 返回只读按钮列表，用于读取位置、提示和状态；不要再次向 Screen 注册。 */
     public List<UiButton> buttons() { return buttons; }
     public int selectedIndex() { return selected; }
@@ -109,6 +135,7 @@ public final class UiScrollableSectionBar extends AbstractWidget {
     public void select(int index) {
         Objects.checkIndex(index, buttons.size());
         selected = index;
+        if (jelly != null) jelly.select(index, UiJellyRadio.now(), preferences.reducedMotion());
         for (int i = 0; i < buttons.size(); i++) buttons.get(i).setSelected(i == selected);
         if (settings.autoReveal()) reveal(index);
     }
@@ -122,7 +149,7 @@ public final class UiScrollableSectionBar extends AbstractWidget {
     }
 
     public void setPreferences(UiPreferences preferences) {
-        Objects.requireNonNull(preferences);
+        this.preferences = Objects.requireNonNull(preferences);
         setTooltipDelay(Duration.ofMillis(preferences.feedback().tooltipDelayMs()));
         buttons.forEach(button -> button.setPreferences(preferences));
         previous.setPreferences(preferences);
@@ -222,9 +249,12 @@ public final class UiScrollableSectionBar extends AbstractWidget {
 
     private int buttonAt(double x, double y) {
         if (!contains(x, y) || x < viewportLeft() || x >= viewportRight()) return -1;
+        long now = jelly == null ? 0 : UiJellyRadio.now();
         for (int index = 0; index < buttons.size(); index++) {
             var button = buttons.get(index);
-            if (button.active && button.visible && button.isMouseOver(x, y)) return index;
+            if (!button.active || !button.visible || !button.isMouseOver(x, y)) continue;
+            if (jelly == null || jelly.tabChip(index, tabWidth, getHeight(), now, preferences.reducedMotion(), false)
+                    .contains(x - button.getX(), y - button.getY())) return index;
         }
         return -1;
     }
@@ -382,12 +412,26 @@ public final class UiScrollableSectionBar extends AbstractWidget {
                 : tooltipButton != null && intersectsViewport(tooltipButton) ? tooltipButton.getTooltip() : null;
         if (getTooltip() != tooltip) setTooltip(tooltip);
         boolean hoverTabs = hover && mouseX >= viewportLeft() && mouseX < viewportRight();
-        for (UiButton button : buttons) {
+        var canvas = jelly == null ? null : UiJellyRadioPlatform.canvas(graphics);
+        var theme = jelly == null ? null : UiTheme.current();
+        long now = jelly == null ? 0 : UiJellyRadio.now();
+        for (int index = 0; index < buttons.size(); index++) {
+            var button = buttons.get(index);
             if (intersectsViewport(button)) {
                 var clip = buttonRenderClip(button);
                 graphics.enableScissor(clip.x(), clip.y(), clip.right(), clip.bottom());
                 try {
-                    renderButton(button, graphics, hoverTabs ? mouseX : -1, hoverTabs ? mouseY : -1, partialTick);
+                    if (jelly == null) {
+                        renderButton(button, graphics, hoverTabs ? mouseX : -1, hoverTabs ? mouseY : -1, partialTick);
+                    } else if (button.visible) {
+                        boolean enabled = active && button.active;
+                        boolean hovered = enabled && hoverTabs && tooltipIndex == index;
+                        boolean down = hovered && pressed == index && !scrolling.dragging();
+                        var chip = jelly.tabChip(index, tabWidth, getHeight(), now, preferences.reducedMotion(), down);
+                        UiJellyRadio.paintChip(canvas, theme, button.getMessage(), entries.get(index).icon(), preferences,
+                                chip, button.getX(), button.getY(), enabled, selected == index, hovered,
+                                enabled && button.isFocused(), down);
+                    }
                 } finally {
                     graphics.disableScissor();
                 }

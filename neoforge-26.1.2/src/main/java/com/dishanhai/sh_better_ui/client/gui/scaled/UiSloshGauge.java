@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.kernel.api.controls.SloshGaugeState;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.RoundedFill.Direction;
 import com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -37,6 +38,7 @@ public final class UiSloshGauge extends AbstractWidget {
     }
 
     private final SloshGaugeState state;
+    private final RoundedFillPaint roundedFill = new RoundedFillPaint();
     private final Style style;
     private final @Nullable IntConsumer onChange;
     private UiPreferences preferences;
@@ -157,30 +159,34 @@ public final class UiSloshGauge extends AbstractWidget {
         int edge = focused || state.dragging() || isMouseOver(mouseX, mouseY)
                 ? ContrastPolicy.readable(theme.accent(), glass, glass, 3)
                 : preferences.highContrast() ? glassInk : theme.border();
-        RoundedCorners.draw(graphics, getX(), getY(), getWidth(), getHeight(), style.radius(),
-                focused || state.dragging() ? INSET : 1, edge, glass);
-
-        int left = getX() + INSET, top = getY() + INSET;
-        int width = getWidth() - 2 * INSET, height = innerHeight();
-        float radius = RoundedCorners.insetRadius(getWidth(), getHeight(), style.radius(), INSET);
+        int stroke = focused || state.dragging() ? INSET : 1;
+        int left = getX() + stroke, top = getY() + stroke;
+        int width = getWidth() - 2 * stroke, height = getHeight() - 2 * stroke;
+        float radius = RoundedCorners.insetRadius(getWidth(), getHeight(), style.radius(), stroke);
+        roundedFill.draw(graphics, getX(), getY(), getWidth(), getHeight(), style.radius(), stroke,
+                edge, glass, liquid, Direction.UP, width, x -> surface.topAt(x, width, height));
         var font = Minecraft.getInstance().font;
         var label = readout();
         int labelWidth = font.width(label);
         boolean showText = style.showValue() && labelWidth <= width && font.lineHeight <= height;
         int textX = left + (width - labelWidth) / 2, textY = top + (height - font.lineHeight) / 2;
         int markerY = top + Math.min(height - 2, Math.round((100 - value()) * height / 100f));
-        int markerInset = Math.max(width / 10, Math.max(
+        int markerInset = Math.max(1, Math.max(
                 SloshGaugePaint.inset(markerY - top + 0.5, height, radius),
                 SloshGaugePaint.inset(markerY - top + 1.5, height, radius)));
+        int markerStart = left + markerInset;
+        int markerEnd = left + Math.min(width - markerInset, markerInset + Math.max(1, Math.min(8, width / 8)));
+        boolean showMarker = state.dragging() && markerEnd > markerStart;
+        int markerDry = showMarker ? ContrastPolicy.readable(theme.accent(), glass, glass, 3) : 0;
+        int markerWet = showMarker ? ContrastPolicy.readable(theme.accent(), liquid, liquid, 3) : 0;
 
         if (showText) graphics.text(font, label, textX, textY, glassInk, false);
-        if (state.dragging()) {
-            graphics.fill(left + markerInset, markerY, left + width - markerInset, markerY + 2, glassInk);
+        if (showMarker) {
+            graphics.fill(markerStart, markerY, markerEnd, markerY + 2, markerDry);
         }
         final int fill = liquid;
-        SloshGaugePaint.liquidRuns(width, height, radius, surface, (from, start, to, bottom) -> {
+        if (showText || showMarker) SloshGaugePaint.liquidRuns(width, height, radius, surface, (from, start, to, bottom) -> {
             int x0 = left + from, y0 = top + start, x1 = left + to, y1 = top + bottom;
-            graphics.fill(x0, y0, x1, y1, fill);
             if (showText && x0 < textX + labelWidth && x1 > textX
                     && y0 < textY + font.lineHeight && y1 > textY) {
                 graphics.enableScissor(x0, y0, x1, y1);
@@ -190,10 +196,10 @@ public final class UiSloshGauge extends AbstractWidget {
                     graphics.disableScissor();
                 }
             }
-            if (state.dragging()) {
-                int a = Math.max(x0, left + markerInset), b = Math.min(x1, left + width - markerInset);
+            if (showMarker) {
+                int a = Math.max(x0, markerStart), b = Math.min(x1, markerEnd);
                 int c = Math.max(y0, markerY), d = Math.min(y1, markerY + 2);
-                if (a < b && c < d) graphics.fill(a, c, b, d, liquidInk);
+                if (a < b && c < d) graphics.fill(a, c, b, d, markerWet);
             }
         });
         int ticks = Math.min(style.ticks(), height / 3);

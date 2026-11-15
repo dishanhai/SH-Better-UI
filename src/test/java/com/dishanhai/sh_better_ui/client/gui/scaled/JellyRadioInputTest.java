@@ -52,6 +52,27 @@ class JellyRadioInputTest {
     }
 
     @Test
+    void scrollableTabChipsGrowWithinTheirSlotAndRespectReducedMotion() {
+        var state = new JellyRadioState(new boolean[]{true, true}, 0);
+        var initial = state.tabChip(1, 104, 22, 100, false, false);
+        state.select(1, 100, false);
+        var growing = state.tabChip(1, 104, 22, 140, false, false);
+        assertTrue(growing.width() > initial.width());
+        assertEquals(initial.height(), growing.height());
+        for (long time = 100; time < 650; time += 10) {
+            for (int index = 0; index < 2; index++) {
+                var chip = state.tabChip(index, 104, 22, time, false, false);
+                assertTrue(chip.x() >= 0 && chip.x() + chip.width() <= 104.001f);
+                assertTrue(chip.y() >= 0 && chip.y() + chip.height() <= 22.001f);
+            }
+        }
+        var reduced = new JellyRadioState(new boolean[]{true, true}, 0);
+        reduced.select(1, 100, false);
+        assertEquals(104f, reduced.tabChip(1, 104, 22, 140, true, true).width());
+        assertEquals(22f, reduced.tabChip(1, 104, 22, 140, false, false).height());
+    }
+
+    @Test
     void hitTestingUsesTheVisibleChipShapeAndKeepsGeometryWithinBounds() {
         for (int width : new int[]{30, 90, 280}) {
             var state = new JellyRadioState(new boolean[]{true, true, true}, 1);

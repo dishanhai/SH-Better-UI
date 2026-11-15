@@ -16,6 +16,8 @@ import static com.dishanhai.sh_better_ui.client.gui.panel.GalleryPreviewLayout.D
 /** 山海：开发者图库使用的控件、材质和对应 Java 接入示例。 */
 enum DeveloperSamples {
     BUTTON("button", CONTROLS, 2, UiStyle.DEFAULT),
+    HUD_SHORTCUT_KEYCAPS(ShortcutKeycapsDemo.ID, ShortcutKeycapsDemo.ORDER, ShortcutKeycapsDemo.HEIGHT,
+            ShortcutKeycapsPreview::new, ShortcutKeycapsDemo.CODE),
     FUSE_BUTTON("fuse_button", 2, FuseButtonDemo.HEIGHT, FuseButtonPreview::new, FuseButtonDemo.EXAMPLE),
     SWIPE_ROW(SwipeRowDemo.ID, 2, SwipeRowDemo.HEIGHT, SwipeRowPreview::new, SwipeRowDemo.EXAMPLE),
     TOGGLE("toggle", 3, ControlPreviewScenes.Toggle::new, """

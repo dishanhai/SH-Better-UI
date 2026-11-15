@@ -157,39 +157,49 @@ public final class UiJellyRadio extends UiJellyRadioPlatform {
         boolean enabled = isActive() && state.enabled(index);
         boolean down = enabled && index == state.pressed() && hovered;
         var chip = state.chip(index, getWidth(), getHeight(), time, preferences.reducedMotion(), down);
-        float x = getX() + chip.x();
-        float y = getY() + chip.y();
+        paintChip(canvas, theme, options.get(index).label(), options.get(index).icon(), preferences,
+                chip, getX(), getY(), enabled, selected, hovered, enabled && selected && isFocused(), down);
+    }
+
+    static void paintChip(Canvas canvas, UiTheme theme, Component label, GraphicIcon icon, UiPreferences preferences,
+                          JellyRadioState.Chip chip, int left, int top, boolean enabled, boolean selected,
+                          boolean hovered, boolean focused, boolean down) {
+        float x = left + chip.x();
+        float y = top + chip.y();
         int fill = (selected ? enabled ? theme.accent() : theme.border()
                 : enabled ? theme.surface() : theme.background()) | 0xff000000;
         int ink = ContrastPolicy.readable(selected ? theme.background() : theme.text(), fill, fill,
                 preferences.highContrast() ? ContrastPolicy.HIGH_CONTRAST_RATIO : ContrastPolicy.TEXT_RATIO);
-        boolean focused = enabled && selected && isFocused();
         int edge = focused || down || (enabled && hovered && !selected) || preferences.highContrast() ? ink : theme.border();
         canvas.box(x, y, chip.width(), chip.height(), Math.min(chip.width(), chip.height()) / 2,
                 focused || down ? 2 : 1, edge, fill);
 
-        var option = options.get(index);
         var font = Minecraft.getInstance().font;
         int available = (int) chip.width() - 8;
         if (available <= 0 || chip.height() < font.lineHeight + 2) return;
         int iconSize = GraphicIcon.PIXELS;
-        int labelWidth = font.width(option.label());
-        boolean drawIcon = option.icon() != null && available >= labelWidth + iconSize + 3
-                && chip.height() >= iconSize + 2;
+        int labelWidth = font.width(label);
+        boolean iconFits = icon != null && chip.width() >= iconSize + 2 && chip.height() >= iconSize + 2;
+        boolean drawIcon = iconFits && available >= labelWidth + iconSize + 3;
+        if (iconFits && !drawIcon && labelWidth > available) {
+            canvas.icon(icon, Math.round(x + (chip.width() - iconSize) / 2),
+                    Math.round(y + (chip.height() - iconSize) / 2), ink, preferences);
+            return;
+        }
         int iconSpace = drawIcon ? iconSize + 3 : 0;
         int textSpace = available - iconSpace;
-        FormattedText label = option.label();
+        FormattedText shown = label;
         if (labelWidth > textSpace) {
             int ellipsisWidth = font.width(CommonComponents.ELLIPSIS);
             if (textSpace < ellipsisWidth) return;
-            label = FormattedText.composite(font.substrByWidth(label, Math.max(0, textSpace - ellipsisWidth)),
+            shown = FormattedText.composite(font.substrByWidth(label, Math.max(0, textSpace - ellipsisWidth)),
                     CommonComponents.ELLIPSIS);
         }
-        var text = Language.getInstance().getVisualOrder(label);
+        var text = Language.getInstance().getVisualOrder(shown);
         int contentWidth = iconSpace + font.width(text);
-        int left = Math.round(x + (chip.width() - contentWidth) / 2);
-        if (drawIcon) canvas.icon(option.icon(), left, Math.round(y + (chip.height() - iconSize) / 2), ink, preferences);
-        canvas.text(font, text, left + iconSpace, Math.round(y + (chip.height() - font.lineHeight) / 2), ink);
+        int textLeft = Math.round(x + (chip.width() - contentWidth) / 2);
+        if (drawIcon) canvas.icon(icon, textLeft, Math.round(y + (chip.height() - iconSize) / 2), ink, preferences);
+        canvas.text(font, text, textLeft + iconSpace, Math.round(y + (chip.height() - font.lineHeight) / 2), ink);
     }
 
     private int indexOf(String value) {
@@ -205,5 +215,5 @@ public final class UiJellyRadio extends UiJellyRadioPlatform {
 
     private void notifySelection() { onChange.accept(selectedValue(), state.selected()); }
 
-    private static long now() { return System.nanoTime() / 1_000_000; }
+    static long now() { return System.nanoTime() / 1_000_000; }
 }

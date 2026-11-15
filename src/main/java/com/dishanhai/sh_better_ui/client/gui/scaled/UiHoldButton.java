@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.RoundedFill;
 import com.dishanhai.sh_better_ui.kernel.api.input.HoldGesture;
 import com.dishanhai.sh_better_ui.kernel.api.input.HoldGesture.Input;
 import com.dishanhai.sh_better_ui.kernel.api.input.HoldGesture.Result;
@@ -26,6 +27,7 @@ import java.util.function.IntConsumer;
 
 /** Native UUK button that confirms after an uninterrupted primary-button or keyboard hold. */
 public final class UiHoldButton extends AbstractWidget {
+    private final RoundedFillPaint roundedFill = new RoundedFillPaint();
     public enum Direction { RIGHT, UP }
 
     /** Dimensions use GUI units. Null colors follow the active theme. */
@@ -240,8 +242,6 @@ public final class UiHoldButton extends AbstractWidget {
                             height + 2 * padding, radius + padding, padding, edge, 0);
                 }
                 int border = focused || preferences.highContrast() ? 2 : 1;
-                int base = reduced ? GuiMotion.lerpColor(paint.background(), paint.fill(), progress) : paint.background();
-                RoundedCorners.draw(graphics, x, y, width, height, radius, border, paint.border(), base);
                 drawContent(graphics, paint, progress, reduced, border);
             } finally {
                 pose.popPose();
@@ -253,6 +253,20 @@ public final class UiHoldButton extends AbstractWidget {
     private void drawContent(GuiGraphics graphics, HoldButtonPaint.Palette paint, float progress,
                              boolean reduced, int border) {
         int x = getX(), y = getY(), width = getWidth(), height = getHeight();
+        int innerWidth = width - 2 * border, innerHeight = height - 2 * border;
+        boolean up = appearance.direction() == Direction.UP;
+        float wave = appearance.waveAmplitude();
+        var front = HoldButtonPaint.front(up ? innerHeight : innerWidth, progress, up, wave);
+        float corner = appearance.radius();
+        int background = reduced ? GuiMotion.lerpColor(paint.background(), paint.fill(), progress) : paint.background();
+        if (reduced || progress <= 0) {
+            RoundedCorners.draw(graphics, x, y, width, height, corner, border, paint.border(), background);
+        } else {
+            int step = wave == 0 || progress >= 1 ? (up ? innerWidth : innerHeight) : 2;
+            roundedFill.draw(graphics, x, y, width, height, corner, border,
+                    paint.border(), background, paint.fill(), up ? RoundedFill.Direction.UP : RoundedFill.Direction.RIGHT,
+                    step, front);
+        }
         var font = Minecraft.getInstance().font;
         GraphicIcon shown = state.completed() ? doneIcon : icon;
         int available = Math.max(0, width - 2 * LABEL_PADDING);
@@ -276,7 +290,6 @@ public final class UiHoldButton extends AbstractWidget {
             graphics.drawString(font, visual, left + iconWidth, top, color, false);
         };
         if (reduced) {
-            int background = GuiMotion.lerpColor(paint.background(), paint.fill(), progress);
             int labelColor = GuiMotion.lerpColor(paint.text(), paint.fillText(), progress);
             ink.accept(ContrastPolicy.readable(labelColor, background, background,
                     preferences.highContrast() ? ContrastPolicy.HIGH_CONTRAST_RATIO : ContrastPolicy.TEXT_RATIO));
@@ -284,14 +297,13 @@ public final class UiHoldButton extends AbstractWidget {
         }
 
         ink.accept(paint.text());
+        if (progress <= 0) return;
         int innerX = x + border, innerY = y + border;
-        float radius = RoundedCorners.insetRadius(width, height, appearance.radius(), border);
+        float radius = RoundedCorners.insetRadius(width, height, corner, border);
         var matrix = graphics.pose().last().pose();
         var min = new Vector3f();
         var max = new Vector3f();
-        HoldButtonPaint.spans(width - 2 * border, height - 2 * border, radius, progress,
-                appearance.direction() == Direction.UP, appearance.waveAmplitude(), (l, t, r, b) -> {
-                    graphics.fill(innerX + l, innerY + t, innerX + r, innerY + b, paint.fill());
+        HoldButtonPaint.spans(innerWidth, innerHeight, radius, up, front, (l, t, r, b) -> {
                     if (innerX + r <= left || innerX + l >= left + contentWidth
                             || innerY + b <= contentTop || innerY + t >= contentTop + contentHeight) return;
                     // Legacy GuiGraphics expects screen coordinates even under a scaled pose.
