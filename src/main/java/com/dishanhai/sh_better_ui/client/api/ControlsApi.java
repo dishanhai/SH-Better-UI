@@ -255,4 +255,8 @@ public final class ControlsApi {
     public UiSettingsDetailPage settingsDetailPage(Component title, List<UiSettingsDetailPage.Section> sections) {
         return new UiSettingsDetailPage(title, sections);
     }
+    public UiSettingsDetailPage settingsDetailPage(Component title, List<UiSettingsDetailPage.Section> sections,
+                                                 UiSettingsDetailPage.Actions actions) {
+        return new UiSettingsDetailPage(title, sections, actions);
+    }
 }

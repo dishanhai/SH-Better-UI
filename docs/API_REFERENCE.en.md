@@ -157,5 +157,5 @@ Existing KubeJS client scripts can keep `SHUI.screen(...)` and `SHUI.registerExt
 
 `controls().settingsDetailPage(title, sections)` creates a `UiSettingsDetailPage` with a fixed native back bar,
 scrolling field cards, narrow-layout reflow and keyboard focus scrolling. Pass its builder to UUK `ScreenService`.
-The host retains the draft and owns validation/save/cancel; no persistence occurs implicitly.
+Optional Actions and SettingsDraftSession provide scoped cancel/apply/reset with discard confirmation. Apply merges only changed group keys; the host owns atomic merge and final persistence. Explicit themed backgrounds and synchronous focus visibility prevent blank backdrops and hidden keyboard actions.
 See [integration and acceptance notes](SETTINGS_DETAIL_PAGE.md).

@@ -23,6 +23,58 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
     @Test
+    void disposingCannotBeVetoedByAnEditingCloseGuard() {
+        var screen = new UiScreenBuilder(Component.empty()).build();
+        screen.onCloseRequest(() -> false);
+        assertFalse(screen.permitsClose());
+        screen.dispose();
+        assertTrue(screen.permitsClose());
+    }
+
+    @Test
+    void clippedFocusCannotReceiveKeyboardOrTextAfterViewportMovement() {
+        var widget = new KeyboardWidget();
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> page.addClipped(widget, () -> new Bounds(0, 0, 60, 40))).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        screen.setFocused(widget);
+        widget.setY(50); // Equivalent to scrolling the field out of the viewport.
+        assertTrue(screen.keyPressed(257, 0, 0));
+        assertEquals(0, widget.keys);
+        assertEquals(null, screen.getFocused());
+        screen.setFocused(widget);
+        assertTrue(screen.charTyped('x', 0));
+        assertEquals(0, widget.characters);
+        screen.removed();
+    }
+
+    @Test
+    void focusVisibilityCallbackRunsBeforeAnotherKeyWithoutRendering() {
+        var widget = new KeyboardWidget();
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> {
+                    page.addClipped(widget, () -> new Bounds(0, 0, 60, 40));
+                    page.onFocusChanged(target -> { if (target == widget) widget.setY(0); });
+                }).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        widget.setY(80);
+        screen.setFocused(widget);
+        assertEquals(0, widget.getY());
+        assertTrue(screen.keyPressed(257, 0, 0));
+        assertEquals(1, widget.keys);
+        screen.removed();
+    }
+
+    private static final class KeyboardWidget extends AbstractWidget {
+        int keys, characters;
+        KeyboardWidget() { super(0, 0, 40, 20, Component.empty()); }
+        @Override public boolean keyPressed(int key, int scanCode, int modifiers) { keys++; return true; }
+        @Override public boolean charTyped(char character, int modifiers) { characters++; return true; }
+        @Override protected void renderWidget(GuiGraphics graphics, int x, int y, float tick) {}
+        @Override protected void updateWidgetNarration(NarrationElementOutput output) {}
+    }
+
+    @Test
     void stackUsesTheSameTargetForHitsClicksScrollAndRelease() {
         var lower = new StackWidget();
         var upper = new StackWidget();
