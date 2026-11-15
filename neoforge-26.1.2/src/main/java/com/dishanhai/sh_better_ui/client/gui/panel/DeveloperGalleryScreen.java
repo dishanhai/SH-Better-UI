@@ -1017,6 +1017,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
     private enum Sample {
         BUTTON("button", GraphicIcon.RUN),
+        HUD_SHORTCUT_KEYCAPS(ShortcutKeycapsDemo.ID, GraphicIcon.KEYBOARD, GalleryShortcutKeycapsSample::new),
         TOGGLE("toggle", GraphicIcon.SWITCH),
         SLIDER("slider", GraphicIcon.SETTINGS),
         DISCLOSURE("disclosure", GraphicIcon.EXPAND),
@@ -1124,7 +1125,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case JELLY_RADIO -> Category.CONTROLS;
+                case JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
                 case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
                         STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
                         DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
@@ -1171,6 +1172,7 @@ public final class DeveloperGalleryScreen extends Screen {
                 case RUBBER_SEGMENT -> 30;
                 case SLOSH_GAUGE -> SloshGaugeDemo.ORDER;
                 case JELLY_RADIO -> JellyRadioDemo.ORDER;
+                case HUD_SHORTCUT_KEYCAPS -> ShortcutKeycapsDemo.ORDER;
                 case HOLD_BUTTON -> 31;
                 case CALL_CHIP -> 33;
                 case BRANCHED_MENU -> BranchedMenuDemo.ORDER;

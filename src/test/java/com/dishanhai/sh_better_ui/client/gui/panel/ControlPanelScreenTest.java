@@ -374,10 +374,10 @@ class ControlPanelScreenTest {
             var screen = compactScreen();
             var bar = bar(screen);
             var partial = bar.buttons().get(2);
-            int x = partial.getX() + 5, y = partial.getY() + 10;
-            assertTrue(x < bar.getX() + bar.getWidth());
-            screen.mouseClicked(x, y, 0);
-            screen.mouseReleased(x, y, 0);
+            // The compact viewport still exposes part of the animated chip past its inset.
+            int x = partial.getX() + 14, y = partial.getY() + partial.getHeight() / 2;
+            assertTrue(screen.mouseClicked(x, y, 0));
+            assertTrue(screen.mouseReleased(x, y, 0));
             assertEquals(2, bar.selectedIndex());
             assertEquals(0, bar.scrollOffset());
         } finally {

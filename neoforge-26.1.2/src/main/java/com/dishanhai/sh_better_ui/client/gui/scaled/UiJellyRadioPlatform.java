@@ -43,7 +43,11 @@ abstract class UiJellyRadioPlatform extends AbstractWidget {
 
     @Override
     protected void extractWidgetRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        paint(new Canvas() {
+        paint(canvas(graphics), mouseX, mouseY);
+    }
+
+    static Canvas canvas(GuiGraphicsExtractor graphics) {
+        return new Canvas() {
             public void box(float x, float y, float width, float height, float radius, int stroke, int edge, int fill) {
                 RoundedCorners.draw(graphics, x, y, width, height, radius, stroke, edge, fill);
             }
@@ -55,7 +59,7 @@ abstract class UiJellyRadioPlatform extends AbstractWidget {
             public void icon(GraphicIcon icon, int x, int y, int ink, UiPreferences preferences) {
                 icon.draw(graphics, x, y, 1, ink, preferences);
             }
-        }, mouseX, mouseY);
+        };
     }
 
     Tooltip tooltip(Component label) { return Tooltip.create(label, null); }

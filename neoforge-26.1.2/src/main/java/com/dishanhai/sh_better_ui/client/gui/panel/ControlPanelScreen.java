@@ -10,6 +10,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSectionBar;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiScrollableSectionBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
@@ -70,7 +71,7 @@ public final class ControlPanelScreen extends Screen {
     private @Nullable Component status;
     private UiPreferences preferences;
     private UiTheme theme;
-    private @Nullable UiSectionBar tabs;
+    private @Nullable UiScrollableSectionBar tabs;
     private UiButton back;
     private @Nullable UiButton defaults;
     private @Nullable UiButton apply;
@@ -130,9 +131,8 @@ public final class ControlPanelScreen extends Screen {
         contentWidth = panelWidth - 2 * PADDING;
         visibleRows = 1 + (footerY - STATUS_SPACE - contentY - ROW_HEIGHT) / ROW_STEP;
         int tabsY = Math.min(top + 28, contentY - ROW_HEIGHT - 5);
-        tabs = ShBetterUiApi.controls().sectionBar(new Bounds(contentX, tabsY, contentWidth, ROW_HEIGHT),
-                preferences, TABS, tab, this::selectTab);
-        tabs.buttons().forEach(this::addRenderableWidget);
+        tabs = addRenderableWidget(ShBetterUiApi.controls().jellySectionBar(
+                new Bounds(contentX, tabsY, contentWidth, ROW_HEIGHT), preferences, TABS, tab, this::selectTab));
         initRows();
 
         int column = (contentWidth - 8) / 3;
@@ -463,6 +463,7 @@ public final class ControlPanelScreen extends Screen {
 
     private void refresh() {
         syncStyle();
+        if (tabs != null) tabs.setPreferences(preferences);
         for (var widget : children()) {
             if (widget instanceof UiButton button) button.setPreferences(preferences);
             if (widget instanceof UiRubberSegment segment) segment.setPreferences(preferences);
@@ -504,6 +505,7 @@ public final class ControlPanelScreen extends Screen {
     }
 
     private void cancelDrag() {
+        if (tabs != null) tabs.cancelDrag();
         if (getFocused() instanceof UiSlider slider) slider.cancelEdit();
         if (getFocused() instanceof UiRubberSegment segment) segment.cancelDrag();
         setDragging(false);
@@ -511,6 +513,10 @@ public final class ControlPanelScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == 0 && tabs != null && getFocused() == tabs && tabs.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
         if (event.button() == 0 && getFocused() instanceof UiRubberSegment segment && segment.mouseReleased(event)) {
             setDragging(false);
             return true;
@@ -520,6 +526,10 @@ public final class ControlPanelScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && tabs != null && tabs.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
         if (event.isEscape() && getFocused() instanceof UiRubberSegment segment && segment.cancelDrag()) {
             setDragging(false);
             return true;
@@ -583,8 +593,7 @@ public final class ControlPanelScreen extends Screen {
         if (focused == down) return () -> down;
         int row = rows.indexOf(focused);
         if (row >= 0) return () -> row < rows.size() ? rows.get(row) : null;
-        int section = tabs == null ? -1 : tabs.buttons().indexOf(focused);
-        return section < 0 ? null : () -> tabs == null ? null : tabs.buttons().get(section);
+        return focused == tabs ? () -> tabs : null;
     }
 
     @Override

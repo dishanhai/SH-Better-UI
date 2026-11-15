@@ -18,6 +18,28 @@ import static org.lwjgl.glfw.GLFW.*;
 
 class UiScrollableSectionBarInputTest {
     @Test
+    void jellyPresentationKeepsScrollCaptureAndCommitsOnlyVisibleChipsOnRelease() {
+        var selections = new ArrayList<Integer>();
+        var bar = bar(selections).withJellyRadio();
+        bar.scrollTo(80);
+        bar.setFocused(true);
+        bar.scrollTo(80);
+        assertTrue(bar.mouseClicked(mouse(36, 11), false));
+        assertTrue(bar.mouseReleased(mouse(36, 11)));
+        assertTrue(selections.isEmpty());
+
+        assertTrue(bar.mouseClicked(mouse(80, 21), false));
+        assertTrue(bar.mouseDragged(mouse(60, 21), -20, 0));
+        assertTrue(bar.mouseReleased(mouse(60, 21)));
+        assertTrue(selections.isEmpty());
+
+        assertTrue(bar.mouseClicked(mouse(60, 21), false));
+        assertTrue(selections.isEmpty());
+        assertTrue(bar.mouseReleased(mouse(60, 21)));
+        assertEquals(List.of(1), selections);
+    }
+
+    @Test
     void overflowArrowRequiresReleaseAndNeverSelectsAPage() {
         var selections = new ArrayList<Integer>();
         var bar = bar(selections);

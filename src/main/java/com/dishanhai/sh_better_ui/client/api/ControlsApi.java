@@ -169,6 +169,12 @@ public final class ControlsApi {
         return new UiScrollableSectionBar(area, preferences, sections, selectedIndex, onSelect, settings, tabWidth);
     }
 
+    /** UUK jelly radio tabs fitted to the given row. Register the bar as one widget. */
+    public UiScrollableSectionBar jellySectionBar(Bounds area, UiPreferences preferences,
+            List<UiSectionBar.Section> sections, int selectedIndex, IntConsumer onSelect) {
+        return UiScrollableSectionBar.fittedJellyRadio(area, preferences, sections, selectedIndex, onSelect);
+    }
+
     public UiUnderlinedTabs underlinedTabs(Bounds area, IntConsumer onSelect) {
         return underlinedTabs(area, List.of(defaultTab("overview"), defaultTab("billing"), defaultTab("settings")),
                 0, onSelect);

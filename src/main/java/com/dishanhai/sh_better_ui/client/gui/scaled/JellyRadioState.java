@@ -118,4 +118,15 @@ final class JellyRadioState {
         }
         return -1;
     }
+
+    /** Fits the spring into one scrollable tab slot so adjacent hit areas never overlap. */
+    Chip tabChip(int index, int width, int height, long now, boolean reduced, boolean down) {
+        var track = motion[index];
+        float pressScale = down && !reduced ? .97f : 1;
+        float w = Math.min(width, width / 1.2f * (1 + track.wide.sample(now, reduced)) * pressScale);
+        float h = Math.min(height, height / 1.14f * (1 + track.tall.sample(now, reduced)) * pressScale);
+        float x = (width - w) / 2;
+        float offset = track.offset.sample(now, reduced) * Math.min(x, 2);
+        return new Chip(Math.max(0, Math.min(width - w, x + offset)), (height - h) / 2, w, h);
+    }
 }

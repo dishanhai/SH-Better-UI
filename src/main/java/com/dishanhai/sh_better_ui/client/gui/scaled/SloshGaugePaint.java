@@ -3,7 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.kernel.api.controls.SloshGaugeState.Surface;
 
-/** Shared raster bounds for the native liquid and the readout clipped to it. */
+/** Shared hit test and raster bounds for the overlays clipped to the liquid. */
 final class SloshGaugePaint {
     @FunctionalInterface
     interface Run {

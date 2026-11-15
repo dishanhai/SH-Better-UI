@@ -53,6 +53,22 @@ final class ThemeQuery {
 
 跨平台的純 Java 消費者可使用 `UIPlatform.KEY`、`NativeInput` 和內核契約。引用 `UIApis` 的 Minecraft 服務時，依實際簽名使用該版本的 `Screen`、`GuiEventListener` 或 `ResourceManager`。可在同一畫面保留 `UiScreenBuilder`、原生按鈕、旁白及傳統渲染回呼。 [遷移指南](migration-guide.md)
 
+### 共享圆角填充
+
+`kernel.api.geometry.RoundedFill` 生成底板和进度区域的不可变 `FilledGeometry<Local>`。两者共用圆角轮廓，适用于液位计、进度条、长按确认和自定义波形。尺寸、半径和边界均使用局部 GUI 单位，实例可在尺寸和半径相同时复用。
+
+```java
+import com.dishanhai.sh_better_ui.kernel.api.geometry.RoundedFill;
+import com.dishanhai.sh_better_ui.kernel.api.geometry.RoundedFill.Direction;
+
+var chamber = new RoundedFill(84, 176, 18);
+var background = chamber.interior();
+var progress = chamber.filled(Direction.UP, 0.39);
+var wave = chamber.filled(Direction.UP, 2, x -> 108 + 4 * Math.sin(x * Math.PI / 10));
+```
+
+`filled(direction, progress)` 将有限进度限制在 `0..1`，支持 `UP`、`DOWN`、`LEFT` 和 `RIGHT`。自定义边界接收横向坐标并返回纵向坐标（竖直填充），或接收纵向坐标并返回横向坐标（水平填充）。采样间距必须大于零。边界可延伸到轮廓外，输出网格会保留轮廓内的部分。原生渲染时先提交底板，再在同一局部坐标绘制进度网格。
+
 ### 文字自適應
 
 `LayoutApi.fitText` 在客戶端以原版字體量測一行 `FormattedText`。寬高使用 GUI 單位，像素比例使用原版視窗的 `getGuiScale()`。
@@ -83,6 +99,8 @@ var fitted = layout.drawFittedText(graphics, font, label, bounds, size,
 ### HUD 與本機電腦狀態
 
 在 `UIModule.start` 以 `context.engine().require(UIApis.HUD).mount(context, draw)` 掛載 HUD。在回呼內使用 `HudService.Frame` 的 GUI 座標、圖形上下文及顯示偏好。開啟畫面、載入遮罩或使用 F1 隱藏 GUI 時會暫停回呼。可用 `UiHudPanel` 測量並繪製帶圖示的通透 Liquid Glass 面板。位置編輯器可共用面板及輕微的字形柔邊。高對比模式或關閉背景模糊時使用主題底板。提早移除時，在 UI 執行緒關閉掛載句柄。
+
+`UiShortcutKeycaps.binding(KeyMapping)` 產生可直接放入 HUD 或文字元件的位圖鍵帽，依目前的鍵盤、滑鼠與修飾鍵綁定顯示。固定範例可使用 `key`、`mouse`、`chord` 與 `unbound`。開發者面板的控件圖庫可透過 `sh_better_ui:hud_shortcut_keycaps` 預覽。
 
 UUK 模組可用 `context.engine().require(UIApis.COMPUTER_STATUS).read(metrics)`，其他客戶端程式碼可用 `ComputerStatusApi.read(metrics)`。兩者共用快取，讀取只排程所選的 `MEMORY`、`CPU`、`GPU`、`DISK`。首次取樣與平台未提供的讀數以空值表示。容量以位元組回傳，CPU 與 GPU 使用率為 0–1。磁碟對應遊戲資料夾所在的磁碟區。GPU 提供顯示卡清單與可取得的顯存容量，Windows 可另外讀取最忙的 GPU 引擎。硬體資料只在本機使用。
 
