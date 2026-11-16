@@ -5,6 +5,8 @@
 
 ## API 与接入
 
+- [原生导航组与关键帧动画](navigation-motion.md)
+
 - [反重力粒子 API](antigravity-api.md)
 - [SH-Better-UI API Reference](API_REFERENCE.en.md)
 - [SH-Better-UI API 总览](API_REFERENCE.md)

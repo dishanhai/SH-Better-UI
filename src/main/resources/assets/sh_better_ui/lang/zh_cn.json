@@ -2243,5 +2243,8 @@
   "sh_better_ui.theme_editor.field.primaryColor": "主色",
   "sh_better_ui.theme_editor.field.secondaryColor": "辅色",
   "sh_better_ui.panel.theme.group.sh_better_ui:contour_flow": "流动等高线",
-  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "雾光晕"
+  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "雾光晕",
+  "sh_better_ui.navigation.narration": "%s：%s，第 %s 项，共 %s 项",
+  "sh_better_ui.navigation.selected": "已选择：%s",
+  "sh_better_ui.navigation.usage": "用方向键、Home 或 End 浏览，按回车或空格打开。"
 }
