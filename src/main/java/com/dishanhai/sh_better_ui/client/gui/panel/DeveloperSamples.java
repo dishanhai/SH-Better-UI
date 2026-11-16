@@ -541,6 +541,16 @@ enum DeveloperSamples {
             MusicIsland.drawWaveform(ui.graphics(), waveBounds, motion, trackAccent, prefs);
             // Draw localized metadata and native playback controls on top.
             """),
+    ONLINE_MUSIC("online_music", MATERIALS, 18, OnlineMusicGalleryPreview.HEIGHT, 0, OnlineMusicGalleryPreview::new, """
+            import com.dishanhai.sh_better_ui.kernel.api.UnifiedUI;
+            import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
+            var player = UnifiedUI.get().require(OnlineMusicService.KEY).open();
+            var results = player.search("netease", query, 1); // or "qq"
+            // Use the completed results on your UI thread, then player.play(track).
+            var renderer = ShBetterUiApi.lyrics().renderer(player.lyricFeed());
+            // Close the session when the owning feature exits.
+            player.close();
+            """),
     LOCAL_MUSIC("local_music", MATERIALS, 18, LocalMusicGalleryPreview.HEIGHT, 0, LocalMusicGalleryPreview::new, """
             var card = ShBetterUiApi.music().island();
             card.setExpanded(true, ui.nowMs(), ui.preferences().reducedMotion());

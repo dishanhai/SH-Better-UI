@@ -31,6 +31,10 @@ def sharedSources = [
         'client/audio/MusicAnalyzer.java',
         'client/audio/MusicMotion.java',
         'client/audio/MusicRhythm.java',
+        'client/lyrics/common/hud/LocalLyricFeed.java',
+        'client/lyrics/common/hud/LyricFeed.java',
+        'client/lyrics/core/sync/PlayerSnapshot.java',
+        'client/gui/panel/OnlineMusicGalleryPreview.java',
         'client/api/preview/DeveloperPreviewProvider.java',
         'client/api/preview/PreviewRegistry.java',
         'kernel/api/config/ConfigPage.java',
@@ -148,7 +152,10 @@ sourceSets.main.java {
     srcDir(sharedJava)
     exclude { entry ->
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
-                !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/")
+                !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
+                !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
+                !entry.path.startsWith("${packagePath}/kernel/internal/music/") &&
+                !entry.path.startsWith("${packagePath}/client/lyrics/core/capability/")
     }
 }
 kotlin.sourceSets.main.kotlin {
@@ -182,6 +189,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/ShredderDemoTest.java")
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
+        include("${packagePath}/kernel/internal/music/**")
     }
     compileClasspath += sourceSets.main.compileClasspath
     runtimeClasspath += sourceSets.main.runtimeClasspath

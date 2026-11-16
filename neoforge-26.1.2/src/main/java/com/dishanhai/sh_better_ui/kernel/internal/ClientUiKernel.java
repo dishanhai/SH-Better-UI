@@ -76,6 +76,8 @@ public final class ClientUiKernel {
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.HUD, clientHud, UIApis.NATIVE_HUD));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ONLINE_MUSIC,
+                new com.dishanhai.sh_better_ui.kernel.internal.music.ClientOnlineMusic()));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COMPUTER_STATUS,
                 new AsyncComputerStatus(() -> minecraft.gameDirectory.toPath(), Util.ioPool()),
                 UIApis.COMPUTER_STATUS_READ));
