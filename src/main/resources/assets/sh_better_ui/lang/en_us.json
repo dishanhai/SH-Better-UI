@@ -2443,5 +2443,18 @@
   "sh_better_ui.mp_bridge.warning": "\nMuoniumPlayer performs this operation. It may change files, download resources or open an external interface. Confirm to continue.",
   "sh_better_ui.mp_bridge.execute": "Execute",
   "sh_better_ui.mp_bridge.selection": "Change from %s to %s",
-  "sh_better_ui.mp_bridge.scroll_description": "Scroll / PgUp / PgDn for full details"
+  "sh_better_ui.mp_bridge.scroll_description": "Scroll / PgUp / PgDn for full details",
+  "sh_better_ui.music_overlay.title": "Music HUD and island",
+  "sh_better_ui.music_overlay.hud": "Music HUD",
+  "sh_better_ui.music_overlay.island": "Dynamic island",
+  "sh_better_ui.music_overlay.position": "Vertical anchor: %s%% (toggle top/bottom)",
+  "sh_better_ui.music_overlay.expand": "Keep island expanded",
+  "sh_better_ui.music_overlay.apply": "Apply",
+  "sh_better_ui.music_overlay.cancel": "Cancel",
+  "sh_better_ui.music_overlay.save_failed": "Unable to save. Your changes are still here.",
+  "sh_better_ui.music_overlay.reset": "Reset position",
+  "sh_better_ui.music_overlay.drag": "Drag / arrows move · wheel / +/- resize at top-left anchor",
+  "sh_better_ui.music_overlay.edit_hud": "Position music HUD",
+  "sh_better_ui.music_overlay.edit_island": "Position dynamic island",
+  "sh_better_ui.music_overlay.ambient": "FPS / ping / clock"
 }

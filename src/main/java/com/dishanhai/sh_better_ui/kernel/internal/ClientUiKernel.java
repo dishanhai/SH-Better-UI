@@ -867,6 +867,7 @@ public final class ClientUiKernel implements AutoCloseable {
                 com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffectEditor::new));
         candidates.add(new ModuleDiscovery.Candidate(UIApis.LIVE_SURFACES.id().namespace(),
                 BuiltinLiveSurface.class.getName(), live, BuiltinLiveSurface.GRANTS, false, true));
+        candidates.add(NativeMusicOverlay.candidate(storage != null));
         candidates.addAll(extensions);
         candidates.add(dock.candidate());
         kernel.startNative(candidates, (extension, context) -> ClientDeveloperPreviews.mount(kernel, extension, context));
