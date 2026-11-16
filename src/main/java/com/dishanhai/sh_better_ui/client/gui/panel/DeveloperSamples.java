@@ -15,6 +15,7 @@ import static com.dishanhai.sh_better_ui.client.gui.panel.GalleryPreviewLayout.D
 
 /** 山海：开发者图库使用的控件、材质和对应 Java 接入示例。 */
 enum DeveloperSamples {
+    RICH_TEXT(RichTextDemo.ID, RichTextDemo.ORDER, RichTextDemo.HEIGHT, RichTextPreview::new, RichTextDemo.CODE),
     BUTTON("button", CONTROLS, 2, UiStyle.DEFAULT),
     HUD_SHORTCUT_KEYCAPS(ShortcutKeycapsDemo.ID, ShortcutKeycapsDemo.ORDER, ShortcutKeycapsDemo.HEIGHT,
             ShortcutKeycapsPreview::new, ShortcutKeycapsDemo.CODE),
@@ -461,6 +462,8 @@ enum DeveloperSamples {
             """),
     JELLY_RADIO(JellyRadioDemo.ID, JellyRadioDemo.ORDER, JellyRadioDemo.HEIGHT,
             JellyRadioPreview::new, JellyRadioDemo.CODE),
+    PILL_NAV(PillNavDemo.ID, PillNavDemo.ORDER, PillNavDemo.HEIGHT, PillNavPreview::new, PillNavDemo.CODE),
+    PAGINATION(PaginationDemo.ID, PaginationDemo.ORDER, PaginationDemo.HEIGHT, PaginationPreview::new, PaginationDemo.CODE),
     SEARCH("search", 22, ControlPreviewScenes.Search::new, """
             import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
             import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
