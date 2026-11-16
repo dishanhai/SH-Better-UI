@@ -65,9 +65,29 @@ player.credentials("netease", ""); // 退出该平台，不影响另一个平台
 
 登录任务每 2 秒轮询一次，最长 3 分钟；终态自动停轮询并清除二维码和临时授权 Cookie。刷新、返回、隐藏／重布局或关闭示例时取消旧尝试，迟到结果不能提交凭据。每个播放器只使用一个登录工作线程，连续刷新会移除已取消的排队任务；若旧套接字尚未释放，新尝试在其结束后开始。底层连接／读取等待上限各 8 秒，取消后不再发起下一轮。QQ 在手机确认后继续完成 `check_sig → OAuth → QQLogin` 换票，授权跳转使用 HTTPS 域名白名单与随机 `state` 校验；Cookie 按域名和路径隔离，每次尝试独立。自定义音源可实现 `OnlineMusicSource.qrLogin()`，阻塞操作始终运行在登录线程；`QrChallenge.close()` 必须可与请求并发执行。
 
-「导入 Cookie」保留为备用入口，只有点击该按钮才读取剪贴板。QQ 识别 `uin`／`qqmusic_uin` 与 `qm_keyst`／`qqmusic_key`；网易云使用该平台完整 Cookie。宿主也可以调用 `player.credentials(sourceId, cookie)`。凭据仅保留在会话内，不写配置、不记录日志、不传给音频 CDN 或另一个音源；空字符串或空剪贴板清除。成功扫码或导入凭据会停止当前播放。`authenticated()` 只表示本会话收到了凭据，平台仍可能撤销或使其失效。不要把真实凭据写进脚本或代码仓库。
+「导入 Cookie」保留为备用入口，只有点击该按钮才读取剪贴板。QQ 识别 `uin`／`qqmusic_uin` 与 `qm_keyst`／`qqmusic_key`；网易云使用该平台完整 Cookie。宿主也可以调用 `player.credentials(sourceId, cookie)`。凭据默认只保留在会话内，不记录日志、不传给音频 CDN 或另一个音源；空字符串或空剪贴板退出该平台并删除已保存文件。成功扫码或导入凭据会停止当前播放。`authenticated()` 只表示本会话收到了凭据，平台仍可能撤销或使其失效。不要把真实凭据写进脚本或代码仓库。
 
-目前不包含凭据续期、私人歌单、无损／AAC／OGG、跨源换曲或自动连续队列。账号凭据的实际有效性和会员权益仍由平台判定。
+账号详情先选择「保存登录凭证」，再点击获取二维码或导入；也可登录后开启保存。默认关闭。开启后将各音源的 Cookie 分别加密保存到实例工作目录的 `config/sh_better_ui/music-accounts/`，下次打开播放器仅从磁盘恢复，不自动联网校验。Windows 使用当前系统用户的 DPAPI；支持 POSIX 权限的平台使用 AES-GCM 和仅当前用户可读写的本地随机密钥。同一系统用户下运行的程序仍可能读取凭据，不应把该目录分享给别人。关闭保存会删除该音源的文件，当前会话继续登录；关闭播放器只清除内存凭据，保留用户选择保存的文件。文件写入失败不会伪装保存成功；损坏一个平台的文件不会阻止另一平台恢复。JVM 内的撤销版本阻止其他旧会话重新写入已关闭保存的凭据，不提供跨游戏进程的偏好同步。
+
+```java
+player.rememberCredentials("netease", true); // 显式选择后再扫码或导入
+boolean savedByChoice = player.remembersCredentials("netease");
+var account = player.account("netease");
+var lists = player.playlists("netease", 1);
+lists.thenAccept(items -> {
+    if (!items.isEmpty()) player.playlist(items.get(0), 1).thenAccept(tracks -> { /* 更新列表 */ });
+});
+var liked = player.liked("netease", 1); // QQ 喜欢列表也可读取
+if (player.supportsLikes("netease")) player.like(selectedTrack, true);
+player.like(selectedTrack, false); // 取消喜欢；失败通过 future 传回
+player.rememberCredentials("netease", false); // 删除已保存文件，保留本次登录
+```
+
+账号、歌单和喜欢列表均为后台操作，一页二十项，从 1 开始。页面在账号详情提供歌单和喜欢列表入口，歌单可继续进入曲目并分页播放，返回保留歌单页码和位置；曲目行可执行喜欢或取消喜欢。网易云支持喜欢写入；QQ 只支持读取喜欢列表，因其写入需要尚未核实的私有签名加密通道，`supportsLikes("qq")` 返回 `false`，页面禁用对应写入按钮。明确的登录失效响应会清理当前凭据和保存副本；其他网络或业务失败不当作退出登录。新旧账号请求用凭据快照隔离，切换账号取消旧结果；已经到达平台的写请求不能保证撤销。
+
+搜索框停输 300 ms 后请求建议，可通过原生按钮点击、Tab 聚焦及 Enter 选择。`player.suggest(source, query)` 合并音源在线建议与本会话已加载曲目的本地候选，最多八项。曲名、歌手和专辑复用项目现有 ICU 拼音索引，支持中文、全拼及首字母；索引按音源隔离，最多保留最近加载的五百首，退出或更换凭据时清空。搜索第一页优先保留完整远端页，以本地匹配补足空位；网络失败时已有本地匹配可作为第一页结果。拼音能力不意味着已完整索引平台曲库或账号所有未加载歌单。
+
+自定义音源通过 `requestSnapshot()` 在请求提交时固定认证上下文；可变账号音源应返回独立快照，方法不得联网。未实现的新能力默认显式返回不支持，不影响既有搜索／播放实现。目前不包含凭据续期、无损／AAC／OGG、跨源换曲或自动连续队列。账号凭据的实际有效性和会员权益仍由平台判定。
 
 ## 歌词
 
@@ -104,3 +124,7 @@ ShBetterUiApi.lyrics().draw(renderer, uiFrame, font, lyricBounds);
 页面新增 2 项几何测试，覆盖最小区域、侧栏断点、短窗口、分页与播放栏不重叠。26.1.2 已在隔离客户端执行 `runWidgetSmoke -PwidgetSmokeOnlineMusic`（使用 `gradle/neoforge-26-widgets-smoke.init.gradle`）：固定曲目／歌词／二维码图案，不联网、不打开音频设备；验证原生 Enter 搜索、页面返回保留草稿、账号卡片进入扫码详情、窄窗口、明暗主题和关闭释放。测试输出 `SHBUI_ONLINE_MUSIC_LAYOUT_PASS`，结束后实例退出。六张截图位于 `neoforge-26.1.2/build/widget-smoke/1.0.11-alpha.8/default-online-music/online-music-{search,lyrics,accounts,qr,light,compact}.png`，完成凭证为同目录 `online-music-layout.txt`。二维码截图是不可登录的测试图案。
 
 尚未在新页面完成本人手机扫码确认后的真实账号、实际扬声器、各平台 GUI 缩放／旁白／高对比验收；未更新任何正式游戏实例。客户端验收和后续范围见根目录 `TODO.md`。
+
+2026-11-16 账号后端补齐后的最终验证：Forge `build --offline --no-daemon` 全量通过，1195 项常规测试中 1191 项通过、4 项实网测试默认跳过；NeoForge 1.21.1 的 1207 项常规测试中 1203 项通过、4 项默认跳过；26.1.2 的 224 项常规测试中 220 项通过、4 项默认跳过。三端的 504 项内核测试均通过，完整构建及发布包检查通过。三个当前 `1.0.11` 发布 JAR 均包含新增账号／歌单 API、加密存储、拼音索引与页面实现。
+
+另以 `SHBUI_MUSIC_LIVE=1` 单独运行 `OnlineMusicSuggestionLiveTest`，网易云和 QQ 对 `zhoujielun` 均返回非空建议，1 项测试通过，无账号凭据或音频输出。确定性音乐后端测试覆盖凭据加密、大小／路径校验、单音源损坏隔离、跨会话撤销保存、失败回滚、账号切换后的旧写请求与迟到结果、失效回调重入、异步回调链、歌单解析、喜欢和拼音匹配。26.2 的 `compileJava` 再次被已有资源选取器的 11 处 `screen`／`setScreen` 兼容错误阻塞。未启动客户端、未做真实账号验收、未部署；Windows DPAPI 已实测，POSIX 加密与权限分支尚未实机验证。
