@@ -353,8 +353,11 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             case OVERVIEW -> 0;
             case LINKS -> 16 + (FeedbackLink.values().length + 1) * (BUTTON_HEIGHT + GAP);
         };
+        // Native-page launch rows compute their wrapped footer height after layout.
+        // Reserve their scroll gutter up front so later overflow never covers a button.
         contentWidth = bodyWidth()
-                - (selectedArea != Area.OVERVIEW && maxScroll() == 0 ? 0 : SCROLLBAR_WIDTH + GAP);
+                - (selectedArea != Area.OVERVIEW && selectedArea != Area.MUONIUM
+                        && maxScroll() == 0 ? 0 : SCROLLBAR_WIDTH + GAP);
         glassWidth = sidePreview ? contentWidth * 5 / 8 : contentWidth;
         if (!searchQuery.isBlank()) {
             var matches = searchEntries();
@@ -367,10 +370,19 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             }
         } else if (selectedArea == Area.THEMES) addThemeBrowser(x);
         else if (selectedArea == Area.MUONIUM) {
-            var open = row(button(x, 28, contentWidth, label("muonium.open"), GraphicIcon.NEXT, false,
+            row(button(x, 28, contentWidth, Component.translatable("sh_better_ui.favorites.title"), GraphicIcon.NEXT, false,
+                    () -> NativeFavoritesScreen.open(this)));
+            row(button(x, 60, contentWidth, Component.translatable("sh_better_ui.native_mods.title"), GraphicIcon.NEXT, false,
+                    () -> minecraft.setScreen(new NativeModsScreen(this))));
+            row(button(x, 92, contentWidth, Component.translatable("sh_better_ui.native_themes.title"), GraphicIcon.NEXT, false,
+                    () -> minecraft.setScreen(new NativeThemesScreen(this, draft.settings(), this::stageNativeSettings, true))));
+            row(button(x, 124, contentWidth, Component.translatable("sh_better_ui.native_preferences.title"), GraphicIcon.NEXT, false,
+                    () -> minecraft.setScreen(new NativePreferencesScreen(this, draft.settings(),
+                            changes -> stageNativeSettings(changes.apply(draft.settings())), true))));
+            var open = row(button(x, 156, contentWidth, label("muonium.open"), GraphicIcon.NEXT, false,
                     () -> com.dishanhai.sh_better_ui.kernel.internal.mp.MpSettingsScreen.open(this)));
             open.setPreview(label("muonium.description").copy().append(" ").append(label("muonium.independent")));
-            contentHeight = 68 + font.split(label("muonium.independent"), contentWidth).size() * font.lineHeight;
+            contentHeight = 196 + font.split(label("muonium.independent"), contentWidth).size() * font.lineHeight;
         } else if (selectedArea == Area.MUSIC) {
             musicOpen = row(button(x, 28, contentWidth, label("music.open"), GraphicIcon.NEXT, false,
                     () -> minecraft.setScreen(ShBetterUiApi.settings().onlineMusicScreen(this, () -> musicOpen))));
@@ -391,6 +403,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
         scrollTo(searchQuery.isBlank() ? retainedScroll : 0);
         refreshActions();
+    }
+
+    private boolean stageNativeSettings(ClientUiSettings value) {
+        edit(new Draft(value, draft.shortcut()));
+        status = Component.translatable("sh_better_ui.native_pages.staged");
+        return true;
     }
 
     private void addThemeBrowser(int x) {
@@ -1556,7 +1574,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                     themeGroupName(), mouseX, mouseY, preferences);
         }
         if (searchQuery.isBlank() && selectedArea == Area.MUONIUM) {
-            int lineY = origin + 60;
+            int lineY = origin + 188;
             for (var line : font.split(label("muonium.independent"), contentWidth)) {
                 graphics.drawString(font, line, x, lineY, LiquidGlassTheme.mutedTextColor(), false);
                 lineY += font.lineHeight;

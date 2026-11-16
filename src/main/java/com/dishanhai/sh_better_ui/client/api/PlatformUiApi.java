@@ -48,6 +48,12 @@ public final class PlatformUiApi {
         return "forge";
     }
 
+    /** Immutable metadata snapshot; no configuration factories or optional mod classes are loaded. */
+    public static java.util.List<com.dishanhai.sh_better_ui.client.gui.panel.InstalledModData> loadedMods() {
+        return ModList.get().getMods().stream().map(info -> new com.dishanhai.sh_better_ui.client.gui.panel.InstalledModData(
+                info.getModId(), info.getDisplayName(), info.getVersion().toString(), info.getDescription())).toList();
+    }
+
     public static int loadedModCount() {
         return ModList.get().getMods().size();
     }
