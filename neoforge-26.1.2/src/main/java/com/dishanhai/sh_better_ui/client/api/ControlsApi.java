@@ -57,6 +57,16 @@ import java.util.function.IntFunction;
 
 /** 山海：原生控件工厂。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** Manual-activation page navigation. Mount the returned control as one widget. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail navigationRail(
+            Font font, Bounds area, Component name,
+            List<com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Item> items, int selected,
+            com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Orientation orientation,
+            UiPreferences preferences, IntConsumer onSelect) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail(font, area, name, items,
+                selected, orientation, preferences, onSelect);
+    }
+
     /** A focusable virtual ingredient grid; the host owns its data and handles each edit. */
     public com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots ingredientSlots(
             Font font, Bounds area, Component name, int columns, List<net.minecraft.world.item.ItemStack> items,

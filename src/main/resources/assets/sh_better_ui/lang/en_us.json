@@ -2243,5 +2243,8 @@
   "sh_better_ui.theme_editor.field.primaryColor": "Primary color",
   "sh_better_ui.theme_editor.field.secondaryColor": "Secondary color",
   "sh_better_ui.panel.theme.group.sh_better_ui:contour_flow": "Flowing contours",
-  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "Mist glow"
+  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "Mist glow",
+  "sh_better_ui.navigation.narration": "%s: %s, %s of %s",
+  "sh_better_ui.navigation.selected": "Selected: %s",
+  "sh_better_ui.navigation.usage": "Use arrow keys, Home or End to explore. Press Enter or Space to open."
 }

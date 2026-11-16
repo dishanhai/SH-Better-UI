@@ -1374,5 +1374,8 @@
   "sh_better_ui.theme_editor.field.opacity": "不透明度",
   "sh_better_ui.theme_editor.field.backgroundColor": "背景色",
   "sh_better_ui.panel.theme.group.sh_better_ui:contour_flow": "流動等高線",
-  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "霧光暈"
+  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "霧光暈",
+  "sh_better_ui.navigation.narration": "%s：%s，第 %s 項，共 %s 項",
+  "sh_better_ui.navigation.selected": "已選擇：%s",
+  "sh_better_ui.navigation.usage": "用方向鍵、Home 或 End 瀏覽，按 Enter 或空白鍵開啟。"
 }

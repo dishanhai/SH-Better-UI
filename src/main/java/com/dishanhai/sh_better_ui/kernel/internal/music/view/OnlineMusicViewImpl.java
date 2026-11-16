@@ -23,7 +23,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private final List<AbstractWidget> searchControls = new ArrayList<>(), lyricControls = new ArrayList<>(),
             accountControls = new ArrayList<>(), detailControls = new ArrayList<>();
     private final List<UiButton> resultRows = new ArrayList<>(), lyricRows = new ArrayList<>();
-    private final Map<Page, UiButton> navigation = new EnumMap<>(Page.class);
+    private UiNavigationRail navigation;
     private final Map<String, UiButton> sources = new LinkedHashMap<>(), accounts = new LinkedHashMap<>(), loginSources = new LinkedHashMap<>();
     private PreviewContext host;
     private OnlineMusicLayout layout;
@@ -45,9 +45,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     @Override public OnlineMusicPlayer player() { return player; }
     @Override public void layout(PreviewContext context) {
         if (closed) throw new IllegalStateException("Music view closed");
+        if (navigation != null) { navigation.close(); navigation = null; }
         host = context; layout = OnlineMusicLayout.of(context.viewport()); queryField = null;
         searchControls.clear(); lyricControls.clear(); accountControls.clear(); detailControls.clear();
-        resultRows.clear(); lyricRows.clear(); lyricIndices.clear(); navigation.clear(); sources.clear(); accounts.clear(); loginSources.clear();
+        resultRows.clear(); lyricRows.clear(); lyricIndices.clear(); sources.clear(); accounts.clear(); loginSources.clear();
         if (!layout.supported()) return;
         buildNavigation(); buildSearch(); buildLyrics(); buildAccounts(); buildTransport();
         var h = layout.header();
@@ -59,15 +60,17 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateRows(); updateVisibility();
     }
     private void buildNavigation() {
-        var n = layout.navigation(); int index = 0;
-        for (var target : Page.values()) {
-            int width = layout.sidebar() ? n.width() : (n.width() - 8) / 3;
-            var box = layout.sidebar() ? new Bounds(n.x(), n.y() + 26 + index * 24, width, 22)
-                    : new Bounds(n.x() + index * (width + 4), n.y(), width, 22);
-            var button = button(box, label("view." + target.name().toLowerCase(Locale.ROOT)), () -> show(target), null);
-            if (layout.sidebar()) button.setLeadingIcon(target == Page.SEARCH ? GraphicIcon.SEARCH : target == Page.LYRICS ? GraphicIcon.MUSIC : GraphicIcon.USER);
-            navigation.put(target, button); index++;
-        }
+        var n = layout.navigation();
+        var entries = new ArrayList<UiNavigationRail.Item>();
+        for (var target : Page.values()) entries.add(new UiNavigationRail.Item(
+                label("view." + target.name().toLowerCase(Locale.ROOT)),
+                target == Page.SEARCH ? GraphicIcon.SEARCH : target == Page.LYRICS ? GraphicIcon.MUSIC : GraphicIcon.USER, true));
+        var area = layout.sidebar() ? new Bounds(n.x(), n.y() + 26, n.width(), 70)
+                : new Bounds(n.x(), n.y(), n.width(), 22);
+        navigation = host.add(new UiNavigationRail(host.font(), area, label("view.brand"), entries,
+                page.ordinal(), layout.sidebar() ? UiNavigationRail.Orientation.VERTICAL
+                        : UiNavigationRail.Orientation.HORIZONTAL,
+                host.preferences(), index -> show(Page.values()[index])));
         if (layout.sidebar()) {
             int row = 0;
             for (String id : List.of("netease", "qq")) {
@@ -191,7 +194,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         accountControls.forEach(w -> w.visible = page == Page.ACCOUNTS && !accountDetail);
         detailControls.forEach(w -> w.visible = page == Page.ACCOUNTS && accountDetail);
         back.visible = page != Page.SEARCH;
-        navigation.forEach((p, button) -> button.setSelected(p == page));
+        if (navigation != null) navigation.state().select(page.ordinal());
         sources.forEach((id, button) -> {
             if (id.equals("toggle")) button.setMessage(label("source." + source)); else button.setSelected(id.equals(source));
         });
@@ -372,6 +375,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return Component.translatable(TEXT + key, args); }
-    @Override public void suspend() { cancelSearch(); cancelLogin(); accountDetail = false; player.pause(); }
-    @Override public void close() { if (!closed) { suspend(); player.close(); closed = true; } }
+    @Override public void suspend() { if (navigation != null) navigation.cancelInteraction(); cancelSearch(); cancelLogin(); accountDetail = false; player.pause(); }
+    @Override public void close() { if (!closed) { suspend(); if (navigation != null) navigation.close(); player.close(); closed = true; } }
 }
