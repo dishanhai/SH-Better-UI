@@ -42,5 +42,10 @@ public record OnlineMusicLayout(Bounds frame, Bounds navigation, Bounds header, 
         return expanded() ? new Bounds(transport.x() + 12, transport.y() + 12, 48, 48)
                 : new Bounds(transport.x(), transport.y(), 0, 0);
     }
+    /** Exact native seek control area, shared by the view and constructor-contract tests. */
+    public Bounds seekBar() {
+        return expanded() ? new Bounds(transport.x() + 38, transport.y() + 82, transport.width() - 76, 16)
+                : new Bounds(transport.x() + 32, transport.y() + 34, transport.width() - 64, 16);
+    }
     public Bounds pager() { return new Bounds(content.x(), content.bottom() - 20, content.width(), 20); }
 }

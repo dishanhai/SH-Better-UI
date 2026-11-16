@@ -245,7 +245,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stop = button(new Bounds(playback.getX() + 32, t.y() + 4, 28, 24), label("stop"), player::stop, null);
         stop.setIcon(GraphicIcon.CLOSE);
         lyricsToggle = button(new Bounds(t.right() - 56, t.y() + 4, 56, 24), label("view.lyrics"), () -> show(page == Page.LYRICS ? Page.SEARCH : Page.LYRICS), null);
-        seek = host.add(new UiSlider(new Bounds(t.x() + 32, t.y() + 34, t.width() - 64, 16), 0, 1000, 1, 0, host.preferences(),
+        seek = host.add(new UiSlider(layout.seekBar(), 0, 1000, 1, 0, host.preferences(),
                 value -> label("seek", value / 10), ignored -> {}));
         seek.setOnCommit(value -> player.seek(player.snapshot().durationMs() * value / 1000), ignored -> {});
     }
@@ -259,7 +259,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stop.setIcon(GraphicIcon.CLOSE);
         lyricsToggle = button(new Bounds(t.right() - 44, t.y() + 18, 32, 32), label("view.lyrics"), () -> show(page == Page.LYRICS ? Page.SEARCH : Page.LYRICS), null);
         lyricsToggle.setIcon(GraphicIcon.MUSIC);
-        seek = host.add(new UiSlider(new Bounds(t.x() + 38, t.y() + 82, t.width() - 76, 14), 0, 1000, 1, 0, host.preferences(),
+        seek = host.add(new UiSlider(layout.seekBar(), 0, 1000, 1, 0, host.preferences(),
                 value -> label("seek", value / 10), ignored -> {}));
         seek.setOnCommit(value -> player.seek(player.snapshot().durationMs() * value / 1000), ignored -> {});
     }
