@@ -43,7 +43,8 @@ final class MusicHttp {
         return json(url, body, type, referer, "");
     }
     static String cookie(String value) {
-        if (value == null || value.length() > 8192 || value.chars().anyMatch(c -> c < 32 || c == 127))
+        if (value == null || value.length() > 8192 || value.getBytes(StandardCharsets.UTF_8).length > 16384
+                || value.chars().anyMatch(c -> c < 32 || c == 127))
             throw new IllegalArgumentException("Invalid music credentials");
         return value.strip();
     }

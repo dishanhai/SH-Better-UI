@@ -12,7 +12,9 @@ These adaptations remain licensed under Apache-2.0, independently of SHBUI's MIT
 The upstream NOTICE is reproduced unmodified. Selected protocols and page structure are used;
 Skija, Skia, platform icons, custom-source scripts and DSP are not distributed here.
 QR login adaptations use per-attempt, domain/path-scoped cookies, an exact HTTPS host
-allowlist, finite background polling, cancellation and session-only credential handoff.
+allowlist, finite background polling, cancellation and opt-in encrypted credential handoff.
+Additional adaptations: account and playlist reads, NetEase liked-song operations and
+both providers' search suggestions. QQ liked-song writes remain explicitly unsupported.
 Page adaptations replace the upstream renderer with UUK/native widgets, semantic theme
 colors, responsive navigation, search results, a persistent transport bar, contextual
 lyrics and account-source cards. No unavailable upstream feature is presented as active.

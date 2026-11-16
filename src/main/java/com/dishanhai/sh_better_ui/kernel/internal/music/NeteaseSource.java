@@ -13,8 +13,128 @@ final class NeteaseSource implements OnlineMusicSource {
     private final MusicHttp http = new MusicHttp();
     private volatile String cookie = "";
     @Override public void credentials(String value) { cookie = MusicHttp.cookie(value); }
+    @Override public OnlineMusicSource requestSnapshot() {
+        var snapshot = new NeteaseSource(); snapshot.cookie = cookie; return snapshot;
+    }
+    @Override public boolean supportsLikes() { return true; }
     @Override public String id() { return "netease"; }
     @Override public QrChallenge qrLogin() throws Exception { return new NeteaseQrLogin(); }
+    @Override public List<String> suggest(String query, int limit) throws Exception {
+        var data = call("/weapi/search/suggest/keyword", Map.of("s", query));
+        var matches = array(object(data, "result"), "allMatch");
+        var result = new LinkedHashSet<String>();
+        for (var entry : matches) {
+            if (!entry.isJsonObject()) continue;
+            String value = text(entry.getAsJsonObject(), "keyword").strip();
+            if (!value.isEmpty()) result.add(value);
+            if (result.size() >= limit) break;
+        }
+        return List.copyOf(result);
+    }
+    @Override public OnlineMusicAccount account() throws Exception { return account(credentialsSnapshot()); }
+    private OnlineMusicAccount account(String session) throws Exception {
+        var data = accountCall("/weapi/w/nuser/account/get", Map.of(), session);
+        String uid = text(object(data, "account"), "id");
+        if (!uid.matches("[0-9]{1,24}") || uid.equals("0")) throw new LoginRequired();
+        return new OnlineMusicAccount(id(), uid, text(object(data, "profile"), "nickname"));
+    }
+    @Override public List<OnlinePlaylist> playlists(int page, int limit) throws Exception {
+        checkPage(page, limit);
+        String session = credentialsSnapshot();
+        String uid = account(session).id();
+        var data = accountCall("/weapi/user/playlist", Map.of("uid", uid, "limit", "" + limit,
+                "offset", "" + ((page - 1L) * limit), "includeVideo", "true"), session);
+        requireArray(data, "playlist");
+        var result = new ArrayList<OnlinePlaylist>();
+        for (var item : array(data, "playlist")) {
+            if (!item.isJsonObject() || result.size() >= limit) continue;
+            var playlist = item.getAsJsonObject();
+            String playlistId = text(playlist, "id");
+            if (!playlistId.matches("[0-9]{1,24}")) continue;
+            result.add(new OnlinePlaylist(id(), playlistId, text(playlist, "name"), (int) Math.min(Integer.MAX_VALUE, number(playlist, "trackCount"))));
+        }
+        return List.copyOf(result);
+    }
+    @Override public List<OnlineTrack> playlist(OnlinePlaylist playlist, int page, int limit) throws Exception {
+        checkPage(page, limit);
+        if (!id().equals(playlist.source()) || !playlist.id().matches("[0-9]{1,24}")) throw new IllegalArgumentException("Invalid playlist");
+        String session = credentialsSnapshot();
+        var data = accountCall("/weapi/v6/playlist/detail", Map.of("id", playlist.id(), "n", "1", "s", "8"), session);
+        var playlistData = object(data, "playlist");
+        requireArray(playlistData, "trackIds");
+        var ids = array(playlistData, "trackIds");
+        int start = (int) Math.min(ids.size(), (page - 1L) * limit);
+        var selected = new ArrayList<String>();
+        for (int i = start; i < ids.size() && selected.size() < limit; i++) {
+            if (!ids.get(i).isJsonObject()) continue;
+            String songId = text(ids.get(i).getAsJsonObject(), "id");
+            if (songId.matches("[0-9]{1,24}")) selected.add(songId);
+        }
+        return songDetails(selected, session);
+    }
+    @Override public List<OnlineTrack> liked(int page, int limit) throws Exception {
+        checkPage(page, limit);
+        String session = credentialsSnapshot();
+        var data = accountCall("/weapi/song/like/get", Map.of("uid", account(session).id()), session);
+        requireArray(data, "ids");
+        var ids = array(data, "ids");
+        int start = (int) Math.min(ids.size(), (page - 1L) * limit);
+        var selected = new ArrayList<String>();
+        for (int i = start; i < ids.size() && selected.size() < limit; i++) {
+            var item = ids.get(i);
+            if (!item.isJsonPrimitive()) continue;
+            String songId = item.getAsString();
+            if (songId.matches("[0-9]{1,24}")) selected.add(songId);
+        }
+        return songDetails(selected, session);
+    }
+    @Override public void like(OnlineTrack track, boolean liked) throws Exception {
+        if (!id().equals(track.source()) || !track.id().matches("[0-9]{1,24}")) throw new IllegalArgumentException("Invalid track");
+        String session = credentialsSnapshot();
+        accountCall("/weapi/radio/like", Map.of("alg", "itembased", "trackId", track.id(),
+                "like", Boolean.toString(liked), "time", "3"), session);
+    }
+    private List<OnlineTrack> songDetails(List<String> ids, String session) throws Exception {
+        if (ids.isEmpty()) return List.of();
+        var request = new ArrayList<Map<String, java.math.BigInteger>>();
+        for (var songId : ids) request.add(Map.of("id", new java.math.BigInteger(songId)));
+        var data = accountCall("/weapi/v3/song/detail", Map.of("c", new Gson().toJson(request)), session);
+        requireArray(data, "songs");
+        var wrapped = new JsonObject(); var result = new JsonObject();
+        result.add("songs", array(data, "songs")); wrapped.add("result", result);
+        var byId = new HashMap<String, OnlineTrack>();
+        for (var track : parseSearch(wrapped, ids.size())) byId.put(track.id(), track);
+        var ordered = new ArrayList<OnlineTrack>();
+        for (var songId : ids) if (byId.containsKey(songId)) ordered.add(byId.get(songId));
+        return List.copyOf(ordered);
+    }
+    private static void checkPage(int page, int limit) {
+        if (page < 1 || page > 1000 || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid page");
+    }
+    private static void requireArray(JsonObject data, String key) throws IOException {
+        if (!data.has(key) || !data.get(key).isJsonArray()) throw new IOException("NetEase response missing " + key);
+    }
+    private String credentialsSnapshot() throws LoginRequired {
+        String session = cookie;
+        if (session.isBlank()) throw new LoginRequired();
+        return session;
+    }
+    private JsonObject accountCall(String path, Map<String, String> parameters, String session) throws Exception {
+        String csrf = "";
+        for (var part : session.split(";")) {
+            int equals = part.indexOf('=');
+            if (equals > 0 && part.substring(0, equals).strip().equals("__csrf")) csrf = part.substring(equals + 1).strip();
+        }
+        var payload = new LinkedHashMap<>(parameters); payload.put("csrf_token", csrf);
+        var encrypted = MuWeapi.weapi(new Gson().toJson(payload));
+        var data = http.json("https://music.163.com" + path + "?" + MusicHttp.form(Map.of("csrf_token", csrf)),
+                MusicHttp.form(Map.of("params", encrypted.getParams(), "encSecKey", encrypted.getEncSecKey())),
+                "application/x-www-form-urlencoded", "https://music.163.com/", "os=pc; appver=8.9.70; " + session);
+        long code = number(data, "code");
+        if (code == 301 || code == 401) throw new LoginRequired();
+        if (code != 200) throw new IOException("NetEase account request rejected: " + code);
+        return data;
+    }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
         var data = call("/weapi/cloudsearch/get/web", Map.of("s", query, "type", "1", "limit", "" + limit,
                 "offset", "" + ((page - 1) * limit), "total", "true"));
@@ -67,6 +187,7 @@ final class NeteaseSource implements OnlineMusicSource {
         var json = http.json("https://music.163.com" + path,
                 MusicHttp.form(Map.of("params", encrypted.getParams(), "encSecKey", encrypted.getEncSecKey())),
                 "application/x-www-form-urlencoded", "https://music.163.com/", "os=pc; appver=8.9.70; " + cookie);
+        if (number(json, "code") == 301 || number(json, "code") == 401) throw new LoginRequired();
         if (number(json, "code") != 200) throw new IOException("NetEase rejected request");
         return json;
     }

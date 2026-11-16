@@ -14,6 +14,9 @@ final class QQMusicSource implements OnlineMusicSource {
     private final MusicHttp http = new MusicHttp();
     private record Account(String id, String key) {}
     private volatile Account account = new Account("0", "");
+    @Override public OnlineMusicSource requestSnapshot() {
+        var snapshot = new QQMusicSource(); snapshot.account = account; return snapshot;
+    }
     @Override public void credentials(String value) {
         String valid = MusicHttp.cookie(value);
         var fields = new HashMap<String, String>();
@@ -28,13 +31,136 @@ final class QQMusicSource implements OnlineMusicSource {
         account = new Account(id, key);
     }
     private String cookies() {
-        var current = account;
+        return cookies(account);
+    }
+    private static String cookies(Account current) {
         return current.key().isEmpty() ? "" : "uin=" + current.id() + "; qqmusic_uin=" + current.id()
                 + "; qm_keyst=" + current.key() + "; qqmusic_key=" + current.key();
     }
     private final String guid = Long.toString(1_000_000_000L + new java.security.SecureRandom().nextInt(Integer.MAX_VALUE));
     @Override public String id() { return "qq"; }
     @Override public QrChallenge qrLogin() throws Exception { return new QQQrLogin(); }
+    @Override public List<String> suggest(String query, int limit) throws Exception {
+        var json = http.json("https://c.y.qq.com/splcloud/fcgi-bin/smartbox_new.fcg?" +
+                MusicHttp.form(Map.of("key", query, "format", "json")), null, null, "https://y.qq.com/");
+        if (json.has("code") && number(json, "code") != 0) throw new IOException("QQ suggestions rejected request");
+        var data = object(json, "data");
+        if (data.has("data")) data = object(data, "data");
+        var results = new LinkedHashSet<String>();
+        for (var group : List.of("song", "singer", "album")) {
+            for (var entry : array(object(data, group), "itemlist")) {
+                if (!entry.isJsonObject()) continue;
+                var item = entry.getAsJsonObject();
+                String value = first(item, "name", "songname", "singername", "albumname").strip();
+                if (!value.isEmpty()) results.add(value);
+                if (results.size() >= limit) return List.copyOf(results);
+            }
+        }
+        return List.copyOf(results);
+    }
+    @Override public OnlineMusicAccount account() throws Exception {
+        var current = credentialsSnapshot();
+        var json = http.json("https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?" +
+                MusicHttp.form(Map.of("ct", "20", "cv", "4747474", "cid", "205360838", "userid", current.id(), "format", "json")),
+                null, null, "https://y.qq.com/", cookies(current));
+        if (json.has("code") && number(json, "code") != 0) {
+            long code = number(json, "code");
+            if (code == 1000 || code == 104009 || code == 401) throw new LoginRequired();
+            throw new IOException("QQ profile request rejected: " + code);
+        }
+        var creator = object(object(json, "data"), "creator");
+        if (creator.size() == 0) throw new IOException("QQ profile response missing creator");
+        return new OnlineMusicAccount(id(), current.id(), nickname(text(creator, "nick")));
+    }
+    @Override public List<OnlinePlaylist> playlists(int page, int limit) throws Exception {
+        checkPage(page, limit);
+        var current = credentialsSnapshot();
+        var data = rpc("music.musicasset.PlaylistBaseRead", "GetPlaylistByUin", Map.of("uin", current.id()),
+                Map.of("ct", "24", "cv", "0"), current);
+        var merged = new LinkedHashMap<String, OnlinePlaylist>();
+        appendPlaylists(merged, requireArray(data, "v_playlist", "disslist", "list"));
+        long end = (long) page * limit;
+        var subscribed = http.json("https://c.y.qq.com/fav/fcgi-bin/fcg_get_profile_order_asset.fcg?" +
+                MusicHttp.form(Map.of("ct", "20", "cv", "4747474", "cid", "205360956", "userid", current.id(),
+                        "reqtype", "3", "sin", "0", "ein", Long.toString(Math.min(end + merged.size() - 1, 99999)), "format", "json")),
+                null, null, "https://y.qq.com/", cookies(current));
+        if (subscribed.has("code") && number(subscribed, "code") != 0) throw new IOException("QQ subscribed playlists rejected request");
+        appendPlaylists(merged, requireArray(subscribed, "cdlist", "disslist", "list", "playlist"));
+        var all = new ArrayList<>(merged.values());
+        int start = (int) Math.min(all.size(), (page - 1L) * limit);
+        return List.copyOf(all.subList(start, Math.min(all.size(), start + limit)));
+    }
+    private void appendPlaylists(Map<String, OnlinePlaylist> result, JsonArray entries) {
+        for (var entry : entries) {
+            if (!entry.isJsonObject()) continue;
+            var item = entry.getAsJsonObject();
+            String playlistId = first(item, "tid", "dissid", "id");
+            if (!playlistId.matches("[0-9]{1,18}")) continue;
+            String name = first(item, "diss_name", "dissname", "name", "title", "dirName", "dirname");
+            long songCount = 0;
+            for (var field : List.of("songNum", "song_cnt", "songnum", "song_count", "trackCount")) {
+                if (item.has(field)) { songCount = number(item, field); break; }
+            }
+            int count = (int) Math.min(Integer.MAX_VALUE, Math.max(0, songCount));
+            result.putIfAbsent(playlistId, new OnlinePlaylist(id(), playlistId, name, count));
+        }
+    }
+    @Override public List<OnlineTrack> playlist(OnlinePlaylist playlist, int page, int limit) throws Exception {
+        checkPage(page, limit);
+        if (!id().equals(playlist.source()) || !playlist.id().matches("[0-9]{1,18}")) throw new IllegalArgumentException("Invalid playlist");
+        var current = credentialsSnapshot();
+        var data = rpc("music.srfDissInfo.DissInfo", "CgiGetDiss", Map.of("disstid", Long.parseLong(playlist.id()),
+                "onlysong", 0, "song_begin", (page - 1) * limit, "song_num", limit), Map.of("ct", "24", "cv", "0"), current);
+        return parseSongList(data, limit);
+    }
+    @Override public List<OnlineTrack> liked(int page, int limit) throws Exception {
+        checkPage(page, limit);
+        var current = credentialsSnapshot();
+        var data = rpc("music.srfDissInfo.DissInfo", "CgiGetDiss", Map.of("disstid", 0, "dirid", 201,
+                "song_begin", (page - 1) * limit, "song_num", limit, "userinfo", true, "orderlist", true),
+                Map.of("ct", "24", "cv", "0"), current);
+        return parseSongList(data, limit);
+    }
+    private Account credentialsSnapshot() throws LoginRequired {
+        var current = account;
+        if (current.key().isEmpty()) throw new LoginRequired();
+        return current;
+    }
+    private static void checkPage(int page, int limit) {
+        if (page < 1 || page > 1000 || limit < 1 || limit > 100) throw new IllegalArgumentException("Invalid page");
+    }
+    static List<OnlineTrack> parseSongList(JsonObject data, int limit) throws IOException {
+        if (!data.has("songlist") || !data.get("songlist").isJsonArray()) throw new IOException("QQ song list missing");
+        var body = new JsonObject(); var song = new JsonObject(); var root = new JsonObject();
+        song.add("list", array(data, "songlist")); body.add("song", song); root.add("body", body);
+        return parseSearch(root, limit);
+    }
+    private static String first(JsonObject object, String... keys) {
+        for (var key : keys) { String value = text(object, key); if (!value.isBlank()) return value; }
+        return "";
+    }
+    private static String nickname(String value) {
+        if (!value.matches("[A-Za-z0-9+/]+={0,2}") || value.length() % 4 != 0) return value;
+        try {
+            var decoder = java.nio.charset.StandardCharsets.UTF_8.newDecoder();
+            String decoded = decoder.decode(java.nio.ByteBuffer.wrap(Base64.getDecoder().decode(value))).toString();
+            return decoded.isBlank() || decoded.codePoints().anyMatch(Character::isISOControl) ? value : decoded;
+        } catch (IllegalArgumentException | java.nio.charset.CharacterCodingException ignored) { return value; }
+    }
+    static JsonArray requireArray(JsonObject object, String... keys) throws IOException {
+        var result = findArray(object, 0, keys);
+        if (result == null) throw new IOException("QQ response missing playlist array");
+        return result;
+    }
+    private static JsonArray findArray(JsonObject object, int depth, String... keys) {
+        if (depth > 6) return null;
+        for (var key : keys) if (object.has(key) && object.get(key).isJsonArray()) return object.getAsJsonArray(key);
+        for (var entry : object.entrySet()) if (entry.getValue().isJsonObject()) {
+            var found = findArray(entry.getValue().getAsJsonObject(), depth + 1, keys);
+            if (found != null) return found;
+        }
+        return null;
+    }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
         try {
             var data = rpc("music.search.SearchCgiService", "DoSearchForQQMusicDesktop",
@@ -61,8 +187,8 @@ final class QQMusicSource implements OnlineMusicSource {
             String media = text(object(song, "file"), "media_mid");
             if (media.isBlank()) media = text(song, "strMediaMid");
             out.add(new OnlineTrack("qq", mid, media.isBlank() ? mid : media,
-                    song.has("title") ? text(song, "title") : text(song, "songname"), artists(array(song, "singer")),
-                    text(object(song, "album"), "name"), number(song, "interval") * 1000));
+                    first(song, "title", "name", "songname"), artists(array(song, "singer")),
+                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"), number(song, "interval") * 1000));
         }
         return List.copyOf(out);
     }
@@ -105,15 +231,21 @@ final class QQMusicSource implements OnlineMusicSource {
                 .replace("&quot;", "\"").replace("&lt;", "<").replace("&gt;", ">").replace("&amp;", "&");
     }
     private JsonObject rpc(String module, String method, Map<String, ?> parameters, Map<String, ?> comm) throws Exception {
+        return rpc(module, method, parameters, comm, account);
+    }
+    private JsonObject rpc(String module, String method, Map<String, ?> parameters, Map<String, ?> comm, Account current) throws Exception {
         var gson = new Gson();
         var authenticated = new LinkedHashMap<String, Object>(comm);
-        var current = account;
         authenticated.put("uin", current.id());
         if (!current.key().isEmpty()) { authenticated.put("qq", current.id()); authenticated.put("authst", current.key()); }
         var body = Map.of("comm", authenticated, "req", Map.of("module", module, "method", method, "param", parameters));
-        var json = http.json("https://u.y.qq.com/cgi-bin/musicu.fcg", gson.toJson(body), "application/json", "https://y.qq.com/", cookies());
+        var json = http.json("https://u.y.qq.com/cgi-bin/musicu.fcg", gson.toJson(body), "application/json", "https://y.qq.com/", cookies(current));
         var req = object(json, "req");
-        if (!json.has("req") || number(req, "code") != 0) throw new IOException("QQ rejected request");
+        if (!json.has("req") || !req.has("code") || number(req, "code") != 0) {
+            if (number(req, "code") == 1000 || number(req, "code") == 104009 || number(req, "code") == 401) throw new LoginRequired();
+            throw new IOException("QQ rejected request");
+        }
+        if (!req.has("data") || !req.get("data").isJsonObject()) throw new IOException("QQ response missing data");
         return object(req, "data");
     }
 }

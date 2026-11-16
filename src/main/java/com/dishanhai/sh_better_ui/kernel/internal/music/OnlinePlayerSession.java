@@ -19,12 +19,19 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private final Supplier<PlaybackOutput> outputs;
     private final Download download;
     private final LocalLyricFeed feed = new LocalLyricFeed("sh_better_ui:online_music");
-    private final Set<CompletableFuture<?>> searches = new HashSet<>();
+    private final Map<CompletableFuture<?>, String> searches = new HashMap<>();
     private final Set<String> authenticated = new HashSet<>();
+    private final Map<String, String> credentials = new HashMap<>();
+    private final Set<String> remembered = new HashSet<>();
+    private final Map<String, Long> persistenceVersions = new HashMap<>();
+    private final Map<String, Long> accountGenerations = new HashMap<>();
+    private final OnlineMusicSearch searchIndex = new OnlineMusicSearch();
+    private final MusicCredentialStore credentialStore;
     private final ScheduledThreadPoolExecutor loginWorker = new ScheduledThreadPoolExecutor(1, task -> {
         var thread = new Thread(task, "shb-music-login"); thread.setDaemon(true); return thread;
     });
     private QrLoginSession login;
+    private String loginSource;
     private PlaybackOutput output;
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
@@ -37,21 +44,104 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private LyricTimeline lyrics = LyricTimeline.empty();
 
     OnlinePlayerSession(List<OnlineMusicSource> sources) { this(sources, Mp3Output::new, new MusicHttp()::audio); }
+    OnlinePlayerSession(List<OnlineMusicSource> sources, MusicCredentialStore store) {
+        this(sources, Mp3Output::new, new MusicHttp()::audio, store);
+    }
     OnlinePlayerSession(List<OnlineMusicSource> providers, Supplier<PlaybackOutput> outputs, Download download) {
+        this(providers, outputs, download, null);
+    }
+    OnlinePlayerSession(List<OnlineMusicSource> providers, Supplier<PlaybackOutput> outputs, Download download, MusicCredentialStore store) {
         this.outputs = outputs; this.download = download;
+        this.credentialStore = store;
         loginWorker.setRemoveOnCancelPolicy(true);
         for (var provider : providers) {
             if (sources.putIfAbsent(provider.id(), provider) != null) throw new IllegalArgumentException("Duplicate music source");
         }
     }
     @Override public synchronized List<String> sources() { return List.copyOf(sources.keySet()); }
-    @Override public synchronized void credentials(String sourceId, String cookie) {
+    @Override public void credentials(String sourceId, String cookie) {
+        List<CompletableFuture<?>> obsolete;
+        synchronized (this) { obsolete = replaceCredentials(sourceId, cookie, true); }
+        cancelRequests(obsolete);
+    }
+    private List<CompletableFuture<?>> replaceCredentials(String sourceId, String cookie, boolean cancelLogin) {
         requireOpen();
         var provider = source(sourceId);
-        provider.credentials(cookie);
-        if (login != null) login.close();
-        if (cookie.isBlank()) authenticated.remove(sourceId); else authenticated.add(sourceId);
+        String valid = MusicHttp.cookie(cookie);
+        provider.credentials(valid);
+        try {
+            if (credentialStore != null) {
+                if (valid.isBlank() && sourceId.matches("[a-z0-9_-]{1,40}")) credentialStore.revoke(sourceId);
+                else if (remembersCredentials(sourceId)) saveCredentials(sourceId, valid);
+            }
+        } catch (java.io.IOException | RuntimeException error) {
+            // The requested credential replacement is not committed if saving fails.
+            provider.credentials(credentials.getOrDefault(sourceId, ""));
+            if (error instanceof java.io.IOException io) throw new java.io.UncheckedIOException("Music credentials could not be saved", io);
+            throw (RuntimeException) error;
+        }
+        if (cancelLogin && login != null && sourceId.equals(loginSource)) login.close();
+        var obsolete = applyCredentials(sourceId, valid);
         stop();
+        return obsolete;
+    }
+    private void saveCredentials(String sourceId, String cookie) throws java.io.IOException {
+        if (!credentialStore.putIfCurrent(sourceId, cookie, persistenceVersions.getOrDefault(sourceId, -1L))) {
+            remembered.remove(sourceId); persistenceVersions.remove(sourceId);
+        }
+    }
+    private List<CompletableFuture<?>> applyCredentials(String sourceId, String cookie) {
+        accountGenerations.merge(sourceId, 1L, Long::sum);
+        var obsolete = new ArrayList<CompletableFuture<?>>();
+        for (var entry : List.copyOf(searches.entrySet())) if (entry.getValue().equals(sourceId)) {
+            obsolete.add(entry.getKey()); searches.remove(entry.getKey());
+        }
+        searchIndex.clear(sourceId);
+        if (cookie.isBlank()) { authenticated.remove(sourceId); credentials.remove(sourceId); }
+        else { authenticated.add(sourceId); credentials.put(sourceId, cookie); }
+        return obsolete;
+    }
+    private static void cancelRequests(List<CompletableFuture<?>> obsolete) {
+        // Cancellation invokes consumer callbacks synchronously; never hold the session lock here.
+        for (var future : obsolete) future.cancel(true);
+    }
+    @Override public synchronized void rememberCredentials(String sourceId, boolean remember) {
+        requireOpen(); source(sourceId);
+        if (credentialStore == null && remember) throw new UnsupportedOperationException("Credential storage unavailable");
+        try {
+            if (credentialStore != null) {
+                String cookie = credentials.getOrDefault(sourceId, "");
+                if (remember) {
+                    long revision = credentialStore.revision(sourceId);
+                    if (!cookie.isBlank() && !credentialStore.putIfCurrent(sourceId, cookie, revision))
+                        throw new java.io.IOException("Music credential preference changed");
+                    persistenceVersions.put(sourceId, revision);
+                } else { credentialStore.revoke(sourceId); persistenceVersions.remove(sourceId); }
+            }
+        } catch (java.io.IOException error) { throw new java.io.UncheckedIOException("Music credentials could not be saved", error); }
+        if (remember) remembered.add(sourceId); else remembered.remove(sourceId);
+    }
+    @Override public synchronized boolean remembersCredentials(String sourceId) {
+        requireOpen(); source(sourceId);
+        return remembered.contains(sourceId) && credentialStore != null
+                && persistenceVersions.getOrDefault(sourceId, -1L) == credentialStore.revision(sourceId);
+    }
+    /** Only disk access; construction never validates accounts or starts network requests. */
+    void restoreSavedCredentials() {
+        if (credentialStore == null) return;
+        var obsolete = new ArrayList<CompletableFuture<?>>();
+        synchronized (this) {
+            for (var sourceId : sources.keySet()) {
+                try {
+                    var saved = credentialStore.loadWithRevision(sourceId);
+                    if (saved.cookie().isBlank()) continue;
+                    source(sourceId).credentials(saved.cookie());
+                    obsolete.addAll(applyCredentials(sourceId, saved.cookie())); remembered.add(sourceId);
+                    persistenceVersions.put(sourceId, saved.revision());
+                } catch (java.io.IOException | IllegalArgumentException ignored) { /* A damaged source never blocks another account. */ }
+            }
+        }
+        cancelRequests(obsolete);
     }
     @Override public synchronized boolean authenticated(String sourceId) {
         requireOpen(); source(sourceId); return authenticated.contains(sourceId);
@@ -60,27 +150,112 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         requireOpen();
         var provider = source(sourceId);
         if (login != null) login.close();
+        loginSource = sourceId;
         login = new QrLoginSession(provider, (attempt, cookie) -> {
+            var obsolete = new ArrayList<CompletableFuture<?>>();
             synchronized (OnlinePlayerSession.this) {
                 if (state == State.CLOSED || login != attempt) { attempt.close(); return; }
                 attempt.confirm(() -> {
-                    provider.credentials(cookie); authenticated.add(sourceId); stop();
+                    String valid = MusicHttp.cookie(cookie);
+                    provider.credentials(valid);
+                    try { if (remembersCredentials(sourceId)) saveCredentials(sourceId, valid); }
+                    catch (java.io.IOException | RuntimeException error) {
+                        provider.credentials(credentials.getOrDefault(sourceId, ""));
+                        if (error instanceof java.io.IOException io) throw new java.io.UncheckedIOException("Music credentials could not be saved", io);
+                        throw (RuntimeException) error;
+                    }
+                    obsolete.addAll(applyCredentials(sourceId, valid)); stop();
                 });
             }
+            cancelRequests(obsolete);
         }, loginWorker);
         login.start();
         return login;
     }
     @Override public synchronized CompletableFuture<List<OnlineTrack>> search(String sourceId, String query, int page) {
         requireOpen();
-        var provider = source(sourceId);
+        var provider = source(sourceId).requestSnapshot();
         String text = Objects.requireNonNull(query).strip();
         if (text.isEmpty() || text.length() > 200 || page < 1 || page > 1000) throw new IllegalArgumentException("Invalid music search");
-        var result = new CompletableFuture<List<OnlineTrack>>();
-        searches.add(result);
+        return request(sourceId, false, () -> {
+            List<OnlineTrack> remote;
+            try { remote = List.copyOf(provider.search(text, page, 20)); }
+            catch (java.io.IOException error) {
+                var local = searchIndex.search(sourceId, text, 20);
+                if (page != 1 || local.isEmpty() || error instanceof OnlineMusicSource.LoginRequired) throw error;
+                return local;
+            }
+            if (page != 1) return remote;
+            var combined = new LinkedHashMap<String, OnlineTrack>();
+            for (var item : remote) combined.put(item.id(), item);
+            for (var item : searchIndex.search(sourceId, text, 20)) combined.putIfAbsent(item.id(), item);
+            return combined.values().stream().limit(20).toList();
+        });
+    }
+    @Override public synchronized CompletableFuture<OnlineMusicAccount> account(String sourceId) {
+        var provider = source(sourceId).requestSnapshot(); return request(sourceId, true, provider::account);
+    }
+    @Override public synchronized CompletableFuture<List<OnlinePlaylist>> playlists(String sourceId, int page) {
+        checkPage(page); var provider = source(sourceId).requestSnapshot();
+        return request(sourceId, true, () -> List.copyOf(provider.playlists(page, 20)));
+    }
+    @Override public synchronized CompletableFuture<List<OnlineTrack>> playlist(OnlinePlaylist playlist, int page) {
+        Objects.requireNonNull(playlist); checkPage(page); var provider = source(playlist.source()).requestSnapshot();
+        return request(playlist.source(), true, () -> List.copyOf(provider.playlist(playlist, page, 20)));
+    }
+    @Override public synchronized CompletableFuture<List<OnlineTrack>> liked(String sourceId, int page) {
+        checkPage(page); var provider = source(sourceId).requestSnapshot();
+        return request(sourceId, true, () -> List.copyOf(provider.liked(page, 20)));
+    }
+    @Override public synchronized CompletableFuture<Void> like(OnlineTrack track, boolean liked) {
+        Objects.requireNonNull(track); var provider = source(track.source()).requestSnapshot();
+        return request(track.source(), true, () -> { provider.like(track, liked); return null; });
+    }
+    @Override public synchronized boolean supportsLikes(String sourceId) { requireOpen(); return source(sourceId).supportsLikes(); }
+    @Override public synchronized CompletableFuture<List<String>> suggest(String sourceId, String query) {
+        requireOpen(); var provider = source(sourceId).requestSnapshot(); String text = Objects.requireNonNull(query).strip();
+        if (text.length() > 200) throw new IllegalArgumentException("Invalid music search");
+        if (text.isEmpty()) return CompletableFuture.completedFuture(List.of());
+        return request(sourceId, false, () -> {
+            var values = new LinkedHashSet<>(searchIndex.suggest(sourceId, text, 8));
+            try { values.addAll(provider.suggest(text, 8)); }
+            catch (java.io.IOException | UnsupportedOperationException error) { if (values.isEmpty()) throw error; }
+            return values.stream().filter(value -> value != null && !value.isBlank()).limit(8).toList();
+        });
+    }
+    private static void checkPage(int page) { if (page < 1 || page > 1000) throw new IllegalArgumentException("Invalid music page"); }
+    private synchronized <T> CompletableFuture<T> request(String sourceId, boolean accountRequired, Callable<T> action) {
+        requireOpen(); source(sourceId);
+        if (accountRequired && !authenticated.contains(sourceId)) return CompletableFuture.failedFuture(new OnlineMusicSource.LoginRequired());
+        long epoch = accountGenerations.getOrDefault(sourceId, 0L);
+        var result = new CompletableFuture<T>(); searches.put(result, sourceId);
         var task = workers.submit(() -> {
-            try { result.complete(List.copyOf(provider.search(text, page, 20))); }
-            catch (Exception error) { result.completeExceptionally(error); }
+            try {
+                synchronized (this) { if (result.isDone() || accountGenerations.getOrDefault(sourceId, 0L) != epoch) return; }
+                T value = action.call();
+                synchronized (this) {
+                    if (result.isDone() || state == State.CLOSED || accountGenerations.getOrDefault(sourceId, 0L) != epoch) return;
+                    if (value instanceof List<?> list) {
+                        var tracks = new ArrayList<OnlineTrack>();
+                        for (var item : list) if (item instanceof OnlineTrack song) tracks.add(song);
+                        searchIndex.addAll(tracks);
+                    }
+                }
+                result.complete(value);
+            } catch (Exception error) {
+                List<CompletableFuture<?>> obsolete = List.of();
+                synchronized (this) {
+                    if (result.isDone() || state == State.CLOSED || accountGenerations.getOrDefault(sourceId, 0L) != epoch) return;
+                    if (error instanceof OnlineMusicSource.LoginRequired) {
+                        searches.remove(result);
+                        try { obsolete = replaceCredentials(sourceId, "", false); } catch (java.io.UncheckedIOException ignored) {
+                            source(sourceId).credentials(""); obsolete = applyCredentials(sourceId, ""); stop();
+                        }
+                    }
+                }
+                cancelRequests(obsolete);
+                result.completeExceptionally(error);
+            }
         });
         result.whenComplete((value, error) -> {
             if (result.isCancelled()) task.cancel(true);
@@ -90,7 +265,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     }
     @Override public synchronized void play(OnlineTrack next) {
         requireOpen();
-        var provider = source(next.source());
+        var provider = source(next.source()).requestSnapshot();
         if (!next.id().matches("[A-Za-z0-9]{1,40}") || !next.mediaId().matches("[A-Za-z0-9]{1,40}"))
             throw new IllegalArgumentException("Invalid platform track identifier");
         reset();
@@ -190,17 +365,21 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return provider;
     }
     private void requireOpen() { if (state == State.CLOSED) throw new IllegalStateException("Music session closed"); }
-    @Override public synchronized void close() {
-        if (state == State.CLOSED) return;
-        reset(); track = null; state = State.CLOSED;
-        if (login != null) { login.close(); login = null; }
-        authenticated.clear();
-        for (var search : List.copyOf(searches)) search.cancel(true);
-        workers.shutdownNow();
-        loginWorker.shutdownNow();
-        for (var provider : sources.values()) {
-            try { provider.credentials(""); } catch (UnsupportedOperationException ignored) { }
+    @Override public void close() {
+        List<CompletableFuture<?>> obsolete;
+        synchronized (this) {
+            if (state == State.CLOSED) return;
+            reset(); track = null; state = State.CLOSED;
+            if (login != null) { login.close(); login = null; }
+            authenticated.clear(); credentials.clear(); remembered.clear(); persistenceVersions.clear(); searchIndex.clear();
+            obsolete = List.copyOf(searches.keySet()); searches.clear();
+            workers.shutdownNow();
+            loginWorker.shutdownNow();
+            for (var provider : sources.values()) {
+                try { provider.credentials(""); } catch (UnsupportedOperationException ignored) { }
+            }
+            sources.clear();
         }
-        sources.clear();
+        cancelRequests(obsolete);
     }
 }

@@ -3,6 +3,7 @@
 /.kotlin/
 /build/
 /run/
+/config/sh_better_ui/music-accounts/
 /libs/
 /gradle-install/
 /.idea/
