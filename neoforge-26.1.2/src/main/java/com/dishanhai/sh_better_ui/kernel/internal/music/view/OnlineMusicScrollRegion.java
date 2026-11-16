@@ -33,6 +33,10 @@ final class OnlineMusicScrollRegion extends AbstractWidget implements com.dishan
         if (!state.dragging()) return false;
         cancelDrag(); return true;
     }
+    @Override public boolean releasePointer(int button) {
+        if (button != 0 || !state.dragging()) return false;
+        pointerFocusPending = false; state.endDrag(); return true;
+    }
     void cancelDrag() {
         pointerFocusPending = false;
         int old = state.offset(); state.cancelDrag(); notifyChanged(old);
@@ -63,8 +67,7 @@ final class OnlineMusicScrollRegion extends AbstractWidget implements com.dishan
     }
     @Override public boolean mouseReleased(net.minecraft.client.input.MouseButtonEvent event) {
         int button = event.button();
-        if (button != 0 || !state.dragging()) return false;
-        pointerFocusPending = false; state.endDrag(); return true;
+        return releasePointer(button);
     }
     @Override public void setFocused(boolean focused) {
         super.setFocused(focused);

@@ -732,6 +732,15 @@ public final class DeveloperGalleryScreen extends Screen {
     }
 
     @Override
+    public boolean mouseReleased(MouseButtonEvent event) {
+        if (getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCancelableInteraction interaction
+                && interaction.releasePointer(event.button())) {
+            setDragging(false); return true;
+        }
+        return super.mouseReleased(event);
+    }
+
+    @Override
     public boolean keyPressed(KeyEvent event) {
         if (sample == Sample.SEARCH && !compact && search.keyPressed(event, getFocused(), this::setInitialFocus)) return true;
         if (sample == null && !compact && getFocused() == directorySearch && event.isConfirmation()

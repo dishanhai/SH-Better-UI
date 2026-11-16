@@ -6,6 +6,23 @@ import org.junit.jupiter.api.Test;
 import org.lwjgl.glfw.GLFW;
 import static org.junit.jupiter.api.Assertions.*;
 class OnlineMusicScrollRegionTest {
+    @Test void realFullscreenHostCommitsReleaseOutsideChildInsteadOfLaterRollingBack() {
+        var offset = new AtomicInteger();
+        var region = new OnlineMusicScrollRegion(0,0,200,120,Component.literal("Lyrics"),offset::set);
+        region.configure(0,30,6);
+        var host = new com.dishanhai.sh_better_ui.client.gui.scaled.UiFullscreenPreview(null, Component.literal("Music"),
+                com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT, (bounds, add) -> null);
+        host.setFocused(region);
+        assertTrue(region.mouseClicked(196,12,0));
+        host.setFocused(region); // exercise the actual native false -> true focus dispatch
+        host.setDragging(true);
+        assertTrue(host.mouseDragged(400,400,0,204,388));
+        int end = offset.get(); assertTrue(end > 0);
+        assertTrue(host.mouseReleased(400,400,0)); // outside the widget and host children
+        assertFalse(region.dragging()); assertFalse(host.isDragging());
+        host.setFocused(null);
+        assertEquals(end, offset.get()); // completed drag must not roll back on focus loss
+    }
     @Test void canvasWheelAndKeyboardScrollButNormalClicksPassThrough() {
         var offset = new AtomicInteger();
         var region = new OnlineMusicScrollRegion(10,20,200,120,Component.literal("Tracks"),offset::set);

@@ -20,6 +20,21 @@ class FullscreenThemedBackdropTest {
         assertCancellationBeforeSuper(Path.of(base + "panel/DeveloperGalleryScreen.java"), "public boolean keyPressed(");
         assertCancellationBeforeSuper(Path.of("neoforge-26.1.2/" + base + "panel/DeveloperGalleryScreen.java"), "public boolean keyPressed(");
     }
+    @Test void previewHostsReleaseCapturedPointerBeforeHitTestBasedSuperDispatch() throws Exception {
+        for (String path : new String[]{
+                "src/main/java/com/dishanhai/sh_better_ui/client/gui/scaled/UiFullscreenPreview.java",
+                "src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperGalleryScreen.java",
+                "neoforge-26.1.2/src/main/java/com/dishanhai/sh_better_ui/client/gui/panel/DeveloperGalleryScreen.java"}) {
+            String source = Files.readString(Path.of(path));
+            int start = source.indexOf("public boolean mouseReleased(");
+            int end = source.indexOf("super.mouseReleased", start);
+            assertTrue(start >= 0 && end > start, path);
+            String body = source.substring(start, end);
+            assertTrue(body.contains("getFocused() instanceof"), path);
+            assertTrue(body.contains("interaction.releasePointer("), path);
+            assertTrue(body.contains("setDragging(false)"), path);
+        }
+    }
     private static void assertCancellationBeforeSuper(Path path, String method) throws Exception {
         String source = Files.readString(path);
         int start = source.indexOf(method);
