@@ -140,6 +140,11 @@ final class NeteaseSource implements OnlineMusicSource {
                 "offset", "" + ((page - 1) * limit), "total", "true"));
         return parseSearch(data, limit);
     }
+    private static String artworkUrl(String url) {
+        // Provider thumbnail sizing avoids downloading a multi-megapixel album original.
+        return url.isBlank() || url.contains("?") ? url : url + "?param=512y512";
+    }
+
     static List<OnlineTrack> parseSearch(JsonObject data, int limit) {
         var result = new ArrayList<OnlineTrack>();
         for (var element : array(object(data, "result"), "songs")) {
@@ -150,7 +155,7 @@ final class NeteaseSource implements OnlineMusicSource {
             var album = song.has("al") ? object(song, "al") : object(song, "album");
             var singers = song.has("ar") ? array(song, "ar") : array(song, "artists");
             result.add(new OnlineTrack("netease", id, id, text(song, "name"), artists(singers), text(album, "name"),
-                    song.has("dt") ? number(song, "dt") : number(song, "duration")));
+                    song.has("dt") ? number(song, "dt") : number(song, "duration"), artworkUrl(text(album, "picUrl"))));
         }
         return List.copyOf(result);
     }

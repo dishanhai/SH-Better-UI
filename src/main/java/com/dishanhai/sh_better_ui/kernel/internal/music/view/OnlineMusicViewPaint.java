@@ -27,6 +27,16 @@ final class OnlineMusicViewPaint {
         RoundedCorners.draw(ui.graphics(), bounds.x(), bounds.y(), bounds.width(), bounds.height(), 6, border ? 1 : 0,
                 ui.preferences().highContrast() ? UiTheme.current().text() : UiTheme.current().border(), color);
     }
+    /** Provider-owned album art; aspect ratio is preserved rather than stretched. */
+    static void cover(UiFrame ui, Bounds bounds, OnlineArtworkTexture.Texture texture) {
+        if (bounds.width() <= 0 || bounds.height() <= 0) return;
+        float fit = Math.min((float)bounds.width() / texture.width(), (float)bounds.height() / texture.height());
+        int width = Math.max(1, Math.round(texture.width() * fit));
+        int height = Math.max(1, Math.round(texture.height() * fit));
+        ui.graphics().blit(texture.id(), bounds.x() + (bounds.width() - width) / 2,
+                bounds.y() + (bounds.height() - height) / 2, width, height,
+                0f, 0f, texture.width(), texture.height(), texture.width(), texture.height());
+    }
     static void artwork(UiFrame ui, Bounds bounds) { artwork(ui, bounds, 0f); }
 
     /** A calm editorial heading. Text is bounded independently of the decorative accent. */

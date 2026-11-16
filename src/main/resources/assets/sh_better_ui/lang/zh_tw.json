@@ -1,4 +1,5 @@
 {
+  "sh_better_ui.online_music.view.follow_lyrics": "回到目前歌詞",
   "sh_better_ui.online_music.suggestions": "搜尋建議",
   "sh_better_ui.online_music.suggestion_pick": "搜尋 %s",
   "sh_better_ui.online_music.login.remember_on": "儲存登入：開",

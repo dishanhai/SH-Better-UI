@@ -1,4 +1,5 @@
 {
+  "sh_better_ui.online_music.view.follow_lyrics": "回到当前歌词",
   "sh_better_ui.online_music.suggestions": "搜索建议",
   "sh_better_ui.online_music.suggestion_pick": "搜索 %s",
   "sh_better_ui.online_music.login.remember_on": "保存登录：开",

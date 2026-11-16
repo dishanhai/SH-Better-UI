@@ -19,3 +19,8 @@ Page adaptations replace the upstream renderer with UUK/native widgets, semantic
 colors, responsive navigation, search results, a persistent transport bar, contextual
 lyrics and account-source cards. No unavailable upstream feature is presented as active.
 The separately licensed JavaLayer decoder is documented in ../jlayer/SOURCE.
+
+Additional original presentation: borderless, softly following lyrics, keyboard seek targets,
+manual lyric browsing and provider album art. Inspired by MusicLyricsPanel composition;
+no QQ Music assets, album images, shaders or fonts are bundled. Album art is fetched
+only from the selected music provider at runtime and remains its respective owner's content.
