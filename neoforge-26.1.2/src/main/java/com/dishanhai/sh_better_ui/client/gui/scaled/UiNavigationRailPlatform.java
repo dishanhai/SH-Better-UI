@@ -14,6 +14,7 @@ abstract class UiNavigationRailPlatform extends AbstractWidget {
         for (var cell : cells()) cell.button().extractRenderState(graphics, mx, my, partialTick);
         var bar = indicatorBounds(); graphics.fill(bar.x(), bar.y(), bar.right(), bar.bottom(), indicatorColor());
     }
+    static long navigationNowMs() { return System.nanoTime() / 1_000_000L; }
     abstract void prepare(int mx, int my);
     abstract java.util.List<UiNavigationRail.Cell> cells();
     abstract Bounds indicatorBounds();

@@ -111,7 +111,7 @@ public final class UiNavigationRail extends UiNavigationRailPlatform implements 
     @Override void prepare(int mx, int my) {
         layout(); hovered = hit(mx, my);
         if (!interactive()) cancelInteraction(); else state.drag(hovered);
-        long now = PageTransition.nowMs();
+        long now = navigationNowMs();
         if (indicator.target() != state.selectedIndex()) indicator.animateTo(state.selectedIndex(), now);
         indicator.sample(now, preferences.reducedMotion());
         for (int i = 0; i < cells.size(); i++) {
