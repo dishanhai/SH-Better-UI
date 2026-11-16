@@ -15,6 +15,9 @@ final class BuiltinBackgrounds {
     private BuiltinBackgrounds() {}
 
     static void registerInto(BackgroundRegistry registry) {
+        registry.register(new BackgroundSpec(CrystalDrift.ID,
+                "sh_better_ui.panel.theme.group.sh_better_ui:crystal_drift", CrystalDriftProfile.DEFAULT,
+                logo -> new CrystalDrift()));
         register(registry, "dotMatrix", logo -> new BackgroundSpec.Renderer() {
             private final UiDotMatrix dots = new UiDotMatrix();
             private final UiPointerTracker pointer = new UiPointerTracker();
