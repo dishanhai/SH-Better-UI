@@ -1,4 +1,10 @@
 {
+  "sh_better_ui.online_music.view.scroll_search": "滚动搜索结果",
+  "sh_better_ui.online_music.view.scroll_library": "滚动歌单与歌曲",
+  "sh_better_ui.online_music.view.scroll_lyrics": "滚动歌词",
+  "sh_better_ui.online_music.view.scroll_account": "滚动账号设置",
+
+  "sh_better_ui.online_music.view.follow_lyrics": "回到当前歌词",
   "sh_better_ui.online_music.suggestions": "搜索建议",
   "sh_better_ui.online_music.suggestion_pick": "搜索 %s",
   "sh_better_ui.online_music.login.remember_on": "保存登录：开",

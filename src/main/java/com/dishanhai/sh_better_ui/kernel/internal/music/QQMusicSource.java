@@ -198,10 +198,15 @@ final class QQMusicSource implements OnlineMusicSource {
             if (media.isBlank()) media = text(song, "strMediaMid");
             out.add(new OnlineTrack("qq", mid, media.isBlank() ? mid : media,
                     first(song, "title", "name", "songname"), artists(array(song, "singer")),
-                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"), number(song, "interval") * 1000));
+                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"), number(song, "interval") * 1000, albumCover(song)));
         }
         return List.copyOf(out);
     }
+    private static String albumCover(JsonObject song) {
+        String mid = song.has("album") ? text(object(song, "album"), "mid") : text(song, "albummid");
+        return mid.matches("[A-Za-z0-9]{1,40}") ? "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + mid + ".jpg" : "";
+    }
+
     @Override public Stream resolve(OnlineTrack track) throws Exception {
         var detail = http.json("https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?" +
                 MusicHttp.form(Map.of("songmid", track.id(), "platform", "yqq", "format", "json")),

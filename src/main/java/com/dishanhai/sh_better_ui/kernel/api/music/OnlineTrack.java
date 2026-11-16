@@ -5,7 +5,11 @@ import java.util.Objects;
 
 /** Immutable search result. IDs belong to the source; never match tracks by title alone. */
 public record OnlineTrack(String source, String id, String mediaId, String title,
-                          String artist, String album, long durationMs) {
+                          String artist, String album, long durationMs, String artworkUrl) {
+    /** Compatibility constructor for sources without artwork. */
+    public OnlineTrack(String source, String id, String mediaId, String title, String artist, String album, long durationMs) {
+        this(source, id, mediaId, title, artist, album, durationMs, "");
+    }
     public OnlineTrack {
         Objects.requireNonNull(source);
         Objects.requireNonNull(id);
@@ -14,5 +18,6 @@ public record OnlineTrack(String source, String id, String mediaId, String title
         artist = artist == null ? "" : artist;
         album = album == null ? "" : album;
         durationMs = Math.max(0, durationMs);
+        artworkUrl = artworkUrl == null ? "" : artworkUrl;
     }
 }
