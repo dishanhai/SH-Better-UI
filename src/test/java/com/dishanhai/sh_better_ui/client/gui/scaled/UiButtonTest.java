@@ -11,10 +11,15 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：公开按钮的提示、选择与原生回调契约。 */
 class UiButtonTest {
     @Test
-    void leadingIconOnlyReservesRoomWhenItAndTheLabelCanFit() {
+    void textIconsOnlyReserveRoomWhenTheyAndTheLabelCanFit() {
         var button = new UiButton(0, 0, 100, 20, Component.translatable("gui.yes"), ignored -> {});
         var tooltip = button.getTooltip();
         button.setLeadingIcon(GraphicIcon.SUCCESS);
+        assertEquals(68, button.labelWidth(100, 20));
+        assertEquals(43, button.labelWidth(55, 20));
+        assertEquals(88, button.labelWidth(100, 17));
+        assertSame(tooltip, button.getTooltip());
+        button.setTrailingIcon(GraphicIcon.SUCCESS);
         assertEquals(68, button.labelWidth(100, 20));
         assertEquals(43, button.labelWidth(55, 20));
         assertEquals(88, button.labelWidth(100, 17));

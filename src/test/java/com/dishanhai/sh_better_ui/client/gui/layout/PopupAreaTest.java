@@ -5,6 +5,14 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class PopupAreaTest {
+    @Test void crampedHostMarginsDoNotShrinkThePanel() {
+        var area = PopupArea.fittingLeftOf(448, 270, 370, new PopupArea.Rect(40, 8, 250, 214), 4, 180, 96);
+        assertTrue(area.width() >= 180);
+        assertTrue(area.height() >= 96);
+        assertEquals(4, area.x());
+        assertEquals(4, area.y());
+    }
+
     @Test void avoidsContainerAndAnchorAcrossResizes() {
         var host = new PopupArea.Rect(30, 30, 220, 170);
         var below = PopupArea.leftOf(440, 270, 300, host, 4);

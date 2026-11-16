@@ -11,6 +11,14 @@ public final class PopupArea {
         }
     }
 
+    /** Avoids the host only when the complete panel fits; otherwise uses an overlay at the same scale. */
+    public static Rect fittingLeftOf(int screenWidth, int screenHeight, int anchorX, Rect host, int margin,
+                                     int desiredWidth, int desiredHeight) {
+        var outside = leftOf(screenWidth, screenHeight, anchorX, host, margin, desiredWidth, desiredHeight);
+        if (outside.width() >= desiredWidth && outside.height() >= desiredHeight) return outside;
+        return leftOf(screenWidth, screenHeight, anchorX, null, margin, desiredWidth, desiredHeight);
+    }
+
     /** Returns the larger area below or to the right of the host, bounded by the anchor. */
     public static Rect leftOf(int screenWidth, int screenHeight, int anchorX, Rect host, int margin) {
         return leftOf(screenWidth, screenHeight, anchorX, host, margin, 1, 1);
