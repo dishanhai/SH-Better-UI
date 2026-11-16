@@ -6,7 +6,7 @@ public record BlackHoleBackdropProfile(float speed, float size, float tilt, floa
                                        float brightness, float glow, float opacity, int color, int backgroundColor,
                                        float inclination, float outline, Quality quality, float diskOuterRadius) {
     public enum Quality {
-        LOW(192, .04f, 384), BALANCED(320, .025f, 768), HIGH(512, .016f, 1024);
+        LOW(192, .04f, 384), BALANCED(320, .025f, 1536), HIGH(512, .016f, 2048);
         private final int steps, resolution;
         private final float stepSize;
         Quality(int steps, float stepSize, int resolution) {

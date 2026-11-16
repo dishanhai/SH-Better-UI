@@ -21,7 +21,7 @@ final class GlobalThemeGalleryPreview implements PreviewScene {
     private boolean selected;
     private boolean toggleSelected = true;
 
-    private GlobalThemeGalleryPreview(String theme) { session = new ThemePreviewSession(theme); }
+    private GlobalThemeGalleryPreview(String theme) { session = new ThemePreviewSession(theme, candidate -> !MinecraftThemes.isConfiguredPalette(candidate.id())); }
 
     static void registerInto(PreviewRegistry registry) {
         registry.register(new PreviewSpec("sh_better_ui:global_themes", PreviewSpec.Category.THEMES, 0,

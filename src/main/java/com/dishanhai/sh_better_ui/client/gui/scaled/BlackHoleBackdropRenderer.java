@@ -27,7 +27,7 @@ import java.util.function.Consumer;
 /** Stationary physical hit maps are progressively cached; emission animates at every GUI frame. */
 final class BlackHoleBackdropRenderer extends RenderType {
     private static final Matrix4f IDENTITY = new Matrix4f();
-    private static final int CAPACITY = 1024, BLOOM_CAPACITY = 256;
+    private static final int BLOOM_CAPACITY = 256;
     private static final BlackHoleGeometryPlan.Budget BUDGET = new BlackHoleGeometryPlan.Budget(16_384);
     private static ShaderInstance traceShader, shadeShader, bloomShader, compositeShader;
     private static final Slot[] SLOTS = {new Slot(), new Slot()};
@@ -131,7 +131,7 @@ final class BlackHoleBackdropRenderer extends RenderType {
             if (bh > BLOOM_CAPACITY) { bh = BLOOM_CAPACITY; bw = Math.max(1, Math.round((float) width * bh / height)); }
             compositeShader.setSampler("Scene", scene);
             compositeShader.setSampler("Bloom", bloomB == null ? scene : bloomB);
-            compositeShader.safeGetUniform("ContentScale").set((float) width / CAPACITY, (float) height / CAPACITY,
+            compositeShader.safeGetUniform("ContentScale").set((float) width / scene.width, (float) height / scene.height,
                     (float) bw / BLOOM_CAPACITY, (float) bh / BLOOM_CAPACITY);
             compositeShader.safeGetUniform("Finish").set(1f / width, 1f / height, p.brightness() <= 0 ? 0 : p.glow(), p.opacity());
             VisualRevealRenderer.quad(g, COMPOSITE, area.x(), area.y(), area.width(), area.height(), pose);
@@ -152,12 +152,12 @@ final class BlackHoleBackdropRenderer extends RenderType {
         for (Slot slot : SLOTS) if (slot.complete() && key.equals(slot.key)) return slot;
         return null;
     }
-    private static TextureTarget allocate(int size, boolean geometry) {
-        var target = new TextureTarget(size, size, false, Minecraft.ON_OSX);
+    private static TextureTarget allocate(int width, int height, boolean geometry) {
+        var target = new TextureTarget(width, height, false, Minecraft.ON_OSX);
         try {
         if (geometry) {
             RenderSystem.bindTexture(target.getColorTextureId());
-            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGBA16F, size, size, 0, GL11.GL_RGBA, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
+            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGBA16F, width, height, 0, GL11.GL_RGBA, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
         }
         GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, target.frameBufferId);
         if (GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE)
@@ -197,7 +197,11 @@ final class BlackHoleBackdropRenderer extends RenderType {
                 var key = building.key;
                 int rows = BUDGET.takeRows(UiFrameScheduler.nowMs(), key.width(), key.height() - building.rows);
                 if (rows > 0) {
-                    if (building.texture == null) building.texture = allocate(CAPACITY, true);
+                    if (building.texture != null && (building.texture.width != key.width() || building.texture.height != key.height())) {
+                        building.texture.destroyBuffers();
+                        building.texture = null;
+                    }
+                    if (building.texture == null) building.texture = allocate(key.width(), key.height(), true);
                     bindTarget(building.texture, key.width(), key.height());
                     RenderSystem.enableScissor(0, building.rows, key.width(), rows);
                     traceShader.safeGetUniform("Surface").set(key.aspect(), key.size(), 0f, key.tilt());
@@ -212,22 +216,29 @@ final class BlackHoleBackdropRenderer extends RenderType {
             Slot display = find(requested);
             if (display == null) return;
             int width = requested.width(), height = requested.height();
-            if (scene == null) scene = allocate(CAPACITY, false);
+            // Grow only: switching two visible sizes must not reallocate the shared shade target every draw.
+            if (scene != null && (scene.width < width || scene.height < height)) {
+                int growWidth = Math.max(width, scene.width), growHeight = Math.max(height, scene.height);
+                scene.destroyBuffers();
+                scene = null;
+                scene = allocate(growWidth, growHeight, false);
+            }
+            if (scene == null) scene = allocate(width, height, false);
             bindTarget(scene, width, height);
             shadeShader.setSampler("Geometry", display.texture);
-            shadeShader.safeGetUniform("ContentScale").set((float) width / CAPACITY, (float) height / CAPACITY);
+            shadeShader.safeGetUniform("ContentScale").set((float) width / display.texture.width, (float) height / display.texture.height);
             shadeShader.safeGetUniform("Motion").set(phase, p.brightness(), p.outline(), 0f);
             color(shadeShader, "InkColor", p.color()); color(shadeShader, "BackgroundColor", p.backgroundColor());
             VisualRevealRenderer.quad(g, SHADE, -1, -1, 2, 2, IDENTITY);
             shadeShader.setSampler("Geometry", null);
             if (p.glow() > 0 && p.brightness() > 0) {
-                if (bloomA == null) bloomA = allocate(BLOOM_CAPACITY, false);
-                if (bloomB == null) bloomB = allocate(BLOOM_CAPACITY, false);
+                if (bloomA == null) bloomA = allocate(BLOOM_CAPACITY, BLOOM_CAPACITY, false);
+                if (bloomB == null) bloomB = allocate(BLOOM_CAPACITY, BLOOM_CAPACITY, false);
                 float scale = Math.min(1f, (float) BLOOM_CAPACITY / Math.max(width, height));
                 int bw = Math.max(1, Math.round(width * scale)), bh = Math.max(1, Math.round(height * scale));
                 float spread = 1f + p.glow() * 1.5f;
-                blur(g, scene, CAPACITY, width, height, bloomA, bw, bh, spread / bw, 0, .35f);
-                blur(g, bloomA, BLOOM_CAPACITY, bw, bh, bloomB, bw, bh, 0, spread / bh, 0);
+                blur(g, scene, width, height, bloomA, bw, bh, spread / bw, 0, .35f);
+                blur(g, bloomA, bw, bh, bloomB, bw, bh, 0, spread / bh, 0);
             }
         } finally {
             GL15.glBindBuffer(GL21.GL_PIXEL_UNPACK_BUFFER, unpack);
@@ -240,11 +251,11 @@ final class BlackHoleBackdropRenderer extends RenderType {
             if (clipped) RenderSystem.enableScissor(scissor[0], scissor[1], scissor[2], scissor[3]); else RenderSystem.disableScissor();
         }
     }
-    private static void blur(GuiGraphics g, TextureTarget source, int capacity, int width, int height,
+    private static void blur(GuiGraphics g, TextureTarget source, int width, int height,
                              TextureTarget target, int tw, int th, float dx, float dy, float threshold) {
         bindTarget(target, tw, th);
         bloomShader.setSampler("Source", source);
-        bloomShader.safeGetUniform("ContentScale").set((float) width / capacity, (float) height / capacity);
+        bloomShader.safeGetUniform("ContentScale").set((float) width / source.width, (float) height / source.height);
         bloomShader.safeGetUniform("Texel").set(1f / width, 1f / height);
         bloomShader.safeGetUniform("Filter").set(dx, dy, threshold, 0f);
         VisualRevealRenderer.quad(g, BLOOM, -1, -1, 2, 2, IDENTITY);

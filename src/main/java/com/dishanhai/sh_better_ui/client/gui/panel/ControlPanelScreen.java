@@ -75,12 +75,12 @@ import java.util.function.IntConsumer;
 
 /** 山海：在同一画面编辑 SHBUI 客户端配置和快捷键。 */
 public final class ControlPanelScreen extends Screen implements UiScreenReturn.Target {
-    private static final int MAX_WIDTH = 624;
+    private static final int MAX_WIDTH = 800;
     private static final int PADDING = 14;
     private static final int GAP = 8;
     private static final int BUTTON_HEIGHT = 22;
-    private static final int HEADER_HEIGHT = 64;
-    private static final int CONFIG_HEADER_HEIGHT = 94;
+    private static final int HEADER_HEIGHT = 92;
+    private static final int CONFIG_HEADER_HEIGHT = 122;
     private static final int FOOTER_HEIGHT = 46;
     private static final int GLASS_STACK_HEIGHT = 122;
     private static final int GLASS_SIDE_HEIGHT = 116;
@@ -121,8 +121,24 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private UiOverlayHost overlays;
     private UiScrollableSectionBar sections;
     private UiScrollableSectionBar navigation;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail sidebar;
+    private final com.dishanhai.sh_better_ui.client.gui.scaled.UiLayeredMotion layers = ShBetterUiApi.motion().layeredMotion(380, 250);
+    private MpThemeBrowser themeBrowser;
+    private int retainedThemePage;
+    private UiButton musicOpen;
+    private UiButton themePrevious, themeNext;
+    private EditBox search;
+    private String searchQuery = "";
+    private boolean searchDirty;
+    private UiButton historyBack, historyForward;
+    private int sidebarWidth;
+    private final ControlCenterNavigation history = new ControlCenterNavigation(
+            new ControlCenterNavigation.Location("CONFIGURATION", "GLASS", "", 0));
+    private int bodyX() { return left + PADDING + sidebarWidth; }
+    private int bodyWidth() { return panelWidth - 2 * PADDING - sidebarWidth; }
     private UiToggleButton enabled;
     private UiButton glassParameters;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.UiSettingCard glassCard;
     private UiToggleButton sampling;
     private UiToggleButton contrast;
     private UiToggleButton motion;
@@ -199,6 +215,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         if (navigation != null) navigation.cancelDrag();
         sections = null;
         navigation = null;
+        if (sidebar != null) sidebar.close();
+        sidebar = null;
+        search = null;
+        historyBack = historyForward = null;
         if (width != layoutWidth || height != layoutHeight) {
             pageMorph.snapTo(1f);
             pageHandoff.clear();
@@ -207,7 +227,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
         back = null;
         clearPage();
-        fits = width >= 240 && height >= 186;
+        fits = width >= 240 && height >= 200;
         if (!fits) {
             entrance.finish();
             returning.clearHandoff();
@@ -220,7 +240,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
 
         panelWidth = Math.min(MAX_WIDTH, width - 12);
-        sidePreview = panelWidth >= 388;
+        sidebarWidth = panelWidth >= 500 && height >= 300 ? 136 : 0;
+        sidePreview = bodyWidth() >= 388;
         panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
@@ -228,22 +249,42 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             entered = true;
             entrance.startAt(width * 0.5f, top + 5f);
         }
+        layers.setShown(true, PageTransition.nowMs(), preferences.reducedMotion());
         bodyTop = top + (selectedArea == Area.CONFIGURATION ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
         bodyBottom = top + panelHeight - FOOTER_HEIGHT;
-        int x = left + PADDING;
-        int innerWidth = panelWidth - 2 * PADDING;
+        int x = bodyX();
+        int innerWidth = bodyWidth();
         int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
         navigation = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 35, innerWidth, BUTTON_HEIGHT),
+                new Bounds(x, top + 63, innerWidth, BUTTON_HEIGHT),
                 preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
                 draft.settings().tabs(), mainTabWidth).withJellyRadio());
         sections = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 65, innerWidth, BUTTON_HEIGHT),
+                new Bounds(x, top + 93, innerWidth, BUTTON_HEIGHT),
                 preferences, TABS, selectedSection.ordinal(), index -> requestedSection = SECTIONS.get(index),
                 draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH).withJellyRadio());
+        navigation.visible = navigation.active = sidebarWidth == 0;
+        if (sidebarWidth > 0) {
+            sidebar = addRenderableWidget(new com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail(
+                    font, new Bounds(left + PADDING, top + 63, sidebarWidth - GAP, Math.min(bodyBottom - top - 63, AREAS.size() * 28)),
+                    label("navigation"), AREAS.stream().map(area -> new com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Item(area.tab.label(), area.tab.icon())).toList(),
+                    selectedArea.ordinal(), com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Orientation.VERTICAL,
+                    preferences, index -> requestedArea = AREAS.get(index)));
+        }
+        historyBack = addRenderableWidget(button(x, top + 34, 24, label("history.back"), GraphicIcon.BACK, false, () -> restoreHistory(-1)));
+        historyForward = addRenderableWidget(button(x + 28, top + 34, 24, label("history.forward"), GraphicIcon.FORWARD, false, () -> restoreHistory(1)));
+        historyBack.setIcon(GraphicIcon.BACK);
+        historyBack.setPreview(label("history.back"));
+        historyForward.setIcon(GraphicIcon.FORWARD);
+        historyForward.setPreview(label("history.forward"));
+        search = addRenderableWidget(new EditBox(font, x + 60, top + 34, innerWidth - 60, BUTTON_HEIGHT, label("search")));
+        search.setMaxLength(128);
+        search.setHint(label("search"));
+        search.setValue(searchQuery);
+        search.setResponder(value -> { searchQuery = value; searchDirty = true; });
         addFooter(x, innerWidth);
         buildPage();
-        if (restoreThemeConfigureFocus && themeConfigure != null && minecraft != null && minecraft.screen == this) {
+        if (restoreThemeConfigureFocus && (themeConfigure != null || themeCustomize != null) && minecraft != null && minecraft.screen == this) {
             setFocused(returnThemeSection == null ? themeConfigure : switch (returnThemeSection) {
                 case COLORS -> themeCustomize;
                 case BACKGROUNDS -> themeBackgroundSelect;
@@ -268,6 +309,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         developer = null;
         enabled = null;
         glassParameters = null;
+        if (glassCard != null) glassCard.close();
+        glassCard = null;
         sampling = null;
         contrast = null;
         motion = null;
@@ -291,10 +334,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void buildPage() {
-        int x = left + PADDING;
+        int x = bodyX();
         boolean configuration = selectedArea == Area.CONFIGURATION;
         int retainedScroll = configuration ? sectionScroll[selectedSection.ordinal()] : areaScroll[selectedArea.ordinal()];
-        sections.visible = sections.active = configuration;
+        sections.visible = sections.active = configuration && searchQuery.isBlank();
         bodyTop = top + (configuration ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
         contentHeight = switch (selectedArea) {
             case CONFIGURATION -> switch (selectedSection) {
@@ -304,13 +347,35 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 case SHORTCUT -> 42;
             };
             case DEVELOPER -> 120;
+            case THEMES -> 230;
+            case MUSIC -> 82;
+            case MUONIUM -> 132;
             case OVERVIEW -> 0;
             case LINKS -> 16 + FeedbackLink.values().length * (BUTTON_HEIGHT + GAP);
         };
-        contentWidth = panelWidth - 2 * PADDING
+        contentWidth = bodyWidth()
                 - (selectedArea != Area.OVERVIEW && maxScroll() == 0 ? 0 : SCROLLBAR_WIDTH + GAP);
         glassWidth = sidePreview ? contentWidth * 5 / 8 : contentWidth;
-        if (selectedArea == Area.DEVELOPER) addDeveloperControls(x);
+        if (!searchQuery.isBlank()) {
+            var matches = searchEntries();
+            contentHeight = 24 + matches.size() * 30;
+            contentWidth = bodyWidth() - (maxScroll() > 0 ? SCROLLBAR_WIDTH + GAP : 0);
+            for (int i = 0; i < matches.size(); i++) {
+                var result = matches.get(i);
+                row(button(x, 24 + i * 30, contentWidth, Component.literal(result.title()), GraphicIcon.NEXT, false,
+                        () -> navigateTo(Area.valueOf(result.area()), Section.valueOf(result.section()))));
+            }
+        } else if (selectedArea == Area.THEMES) addThemeBrowser(x);
+        else if (selectedArea == Area.MUONIUM) {
+            var open = row(button(x, 28, contentWidth, label("muonium.open"), GraphicIcon.NEXT, false,
+                    () -> com.dishanhai.sh_better_ui.kernel.internal.mp.MpSettingsScreen.open(this)));
+            open.setPreview(label("muonium.description").copy().append(" ").append(label("muonium.independent")));
+            contentHeight = 68 + font.split(label("muonium.independent"), contentWidth).size() * font.lineHeight;
+        } else if (selectedArea == Area.MUSIC) {
+            musicOpen = row(button(x, 28, contentWidth, label("music.open"), GraphicIcon.NEXT, false,
+                    () -> minecraft.setScreen(ShBetterUiApi.settings().onlineMusicScreen(this, () -> musicOpen))));
+            musicOpen.active = ShBetterUiApi.settings().onlineMusicAvailable();
+        } else if (selectedArea == Area.DEVELOPER) addDeveloperControls(x);
         else if (selectedArea == Area.OVERVIEW) refreshOverview(PageTransition.nowMs());
         else if (selectedArea == Area.LINKS) addFeedbackLinks(x);
         else switch (selectedSection) {
@@ -321,17 +386,89 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             case TABS -> addTabControls(x);
             case SHORTCUT -> addShortcutControls(x);
         }
-        scrollTo(retainedScroll);
+        scrollTo(searchQuery.isBlank() ? retainedScroll : 0);
         refreshActions();
+    }
+
+    private void addThemeBrowser(int x) {
+        if (themeBrowser == null) {
+            themeBrowser = new MpThemeBrowser(MinecraftThemes.manager(),
+                    this::effectiveBrowserTheme, theme -> edit(new Draft(draft.settings().withTheme(theme), draft.shortcut())),
+                    MinecraftThemes::isConfiguredPalette);
+            themeBrowser.page(retainedThemePage);
+        }
+        themeBrowser.layout(new Bounds(x, 24, contentWidth, 184), preferences).forEach(this::row);
+        themePrevious = row(button(x, 216, 28, label("history.back"), GraphicIcon.BACK, false, () -> pageThemes(-1)));
+        themePrevious.setIcon(GraphicIcon.BACK);
+        themePrevious.setPreview(label("history.back"));
+        themePrevious.active = themeBrowser.pageIndex() > 0;
+        themeNext = row(button(x + 32, 216, 28, label("history.forward"), GraphicIcon.FORWARD, false, () -> pageThemes(1)));
+        themeNext.setIcon(GraphicIcon.FORWARD);
+        themeNext.setPreview(label("history.forward"));
+        themeNext.active = themeBrowser.pageIndex() + 1 < themeBrowser.pageCount();
+        themeCustomize = row(button(x + 68, 216, contentWidth - 68, label("theme.customize"), GraphicIcon.SETTINGS, false,
+                () -> customizeTheme(com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection.COLORS)));
+        contentHeight = 242;
+    }
+
+    static ThemeSettings effectiveBrowserTheme(ClientUiSettings settings, Predicate<String> selectable) {
+        var theme = settings.theme();
+        String dynamic = settings.dynamicTheme().fixedTheme();
+        if (theme.mode().fixedThemeId() == null
+                && (theme.mode() != ThemeSettings.Mode.CUSTOM || theme.registeredThemeId().isEmpty())
+                && !dynamic.isEmpty() && selectable.test(dynamic)) return theme.withRegisteredTheme(dynamic);
+        return theme;
+    }
+
+    private ThemeSettings effectiveBrowserTheme() {
+        try {
+            return effectiveBrowserTheme(draft.settings(), id -> !MinecraftThemes.isConfiguredPalette(id)
+                    && MinecraftThemes.manager().registry().find(id).isPresent());
+        } catch (IllegalArgumentException fullArchive) {
+            status = Component.translatable("sh_better_ui.custom_theme.palette_capacity");
+            return draft.settings().theme();
+        }
+    }
+
+    private void pageThemes(int direction) {
+        if (themeBrowser.page(direction)) remountThemePage(direction);
+    }
+
+    private void remountThemePage(int direction) {
+        var previousFocus = getFocused();
+        String id = previousFocus instanceof UiThemePreviewCard card ? card.themeId() : null;
+        boolean previousButton = previousFocus == themePrevious;
+        boolean nextButton = previousFocus == themeNext;
+        boolean customize = previousFocus == themeCustomize;
+        boolean owned = rows.containsKey(previousFocus);
+        clearPage();
+        buildPage();
+        if (!owned) return; // Search/sidebar/footer focus survives a registry refresh untouched.
+        GuiEventListener target = null;
+        if (id != null) target = rows.keySet().stream().filter(UiThemePreviewCard.class::isInstance)
+                .map(UiThemePreviewCard.class::cast).filter(card -> card.themeId().equals(id)).findFirst().orElse(null);
+        if (customize) target = themeCustomize;
+        else if ((previousButton || direction < 0) && themePrevious.active) target = themePrevious;
+        else if ((nextButton || direction > 0) && themeNext.active) target = themeNext;
+        if (target == null) target = rows.keySet().stream().filter(UiThemePreviewCard.class::isInstance)
+                .filter(widget -> widget.active && widget.visible).findFirst().orElse(themePrevious);
+        setFocused(target);
     }
 
     private void addGlassControls(int x) {
         enabled = toggle(x, 16, glassWidth, "enabled", value -> label("enabled", onOff(value)),
                 value -> editBackdrop(draft.settings().backdrop().withEnabled(value)));
         enabled.setIcons(GraphicIcon.ENABLE, GraphicIcon.DISABLE);
-        glassParameters = row(button(x, 42, glassWidth, label("glass_parameters"), GraphicIcon.SETTINGS,
-                false, this::openGlassParameters));
-        glassParameters.setPreview(label("glass_parameters.tooltip"));
+        // Replace the separately mounted parameter row with a real settings card and an independent arrow.
+        rows.remove(enabled.button());
+        removeWidget(enabled.button());
+        glassCard = ShBetterUiApi.controls().settingCard(font, new Bounds(x, 18, glassWidth, 0),
+                label("section.glass"), label("glass_parameters.tooltip"), enabled.button(),
+                label("glass_parameters"), preferences, this::openGlassParameters);
+        glassCard.widgets().forEach(this::row);
+        glassParameters = glassCard.detailsButton();
+        glassParameters.setMessage(label("glass_parameters"));
+        contentHeight = Math.max(contentHeight, glassCard.height() + (sidePreview ? 30 : 88));
     }
 
     private void openGlassParameters() {
@@ -448,13 +585,22 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void nextDynamicTheme() {
-        var choices = ShBetterUiApi.themes().registry().themes().keySet().stream().sorted().toList();
+        var choices = dynamicThemeChoices(ShBetterUiApi.themes().registry().themes().keySet(),
+                MinecraftThemes::isConfiguredPalette);
         int next = choices.indexOf(draft.settings().dynamicTheme().fixedTheme()) + 1;
         stageDynamicTheme(next < choices.size() ? choices.get(next) : "");
     }
 
+    static List<String> dynamicThemeChoices(java.util.Collection<String> ids, Predicate<String> internal) {
+        return ids.stream().filter(id -> !internal.test(id)).sorted().toList();
+    }
+
+    static boolean canStageDynamicTheme(String id, Predicate<String> internal) {
+        return DynamicThemeSettings.validFixedTheme(id) && (id.isEmpty() || !internal.test(id));
+    }
+
     private void stageDynamicTheme(String id) {
-        if (!DynamicThemeSettings.validFixedTheme(id)) {
+        if (!canStageDynamicTheme(id, MinecraftThemes::isConfiguredPalette)) {
             status = label("dynamic_theme.invalid");
             return;
         }
@@ -481,6 +627,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         var background = ThemeEffectPreview.background(themeGroupId());
         themeGroup.setMessage(themeGroupName());
         var theme = draft.settings().theme();
+        String registered = theme.mode() == ThemeSettings.Mode.CUSTOM ? theme.registeredThemeId() : "";
+        var selectedName = registered.isEmpty() ? null : ShBetterUiApi.themes().registry().find(registered)
+                .map(value -> Component.translatable(value.nameKey())).orElseGet(() -> Component.literal(registered));
+        themeCustomize.setMessage(selectedName == null ? label("theme.customize")
+                : label("theme.customize").copy().append(" · ").append(selectedName));
+        themeCustomize.setPreview(selectedName == null ? label("theme.customize")
+                : selectedName.copy().append("\n").append(Component.literal(registered)));
         boolean hud = theme.mode() == ThemeSettings.Mode.HUD_GLASS;
         themeConfigure.setMessage(hud ? label("theme.hud_background.configure") : themeConfigureLabel());
         themeConfigure.setPreview(hud || background != null ? label("theme.background.tooltip") : null);
@@ -589,7 +742,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 widget = overviewGroups.get(index);
                 widget.update(groups.get(index));
             } else {
-                widget = new ModOverviewGroup(left + PADDING, y, contentWidth, groups.get(index), font, preferences);
+                widget = new ModOverviewGroup(bodyX(), y, contentWidth, groups.get(index), font, preferences);
                 overviewGroups.add(row(widget));
             }
             rows.put(widget, y);
@@ -761,6 +914,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         var nextPreferences = UiPreferences.fromSettings(settings);
         sections.setSettings(settings.tabs());
         navigation.setSettings(settings.tabs());
+        if (historyBack != null) historyBack.active = history.canBack();
+        if (historyForward != null) historyForward.active = history.canForward();
+        if (sidebar != null) sidebar.setPreferences(nextPreferences);
         if (!preferences.equals(nextPreferences)) {
             preferences = nextPreferences;
             for (GuiEventListener listener : children()) {
@@ -771,12 +927,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 else if (listener instanceof ModOverviewGroup group) group.setPreferences(preferences);
             }
         }
-        if (selectedArea == Area.DEVELOPER) {
+        if (searchQuery.isBlank() && selectedArea == Area.DEVELOPER) {
             sampling.setValue(settings.backdrop().denseSampling());
             widgetBlur.setValue(settings.widgetBackdropBlur() && !settings.highContrast());
             widgetBlur.button().active = !settings.highContrast();
             if (settings.highContrast()) widgetBlur.button().setMessage(label("widget_blur.suspended"));
-        } else if (selectedArea == Area.CONFIGURATION) switch (selectedSection) {
+        } else if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION) switch (selectedSection) {
             case GLASS -> {
                 var backdrop = settings.backdrop();
                 enabled.setValue(backdrop.enabled());
@@ -855,6 +1011,22 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         if (entrance.active() && !capturingShortcut && key != GLFW.GLFW_KEY_ESCAPE
                 && matchesPanelKey(key, scanCode, modifiers)) return true;
         if (!entrance.allowsActivation(key, getFocused())) return true;
+        if (!capturingShortcut && fits && (modifiers & GLFW.GLFW_MOD_ALT) != 0
+                && (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_RIGHT)) {
+            restoreHistory(key == GLFW.GLFW_KEY_LEFT ? -1 : 1); return true;
+        }
+        if (!capturingShortcut && search != null && search.isFocused() && !searchQuery.isBlank()
+                && (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER)) {
+            var results = searchEntries();
+            if (!results.isEmpty()) navigateTo(Area.valueOf(results.get(0).area()), Section.valueOf(results.get(0).section()));
+            return true;
+        }
+        if (!capturingShortcut && search != null && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && key == GLFW.GLFW_KEY_F) {
+            setFocused(search); return true;
+        }
+        if (!capturingShortcut && search != null && !searchQuery.isEmpty() && key == GLFW.GLFW_KEY_ESCAPE) {
+            search.setValue(""); applyRequestedSection(); return true;
+        }
         if (capturingShortcut) {
             if (key == GLFW.GLFW_KEY_ESCAPE) {
                 finishShortcut(draft.shortcut());
@@ -916,43 +1088,89 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private void scrollTo(int offset) {
         scroll = UiMath.clamp(offset, 0, maxScroll());
-        if (selectedArea == Area.CONFIGURATION) sectionScroll[selectedSection.ordinal()] = scroll;
-        else areaScroll[selectedArea.ordinal()] = scroll;
+        if (searchQuery.isBlank()) {
+            if (selectedArea == Area.CONFIGURATION) sectionScroll[selectedSection.ordinal()] = scroll;
+            else areaScroll[selectedArea.ordinal()] = scroll;
+        }
         rows.forEach((widget, y) -> widget.setY(bodyTop + y - scroll));
+        if (glassCard != null) glassCard.setBounds(new Bounds(bodyX(), bodyTop + 18 - scroll, glassWidth, 0));
+    }
+
+    private ControlCenterNavigation.Location location() {
+        return new ControlCenterNavigation.Location(selectedArea.name(), selectedSection.name(), searchQuery, scroll);
+    }
+
+    private void navigateTo(Area area, Section section) {
+        history.replace(location());
+        history.visit(new ControlCenterNavigation.Location(area.name(), section.name(), "",
+                area == Area.CONFIGURATION ? sectionScroll[section.ordinal()] : areaScroll[area.ordinal()]));
+        restoreLocation(history.current());
+    }
+
+    private void restoreHistory(int direction) {
+        if (direction < 0 ? !history.canBack() : !history.canForward()) return;
+        history.replace(location());
+        var destination = direction < 0 ? history.back() : history.forward();
+        restoreLocation(destination);
+    }
+
+    private void restoreLocation(ControlCenterNavigation.Location location) {
+        boolean continuing = capturePage();
+        selectedArea = Area.valueOf(location.area());
+        selectedSection = Section.valueOf(location.section());
+        searchQuery = location.query();
+        searchDirty = false;
+        setDragging(false);
+        clearPage();
+        navigation.select(selectedArea.ordinal());
+        sections.select(selectedSection.ordinal());
+        if (sidebar != null) sidebar.state().select(selectedArea.ordinal());
+        search.setValue(searchQuery);
+        searchDirty = false;
+        buildPage();
+        scrollTo(location.scroll());
+        startPageMorph(historyBack, PageTransition.nowMs(), continuing);
+        GuiEventListener target = searchQuery.isBlank() ? (sidebar == null ? navigation : sidebar) : search;
+        if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION && getFocused() == sections) target = sections;
+        // A mouse-selected partially visible tab must not receive another focus-enter
+        // event: the tab bar intentionally skips reveal when autoReveal is disabled.
+        if (getFocused() != target) setFocused(target);
+    }
+
+    private List<ControlCenterNavigation.Entry> searchEntries() {
+        var entries = new ArrayList<ControlCenterNavigation.Entry>();
+        for (Section section : SECTIONS) entries.add(new ControlCenterNavigation.Entry(
+                Area.CONFIGURATION.name(), section.name(), section.tab.label().getString(),
+                label("search_keywords." + section.name().toLowerCase(java.util.Locale.ROOT)).getString()));
+        for (Area area : AREAS) if (area != Area.CONFIGURATION) entries.add(new ControlCenterNavigation.Entry(
+                area.name(), Section.GLASS.name(), area.tab.label().getString(), area.tab.label().getString()));
+        return ControlCenterNavigation.search(entries, searchQuery);
     }
 
     private void applyRequestedSection() {
-        Area nextArea = requestedArea;
-        requestedArea = null;
-        if (nextArea != null && nextArea != selectedArea) {
-            boolean continuing = capturePage();
-            selectedArea = nextArea;
-            requestedSection = null;
-            setDragging(false);
+        if (searchDirty) {
+            searchDirty = false;
             clearPage();
             buildPage();
-            startPageMorph(navigation.buttons().get(nextArea.ordinal()), PageTransition.nowMs(), continuing);
-            if (getFocused() != navigation) setFocused(navigation);
-            return;
         }
-        Section next = requestedSection;
+        Area area = requestedArea;
+        Section section = requestedSection;
+        requestedArea = null;
         requestedSection = null;
-        if (selectedArea != Area.CONFIGURATION || next == null || next == selectedSection) return;
-        boolean continuing = capturePage();
-        selectedSection = next;
-        setDragging(false);
-        clearPage();
-        buildPage();
-        var tab = sections.buttons().get(next.ordinal());
-        startPageMorph(tab, PageTransition.nowMs(), continuing);
-        if (getFocused() != sections) setFocused(sections);
+        if (area != null && (area != selectedArea || !searchQuery.isBlank())) navigateTo(area, selectedSection);
+        else if (section != null && section != selectedSection) {
+            navigateTo(Area.CONFIGURATION, section);
+            // Native release belongs to the section bar. Do not transfer its keyboard
+            // continuation to the main navigation just because both use the same journal.
+            if (getFocused() != sections) setFocused(sections);
+        }
     }
 
     private boolean capturePage() {
         boolean continuing = pageHandoff.active();
         if (fits && minecraft != null && minecraft.screen == this) {
             int captureTop = top + HEADER_HEIGHT;
-            pageHandoff.capture(new Bounds(left + PADDING - 3, captureTop, panelWidth - 2 * PADDING + 6,
+            pageHandoff.capture(new Bounds(bodyX() - 3, captureTop, bodyWidth() + 6,
                     bodyBottom - captureTop), preferences);
         }
         return continuing;
@@ -994,7 +1212,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private boolean inBody(double x, double y) {
-        return fits && x >= left + PADDING - 3 && x < left + panelWidth - PADDING + 3
+        return fits && x >= bodyX() - 3 && x < left + panelWidth - PADDING + 3
                 && y >= bodyTop && y < bodyBottom;
     }
 
@@ -1106,7 +1324,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private int scrollbarX() {
-        return left + PADDING + contentWidth + GAP;
+        return bodyX() + contentWidth + GAP;
     }
 
     private int thumbHeight() {
@@ -1158,6 +1376,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     @Override
     public void removed() {
+        if (themeBrowser != null) { retainedThemePage = themeBrowser.pageIndex(); themeBrowser.close(); themeBrowser = null; }
         if (themeMode != null) themeMode.cancelDrag();
         themeEffectPreview.close();
         pageHandoff.clear();
@@ -1217,10 +1436,18 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void renderContent(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        int x = left + PADDING;
+        applyRequestedSection();
+        int x = bodyX();
         long now = PageTransition.nowMs();
-        if (selectedArea == Area.OVERVIEW && now >= nextOverviewRefresh) refreshOverview(now);
-        graphics.drawString(font, title, x, top + 15, LiquidGlassTheme.textColor(), false);
+        if (searchQuery.isBlank() && selectedArea == Area.OVERVIEW && now >= nextOverviewRefresh) refreshOverview(now);
+        layers.setShown(!entrance.closing(), now, preferences.reducedMotion());
+        layers.tick(now, 1d, preferences.reducedMotion());
+        if (themeBrowser != null && selectedArea == Area.THEMES && searchQuery.isBlank() && themeBrowser.refresh()) {
+            remountThemePage(0);
+        }
+        if (themeBrowser != null && selectedArea == Area.THEMES && themeBrowser.error() != null) status = themeBrowser.error();
+        graphics.drawString(font, title, x, top + 15, (LiquidGlassTheme.textColor() & 0xffffff)
+                | (Math.max(1, (int)(255 * layers.layer(0, .45))) << 24), false);
         renderBody(graphics, x, mouseX, mouseY, partialTick);
         pageHandoff.render(graphics, preferences);
         Component message = status != null ? status : !draft.equals(saved) ? label("unsaved") : null;
@@ -1231,7 +1458,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private void renderBody(GuiGraphics graphics, int x, int mouseX, int mouseY, float partialTick) {
         long now = PageTransition.nowMs();
         float progress = GuiMotion.clamp01(pageMorph.sample(now, preferences));
-        var viewport = new Bounds(x - 3, bodyTop, panelWidth - 2 * PADDING + 6, bodyBottom - bodyTop);
+        var viewport = new Bounds(x - 3, bodyTop, bodyWidth() + 6, bodyBottom - bodyTop);
         int surface = preferences.highContrast() ? DarkModeTheme.backgroundColor() : DarkModeTheme.surfaceColor();
         var panel = new GuiRect(viewport.x(), viewport.y(), viewport.width(), viewport.height());
         float center = pageOrigin.sample(now, preferences);
@@ -1250,7 +1477,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             if (progress < 1f) {
                 RoundedCorners.draw(graphics, viewport.x(), viewport.y(), viewport.width(), viewport.height(),
                         BODY_RADIUS, 0f, 0, surface);
-                float opacity = GuiRenderUtil.easeOut((progress - 0.54f) / 0.44f);
+                float opacity = GuiRenderUtil.easeOut((progress - 0.54f) / 0.44f) * layers.layer(.12, 1);
                 renderSkeleton(graphics, viewport, x, now, (1f - opacity) * 0.42f);
             }
             RoundedCorners.draw(graphics, rect.getX(), rect.getY(), rect.getW(), rect.getH(),
@@ -1270,7 +1497,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         int right = Math.min(viewport.right(), Math.round(rect.getX() + rect.getW() - inset));
         int bottom = Math.min(viewport.bottom(), Math.round(rect.getY() + rect.getH() - inset));
         var clip = new Bounds(left, top, Math.max(0, right - left), Math.max(0, bottom - top));
-        float opacity = GuiRenderUtil.easeOut((progress - 0.54f) / 0.44f);
+        float opacity = GuiRenderUtil.easeOut((progress - 0.54f) / 0.44f) * layers.layer(.12, 1);
         visiblePage = opacity >= 0.9f ? clip : null;
         if (clip.width() == 0 || clip.height() == 0) return;
         graphics.enableScissor(clip.x(), clip.y(), clip.right(), clip.bottom());
@@ -1310,17 +1537,27 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private void renderPage(GuiGraphics graphics, int x, int mouseX, int mouseY, float partialTick) {
         int origin = bodyTop - scroll;
         if (selectedArea != Area.OVERVIEW) {
-            graphics.drawString(font, selectedArea == Area.CONFIGURATION ? selectedSection.tab.label() : selectedArea.tab.label(),
+            graphics.drawString(font, searchQuery.isBlank() ? (selectedArea == Area.CONFIGURATION ? selectedSection.tab.label() : selectedArea.tab.label()) : label("search.results", searchEntries().size()),
                     x, origin + 4, LiquidGlassTheme.accentColor(), false);
         }
-        if (selectedArea == Area.CONFIGURATION && selectedSection == Section.GLASS) renderPreview(graphics, x, origin);
-        if (selectedArea == Area.CONFIGURATION && selectedSection == Section.DISPLAY
+        if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION && selectedSection == Section.GLASS) {
+            if (glassCard != null) glassCard.render(graphics, mouseX, mouseY, partialTick);
+            renderPreview(graphics, x, origin + (sidePreview || glassCard == null ? 0 : Math.max(0, glassCard.height() - 60)));
+        }
+        if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION && selectedSection == Section.DISPLAY
                 && draft.settings().theme().mode() == ThemeSettings.Mode.CUSTOM && ThemeEffectPreview.supports(themeGroupId())
                 && origin + 248 > bodyTop && origin + 172 < bodyBottom) {
             themeEffectPreview.draw(themeGroupId(), graphics, font, new Bounds(x, origin + 172, contentWidth, 76),
                     themeGroupName(), mouseX, mouseY, preferences);
         }
-        if (selectedArea == Area.DEVELOPER) {
+        if (searchQuery.isBlank() && selectedArea == Area.MUONIUM) {
+            int lineY = origin + 60;
+            for (var line : font.split(label("muonium.independent"), contentWidth)) {
+                graphics.drawString(font, line, x, lineY, LiquidGlassTheme.mutedTextColor(), false);
+                lineY += font.lineHeight;
+            }
+        }
+        if (searchQuery.isBlank() && selectedArea == Area.DEVELOPER) {
             graphics.drawString(font, label("developer_config.tools"), x, origin + 78, LiquidGlassTheme.mutedTextColor(), false);
         }
         for (AbstractWidget widget : rows.keySet()) {
@@ -1382,6 +1619,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private enum Area {
         CONFIGURATION("configuration", GraphicIcon.SETTINGS),
+        MUONIUM("muonium", GraphicIcon.SETTINGS),
+        THEMES("themes", GraphicIcon.CUSTOM_THEME),
+        MUSIC("music", GraphicIcon.MONITOR),
         DEVELOPER("developer_config", GraphicIcon.CODE),
         OVERVIEW("overview", GraphicIcon.INFO),
         LINKS("links", GraphicIcon.CHAT);
