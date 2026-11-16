@@ -220,6 +220,27 @@ class SearchIndexTest {
     }
 
     @Test
+    void matchesMixedPinyinPrefixesWithoutSkippingSyllables() {
+        var flint = metadataEntry(1, "打火石", "minecraft:flint_and_steel", "打火工具");
+        var alias = entry(2, "Flint and Steel", "other:tool", "打火石");
+        var separated = entry(3, "打-火石", "other:separated");
+        var index = new SearchIndex<>(List.of(flint, alias, separated));
+        for (String query : List.of("dah", "dahs", "dahuos", "dhuoshi", "dahuoshi", "dhs", "DAHS", "dǎhs")) {
+            assertEquals(List.of(flint, alias), index.search(query), query);
+            assertEquals(List.of(1, 2), values(index.suggest(query, 8)), query);
+            assertEquals("打火石", index.suggest(query, 8).getFirst().completion(), query);
+        }
+        assertEquals(List.of(flint, alias, separated), index.search("huos"));
+        assertEquals(List.of(flint), index.search("@minecraft dahs"));
+        assertEquals(List.of(flint), index.search("@dahgj dahs"));
+        assertEquals(List.of(2), values(index.suggest("dahs", value -> value == 2, 8)));
+        assertEquals(List.of(2, 1), values(index.suggestPlainText("dahs", List.of(3, 2, 1), 8)));
+        for (String query : List.of("dash", "dhhs", "dahx", "dahss", "dhsi", "dhshhu")) {
+            assertEquals(List.of(), index.search(query), query);
+        }
+    }
+
+    @Test
     void matchesPinyinFromLocalizedNamesAndAliases() {
         var iron = entry(1, "鐵錠", "mod:iron");
         var copper = entry(2, "铜锭", "mod:copper", "赤金属");
