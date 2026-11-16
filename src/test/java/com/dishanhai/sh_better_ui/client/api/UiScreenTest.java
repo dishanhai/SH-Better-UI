@@ -23,6 +23,120 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
     @Test
+    void escapeStillCancelsIngredientDragAfterFocusClipGuardMerge() throws Exception {
+        // Allocate a native widget shell without bootstrapping Minecraft's item registry.
+        var unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        unsafeField.setAccessible(true);
+        var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+        var slots = (com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots)
+                unsafe.allocateInstance(com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots.class);
+        slots.setX(0); slots.setY(0); slots.setWidth(40); slots.setHeight(20);
+        slots.visible = true; slots.active = true;
+        slots.setMessage(Component.literal("Ingredients"));
+        var stateField = slots.getClass().getDeclaredField("state");
+        stateField.setAccessible(true);
+        stateField.set(slots, new com.dishanhai.sh_better_ui.kernel.api.controls.IngredientSlotsState(2, 2));
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> page.addClipped(slots, () -> new Bounds(0, 0, 60, 40))).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        screen.setFocused(slots);
+        var field = slots.getClass().getDeclaredField("state");
+        field.setAccessible(true);
+        var state = (com.dishanhai.sh_better_ui.kernel.api.controls.IngredientSlotsState) field.get(slots);
+        state.press(0, 5, 5, true);
+        screen.setDragging(true);
+        assertTrue(screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
+        assertFalse(screen.isDragging());
+        assertEquals(-1, state.pressed());
+        assertTrue(slots.consumeCancelledRelease());
+        state.press(0, 5, 5, true);
+        screen.setDragging(true);
+        slots.setY(80); // A scroll or relayout hides the dragged control.
+        assertTrue(screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
+        assertFalse(screen.isDragging());
+        assertEquals(-1, state.pressed());
+        assertTrue(slots.consumeCancelledRelease());
+        screen.removed();
+    }
+
+    @Test
+    void detailResetLabelTracksEditsThatInvalidateUndo() {
+        var session = new com.dishanhai.sh_better_ui.kernel.api.settings.SettingsDraftSession<>(
+                java.util.Map.of("enabled", false), java.util.Map.of("enabled", true));
+        var detail = new UiSettingsDetailPage(Component.literal("Detail"), java.util.List.of(),
+                new UiSettingsDetailPage.Actions(
+                        () -> Component.literal(session.canUndoReset() ? "Undo reset" : "Restore defaults"),
+                        Component.literal("Cancel"), Component.literal("Apply"), session::resetDefaults,
+                        session::cancel, () -> null, session::dirty));
+        // Mount native controls without requesting the live Minecraft theme service.
+        var screen = new UiScreenBuilder(Component.literal("Detail")).backButton(false)
+                .onInit(detail::init).build();
+        screen.width = 400; screen.height = 300; screen.init();
+        var reset = screen.children().stream().filter(AbstractWidget.class::isInstance)
+                .map(AbstractWidget.class::cast)
+                .filter(widget -> widget.getMessage().getString().equals("Restore defaults")).findFirst().orElseThrow();
+        session.resetDefaults();
+        detail.syncActionState();
+        assertEquals("Undo reset", reset.getMessage().getString());
+        session.edit("enabled", false);
+        detail.syncActionState();
+        assertEquals("Restore defaults", reset.getMessage().getString());
+        screen.removed();
+    }
+
+    @Test
+    void disposingCannotBeVetoedByAnEditingCloseGuard() {
+        var screen = new UiScreenBuilder(Component.empty()).build();
+        screen.onCloseRequest(() -> false);
+        assertFalse(screen.permitsClose());
+        screen.dispose();
+        assertTrue(screen.permitsClose());
+    }
+
+    @Test
+    void clippedFocusCannotReceiveKeyboardOrTextAfterViewportMovement() {
+        var widget = new KeyboardWidget();
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> page.addClipped(widget, () -> new Bounds(0, 0, 60, 40))).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        screen.setFocused(widget);
+        widget.setY(50); // Equivalent to scrolling the field out of the viewport.
+        assertTrue(screen.keyPressed(257, 0, 0));
+        assertEquals(0, widget.keys);
+        assertEquals(null, screen.getFocused());
+        screen.setFocused(widget);
+        assertTrue(screen.charTyped('x', 0));
+        assertEquals(0, widget.characters);
+        screen.removed();
+    }
+
+    @Test
+    void focusVisibilityCallbackRunsBeforeAnotherKeyWithoutRendering() {
+        var widget = new KeyboardWidget();
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> {
+                    page.addClipped(widget, () -> new Bounds(0, 0, 60, 40));
+                    page.onFocusChanged(target -> { if (target == widget) widget.setY(0); });
+                }).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        widget.setY(80);
+        screen.setFocused(widget);
+        assertEquals(0, widget.getY());
+        assertTrue(screen.keyPressed(257, 0, 0));
+        assertEquals(1, widget.keys);
+        screen.removed();
+    }
+
+    private static final class KeyboardWidget extends AbstractWidget {
+        int keys, characters;
+        KeyboardWidget() { super(0, 0, 40, 20, Component.empty()); }
+        @Override public boolean keyPressed(int key, int scanCode, int modifiers) { keys++; return true; }
+        @Override public boolean charTyped(char character, int modifiers) { characters++; return true; }
+        @Override protected void renderWidget(GuiGraphics graphics, int x, int y, float tick) {}
+        @Override protected void updateWidgetNarration(NarrationElementOutput output) {}
+    }
+
+    @Test
     void stackUsesTheSameTargetForHitsClicksScrollAndRelease() {
         var lower = new StackWidget();
         var upper = new StackWidget();

@@ -30,6 +30,8 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Predicate;
+import java.util.function.Consumer;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 
 /** 山海：通过回调组合现有 API 的原生界面，每次打开独立持有并释放上下文。 */
@@ -58,6 +60,8 @@ public final class UiScreen extends Screen {
     private Bounds widgetViewport;
     private WidgetScroll widgetScroll;
     private UiFrame drawingFrame;
+    private Consumer<GuiEventListener> focusChanged = ignored -> {};
+    private BooleanSupplier closeRequested = () -> true;
     private final Map<GuiEventListener, Supplier<Bounds>> widgetClips = new IdentityHashMap<>();
     private final Map<GuiEventListener, String> widgetStacks = new IdentityHashMap<>();
     private GuiEventListener hoveredStackWidget;
@@ -138,6 +142,38 @@ public final class UiScreen extends Screen {
         return widget;
     }
 
+    /** Runs synchronously after native focus changes, before another key can activate the target. */
+    public void onFocusChanged(Consumer<GuiEventListener> listener) {
+        focusChanged = Objects.requireNonNull(listener);
+    }
+
+    @Override
+    public void setFocused(GuiEventListener listener) {
+        super.setFocused(listener);
+        if (focusChanged != null) focusChanged.accept(listener);
+    }
+
+    /** Return false to keep this page open (for example while a discard dialog is active). */
+    public void onCloseRequest(BooleanSupplier handler) { closeRequested = Objects.requireNonNull(handler); }
+
+    boolean permitsClose() { return disposed || removed || closeRequested.getAsBoolean(); }
+
+    private boolean focusedWidgetOutsideClip() {
+        if (!(getFocused() instanceof AbstractWidget widget)) return false;
+        var supplier = widgetClips.get(widget);
+        if (supplier == null) return false;
+        var clip = supplier.get();
+        return !widget.visible || clip.width() <= 0 || clip.height() <= 0
+                || widget.getX() >= clip.right() || widget.getX() + widget.getWidth() <= clip.x()
+                || widget.getY() >= clip.bottom() || widget.getY() + widget.getHeight() <= clip.y();
+    }
+
+    @Override
+    public boolean charTyped(char character, int modifiers) {
+        if (focusedWidgetOutsideClip()) { setFocused(null); return true; }
+        return super.charTyped(character, modifiers);
+    }
+
     /** Theme parent for widgets and containers created during this init/resize. */
     public ThemeScope widgetThemeScope() {
         if (widgetThemes == null || widgetThemes.isClosed()) throw new IllegalStateException("Inactive dynamic UI");
@@ -196,6 +232,8 @@ public final class UiScreen extends Screen {
             back = null;
             widgetViewport = null;
             widgetScroll = null;
+            focusChanged = ignored -> {};
+            closeRequested = () -> true;
             widgetClips.clear();
             widgetStacks.clear();
             if (definition.backButton()) {
@@ -232,6 +270,13 @@ public final class UiScreen extends Screen {
     @Override
     public void onClose() {
         if (minecraft == null || minecraft.screen != this) return;
+        try {
+            // Disposal is unconditional cleanup and must not be vetoed by an editing guard.
+            if (!permitsClose()) return;
+        } catch (RuntimeException failure) {
+            handleFailure(failure);
+            return;
+        }
         try {
             removed();
         } finally {
@@ -434,6 +479,11 @@ public final class UiScreen extends Screen {
         if (key == GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
             setDragging(false);
             return true;
+        }
+        // Escape must cancel an active drag even if scrolling hid its focused widget.
+        if (focusedWidgetOutsideClip()) {
+            setFocused(null);
+            if (key != GLFW.GLFW_KEY_ESCAPE) return true;
         }
         return super.keyPressed(key, scanCode, modifiers);
     }

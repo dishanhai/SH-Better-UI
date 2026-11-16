@@ -764,3 +764,9 @@ SHCLIB 的百工高级配置以四种挖掘速度绑定预设，并把完成结�
 ## HUD 分组布局
 
 `kernel.api.layout.HudSections.layout` 接收已过滤的行、分组提取函数、标题工厂和分隔线开关，返回插入标题后的行以及分隔位置。分页时应以扩展后的候选行测量宽高，再为当前页生成计划，避免标题溢出、空标题或孤立分隔线。`client.gui.scaled.UiHudSections.drawDividers` 可在紧凑 HUD 面板的行间隙绘制这些分隔线；标题和行的文字、图标及本地化由调用方提供。
+
+## 二级配置页
+
+`UiSettingsDetailPage` 将分组小箭头指向的配置组织为固定返回栏和可滚动 Card/Field 列表。
+可选 Actions 与 SettingsDraftSession 提供分组取消、应用、恢复默认与丢弃确认。仅合并本组变更字段，持久化由宿主负责。显式主题背景、同步焦点滚动与隐藏键盘防护支持安全导航。
+[接入与验收说明](SETTINGS_DETAIL_PAGE.md)。

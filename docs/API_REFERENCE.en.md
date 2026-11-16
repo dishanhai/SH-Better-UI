@@ -152,3 +152,10 @@ final class RefreshPage {
 Create one `RefreshPage` per screen instance. Resizing rebuilds the button while keeping the active tree. Repeated clicks replace pending refresh work for that tree. Leaving the screen closes the tree and cancels its pending refresh.
 
 Existing KubeJS client scripts can keep `SHUI.screen(...)` and `SHUI.registerExtension(...)`. The script integration cleans up its screens and registered extensions on script reload. Use a loader-discovered Java `UIModule` when publishing a typed kernel service for Java consumers. [Migration example in Chinese](migration-guide.md) · [KubeJS integration](KUBEJS.md)
+
+## Secondary settings pages
+
+`controls().settingsDetailPage(title, sections)` creates a `UiSettingsDetailPage` with a fixed native back bar,
+scrolling field cards, narrow-layout reflow and keyboard focus scrolling. Pass its builder to UUK `ScreenService`.
+Optional Actions and SettingsDraftSession provide scoped cancel/apply/reset with discard confirmation. Apply merges only changed group keys; the host owns atomic merge and final persistence. Explicit themed backgrounds and synchronous focus visibility prevent blank backdrops and hidden keyboard actions.
+See [integration and acceptance notes](SETTINGS_DETAIL_PAGE.md).
