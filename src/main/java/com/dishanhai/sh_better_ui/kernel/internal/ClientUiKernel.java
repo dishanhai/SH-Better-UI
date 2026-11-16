@@ -846,6 +846,8 @@ public final class ClientUiKernel implements AutoCloseable {
         candidates.add(BuiltinService.candidate(UIApis.RENDER, rendering, UIApis.NATIVE_RENDER));
         candidates.add(BuiltinService.candidate(UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(UIApis.HUD, hud, UIApis.NATIVE_HUD));
+        candidates.add(BuiltinService.candidate(UIApis.ONLINE_MUSIC,
+                new com.dishanhai.sh_better_ui.kernel.internal.music.ClientOnlineMusic()));
         candidates.add(BuiltinService.candidate(UIApis.GLASS, glass));
         candidates.add(BuiltinService.candidate(UIApis.MATERIAL_CATALOG, materialCatalog, UIApis.MATERIAL_DISCOVERY));
         candidates.add(BuiltinService.candidate(UIApis.CORRECTNESS, correctness, UIApis.UI_CORRECTNESS));

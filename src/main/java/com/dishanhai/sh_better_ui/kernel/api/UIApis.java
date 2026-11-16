@@ -23,6 +23,8 @@ import java.util.function.UnaryOperator;
 public final class UIApis {
     private static final UiId THEME_ID = UiId.parse("sh_better_ui:theme");
     public static final ServiceKey<ThemeService> THEME = new ServiceKey<>(THEME_ID, ThemeService.class, 1);
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService> ONLINE_MUSIC =
+            com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService.KEY;
     public static final CapabilityKey DYNAMIC_THEME = new CapabilityKey(THEME_ID);
     public static final ServiceKey<AnimationService> ANIMATION = key("animation", AnimationService.class);
     public static final CapabilityKey SCOPED_ANIMATION = new CapabilityKey(ANIMATION.id());
