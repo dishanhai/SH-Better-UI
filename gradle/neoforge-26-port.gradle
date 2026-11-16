@@ -16,6 +16,16 @@ kotlin { jvmToolchain(25) }
 def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
+        'client/gui/scaled/UiResourcePicker.java',
+        'client/gui/scaled/UiPagination.java',
+        'client/gui/panel/PaginationDemo.java',
+        'client/gui/scaled/UiAnimatedList.java',
+        'client/gui/scaled/AnimatedListPaint.java',
+        'client/gui/panel/AnimatedListPreview.java',
+        'client/gui/scaled/PillNavCanvas.java',
+        'client/gui/scaled/UiPillNav.java',
+        'client/gui/scaled/UiPillNavPaint.java',
+        'client/gui/panel/PillNavDemo.java',
         'client/audio/AudioBand.java',
         'client/audio/AudioFrame.java',
         'client/audio/MusicAnalyzer.java',
@@ -51,6 +61,8 @@ def sharedSources = [
         'client/gui/panel/ConfigPageDraft.java',
         'client/gui/panel/ConfigPageScreen.java',
         'client/gui/panel/FolderFloatPreview.java',
+        'client/gui/panel/CardNavPreview.java',
+        'client/gui/scaled/CardNavControl.java',
         'client/gui/panel/PromptBarDemo.java',
         'client/gui/panel/ShredderDemo.java',
         'client/gui/scaled/ButtonFeedback.java',
@@ -83,6 +95,7 @@ def sharedSources = [
         'client/gui/scaled/SloshGaugePaint.java',
         'client/gui/panel/SloshGaugeDemo.java',
         'client/gui/panel/ShortcutKeycapsDemo.java',
+        'client/gui/panel/RichTextDemo.java',
         'client/gui/scaled/JellyRadioState.java',
         'client/gui/scaled/UiJellyRadio.java',
         'client/gui/panel/JellyRadioDemo.java',
@@ -109,6 +122,8 @@ def sharedSources = [
         'client/system/AsyncComputerStatus.java',
         'client/system/WindowsGpuStatus.java',
         'client/gui/text/LegacyTextParser.java',
+        'client/gui/text/UiRichText.java',
+        'client/gui/text/UiRichIconRenderers.java',
         'client/gui/text/TextGlyphEffects.java',
         'client/gui/text/TextPalettes.java',
         'client/gui/text/UiShortcutKeycaps.java',
@@ -144,10 +159,15 @@ sourceSets.test {
     java {
         srcDir('../src/test/java')
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
+        include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
         include("${packagePath}/client/gui/scaled/PopupMotionTest.java")
         include("${packagePath}/client/gui/scaled/UiPromptBarTest.java")
+        include("${packagePath}/client/gui/scaled/CardNavInputTest.java")
+        include("${packagePath}/client/gui/scaled/CardNavTestFont.java")
+        exclude { entry -> entry.file.toPath().startsWith(file('../src/test/java').toPath()) &&
+                entry.path == "${packagePath}/client/gui/scaled/CardNavTestFont.java" }
         include("${packagePath}/client/gui/scaled/CenteredMenuMotionTest.java")
         include("${packagePath}/client/gui/scaled/SpringTableTest.java")
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
@@ -205,6 +225,9 @@ processResources {
     from('../src/main/resources') {
         include('cover.png', 'assets/sh_better_ui/lang/**', 'assets/sh_better_ui/textures/gui/display*/**',
                 'assets/sh_better_ui/font/hud_shortcut_keycaps.json', 'assets/sh_better_ui/textures/font/hud_shortcut_keycaps.png',
+                'assets/sh_better_ui/font/inline_items.json',
+                'assets/sh_better_ui/textures/gui/rich/**',
+                'assets/sh_better_ui/shaders/include/rich_icon_effects.glsl',
                 'META-INF/third-party/**')
     }
     def metadata = [mod_version: version, mod_id: modId, mod_name: modName, minecraft_version: minecraft_version,
@@ -240,7 +263,12 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/gui/panel/DeveloperPanelScreen.class",
                     "${packagePath}/client/gui/panel/DeveloperGalleryScreen.class",
                     "${packagePath}/client/gui/panel/GalleryExtensionScreen.class",
-                    "${packagePath}/client/gui/panel/GalleryMaterialPipeline.class",
+                    "${packagePath}/client/gui/display/MaterialPipeline.class",
+                    "${packagePath}/client/gui/display/MaterialEffects.class",
+                    "${packagePath}/client/gui/text/UiRichText.class",
+                    "${packagePath}/client/gui/text/UiRichIconRenderers.class",
+                    'assets/sh_better_ui/textures/gui/rich/material-shop.png',
+                    'assets/sh_better_ui/shaders/include/rich_icon_effects.glsl',
                     "${packagePath}/client/gui/panel/GalleryAppearanceSamples.class",
                     "${packagePath}/client/gui/panel/GalleryDynamicThemeSample.class",
                     "${packagePath}/client/gui/panel/GalleryFieldSamples.class",

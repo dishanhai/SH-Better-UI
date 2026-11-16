@@ -46,6 +46,7 @@ public final class UiButton extends Button {
     private Component preview;
     private GraphicIcon icon;
     private boolean iconWithLabel;
+    private boolean trailingIcon;
     private int iconOffsetY;
     private boolean sampleBackground = true;
     private float backgroundBlurRadius = LiquidGlassTheme.DEFAULT_BUTTON_BLUR_RADIUS;
@@ -151,6 +152,14 @@ public final class UiButton extends Button {
     public void setLeadingIcon(GraphicIcon icon) {
         this.icon = icon;
         iconWithLabel = true;
+        trailingIcon = false;
+    }
+
+    /** 在可见文字右侧显示图标；仍保留完整提示和旁白。 */
+    public void setTrailingIcon(GraphicIcon icon) {
+        this.icon = icon;
+        iconWithLabel = true;
+        trailingIcon = true;
     }
 
     /** 仅移动图标，单位为 GUI 像素。绘制时限制在按钮内；文字、焦点和点击范围保持原位。 */
@@ -406,17 +415,20 @@ public final class UiButton extends Button {
         var lines = font.split(getMessage(), labelWidth(width, height));
         int count = Math.min(lines.size(), Math.max(1, (height - 4) / font.lineHeight));
         int contentX = x;
+        int contentRight = x + width - LABEL_PADDING;
         if (inset > 0) {
             int textWidth = 0;
             for (int i = 0; i < count; i++) textWidth = Math.max(textWidth, font.width(lines.get(i)));
             contentX += (width - inset - textWidth) / 2;
-            drawIcon(graphics, contentX, y, height, textColor, effective);
+            drawIcon(graphics, trailingIcon ? contentX + textWidth + ICON_GAP : contentX,
+                    y, height, textColor, effective);
+            if (trailingIcon) contentRight = contentX + textWidth;
         }
         int textY = y + (height - count * font.lineHeight) / 2;
         var target = readableLabel == null ? new ArrayList<TextLayoutMotion.Line>(count) : null;
         for (int i = 0; i < count; i++) {
             var line = lines.get(i);
-            int textX = inset > 0 ? contentX + inset : x + (width - font.width(line)) / 2;
+            int textX = inset > 0 ? contentX + (trailingIcon ? 0 : inset) : x + (width - font.width(line)) / 2;
             int lineY = textY + i * font.lineHeight;
             if (target != null) {
                 target.add(new TextLayoutMotion.Line(line, textX - x, lineY - y, 1));
@@ -427,8 +439,8 @@ public final class UiButton extends Button {
         }
         if (target != null) {
             var frame = labelMotion.update(getMessage(), target, now, effective.reducedMotion() || effective.highContrast());
-            int left = inset > 0 ? contentX + inset : x + LABEL_PADDING;
-            var clip = new Bounds(left, y, Math.max(0, x + width - LABEL_PADDING - left), height);
+            int left = inset > 0 ? contentX + (trailingIcon ? 0 : inset) : x + LABEL_PADDING;
+            var clip = new Bounds(left, y, Math.max(0, contentRight - left), height);
             TextLayoutMotion.draw(graphics, font, frame, x, y, clip, textColor, false, effective);
         }
     }

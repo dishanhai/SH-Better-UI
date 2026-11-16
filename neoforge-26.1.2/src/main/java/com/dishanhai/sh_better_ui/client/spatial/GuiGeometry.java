@@ -34,7 +34,13 @@ public final class GuiGeometry {
 
     /** Call during GUI extraction. Mesh positions use the current pose's local coordinates. */
     public static void fill(GuiGraphicsExtractor graphics, FilledGeometry<Local> mesh, int argb) {
-        if ((argb >>> 24) == 0 || mesh.bounds().isEmpty()) return;
+        fillGradient(graphics, mesh, argb, argb, 1f);
+    }
+
+    /** A vertical color ramp in mesh-local coordinates, using the existing geometry pipeline. */
+    public static void fillGradient(GuiGraphicsExtractor graphics, FilledGeometry<Local> mesh,
+                                    int top, int bottom, float height) {
+        if (((top | bottom) >>> 24) == 0 || mesh.bounds().isEmpty() || !(height > 0)) return;
         var pose = new Matrix3x2f(graphics.pose());
         if (!pose.isFinite() || pose.determinant() == 0) return;
         var scissor = graphics.peekScissorStack();
@@ -43,7 +49,7 @@ public final class GuiGeometry {
         if (clip == null) return;
         var bounds = bounds(mesh.bounds().orElseThrow(), pose, clip);
         if (bounds.width() == 0 || bounds.height() == 0) return;
-        graphics.submitGuiElementRenderState(new MeshState(mesh, argb, pose, scissor, bounds));
+        graphics.submitGuiElementRenderState(new MeshState(mesh, top, bottom, height, pose, scissor, bounds));
     }
 
     private static ScreenRectangle bounds(Bounds<Local> box, Matrix3x2fc pose, ScreenRectangle clip) {
@@ -63,7 +69,7 @@ public final class GuiGeometry {
         return new ScreenRectangle(x0, y0, x1 - x0, y1 - y0);
     }
 
-    private record MeshState(FilledGeometry<Local> mesh, int color, Matrix3x2fc pose,
+    private record MeshState(FilledGeometry<Local> mesh, int top, int bottom, float height, Matrix3x2fc pose,
                              @Nullable ScreenRectangle scissorArea, ScreenRectangle bounds)
             implements GuiElementRenderState {
         @Override public RenderPipeline pipeline() { return PIPELINE; }
@@ -72,10 +78,20 @@ public final class GuiGeometry {
         @Override
         public void buildVertices(VertexConsumer out) {
             for (var triangle : mesh.triangles()) {
-                out.addVertexWith2DPose(pose, (float) triangle.a().x(), (float) triangle.a().y()).setColor(color);
-                out.addVertexWith2DPose(pose, (float) triangle.b().x(), (float) triangle.b().y()).setColor(color);
-                out.addVertexWith2DPose(pose, (float) triangle.c().x(), (float) triangle.c().y()).setColor(color);
+                vertex(out, triangle.a());
+                vertex(out, triangle.b());
+                vertex(out, triangle.c());
             }
+        }
+
+        private void vertex(VertexConsumer out, com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Point<Local> p) {
+            float t = Math.clamp((float) p.y() / height, 0f, 1f);
+            int color = 0;
+            for (int shift = 0; shift <= 24; shift += 8) {
+                int a = top >>> shift & 255, b = bottom >>> shift & 255;
+                color |= Math.round(a + (b - a) * t) << shift;
+            }
+            out.addVertexWith2DPose(pose, (float) p.x(), (float) p.y()).setColor(color);
         }
     }
 }

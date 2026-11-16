@@ -8,6 +8,7 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.ItemStack;
 
 import java.util.Collection;
 import java.util.List;
@@ -87,6 +88,7 @@ public final class JeiIntegration {
         List<Ingredient> ingredients();
         List<Recipe> recipes(Ingredient ingredient, Direction direction, int limit);
         boolean open(Ingredient ingredient, Direction direction);
+        default List<ItemStack> bookmarkedItems() { return List.of(); }
     }
 
     private static final Map<Screen, IntFunction<? extends Collection<Rect2i>>> EXTRA_AREAS = new WeakHashMap<>();
@@ -115,6 +117,11 @@ public final class JeiIntegration {
     /** 返回当前 JEI 可见的物品和流体。JEI 不可用时返回空列表。 */
     public static List<Ingredient> ingredients() {
         return backend == null ? List.of() : backend.ingredients();
+    }
+
+    /** Snapshot of item bookmarks with NBT/components intact; unavailable integrations return an empty list. */
+    public static List<ItemStack> bookmarkedItems() {
+        return backend == null ? List.of() : backend.bookmarkedItems().stream().map(ItemStack::copy).toList();
     }
 
     public static List<Recipe> recipes(Ingredient ingredient, Direction direction, int limit) {

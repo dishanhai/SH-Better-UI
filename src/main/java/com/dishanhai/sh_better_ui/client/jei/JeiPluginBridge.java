@@ -127,6 +127,34 @@ public final class JeiPluginBridge implements IModPlugin {
             return snapshot;
         }
 
+        @Override
+        public List<ItemStack> bookmarkedItems() {
+            if (!active) return List.of();
+            // JEI exposes hover access publicly, but not the complete bookmark list.
+            // Keep this optional adapter isolated from the UUK screen and skip recipe bookmarks.
+            try {
+                Object overlay = runtime.getBookmarkOverlay();
+                var listField = overlay.getClass().getDeclaredField("bookmarkList");
+                listField.setAccessible(true);
+                Object bookmarks = listField.get(overlay);
+                var entriesField = bookmarks.getClass().getDeclaredField("bookmarksList");
+                entriesField.setAccessible(true);
+                var result = new ArrayList<ItemStack>();
+                if (entriesField.get(bookmarks) instanceof List<?> entries) {
+                    for (Object entry : entries) {
+                        try {
+                            Object typed = entry.getClass().getMethod("getIngredient").invoke(entry);
+                            if (typed instanceof ITypedIngredient<?> ingredient
+                                    && ingredient.getIngredient() instanceof ItemStack stack && !stack.isEmpty()) result.add(stack.copy());
+                        } catch (ReflectiveOperationException ignored) { /* Other bookmark types have no ingredient. */ }
+                    }
+                }
+                return List.copyOf(result);
+            } catch (ReflectiveOperationException | RuntimeException failure) {
+                return List.of();
+            }
+        }
+
         private <T> void collect(IIngredientType<T> type, JeiIntegration.Kind kind,
                                  List<JeiIntegration.Ingredient> rows, Map<Identity, String> nextKeys) {
             if (!ingredients.getRegisteredIngredientTypes().contains(type)) return;

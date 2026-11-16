@@ -65,6 +65,10 @@ public final class UiScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots && slots.cancelDrag()) {
+            setDragging(false);
+            return true;
+        }
         if (event.isEscape() && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
             setDragging(false);
             return true;
@@ -74,6 +78,8 @@ public final class UiScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == 0 && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots
+                && slots.consumeCancelledRelease()) return true;
         if (getFocused() instanceof UiSloshGauge gauge && gauge.mouseReleased(event)) {
             setDragging(false);
             return true;

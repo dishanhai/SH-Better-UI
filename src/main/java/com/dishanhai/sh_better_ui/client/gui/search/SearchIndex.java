@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.search;
 
+import com.dishanhai.sh_better_ui.kernel.api.search.PhoneticText;
+
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -54,21 +56,21 @@ public final class SearchIndex<T> {
     }
 
     private record Prepared<T>(Entry<T> entry, String name, List<String> ids, List<String> aliases,
-                               List<String> pinyinKeys, List<String> mods, String modName,
-                               List<String> modPinyinKeys, List<String> tags) {
-        static <T> Prepared<T> of(Entry<T> entry, Map<String, List<String>> modPinyin, boolean displayOnlyName) {
+                               List<PhoneticText> pinyinReadings, List<String> mods, String modName,
+                               List<PhoneticText> modPinyinReadings, List<String> tags) {
+        static <T> Prepared<T> of(Entry<T> entry, Map<String, List<PhoneticText>> modPinyin, boolean displayOnlyName) {
             String name = displayOnlyName ? "" : normalize(entry.name());
             List<String> ids = entry.ids().stream().map(SearchQuery::normalize).toList();
             List<String> aliases = entry.aliases().stream().map(SearchQuery::normalize).toList();
-            List<String> pinyin = new ArrayList<>(PinyinSearch.keys(name));
-            aliases.forEach(alias -> pinyin.addAll(PinyinSearch.keys(alias)));
+            List<PhoneticText> pinyin = new ArrayList<>(PinyinSearch.readings(name));
+            aliases.forEach(alias -> pinyin.addAll(PinyinSearch.readings(alias)));
             List<String> mods = ids.stream().filter(id -> id.indexOf(':') > 0)
                     .map(id -> id.substring(0, id.indexOf(':'))).distinct().toList();
             String modName = normalize(entry.modName());
             List<String> tags = entry.tags().stream().map(SearchQuery::normalize)
                     .filter(tag -> !tag.isEmpty()).distinct().toList();
             return new Prepared<>(entry, name, ids, aliases, List.copyOf(pinyin), mods, modName,
-                    modPinyin.computeIfAbsent(modName, PinyinSearch::keys), tags);
+                    modPinyin.computeIfAbsent(modName, PinyinSearch::readings), tags);
         }
 
         boolean matches(List<SearchQuery.Token> tokens, boolean requiresPinyin) {
@@ -85,7 +87,7 @@ public final class SearchIndex<T> {
                 }
                 if (name.contains(literal) || ids.stream().anyMatch(id -> id.contains(literal))
                         || aliases.stream().anyMatch(alias -> alias.contains(literal))) continue;
-                if (token.pinyin().isEmpty() || pinyinKeys.stream().noneMatch(key -> key.contains(token.pinyin()))) {
+                if (token.pinyin().isEmpty() || pinyinReadings.stream().noneMatch(key -> key.contains(token.pinyin()))) {
                     return false;
                 }
                 usedPinyin = true;
@@ -97,7 +99,7 @@ public final class SearchIndex<T> {
             if (token.text().isEmpty()) return 0;
             int rank = Math.min(matchRank(mod, token.text()), matchRank(modName, token.text()));
             if (rank < NO_LITERAL_MATCH) return rank;
-            return !token.pinyin().isEmpty() && modPinyinKeys.stream().anyMatch(key -> key.contains(token.pinyin()))
+            return !token.pinyin().isEmpty() && modPinyinReadings.stream().anyMatch(key -> key.contains(token.pinyin()))
                     ? 3 : 4;
         }
     }
@@ -112,7 +114,7 @@ public final class SearchIndex<T> {
     /** 名称由 ID 回退而来时可标记为仅展示；保留 Entry 契约，匹配与排名仍取实际 ID／别名。 */
     public SearchIndex(List<Entry<T>> entries, Predicate<? super Entry<T>> displayOnlyNames) {
         Objects.requireNonNull(displayOnlyNames, "displayOnlyNames");
-        Map<String, List<String>> modPinyin = new HashMap<>();
+        Map<String, List<PhoneticText>> modPinyin = new HashMap<>();
         this.entries = entries.stream().map(entry -> Prepared.of(entry, modPinyin, displayOnlyNames.test(entry))).toList();
         this.entriesByValue = this.entries.stream().collect(Collectors.groupingBy(
                 candidate -> candidate.entry().value(), LinkedHashMap::new, Collectors.toList()));

@@ -23,6 +23,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
     @Test
+    void escapeStillCancelsIngredientDragAfterFocusClipGuardMerge() throws Exception {
+        // Allocate a native widget shell without bootstrapping Minecraft's item registry.
+        var unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        unsafeField.setAccessible(true);
+        var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+        var slots = (com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots)
+                unsafe.allocateInstance(com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots.class);
+        slots.setX(0); slots.setY(0); slots.setWidth(40); slots.setHeight(20);
+        slots.visible = true; slots.active = true;
+        slots.setMessage(Component.literal("Ingredients"));
+        var stateField = slots.getClass().getDeclaredField("state");
+        stateField.setAccessible(true);
+        stateField.set(slots, new com.dishanhai.sh_better_ui.kernel.api.controls.IngredientSlotsState(2, 2));
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> page.addClipped(slots, () -> new Bounds(0, 0, 60, 40))).build();
+        screen.width = 60; screen.height = 40; screen.init();
+        screen.setFocused(slots);
+        var field = slots.getClass().getDeclaredField("state");
+        field.setAccessible(true);
+        var state = (com.dishanhai.sh_better_ui.kernel.api.controls.IngredientSlotsState) field.get(slots);
+        state.press(0, 5, 5, true);
+        screen.setDragging(true);
+        assertTrue(screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
+        assertFalse(screen.isDragging());
+        assertEquals(-1, state.pressed());
+        assertTrue(slots.consumeCancelledRelease());
+        state.press(0, 5, 5, true);
+        screen.setDragging(true);
+        slots.setY(80); // A scroll or relayout hides the dragged control.
+        assertTrue(screen.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE, 0, 0));
+        assertFalse(screen.isDragging());
+        assertEquals(-1, state.pressed());
+        assertTrue(slots.consumeCancelledRelease());
+        screen.removed();
+    }
+
+    @Test
     void detailResetLabelTracksEditsThatInvalidateUndo() {
         var session = new com.dishanhai.sh_better_ui.kernel.api.settings.SettingsDraftSession<>(
                 java.util.Map.of("enabled", false), java.util.Map.of("enabled", true));

@@ -33,6 +33,7 @@ repositories {
 
 // Share stable drawing and motion API; only loader/render entry points are overridden.
 def platformFiles = ['com/dishanhai/sh_better_ui/ShBetterUi.java',
+        'com/dishanhai/sh_better_ui/client/gui/scaled/UiAnimatedListPlatform.java',
         'com/dishanhai/sh_better_ui/kernel/internal/live/network/PlatformLiveActivityNetwork.java',
         'com/dishanhai/sh_better_ui/kernel/internal/page/network/PlatformPageNetwork.java',
         'com/dishanhai/sh_better_ui/kernel/internal/page/container/PlatformPageMenus.java',

@@ -9,6 +9,19 @@ import net.minecraft.network.chat.Component;
 public abstract class LayeredScreen extends Screen {
     protected LayeredScreen(Component title) { super(title); }
 
+    @Override public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE
+                && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots
+                && slots.cancelDrag()) { setDragging(false); return true; }
+        return super.keyPressed(key, scanCode, modifiers);
+    }
+
+    @Override public boolean mouseReleased(double x, double y, int button) {
+        if (button == 0 && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots
+                && slots.consumeCancelledRelease()) return true;
+        return super.mouseReleased(x, y, button);
+    }
+
     @Override
     public final void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         renderBackdrop(graphics, mouseX, mouseY, partialTick);

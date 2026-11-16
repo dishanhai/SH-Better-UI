@@ -4,6 +4,7 @@
   "package": "com.dishanhai.sh_better_ui.client.mixin.text",
   "compatibilityLevel": "JAVA_17",
   "client": [
+    "GuiInlineItemMixin",
     "FontTextEffectsMixin",
     "ComponentVisualOrderMixin",
     "ComponentWrapTextEffectsMixin"

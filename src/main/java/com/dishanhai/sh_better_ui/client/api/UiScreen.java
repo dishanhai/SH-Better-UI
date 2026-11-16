@@ -472,13 +472,18 @@ public final class UiScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
-        if (focusedWidgetOutsideClip()) {
-            setFocused(null);
-            if (key != GLFW.GLFW_KEY_ESCAPE) return true;
+        if (key == GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots && slots.cancelDrag()) {
+            setDragging(false);
+            return true;
         }
         if (key == GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof UiSloshGauge gauge && gauge.cancelDrag()) {
             setDragging(false);
             return true;
+        }
+        // Escape must cancel an active drag even if scrolling hid its focused widget.
+        if (focusedWidgetOutsideClip()) {
+            setFocused(null);
+            if (key != GLFW.GLFW_KEY_ESCAPE) return true;
         }
         return super.keyPressed(key, scanCode, modifiers);
     }
@@ -486,6 +491,8 @@ public final class UiScreen extends Screen {
     @Override
     public boolean mouseReleased(double mouseX, double mouseY, int button) {
         if (disposed || removed) return false;
+        if (button == 0 && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots
+                && slots.consumeCancelledRelease()) return true;
         if (button == 0 && isDragging() && getFocused() != null) {
             setDragging(false);
             return getFocused().mouseReleased(mouseX, mouseY, button);

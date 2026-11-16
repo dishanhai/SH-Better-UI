@@ -5,7 +5,8 @@ import com.dishanhai.sh_better_ui.client.blur.BackdropCapture;
 import com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
-import com.dishanhai.sh_better_ui.client.gui.panel.GalleryMaterialEffects.Effect;
+import com.dishanhai.sh_better_ui.client.gui.display.MaterialEffects;
+import com.dishanhai.sh_better_ui.client.gui.display.MaterialEffects.Effect;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
@@ -39,7 +40,13 @@ final class GalleryMaterialSamples extends GallerySampleScreen {
             new IconSample("sweep", Effect.GRADIENT_SWEEP, 2400),
             new IconSample("cycle", Effect.COLOR_CYCLE, 3600),
             new IconSample("wave", Effect.ENERGY_WAVE, 2000),
-            new IconSample("pulse", Effect.PULSE, 1800)
+            new IconSample("pulse", Effect.PULSE, 1800),
+            new IconSample("hologram", Effect.HOLOGRAM, 3200),
+            new IconSample("glitch", Effect.GLITCH, 2600),
+            new IconSample("scanline", Effect.SCANLINE, 2800),
+            new IconSample("sparkle", Effect.SPARKLE, 4000),
+            new IconSample("dissolve", Effect.DISSOLVE, 4200),
+            new IconSample("outline", Effect.OUTLINE, 3000)
     };
 
     private int intensity = 50;
@@ -143,7 +150,7 @@ final class GalleryMaterialSamples extends GallerySampleScreen {
             var snapshot = preferences.useBackdropBlur() ? BackdropCapture.request(graphics) : null;
             if (snapshot != null) {
                 boolean wave = id.equals("refraction_wave");
-                GalleryMaterialEffects.drawBackdrop(graphics, area, snapshot,
+                MaterialEffects.drawBackdrop(graphics, area, snapshot,
                         wave ? Effect.REFRACTION_WAVE : Effect.DIRECTIONAL_BLUR,
                         intensity, wave ? phase(elapsed(), 1600) : angle);
             } else {
@@ -266,9 +273,13 @@ final class GalleryMaterialSamples extends GallerySampleScreen {
 
     private void drawIcons(GuiGraphicsExtractor graphics, Bounds canvas, int mouseX, int mouseY) {
         long elapsed = elapsed();
+        int columns = Math.min(5, Math.max(1, canvas.width() / 60));
+        int rows = (ICONS.length + columns - 1) / columns;
+        int rowHeight = canvas.height() / rows;
         for (int index = 0; index < ICONS.length; index++) {
             var icon = ICONS[index];
-            var cell = column(canvas, index, ICONS.length);
+            var cell = column(new Bounds(canvas.x(), canvas.y() + index / columns * rowHeight,
+                    canvas.width(), rowHeight), index % columns, columns);
             var area = labelArea(graphics, cell, text(icon.key()), mouseX, mouseY);
             int scale = Math.clamp(Math.min(area.width(), area.height()) / GraphicIcon.PIXELS, 1, 3);
             int size = GraphicIcon.size(scale);
@@ -280,7 +291,7 @@ final class GalleryMaterialSamples extends GallerySampleScreen {
                 if (preferences.highContrast()) {
                     GraphicIcon.SHOP.draw(graphics, x, y, scale, 0xFFFFFFFF, preferences);
                 } else {
-                    GalleryMaterialEffects.drawIcon(graphics, new Bounds(x, y, size, size), GraphicIcon.SHOP,
+                    MaterialEffects.drawIcon(graphics, new Bounds(x, y, size, size), GraphicIcon.SHOP,
                             icon.effect(), phase(elapsed, icon.period()));
                 }
             } finally {

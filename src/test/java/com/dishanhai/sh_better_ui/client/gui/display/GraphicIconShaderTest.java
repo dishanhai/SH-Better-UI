@@ -37,7 +37,9 @@ class GraphicIconShaderTest {
     @Test
     void builtInShadersReferenceTheirPackagedFragmentsAndSharedVertexStage() throws IOException {
         assertEquals(List.of(GraphicIconShader.GRADIENT_SWEEP, GraphicIconShader.COLOR_CYCLE,
-                GraphicIconShader.ENERGY_WAVE, GraphicIconShader.PULSE), GraphicIconShader.BUILT_INS);
+                GraphicIconShader.ENERGY_WAVE, GraphicIconShader.PULSE, GraphicIconShader.HOLOGRAM,
+                GraphicIconShader.GLITCH, GraphicIconShader.SCANLINE, GraphicIconShader.SPARKLE,
+                GraphicIconShader.DISSOLVE, GraphicIconShader.OUTLINE), GraphicIconShader.BUILT_INS);
         String root = "/assets/sh_better_ui/shaders/core/";
         assertNotNull(GraphicIconShaderTest.class.getResource(root + "icon_gradient_sweep.vsh"));
         for (var effect : GraphicIconShader.BUILT_INS) {
@@ -47,10 +49,13 @@ class GraphicIconShaderTest {
                 assertNotNull(stream, path);
                 var config = JsonParser.parseReader(new InputStreamReader(stream, StandardCharsets.UTF_8)).getAsJsonObject();
                 assertEquals(GraphicIconShader.GRADIENT_SWEEP.id().toString(), config.get("vertex").getAsString());
-                assertEquals(id.toString(), config.get("fragment").getAsString());
+                String fragment = config.get("fragment").getAsString();
+                boolean rich = GraphicIconShader.BUILT_INS.indexOf(effect) >= 4;
+                assertEquals(rich ? "sh_better_ui:icon_rich_effects" : id.toString(), fragment);
                 assertEquals("Sampler0", config.getAsJsonArray("samplers").get(0).getAsJsonObject().get("name").getAsString());
+                assertNotNull(GraphicIconShaderTest.class.getResource(root + fragment.substring(fragment.indexOf(':') + 1) + ".fsh"), fragment);
             }
-            assertNotNull(GraphicIconShaderTest.class.getResource(path + ".fsh"), path);
         }
+        assertNotNull(GraphicIconShaderTest.class.getResource("/assets/sh_better_ui/shaders/include/rich_icon_effects.glsl"));
     }
 }

@@ -1,4 +1,5 @@
 #version 330
+#moj_import <sh_better_ui:rich_icon_effects.glsl>
 // Author: dishanhai
 
 uniform sampler2D Sampler0;
@@ -70,6 +71,11 @@ vec3 shadeIcon(float phase) {
 
 void main() {
     float phase = float(parameters.y) / 1000.0;
+    if (effect >= 6) {
+        fragColor = richIconEffect(Sampler0, localUv, phase, effect - 6);
+        if (fragColor.a <= 0.0) discard;
+        return;
+    }
     if (effect >= 2) {
         vec4 icon = texture(Sampler0, localUv);
         if (icon.a <= 0.0) discard;

@@ -9,7 +9,10 @@ final class GalleryExamples {
 
     static @Nullable String code(String id) {
         return switch (id) {
+            case RichTextDemo.ID -> RichTextDemo.CODE;
             case JellyRadioDemo.ID -> JellyRadioDemo.CODE;
+            case PillNavDemo.ID -> PillNavDemo.CODE;
+            case PaginationDemo.ID -> PaginationDemo.CODE;
             case ShortcutKeycapsDemo.ID -> ShortcutKeycapsDemo.CODE;
             case "prompt_bar" -> PromptBarDemo.CODE;
             case "call_chip" -> CallChipDemo.EXAMPLE;

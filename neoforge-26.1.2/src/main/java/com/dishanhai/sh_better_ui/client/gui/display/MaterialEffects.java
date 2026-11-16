@@ -1,5 +1,5 @@
 // Author: dishanhai
-package com.dishanhai.sh_better_ui.client.gui.panel;
+package com.dishanhai.sh_better_ui.client.gui.display;
 
 import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -25,27 +25,28 @@ import org.jspecify.annotations.Nullable;
 
 /** Extracts the material demonstrations with the same texture pipeline on both graphics backends. */
 @EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
-public final class GalleryMaterialEffects {
-    private static final RenderPipeline PIPELINE = GalleryMaterialPipeline.create();
+public final class MaterialEffects {
+    private static final RenderPipeline PIPELINE = MaterialPipeline.create();
 
-    enum Effect {
-        DIRECTIONAL_BLUR, REFRACTION_WAVE, GRADIENT_SWEEP, COLOR_CYCLE, ENERGY_WAVE, PULSE
+    public enum Effect {
+        DIRECTIONAL_BLUR, REFRACTION_WAVE, GRADIENT_SWEEP, COLOR_CYCLE, ENERGY_WAVE, PULSE,
+        HOLOGRAM, GLITCH, SCANLINE, SPARKLE, DISSOLVE, OUTLINE
     }
 
-    private GalleryMaterialEffects() {}
+    private MaterialEffects() {}
 
     @SubscribeEvent
     public static void register(RegisterRenderPipelinesEvent event) {
         event.registerPipeline(PIPELINE);
     }
 
-    static void drawBackdrop(GuiGraphicsExtractor graphics, Bounds area, GpuTextureView snapshot,
+    public static void drawBackdrop(GuiGraphicsExtractor graphics, Bounds area, GpuTextureView snapshot,
                              Effect effect, int intensity, int angleOrPhase) {
         var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.LINEAR);
         submit(graphics, area, TextureSetup.singleTexture(snapshot, sampler), effect, intensity, angleOrPhase);
     }
 
-    static void drawIcon(GuiGraphicsExtractor graphics, Bounds area, GraphicIcon icon, Effect effect, int phase) {
+    public static void drawIcon(GuiGraphicsExtractor graphics, Bounds area, GraphicIcon icon, Effect effect, int phase) {
         var texture = Minecraft.getInstance().getTextureManager().getTexture(icon.texture());
         var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
         submit(graphics, area, TextureSetup.singleTexture(texture.getTextureView(), sampler), effect, 0, phase);

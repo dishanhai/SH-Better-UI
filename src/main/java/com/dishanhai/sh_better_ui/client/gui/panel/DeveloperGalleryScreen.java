@@ -33,6 +33,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiFolderFloat;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiJellyRadio;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPillNav;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiCallChip;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPromptBar;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
@@ -608,6 +609,7 @@ final class DeveloperGalleryScreen extends Screen {
     }
 
     private void cancelGestures() {
+        if (getFocused() instanceof UiPillNav nav) nav.cancelInteraction();
         if (getFocused() instanceof UiRubberSegment segment) segment.cancelDrag();
         if (getFocused() instanceof UiJellyRadio radio) radio.cancelPress();
         UiLocalModal.interrupt(this);
@@ -922,6 +924,9 @@ final class DeveloperGalleryScreen extends Screen {
 
     @Override
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
+        for (var child : List.copyOf(children())) {
+            if (child instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav) nav.pointerDown(mouseX, mouseY);
+        }
         if (!isActiveOwner() || closingToParent || changeFullscreen) return true;
         if (entrance.closing()) {
             if (entrance.reopenFromSource(mouseX, mouseY, button)) returning.beginHandoff(this, preferences);
@@ -980,6 +985,8 @@ final class DeveloperGalleryScreen extends Screen {
             return true;
         }
         if (key == GLFW.GLFW_KEY_ESCAPE) {
+            if (previewInteractive() && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav
+                    && nav.keyPressed(key, scan, modifiers)) return true;
             if (previewInteractive() && getFocused() instanceof UiFolderFloat<?> folder
                     && folder.keyPressed(key, scan, modifiers)) {
                 setDragging(false);
@@ -1004,6 +1011,10 @@ final class DeveloperGalleryScreen extends Screen {
                 return true;
             }
             if (getFocused() instanceof UiCallChip chip && chip.cancelPress()) {
+                setDragging(false);
+                return true;
+            }
+            if (previewInteractive() && getFocused() instanceof UiPillNav nav && nav.keyPressed(key, scan, modifiers)) {
                 setDragging(false);
                 return true;
             }
@@ -1077,6 +1088,13 @@ final class DeveloperGalleryScreen extends Screen {
         if (button == 0 && getFocused() instanceof UiJellyRadio radio) {
             if (!previewInteractive()) radio.cancelPress();
             if (radio.mouseReleased(x, y, button)) {
+                setDragging(false);
+                return true;
+            }
+        }
+        if (button == 0 && getFocused() instanceof UiPillNav nav) {
+            if (!previewInteractive()) nav.cancelInteraction();
+            if (nav.mouseReleased(x, y, button)) {
                 setDragging(false);
                 return true;
             }
