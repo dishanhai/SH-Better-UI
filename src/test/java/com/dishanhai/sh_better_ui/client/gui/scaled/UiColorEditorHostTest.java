@@ -16,8 +16,12 @@ class UiColorEditorHostTest {
     private record Fixture(ThemeEffectEditor host, UiColorEditor editor, ThemeEffectFields.Field field) {}
 
     private Fixture mount(String group, List<String> path, int entry) throws Exception {
+        return mount(group, path, entry, new JsonObject());
+    }
+
+    private Fixture mount(String group, List<String> path, int entry, JsonObject inherited) throws Exception {
         var host = new ThemeEffectEditor(null, ClientUiSettings.DEFAULT, group,
-                new JsonObject(), new JsonObject(), ignored -> fail("Draft editing must not save"));
+                inherited, new JsonObject(), ignored -> fail("Draft editing must not save"));
         var field = ThemeEffectFields.fields(group).stream().filter(f -> f.path().equals(path)).findFirst().orElseThrow();
         set(host, "detail", field); set(host, "entry", entry); set(host, "footer", 320);
         invoke(host, "showColor", new Class<?>[]{int.class, int.class}, 10, 240);
@@ -89,6 +93,46 @@ class UiColorEditorHostTest {
         assertEquals(1, get(f.host, "entry"));
         assertEquals(original, get(f.host, "values"));
         assertTrue(((JsonObject) get(f.host, "local")).entrySet().isEmpty());
+    }
+
+    @Test void positionSliderClickCancelsUnconfirmedColorBeforeItsNativeFocusTransfer() throws Exception {
+        var inherited = com.google.gson.JsonParser.parseString("""
+                {"gradient":{"stops":[{"position":0,"argb":-65536},
+                {"position":0.5,"argb":-16711936},{"position":1,"argb":-16776961}]}}
+                """).getAsJsonObject();
+        var f = mount("dotMatrix", List.of("gradient", "stops"), 1, inherited);
+        var original = ThemeEffectFields.get((JsonObject) get(f.host, "values"), f.field.path()).getAsJsonArray().deepCopy();
+        previewTransparent(f);
+        var slider = f.host.children().stream().filter(UiSlider.class::isInstance)
+                .map(UiSlider.class::cast).findFirst().orElseThrow();
+        // Real Screen -> slider.onClick -> setter -> focus transfer, not direct setter invocation.
+        double x = slider.getX() + slider.getWidth() * 0.75;
+        double y = slider.getY() + 10;
+        // The native slider click is silent, but evaluates Minecraft.getSoundManager().
+        // Supply only that singleton shell; no rendering/audio engine is started.
+        var singleton = net.minecraft.client.Minecraft.class.getDeclaredField("instance");
+        singleton.setAccessible(true);
+        Object previous = singleton.get(null);
+        var unsafeField = sun.misc.Unsafe.class.getDeclaredField("theUnsafe");
+        unsafeField.setAccessible(true);
+        var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
+        try {
+            singleton.set(null, unsafe.allocateInstance(net.minecraft.client.Minecraft.class));
+            assertTrue(f.host.mouseClicked(x, y, 0));
+            assertSame(slider, f.host.getFocused());
+        } finally {
+            singleton.set(null, previous);
+        }
+        assertFalse(f.editor.hasPendingChange());
+        var accepted = ThemeEffectFields.get((JsonObject) get(f.host, "local"), f.field.path()).getAsJsonArray();
+        assertNotEquals(original.get(1).getAsJsonObject().get("position"), accepted.get(1).getAsJsonObject().get("position"));
+        for (int i = 0; i < original.size(); i++) {
+            assertEquals(original.get(i).getAsJsonObject().get("argb"), accepted.get(i).getAsJsonObject().get("argb"));
+        }
+        assertEquals(accepted, ThemeEffectFields.get((JsonObject) get(f.host, "values"), f.field.path()));
+        // Escape after the handoff must not resurrect the abandoned color.
+        f.host.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0);
+        assertEquals(accepted, ThemeEffectFields.get((JsonObject) get(f.host, "local"), f.field.path()));
     }
 
     @Test void rebuildCancelsDraftWithoutCreatingAnOverride() throws Exception {

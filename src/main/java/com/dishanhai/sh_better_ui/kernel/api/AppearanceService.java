@@ -16,6 +16,14 @@ import java.util.function.Consumer;
 /** Native visual effects, editable profiles and previews for caller-owned configuration. */
 public interface AppearanceService extends UIService {
     record Preset(String id, String titleKey) {}
+    enum ThemeSection { COLORS, BACKGROUNDS, EFFECTS }
+
+    /** Edits an isolated custom theme. Confirmation returns a draft; persistence remains the host's responsibility. */
+    default Screen editTheme(Screen parent, ClientUiSettings settings, ThemeSection section,
+                             Consumer<com.dishanhai.sh_better_ui.config.ThemeSettings> apply) {
+        return new com.dishanhai.sh_better_ui.kernel.internal.appearance.ThemeCustomizationScreen(
+                this, parent, settings, section, apply);
+    }
 
     /** The shared native effect registry. Create and close one layer per rendered view. */
     default BackgroundRegistry backgrounds() { return ShBetterUiApi.backgrounds(); }

@@ -16,6 +16,12 @@ final class BuiltinBackgrounds {
     private BuiltinBackgrounds() {}
 
     static void registerInto(BackgroundRegistry registry) {
+        registry.register(new BackgroundSpec("sh_better_ui:plain", "sh_better_ui.custom_theme.background.plain", null,
+                logo -> (g, font, area, mouse, x, y, now, prefs) -> {}));
+        registry.register(new BackgroundSpec(com.dishanhai.sh_better_ui.kernel.api.appearance.BackgroundImage.ID,
+                "sh_better_ui.custom_theme.background.image",
+                com.dishanhai.sh_better_ui.kernel.api.appearance.BackgroundImage.DEFAULT,
+                logo -> new com.dishanhai.sh_better_ui.kernel.internal.appearance.ImageBackgroundRenderer()));
         registry.register(new BackgroundSpec(MuoniumFluidBackdrop.ID,
                 "sh_better_ui.panel.theme.group." + MuoniumFluidBackdrop.ID,
                 MuoniumFluidProfile.DEFAULT, logo -> new MuoniumFluidBackdrop()));

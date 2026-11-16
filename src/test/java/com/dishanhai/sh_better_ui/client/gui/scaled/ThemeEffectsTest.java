@@ -19,7 +19,7 @@ class ThemeEffectsTest {
         for (String group : ThemeEffects.groups()) {
             overrides = overrides.withGroup(group, ThemeEffects.template(group));
         }
-        assertEquals(35, overrides.groups().size());
+        assertEquals(36, overrides.groups().size());
         assertTrue(overrides.groups().contains(MuoniumFluidBackdrop.ID));
         assertTrue(overrides.groups().contains("dither"));
         var persisted = new ThemeOverrides(overrides.json());

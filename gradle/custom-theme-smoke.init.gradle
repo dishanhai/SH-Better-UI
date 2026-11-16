@@ -1,0 +1,30 @@
+// Author: dishanhai
+if (gradle.startParameter.taskNames.isEmpty()
+        || gradle.startParameter.taskNames.any { it.tokenize(':').last() != 'runClient' }) {
+    throw new GradleException('Custom theme smoke may only run the runClient task')
+}
+gradle.beforeProject { p ->
+    p.afterEvaluate {
+        if (!p.plugins.hasPlugin('net.minecraftforge.gradle')) return
+        def game = new File(p.projectDir, 'build/custom-theme-smoke/client')
+        def output = new File(p.projectDir, 'build/custom-theme-smoke/screenshots')
+        p.sourceSets.main.java.srcDir(new File(p.projectDir, 'src/customThemeSmoke/java'))
+        p.minecraft.runs.named('client').configure {
+            workingDirectory game
+            property 'shb.customTheme.smoke', output.absolutePath
+            property 'shb.music.disabled', 'true'
+            args '--width', '1000', '--height', '600'
+        }
+        p.tasks.matching { it.name == 'runClient' }.configureEach {
+            doFirst {
+                game.mkdirs()
+                new File(game, 'options.txt').text = 'onboardAccessibility:false\nlang:zh_cn\nguiScale:2\n'
+                java.nio.file.Files.deleteIfExists(new File(output, 'success.txt').toPath())
+                java.nio.file.Files.deleteIfExists(new File(output, 'failure.txt').toPath())
+            }
+            doLast {
+                if (!new File(output, 'success.txt').isFile()) throw new GradleException('Custom theme smoke did not finish')
+            }
+        }
+    }
+}

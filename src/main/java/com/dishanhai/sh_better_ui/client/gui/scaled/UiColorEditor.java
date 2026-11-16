@@ -1,6 +1,7 @@
 // Author: dishanhai. Original native implementation inspired by MuoniumPlayer ThemePaletteOverlay's preview/commit interaction.
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.api.PlatformUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.lyrics.common.style.HsvColor;
 import net.minecraft.client.Minecraft;
@@ -27,13 +28,30 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
                          UiPreferences preferences, IntConsumer onPreview, IntConsumer onCommit) {
         super(area.x(), area.y(), area.width(), area.height(), Objects.requireNonNull(name));
         if (area.width() < MIN_WIDTH || area.height() < MIN_HEIGHT) throw new IllegalArgumentException("Color editor requires at least 180 x 132 GUI units");
-        this.preferences = Objects.requireNonNull(preferences);
+        setPreferences(preferences);
         state = new ColorEditorState(initialArgb, defaultArgb, onPreview, onCommit);
         setTooltip(Tooltip.create(Component.translatable(KEY + "usage")));
     }
     public ColorEditorState state() { return state; }
     public void setValue(int argb) { pointerFocusPending = false; dragging = -1; resetHeld = false; state.setValue(argb); }
-    public void setPreferences(UiPreferences preferences) { this.preferences = Objects.requireNonNull(preferences); }
+    public void setPreferences(UiPreferences preferences) {
+        this.preferences = Objects.requireNonNull(preferences);
+        PlatformUiApi.setTooltipDelay(this, preferences.feedback().tooltipDelayMs());
+    }
+    record Paint(int background, int text, int border, int resetFill, int resetText, int stroke) {}
+    /** High-contrast chrome stays opaque and readable without altering the edited color ramps. */
+    Paint paint() {
+        if (preferences.highContrast()) {
+            int background = UiTheme.current().light() ? 0xffffffff : 0xff000000;
+            int text = UiTheme.current().light() ? 0xff000000 : 0xffffffff;
+            return new Paint(background, text, text, resetHeld ? text : background,
+                    resetHeld ? background : text, isFocused() ? 2 : 1);
+        }
+        int text = active ? DarkModeTheme.textColor() : DarkModeTheme.mutedTextColor();
+        return new Paint(DarkModeTheme.backgroundColor() | 0xff000000, text,
+                isFocused() ? DarkModeTheme.accentColor() : DarkModeTheme.borderColor(),
+                resetHeld ? DarkModeTheme.accentColor() : DarkModeTheme.surfaceColor(), text, 1);
+    }
     public int selectedChannel() { return selected; }
     public boolean isEditing() { return state.editing() || dragging >= 0 || resetHeld; }
     public boolean hasPendingChange() { return state.editing(); }
@@ -111,9 +129,9 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
         if (resetHeld && !resetHit(mx, my)) resetHeld = false;
         if (!enabled() || !Minecraft.getInstance().isWindowActive()) cancelInteraction();
         if (width < MIN_WIDTH || height < MIN_HEIGHT || closed) return;
-        int ink = active ? DarkModeTheme.textColor() : DarkModeTheme.mutedTextColor();
-        DarkModeTheme.rounded(g, getX(), getY(), width, height, 5, 1,
-                isFocused() ? DarkModeTheme.accentColor() : DarkModeTheme.borderColor(), DarkModeTheme.backgroundColor() | 0xff000000);
+        var paint = paint();
+        int ink = paint.text();
+        DarkModeTheme.rounded(g, getX(), getY(), width, height, 5, paint.stroke(), paint.border(), paint.background());
         var font = Minecraft.getInstance().font;
         checker(g, getX() + 8, getY() + 7, 22, 16);
         g.fill(getX() + 8, getY() + 7, getX() + 30, getY() + 23, state.color());
@@ -134,9 +152,10 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
             if (isFocused() && selected == row) g.fill(x, y + 16, x + w, y + 18, ink);
         }
         int resetY = getY() + 112;
-        DarkModeTheme.rounded(g, getX() + 8, resetY, width - 16, 16, 3, 1,
-                isFocused() && selected == 4 ? ink : DarkModeTheme.borderColor(), resetHeld ? DarkModeTheme.accentColor() : DarkModeTheme.surfaceColor());
-        g.drawString(font, font.plainSubstrByWidth(Component.translatable(KEY + "reset").getString(), width - 24), getX() + 12, resetY + 4, ink, false);
+        DarkModeTheme.rounded(g, getX() + 8, resetY, width - 16, 16, 3,
+                isFocused() && selected == 4 ? paint.stroke() : 1,
+                preferences.highContrast() || isFocused() && selected == 4 ? ink : DarkModeTheme.borderColor(), paint.resetFill());
+        g.drawString(font, font.plainSubstrByWidth(Component.translatable(KEY + "reset").getString(), width - 24), getX() + 12, resetY + 4, paint.resetText(), false);
     }
     private static void checker(GuiGraphics g, int x, int y, int width, int height) {
         // Fixed budget even for unusually wide hosts.
