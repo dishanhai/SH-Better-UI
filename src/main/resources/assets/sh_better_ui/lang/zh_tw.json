@@ -1576,5 +1576,18 @@
   "sh_better_ui.mp_bridge.warning": "\n此操作由 MuoniumPlayer 執行，可能更改檔案、下載資源或開啟外部介面。請確認後繼續。",
   "sh_better_ui.mp_bridge.execute": "執行",
   "sh_better_ui.mp_bridge.selection": "從 %s 改為 %s",
-  "sh_better_ui.mp_bridge.scroll_description": "捲動 / PgUp / PgDn 查看完整說明"
+  "sh_better_ui.mp_bridge.scroll_description": "捲動 / PgUp / PgDn 查看完整說明",
+  "sh_better_ui.music_overlay.title": "音乐 HUD 与灵动岛",
+  "sh_better_ui.music_overlay.hud": "音乐 HUD",
+  "sh_better_ui.music_overlay.island": "灵动岛",
+  "sh_better_ui.music_overlay.position": "纵向位置：%s%%（切换顶部/底部）",
+  "sh_better_ui.music_overlay.expand": "保持灵动岛展开",
+  "sh_better_ui.music_overlay.apply": "应用",
+  "sh_better_ui.music_overlay.cancel": "取消",
+  "sh_better_ui.music_overlay.save_failed": "保存失败，修改仍保留。",
+  "sh_better_ui.music_overlay.reset": "重置位置",
+  "sh_better_ui.music_overlay.drag": "拖动/方向键移动 · 滚轮/加减键以左上角缩放",
+  "sh_better_ui.music_overlay.edit_hud": "调整音乐 HUD 位置",
+  "sh_better_ui.music_overlay.edit_island": "调整灵动岛位置",
+  "sh_better_ui.music_overlay.ambient": "帧率 / 延迟 / 时钟"
 }
