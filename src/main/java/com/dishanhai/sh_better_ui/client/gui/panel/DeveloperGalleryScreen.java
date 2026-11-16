@@ -1056,7 +1056,7 @@ final class DeveloperGalleryScreen extends Screen {
     @Override
     public boolean mouseReleased(double x, double y, int button) {
         if (getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCancelableInteraction interaction) {
-            boolean handled = previewInteractive() ? interaction.releasePointer(button) : interaction.cancelInteraction();
+            boolean handled = previewInteractive() ? interaction.releasePointer(x, y, button) : interaction.cancelInteraction();
             if (handled) { setDragging(false); return true; }
         }
         if (button == 0 && getFocused() instanceof UiSloshGauge gauge) {

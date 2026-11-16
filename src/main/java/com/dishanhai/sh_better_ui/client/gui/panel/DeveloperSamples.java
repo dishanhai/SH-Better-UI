@@ -445,6 +445,13 @@ enum DeveloperSamples {
             """),
     SLOSH_GAUGE(SloshGaugeDemo.ID, SloshGaugeDemo.ORDER,
             SloshGaugeDemo.MIN_HEIGHT, SloshGaugePreview::new, SloshGaugeDemo.CODE),
+    COLOR_EDITOR("color_editor", 33, 148, ColorEditorPreview::new, """
+            var editor = ShBetterUiApi.controls().colorEditor(new Bounds(x, y, 240, 132),
+                    Component.literal("Accent"), savedColor, defaultColor,
+                    ShBetterUiApi.settings().preferences(), this::previewColor, this::commitColor);
+            addRenderableWidget(editor);
+            // Call cancelInteraction() before removing/suspending the editor.
+            """),
     MEDIA_CARD("media_card", 32, 80, MediaCardPreview::new, """
             var card = ShBetterUiApi.controls().mediaCard(new Bounds(x, y, 240, 64),
                     Component.literal("Album title"), Component.literal("Artist"),
