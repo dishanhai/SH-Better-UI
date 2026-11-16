@@ -34,3 +34,11 @@ Forge 1.20.1 和 NeoForge 1.21.1 共享布局/状态/实现；NeoForge 26 的绘
 ## 最终构建记录
 
 2026-11-16：Forge 1.20.1 的 `test kernelTest build` / `verifyLibraryJar` 通过，1251 测试（4 个条件跳过）和 504 kernel 测试；NeoForge 1.21.1 同检查通过，1263 测试（4 个条件跳过）、504 kernel 和 13 worker 测试。语言 JSON 与 `git diff --check` 通过，独立审查无剩余阻断问题。NeoForge 26 绘制同步但本环境没有 Java 25，未编译该平台。草稿 PR 不代表已发布新版 Release 或完成客户端视觉验收。
+
+## 丰富布局加载失败修复
+
+PR #11 的丰富播放器曾给原生 `UiSlider` 传入 14 GUI 单位高度，而该控件构造器要求至少 16。图库在布局阶段捕获 `IllegalArgumentException` 后显示“此预览无法加载”，并不是音源请求失败。此次修为 16，进度条仍完整位于 104 高的播放卡内，紧凑布局不变。
+
+进度条几何现统一由 `OnlineMusicLayout.seekBar()` 提供；新增 `OnlineMusicSeekControlTest` 用实际布局构造真实 `UiSlider`，覆盖宽高阈值与偏移，而不再只测试矩形在边界内。修复前 360×340 用例可重复抛异常，修复后通过。此回归测试不代表游戏内完整页面、绘制或旁白验收。
+
+修复验证：Forge 1.20.1 全套 `test kernelTest build` / `verifyLibraryJar` 通过（1280 测试、4 个既有在线实测条件跳过，kernel 504）；NeoForge 1.21.1 同检查通过（1292 测试、同 4 跳过，kernel 504、worker 13）。独立审查确认进度条底边仍留 6 GUI 单位；Neo26 使用相同布局且控件契约一致，但本环境未执行 Java 25 构建。未取得用户运行日志或进行游戏内整页验收，定位依据为源码调用链与修前/修后真实控件构造回归。
