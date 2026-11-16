@@ -14,6 +14,12 @@ final class ThemeEffectRanges {
     static Range find(String group, ThemeEffectFields.Field descriptor) {
         String field = descriptor.name();
         return switch (group) {
+            case "sh_better_ui:soft_aurora", "sh_better_ui:silk_ripples", "sh_better_ui:iridescent_flow" -> switch (field) {
+                case "speed" -> range(0, 2, 2);
+                case "scale" -> range(0.25, 4, 2);
+                case "intensity", "opacity" -> range(0, 1, 2);
+                default -> null;
+            };
             case "patternWaves" -> switch (field) {
                 case "spacing" -> range(4, 120, 2);
                 case "markSize", "fadeSize" -> range(0.05, 1, 2);

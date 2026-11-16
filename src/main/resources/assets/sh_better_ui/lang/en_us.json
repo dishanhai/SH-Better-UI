@@ -2150,5 +2150,20 @@
   "sh_better_ui.resource_picker.quantity_help": "Confirm applies quantity",
   "sh_better_ui.resource_picker.no_jei": "JEI bookmarks unavailable",
   "sh_better_ui.resource_picker.no_matches": "No matching resources",
-  "sh_better_ui.resource_picker.page": "Page %s / %s"
+  "sh_better_ui.resource_picker.page": "Page %s / %s",
+  "sh_better_ui.panel.theme.group.sh_better_ui:crystal_drift": "Crystal drift",
+  "sh_better_ui.theme_editor.field.placement": "Placement",
+  "sh_better_ui.theme_editor.field.material": "Crystal material",
+  "sh_better_ui.theme_editor.field.holdToGather": "Hold to gather",
+  "sh_better_ui.theme_editor.field.pulseOnClick": "Click pulse",
+  "sh_better_ui.theme_editor.field.parallax": "Pointer parallax",
+  "sh_better_ui.theme_editor.field.accentColor": "Accent color",
+  "sh_better_ui.theme_editor.option.full": "Full area",
+  "sh_better_ui.theme_editor.option.glass": "Glass",
+  "sh_better_ui.theme_editor.option.chrome": "Chrome",
+  "sh_better_ui.panel.theme.group.sh_better_ui:soft_aurora": "Soft aurora",
+  "sh_better_ui.panel.theme.group.sh_better_ui:silk_ripples": "Silk ripples",
+  "sh_better_ui.panel.theme.group.sh_better_ui:iridescent_flow": "Iridescent flow",
+  "sh_better_ui.theme_editor.field.primaryColor": "Primary color",
+  "sh_better_ui.theme_editor.field.secondaryColor": "Secondary color"
 }
