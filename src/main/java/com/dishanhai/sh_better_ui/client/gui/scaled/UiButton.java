@@ -50,6 +50,12 @@ public final class UiButton extends Button {
     private int iconOffsetY;
     private boolean sampleBackground = true;
     private float backgroundBlurRadius = LiquidGlassTheme.DEFAULT_BUTTON_BLUR_RADIUS;
+    private float cornerRadius = -1;
+
+    public void setCornerRadius(float radius) {
+        if (!Float.isFinite(radius) || radius < 0) throw new IllegalArgumentException("Invalid corner radius");
+        cornerRadius = radius;
+    }
     private ThemeButtonStyle themeBinding;
     private NativeTextReadability.Label readableLabel;
     private final TextLayoutMotion labelMotion = new TextLayoutMotion();
@@ -118,8 +124,10 @@ public final class UiButton extends Button {
     }
 
     ThemeButtonStyle.Paint themePaint(DarkModeTheme.State state, boolean pressed) {
-        return hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
+        var paint = hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
                 state.highContrast(), selected, state.hover(), state.press()) : null;
+        return paint == null || cornerRadius < 0 ? paint : new ThemeButtonStyle.Paint(paint.fill(), paint.text(),
+                paint.border(), paint.focus(), paint.accent(), paint.background(), cornerRadius, paint.borderWidth(), paint.glass());
     }
 
     /** 位于已有玻璃工具列内时可跳过液态玻璃的重复背景取样。 */
@@ -268,7 +276,7 @@ public final class UiButton extends Button {
         boolean showSelectionMarker = modeLayout == null;
         if (renderStyle == UiStyle.LIQUID_GLASS) {
             LiquidGlassTheme.button(graphics, x, y, width, height, state, effective, sampleBackground,
-                    backgroundBlurRadius, primary, selected, emphasis, showSelectionMarker, paint, content);
+                    backgroundBlurRadius, primary, selected, emphasis, showSelectionMarker, paint, cornerRadius, content);
         } else {
             DarkModeTheme.button(graphics, x, y, width, height, state, primary, selected, emphasis,
                     showSelectionMarker, paint, content);

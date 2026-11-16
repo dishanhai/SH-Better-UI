@@ -15,6 +15,8 @@ import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import org.lwjgl.glfw.GLFW;
+import org.joml.Matrix4f;
+import org.joml.Vector3f;
 
 import java.util.List;
 import java.util.Objects;
@@ -134,7 +136,7 @@ public final class UiCardNav extends AbstractWidget {
         pose.pushPose();
         pose.translate(x, y, 0);
         int inset = control.introInset(now);
-        graphics.enableScissor(inset, 0, w - inset, h + 3);
+        clip(graphics, inset, 0, w - inset, h + 3);
         try {
             RoundedCorners.draw(graphics, 0, 3, w, h, 9, 0, 0, 0x30000000);
             boolean glass = control.glass() && LiquidGlassTheme.clearSurface(graphics,
@@ -172,7 +174,7 @@ public final class UiCardNav extends AbstractWidget {
                     }
                     graphics.drawString(font, line, x, y, ink, false);
                 }
-                @Override public void clip(int x, int y, int right, int bottom) { graphics.enableScissor(x, y, right, bottom); }
+                @Override public void clip(int x, int y, int right, int bottom) { UiCardNav.clip(graphics, x, y, right, bottom); }
                 @Override public void unclip() { graphics.disableScissor(); }
                 @Override public void begin(float x, float y, float sx, float sy, float opacity, float blur) {
                     pose.pushPose();
@@ -184,5 +186,23 @@ public final class UiCardNav extends AbstractWidget {
                 @Override public void end() { pose.popPose(); opacity = 1; blur = 0; }
             }, isFocused(), now);
         } finally { graphics.disableScissor(); pose.popPose(); }
+    }
+
+    private static void clip(GuiGraphics graphics, int x, int y, int right, int bottom) {
+        int[] bounds = clipBounds(graphics.pose().last().pose(), x, y, right, bottom);
+        graphics.enableScissor(bounds[0], bounds[1], bounds[2], bounds[3]);
+    }
+
+    static int[] clipBounds(Matrix4f pose, int x, int y, int right, int bottom) {
+        var point = new Vector3f();
+        float minX = Float.POSITIVE_INFINITY, minY = Float.POSITIVE_INFINITY;
+        float maxX = Float.NEGATIVE_INFINITY, maxY = Float.NEGATIVE_INFINITY;
+        for (int px : new int[]{x, right}) for (int py : new int[]{y, bottom}) {
+            pose.transformPosition(px, py, 0, point);
+            minX = Math.min(minX, point.x); minY = Math.min(minY, point.y);
+            maxX = Math.max(maxX, point.x); maxY = Math.max(maxY, point.y);
+        }
+        return new int[]{(int) Math.floor(minX), (int) Math.floor(minY),
+                (int) Math.ceil(maxX), (int) Math.ceil(maxY)};
     }
 }

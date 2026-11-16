@@ -31,6 +31,7 @@ public final class UiTextField extends UiTextFieldPlatform {
     private int[] boundaries = {0};
     private int[] positions = {0};
     private boolean selecting;
+    private boolean rightClickClears;
 
     public UiTextField(Font font, Bounds bounds, Component label, int maxLength, UiPreferences preferences) {
         super(font, bounds, label);
@@ -50,6 +51,12 @@ public final class UiTextField extends UiTextFieldPlatform {
     }
 
     public void setOnChange(Consumer<String> listener) { onChange = Objects.requireNonNull(listener); }
+    public void setRightClickClears(boolean value) { rightClickClears = value; }
+    @Override boolean clearOnRightClick() {
+        if (!rightClickClears) return false;
+        if (!getValue().isEmpty()) { setValue(""); onChange.accept(""); }
+        return true;
+    }
     public void setOnSubmit(Consumer<String> listener) { onSubmit = listener; }
     public void setHint(Component hint) { this.hint = Objects.requireNonNull(hint); }
     public void setError(Component error) { this.error = error; }

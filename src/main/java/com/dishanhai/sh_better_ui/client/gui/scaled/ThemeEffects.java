@@ -69,6 +69,7 @@ public final class ThemeEffects {
         defaults.put("ascii", CodeRainProfile.ASCII);
         defaults.put("patternWaves", PatternWavesProfile.Preset.SILK.profile());
         defaults.put("shapeWaves", ShapeWavesProfile.DEFAULT);
+        defaults.put("dither", com.dishanhai.sh_better_ui.kernel.api.effect.Dither.Options.DEMO);
         defaults.put("electricLogo", ElectricLogoProfile.DEFAULT);
         defaults.put("reveal", RevealProfile.DEFAULT);
         defaults.put("feedback", ControlFeedbackSettings.DEFAULT);

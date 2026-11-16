@@ -59,4 +59,9 @@ public final class UiWorkbench {
                                      ItemStack initial, boolean quantities, Runnable manualEntry, Consumer<ItemStack> onSelect) {
         return UiResourcePicker.open(owner, title, focus, initial, quantities, manualEntry, onSelect);
     }
+
+    public static boolean selectItemSequence(UiScreen owner, Component title, Supplier<? extends GuiEventListener> focus,
+                                             int limit, Consumer<java.util.List<ItemStack>> onSelect) {
+        return UiResourcePicker.openSequence(owner, title, focus, limit, onSelect);
+    }
 }

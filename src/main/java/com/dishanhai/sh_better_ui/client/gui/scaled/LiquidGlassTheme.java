@@ -247,9 +247,17 @@ public final class LiquidGlassTheme {
                        UiPreferences preferences, boolean sampleBackground, float blurRadius, boolean primary,
                        boolean selected, float emphasis, boolean selectionMarker, ThemeButtonStyle.Paint paint,
                        Runnable content) {
+        button(g, x, y, width, height, state, preferences, sampleBackground, blurRadius, primary, selected,
+                emphasis, selectionMarker, paint, -1, content);
+    }
+
+    static void button(GuiGraphics g, int x, int y, int width, int height, DarkModeTheme.State state,
+                       UiPreferences preferences, boolean sampleBackground, float blurRadius, boolean primary,
+                       boolean selected, float emphasis, boolean selectionMarker, ThemeButtonStyle.Paint paint,
+                       float cornerRadius, Runnable content) {
         float radiusVirtual = normalizeBlurRadius(blurRadius);
         if (width <= 0 || height <= 0) return;
-        float radius = paint == null ? Math.min(width, height) * 0.5f : paint.radius();
+        float radius = cornerRadius >= 0 ? cornerRadius : paint == null ? Math.min(width, height) * 0.5f : paint.radius();
         int fill = paint == null ? buttonFill(state, primary, selected, emphasis) : paint.fill();
         boolean focused = state.enabled() && state.focused();
         GuiRenderUtil.withButtonMotion(g, x, y, width, height, state.buttonScale(), 0f, () -> {

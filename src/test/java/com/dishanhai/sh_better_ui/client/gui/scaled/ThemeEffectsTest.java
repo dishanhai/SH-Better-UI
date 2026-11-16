@@ -17,7 +17,8 @@ class ThemeEffectsTest {
         for (String group : ThemeEffects.groups()) {
             overrides = overrides.withGroup(group, ThemeEffects.template(group));
         }
-        assertEquals(26, overrides.groups().size());
+        assertEquals(27, overrides.groups().size());
+        assertTrue(overrides.groups().contains("dither"));
         var persisted = new ThemeOverrides(overrides.json());
         assertEquals(overrides, persisted);
         assertDoesNotThrow(() -> ThemeEffects.validate(persisted));

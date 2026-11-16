@@ -54,6 +54,16 @@ class ResourcePickerStateTest {
         state.source(List.of());
         assertEquals(stone, state.selected());
     }
+    @Test void additionalTextMatchesCombineWithExistingFilters() {
+        var stone = entry("minecraft:stone", "石头", 1);
+        var other = entry("test:stone", "石头", 1);
+        var state = new ResourcePickerState<String>(null);
+        state.source(List.of(stone, other));
+        assertEquals(List.of(stone), state.search("st @minecraft", "", ResourcePickerState.Sort.DEFAULT, false,
+                (entry, word) -> word.equals("st")));
+        assertTrue(state.search("st #missing", "", ResourcePickerState.Sort.DEFAULT, false,
+                (entry, word) -> true).isEmpty());
+    }
     @Test void tooltipWorkIsLazyAndSmallViewportKeepsThreeUsableAreas() {
         var calls = new AtomicInteger();
         var row = new ResourcePickerState.Entry<>("a", "a:stone", "Stone", "A", List.of(),

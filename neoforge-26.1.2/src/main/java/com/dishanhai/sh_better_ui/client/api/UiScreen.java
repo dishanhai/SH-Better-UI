@@ -27,6 +27,7 @@ public final class UiScreen extends Screen {
     private final Consumer<UiScreen> removed;
     private final Draw content;
     private final Draw foreground;
+    private WidgetScroll scrollHandler;
 
     UiScreen(Component title, Screen parent, boolean parentSpecified, boolean pausesGame, Consumer<UiScreen> init,
              Consumer<UiScreen> tick, Consumer<UiScreen> removed, Draw content, Draw foreground) {
@@ -88,6 +89,11 @@ public final class UiScreen extends Screen {
     }
 
     public Bounds viewport() { return new Bounds(0, 0, width, height); }
+    public void onScroll(WidgetScroll handler) { scrollHandler = java.util.Objects.requireNonNull(handler); }
+    @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        return super.mouseScrolled(x, y, horizontal, vertical)
+                || scrollHandler != null && scrollHandler.scroll(x, y, horizontal, vertical);
+    }
     public <T extends GuiEventListener & Renderable & NarratableEntry> T add(T widget) {
         return addRenderableWidget(widget);
     }
@@ -101,4 +107,5 @@ public final class UiScreen extends Screen {
     }
 
     @FunctionalInterface public interface Draw { void draw(UiScreen screen, UiFrame frame); }
+    @FunctionalInterface public interface WidgetScroll { boolean scroll(double x, double y, double horizontal, double vertical); }
 }

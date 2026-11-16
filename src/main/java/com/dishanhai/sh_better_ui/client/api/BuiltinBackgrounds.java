@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.gui.display.ElectricLogoProfile;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
+import com.dishanhai.sh_better_ui.kernel.api.motion.PhotonKnot;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
@@ -73,6 +74,18 @@ final class BuiltinBackgrounds {
             var shape = new ShapeWaves();
             return (g, font, area, mouse, x, y, now, prefs) -> shape.draw(g, area, mouse, prefs);
         });
+        register(registry, "dither", logo -> new BackgroundSpec.Renderer() {
+            private final DitherBackground dither = new DitherBackground(DitherBackground.DEMO);
+
+            @Override
+            public void draw(GuiGraphics g, Font font, Bounds area, UiMouseState mouse, double x, double y,
+                             long now, UiPreferences prefs) {
+                var options = ThemeEffects.profile("dither", com.dishanhai.sh_better_ui.kernel.api.effect.Dither.Options.DEMO);
+                dither.draw(g, area, options, prefs.reducedMotion(), now);
+            }
+
+            @Override public void close() { dither.close(); }
+        });
         register(registry, "electricLogo", texture -> new BackgroundSpec.Renderer() {
             private final ElectricLogo logo = new ElectricLogo(texture);
             private final GraphicIcon icon = texture == null ? GraphicIcon.SHOP : new GraphicIcon(texture);
@@ -93,20 +106,19 @@ final class BuiltinBackgrounds {
             @Override
             public void close() { logo.close(); }
         });
-        register(registry, "reveal", texture -> {
-            var icon = texture == null ? GraphicIcon.SHOP : new GraphicIcon(texture);
-            return (g, font, area, mouse, x, y, now, prefs) -> {
-                int w = area.width(), h = area.height();
-                VisualReveal.drawRadialGradient(g, area.x(), area.y(), w, h, 0.9f, 0.8f, 0xE03E5175, 0xE018232A);
-                int size = Math.min(w, h) * 2 / 3;
-                if (prefs.useBackdropBlur() && size > 0) {
-                    VisualReveal.drawTexture(g, icon.texture(), area.x() + (w - size) / 2,
-                            area.y() + (h - size) / 2, size, size, ThemeEffects.profile("reveal", RevealProfile.DEFAULT));
-                } else {
-                    fallback(g, area, icon, prefs);
+        registry.register(new BackgroundSpec("photonKnot", "sh_better_ui.panel.theme.group.photonKnot", null, null, logo -> {
+            var knot = new PhotonKnot();
+            return new BackgroundSpec.Renderer() {
+                @Override
+                public void draw(GuiGraphics g, Font font, Bounds area, UiMouseState mouse, double x, double y,
+                                 long now, UiPreferences prefs) {
+                    UiPhotonKnot.draw(new UiFrame(g, area, mouse, prefs, now, 0), area, knot);
                 }
+
+                @Override
+                public void close() { knot.suspend(); }
             };
-        });
+        }));
     }
 
     private static BackgroundSpec.Renderer rain(CodeRain rain) {

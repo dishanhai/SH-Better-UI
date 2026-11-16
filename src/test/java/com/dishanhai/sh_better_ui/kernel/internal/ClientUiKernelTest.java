@@ -139,9 +139,14 @@ class ClientUiKernelTest {
             var appearance = engine.require(UIApis.APPEARANCE);
             assertSame(ShBetterUiApi.backgrounds(), appearance.backgrounds());
             for (var background : appearance.backgrounds().entries()) {
+                if (background.settingsGroup() == null) continue;
                 assertTrue(appearance.groups().contains(background.settingsGroup()));
                 assertTrue(appearance.template(background.settingsGroup()).size() > 0);
             }
+            assertTrue(appearance.backgrounds().entries().stream().anyMatch(background -> background.id().equals("photonKnot")));
+            assertTrue(appearance.backgrounds().entries().stream().noneMatch(background -> background.id().equals("reveal")));
+            assertEquals("photonKnot", appearance.backgrounds().find("reveal").orElseThrow().id());
+            assertTrue(appearance.groups().contains("reveal"));
             var catalog = engine.require(UIApis.MATERIAL_CATALOG);
             for (String id : List.of("dot_matrix", "electric_logo", "pattern_waves", "ascii_field", "shape_waves",
                     "visual_reveal", "antigravity", "light_rays", "laser_flow", "code_rain")) {

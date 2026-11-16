@@ -93,6 +93,12 @@ public final class UiButton extends Button {
         backgroundBlurRadius = Math.min(32f, radius);
     }
 
+    private float cornerRadius = -1;
+    public void setCornerRadius(float radius) {
+        if (!Float.isFinite(radius) || radius < 0) throw new IllegalArgumentException("Invalid corner radius");
+        cornerRadius = radius;
+    }
+
     public float getBackgroundBlurRadius() { return backgroundBlurRadius; }
 
     public boolean supportsThemeBinding() {
@@ -260,6 +266,8 @@ public final class UiButton extends Button {
         var paint = binding == null
                 ? palette(effective, focused, enabled, hover, press, now)
                 : binding.sample(isHovered(), pressed, focused, enabled, effective.highContrast(), selected, hover, press);
+        if (cornerRadius >= 0) paint = new ThemeButtonStyle.Paint(paint.fill(), paint.text(), paint.border(),
+                paint.focus(), paint.accent(), paint.background(), cornerRadius, paint.borderWidth(), paint.glass());
 
         var pose = graphics.pose();
         pose.pushMatrix();

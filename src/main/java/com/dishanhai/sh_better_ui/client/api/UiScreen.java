@@ -59,6 +59,7 @@ public final class UiScreen extends Screen {
     private ThemeScope widgetThemes;
     private Bounds widgetViewport;
     private WidgetScroll widgetScroll;
+    private WidgetScroll scrollHandler;
     private UiFrame drawingFrame;
     private Consumer<GuiEventListener> focusChanged = ignored -> {};
     private BooleanSupplier closeRequested = () -> true;
@@ -105,6 +106,9 @@ public final class UiScreen extends Screen {
         widgetViewport = area;
         widgetScroll = Objects.requireNonNull(scrolling, "scrolling");
     }
+
+    /** Handles unconsumed wheel input without changing widget clipping. */
+    public void onScroll(WidgetScroll handler) { scrollHandler = Objects.requireNonNull(handler); }
 
     public <T extends AbstractWidget> T add(T widget) {
         if (disposed) throw new IllegalStateException("Disposed UI screen");
@@ -466,8 +470,9 @@ public final class UiScreen extends Screen {
         if (child.isPresent() && PlatformUiApi.scrollWidget(child.get(), mouseX, mouseY, horizontal, vertical)) {
             return true;
         }
-        return widgetViewport != null && widgetViewport.contains(mouseX, mouseY)
-                && widgetScroll.scroll(mouseX, mouseY, horizontal, vertical);
+        if (widgetViewport != null && widgetViewport.contains(mouseX, mouseY)
+                && widgetScroll.scroll(mouseX, mouseY, horizontal, vertical)) return true;
+        return scrollHandler != null && scrollHandler.scroll(mouseX, mouseY, horizontal, vertical);
     }
 
     @Override

@@ -28,6 +28,11 @@ abstract class UiTextFieldPlatform extends AbstractWidget {
         this.font = font;
     }
 
+    @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        if (event.button() == 1 && visible && isActive() && isMouseOver(event.x(), event.y()) && clearOnRightClick()) return true;
+        return super.mouseClicked(event, doubleClick);
+    }
+
     @Override public void onClick(MouseButtonEvent event, boolean doubleClick) {
         pointerDown(event.x(), event.hasShiftDown(), doubleClick);
     }
@@ -83,6 +88,7 @@ abstract class UiTextFieldPlatform extends AbstractWidget {
         if (composition != null) composition.updateInputPosition(x, y);
     }
     abstract void pointerDown(double x, boolean extend, boolean doubleClick);
+    abstract boolean clearOnRightClick();
     abstract void pointerDrag(double x);
     abstract void pointerUp();
     abstract boolean key(int key, boolean shortcut, boolean shift, boolean alt);

@@ -54,6 +54,7 @@ final class AppearanceGalleryPreview implements PreviewScene {
         register(registry, "effect_appearance", null, KEYS + "gallery.title", 19);
         register(registry, "ascii_field", "ascii", "sh_better_ui.panel.theme.group.ascii", 20);
         register(registry, "shape_waves", "shapeWaves", "sh_better_ui.panel.theme.group.shapeWaves", 21);
+        register(registry, "dither", "dither", "sh_better_ui.panel.theme.group.dither", 23);
         register(registry, "visual_reveal", "reveal", "sh_better_ui.panel.theme.group.reveal", 22);
         registerEffect(registry, "click_ripple", "clickRipple", 301);
         registerEffect(registry, "flow_border", "flowBorder", 302);

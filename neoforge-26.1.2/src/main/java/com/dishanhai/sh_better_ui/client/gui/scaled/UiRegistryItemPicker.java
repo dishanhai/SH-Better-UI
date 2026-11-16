@@ -63,6 +63,7 @@ public final class UiRegistryItemPicker extends LayeredScreen {
                     title, fit.columns(), java.util.Collections.nCopies(pageSize, ItemStack.EMPTY), prefs,
                     this::choose, ignored -> {}, (from, to) -> {}));
             grid.setAllowDrag(false);
+            grid.setRounded(true);
         }
         int buttonWidth = Math.max(1, (availableWidth - 8) / 3);
         previous = addRenderableWidget(new UiButton(x, bottom, buttonWidth, 18,
@@ -72,6 +73,7 @@ public final class UiRegistryItemPicker extends LayeredScreen {
         addRenderableWidget(new UiButton(x + 2 * (buttonWidth + 4), bottom,
                 Math.max(1, availableWidth - 2 * (buttonWidth + 4)), 18,
                 Component.translatable("gui.back"), button -> onClose()));
+        for (var child : children()) if (child instanceof UiButton button) button.setCornerRadius(4);
         refresh();
         setInitialFocus(search);
     }
@@ -87,6 +89,16 @@ public final class UiRegistryItemPicker extends LayeredScreen {
 
     private int pages() { return pageSize == 0 ? 1 : Math.max(1, (matches.size() + pageSize - 1) / pageSize); }
     private void changePage(int change) { page = Math.max(0, Math.min(pages() - 1, page + change)); refresh(); }
+
+    @Override public boolean mouseScrolled(double x, double y, double horizontal, double vertical) {
+        if (vertical != 0 && grid != null && grid.isMouseOver(x, y)) {
+            page = Math.floorMod(page + (vertical < 0 ? 1 : -1), pages());
+            refresh();
+            return true;
+        }
+        return super.mouseScrolled(x, y, horizontal, vertical);
+    }
+
     private void refresh() {
         page = Math.min(page, pages() - 1);
         if (grid == null) { previous.active = false; next.active = false; return; }

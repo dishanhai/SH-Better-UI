@@ -8,6 +8,7 @@ import com.dishanhai.sh_better_ui.client.api.UiWorkbench;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
+import com.dishanhai.sh_better_ui.client.gui.search.SearchIndex;
 import com.dishanhai.sh_better_ui.kernel.api.controls.IngredientSlotsState;
 import com.dishanhai.sh_better_ui.kernel.api.controls.ResourcePickerState;
 import com.dishanhai.sh_better_ui.kernel.api.controls.ResourcePickerState.Entry;
@@ -33,6 +34,9 @@ public final class UiResourcePicker {
     private final Component title;
     private final Supplier<? extends GuiEventListener> returnFocus;
     private final Consumer<ItemStack> onConfirm;
+    private Consumer<List<ItemStack>> onSequence;
+    private int sequenceLimit;
+    private final List<Entry<ItemStack>> sequence = new ArrayList<>();
     private final Runnable manualEntry;
     private final boolean quantities;
     private final ResourcePickerState<ItemStack> state;
@@ -46,6 +50,8 @@ public final class UiResourcePicker {
     private UiButton previous, next, confirm, clear, sourceButton, sortButton, groupButton;
     private final List<UiButton> modules = new ArrayList<>();
     private final List<UiButton> sourceButtons = new ArrayList<>();
+    private final List<UiButton> suggestions = new ArrayList<>();
+    private SearchIndex<Entry<ItemStack>> searchIndex;
     private List<Entry<ItemStack>> matches = List.of();
     private List<String> moduleIds = List.of();
     private String query = "", module = "", amountText = "1";
@@ -60,6 +66,17 @@ public final class UiResourcePicker {
         return client.screen != parent;
     }
 
+    public static boolean openSequence(Screen parent, Component title, Supplier<? extends GuiEventListener> returnFocus,
+                                       int limit, Consumer<List<ItemStack>> onConfirm) {
+        var client = Minecraft.getInstance();
+        if (parent == null || client.screen != parent || limit < 1) return false;
+        var picker = new UiResourcePicker(parent, title, returnFocus, ItemStack.EMPTY, false, null, ignored -> {});
+        picker.sequenceLimit = limit;
+        picker.onSequence = Objects.requireNonNull(onConfirm);
+        picker.open();
+        return client.screen != parent;
+    }
+
     private UiResourcePicker(Screen parent, Component title, Supplier<? extends GuiEventListener> returnFocus,
                              ItemStack initial, boolean quantities, Runnable manualEntry, Consumer<ItemStack> onConfirm) {
         this.parent = parent; this.title = title.copy();
@@ -70,6 +87,7 @@ public final class UiResourcePicker {
         amountText = Integer.toString(quantities ? state.amount() : 1);
         sources = List.of(UiResourcePickerSources.items(), UiResourcePickerSources.inventory(), UiResourcePickerSources.bookmarks());
         state.source(sources.get(0));
+        rebuildSearchIndex();
     }
 
     private void open() {
@@ -79,12 +97,13 @@ public final class UiResourcePicker {
 
     private void init(UiScreen owner) {
         layout = ResourcePickerState.layout(owner.width, owner.height);
-        modules.clear(); sourceButtons.clear();
+        modules.clear(); sourceButtons.clear(); suggestions.clear();
         var font = Minecraft.getInstance().font;
         var prefs = UiWorkbench.preferences(owner);
         int x = layout.x(), top = layout.y(), sx = layout.selectionX(), sw = layout.selectionWidth();
         search = owner.add(new UiTextField(font, new Bounds(layout.gridX(), top + 24, layout.gridWidth(), 20), text("search"), 256, prefs));
         search.setHint(text("search")); search.setValue(query);
+        search.setRightClickClears(true);
         search.setTooltip(Tooltip.create(text("search_help")));
         search.setOnChange(value -> { query = value; page = 0; filter(); });
         int leftY = layout.contentY();
@@ -120,6 +139,24 @@ public final class UiResourcePicker {
                 if (at < moduleIds.size()) { module = moduleIds.get(at); page = 0; filter(); }
             }));
         }
+        int moduleTop = leftY;
+        owner.onScroll((mouseX, mouseY, horizontal, vertical) -> {
+            if (vertical == 0) return false;
+            int direction = vertical < 0 ? 1 : -1;
+            if (mouseX >= layout.gridX() && mouseX < layout.gridX() + layout.gridWidth()
+                    && mouseY >= layout.contentY() && mouseY < layout.contentY() + layout.contentHeight()) {
+                page = Math.floorMod(page + direction, pages());
+                filter();
+                return true;
+            }
+            if (mouseX >= layout.x() && mouseX < layout.x() + layout.sidebar()
+                    && mouseY >= moduleTop && mouseY < moduleTop + moduleRows * 20) {
+                modulePage += direction;
+                updateModules();
+                return true;
+            }
+            return false;
+        });
         var fit = IngredientSlotsState.fit(layout.gridWidth(), layout.contentHeight(), 16, 18, 18, 2);
         pageSize = fit.capacity();
         grid = null;
@@ -128,18 +165,36 @@ public final class UiResourcePicker {
                     text("resources"), fit.columns(), java.util.Collections.nCopies(pageSize, ItemStack.EMPTY), prefs,
                     index -> choose(index, false), index -> choose(index, true), (a,b) -> {}));
             grid.setAllowDrag(false);
+            grid.setRounded(true);
         }
-        preview = owner.add(new UiIngredientSlots(font, new Bounds(sx, layout.contentY() + 2, 22, 22), text("selected"),
-                1, List.of(ItemStack.EMPTY), prefs, ignored -> {}, ignored -> clear(), (a,b) -> {}));
+        int previewColumns = onSequence == null ? 1 : Math.min(3, sequenceLimit);
+        int previewRows = onSequence == null ? 1 : (sequenceLimit + previewColumns - 1) / previewColumns;
+        preview = owner.add(new UiIngredientSlots(font, new Bounds(sx, layout.contentY() + 2,
+                onSequence == null ? 22 : previewColumns * 20 - 2, onSequence == null ? 22 : previewRows * 20 - 2), text("selected"),
+                previewColumns, java.util.Collections.nCopies(onSequence == null ? 1 : sequenceLimit, ItemStack.EMPTY), prefs,
+                ignored -> {}, index -> { if (onSequence == null) clear(); else if (index < sequence.size()) { sequence.remove(index); updateControls(); } }, (a,b) -> {}));
         preview.setAllowDrag(false);
+        preview.setRounded(true);
         int ay = layout.contentY() + 39;
         amount = owner.add(new UiTextField(font, new Bounds(sx + 22, ay, Math.max(24, sw - 44), 18), text("quantity"), 10, prefs));
         amount.setValue(amountText);
         amount.setOnChange(value -> { amountText = value; validAmount = state.amount(value); updateControls(); });
-        button(owner, sx, ay, 18, 18, Component.literal("−"), () -> step(-1)).active = quantities;
-        button(owner, sx + sw - 18, ay, 18, 18, Component.literal("+"), () -> step(1)).active = quantities;
-        clear = button(owner, sx, ay + 23, sw, 18, text("clear"), this::clear);
+        var minus = button(owner, sx, ay, 18, 18, Component.literal("−"), () -> step(-1)); minus.active = quantities;
+        var plus = button(owner, sx + sw - 18, ay, 18, 18, Component.literal("+"), () -> step(1)); plus.active = quantities;
+        if (onSequence != null) { amount.visible = false; minus.visible = false; plus.visible = false; }
+        int clearY = onSequence == null ? ay + 23 : layout.contentY() + 6 + previewRows * 20;
+        clear = button(owner, sx, clearY, sw, 18, text("clear"), this::clear);
         clear.setLeadingIcon(GraphicIcon.DELETE);
+        int suggestionRows = Math.min(3, Math.max(0, (layout.contentHeight() - 126) / 20));
+        for (int i = 0; i < suggestionRows; i++) {
+            int row = i;
+            var suggestion = button(owner, sx, layout.contentY() + 122 + i * 20, sw, 18, Component.empty(), () -> {
+                var options = searchIndex.suggestMatches(query, matches, suggestions.size());
+                if (row >= options.size()) return;
+                query = options.get(row).completion(); search.setValue(query); page = 0; filter(); owner.setFocused(search);
+            });
+            suggestions.add(suggestion);
+        }
         int footer = layout.footerY(), half = (sw - 4) / 2;
         button(owner, sx, footer, half, 20, text("cancel"), () -> finish(false)).setLeadingIcon(GraphicIcon.CANCEL);
         confirm = button(owner, sx + half + 4, footer, sw - half - 4, 20, text("confirm"), () -> finish(true));
@@ -154,14 +209,20 @@ public final class UiResourcePicker {
         if (manualEntry != null) button(owner, x + 22, footer, Math.max(18, layout.sidebar() - 22), 20, text("manual"), () -> {
             finish(false); manualEntry.run();
         }).setLeadingIcon(GraphicIcon.EDIT);
+        for (var child : owner.children()) if (child instanceof UiButton button) button.setCornerRadius(4);
         rebuildModules(); filter();
         owner.setFocused(search);
     }
 
     private void setSource(Source value) {
         source = value; state.source(sources.get(value.ordinal()));
+        rebuildSearchIndex();
         module = ""; page = 0; modulePage = 0;
         rebuildModules(); filter();
+    }
+    private void rebuildSearchIndex() {
+        searchIndex = new SearchIndex<>(state.source().stream().map(entry -> new SearchIndex.Entry<>(entry,
+                entry.name().isBlank() ? entry.id() : entry.name(), List.of(entry.id()), List.of(), entry.mod(), entry.tags())).toList());
     }
     private void rebuildModules() {
         var ids = new ArrayList<String>(); ids.add("");
@@ -185,7 +246,14 @@ public final class UiResourcePicker {
         }
     }
     private void filter() {
-        matches = state.search(query, module, sort, grouped);
+        var phoneticMatches = new java.util.HashMap<String, java.util.Set<Entry<ItemStack>>>();
+        for (String word : query.toLowerCase(java.util.Locale.ROOT).strip().split("\\s+")) {
+            if (!word.isEmpty() && "@#*$".indexOf(word.charAt(0)) < 0)
+                phoneticMatches.put(word, searchIndex.searchPlainText(word).stream().map(SearchIndex.Entry::value)
+                        .collect(java.util.stream.Collectors.toSet()));
+        }
+        matches = state.search(query, module, sort, grouped,
+                (entry, word) -> phoneticMatches.getOrDefault(word, java.util.Set.of()).contains(entry));
         page = Math.max(0, Math.min(page, pages() - 1));
         var stacks = new ArrayList<ItemStack>(); var names = new ArrayList<Component>();
         for (int i = 0; i < pageSize; i++) {
@@ -196,25 +264,53 @@ public final class UiResourcePicker {
                     .append(Component.literal(entry.id()).withStyle(style -> style.withColor(UiWorkbench.secondaryTextColor() & 0xFFFFFF))));
         }
         if (grid != null) { grid.setItems(stacks); grid.setSlotNames(names); }
-        updateModules(); updateControls();
+        updateModules(); updateControls(); updateSuggestions();
+    }
+    private void updateSuggestions() {
+        var options = query.isBlank() ? List.<SearchIndex.Suggestion<Entry<ItemStack>>>of()
+                : searchIndex.suggestMatches(query, matches, suggestions.size());
+        for (int i = 0; i < suggestions.size(); i++) {
+            var button = suggestions.get(i);
+            button.visible = button.active = i < options.size();
+            if (button.visible) button.setMessage(Component.literal(options.get(i).label()));
+        }
     }
     private int pages() { return pageSize == 0 ? 1 : Math.max(1, (matches.size() + pageSize - 1) / pageSize); }
     private void changePage(int delta) { page = Math.max(0, Math.min(pages() - 1, page + delta)); filter(); }
     private void choose(int index, boolean toggle) {
         int at = page * pageSize + index;
         if (at >= matches.size()) return;
+        if (onSequence != null) {
+            if (toggle) { if (!sequence.isEmpty()) sequence.remove(sequence.size() - 1); }
+            else if (sequence.size() < sequenceLimit) sequence.add(matches.get(at));
+            updateControls(); return;
+        }
         state.choose(matches.get(at), toggle);
         amountText = Integer.toString(quantities ? state.amount() : 1);
         amount.setValue(amountText); validAmount = true;
         updateControls();
     }
-    private void clear() { state.clear(); updateControls(); }
+    private void clear() { if (onSequence == null) state.clear(); else sequence.clear(); updateControls(); }
     private void step(int direction) {
         state.stepAmount(direction, 1); amountText = Integer.toString(state.amount());
         amount.setValue(amountText); validAmount = true; updateControls();
     }
     private void updateControls() {
         var entry = state.selected();
+        if (onSequence != null) {
+            var stacks = new ArrayList<ItemStack>(); var labels = new ArrayList<Component>();
+            for (int i = 0; i < sequenceLimit; i++) {
+                var item = i < sequence.size() ? sequence.get(i) : null;
+                stacks.add(item == null ? ItemStack.EMPTY : item.value().copy());
+                labels.add(item == null ? text("empty") : entryLabel(item));
+            }
+            preview.setItems(stacks); preview.setSlotNames(labels);
+            confirm.active = !sequence.isEmpty(); clear.active = !sequence.isEmpty();
+            previous.active = page > 0; next.active = page + 1 < pages();
+            if (sourceButton != null) { sourceButton.setMessage(text("source_cycle", sourceLabel(source))); sourceButton.setLeadingIcon(sourceIcon(source)); }
+            for (int i = 0; i < sourceButtons.size(); i++) sourceButtons.get(i).setSelected(i == source.ordinal());
+            return;
+        }
         var stack = entry == null ? ItemStack.EMPTY : entry.value().copy();
         if (!stack.isEmpty()) stack.setCount(quantities ? state.amount() : 1);
         preview.setItems(List.of(stack));
@@ -230,11 +326,15 @@ public final class UiResourcePicker {
     }
     private void finish(boolean confirmed) {
         if (Minecraft.getInstance().screen != screen || state.finished() || confirmed && !validAmount) return;
-        var selected = state.finish(confirmed);
+        var selected = state.finish(confirmed && onSequence == null);
         screen.onClose();
         if (Minecraft.getInstance().screen != parent) return;
         var focus = returnFocus.get();
         if (focus != null && parent.children().contains(focus)) parent.setFocused(focus);
+        if (onSequence != null && confirmed && !sequence.isEmpty()) {
+            onSequence.accept(sequence.stream().map(entry -> entry.value().copy()).toList());
+            return;
+        }
         selected.ifPresent(entry -> {
             var copy = entry.value().copy(); copy.setCount(quantities ? state.amount() : 1); onConfirm.accept(copy);
         });
@@ -254,11 +354,16 @@ public final class UiResourcePicker {
         line(frame, text("help"), layout.x(), layout.y() + 25, layout.sidebar(), UiWorkbench.secondaryTextColor());
         line(frame, text("selected").copy().withStyle(style -> style.withBold(true)), sx, layout.y() + 25, sw, UiWorkbench.accentColor());
         var entry = state.selected();
-        line(frame, entry == null ? text("empty") : entryLabel(entry), sx + 26, sy + 4, sw - 26, UiWorkbench.textColor());
-        line(frame, entry == null ? text("single") : Component.literal(entry.id()), sx, sy + 27, sw, UiWorkbench.secondaryTextColor());
+        if (onSequence != null) {
+            line(frame, text("sequence_count", sequence.size(), sequenceLimit), sx + Math.min(3, sequenceLimit) * 20 + 4, sy + 4,
+                    sw - Math.min(3, sequenceLimit) * 20 - 4, UiWorkbench.textColor());
+        } else {
+            line(frame, entry == null ? text("empty") : entryLabel(entry), sx + 26, sy + 4, sw - 26, UiWorkbench.textColor());
+            line(frame, entry == null ? text("single") : Component.literal(entry.id()), sx, sy + 27, sw, UiWorkbench.secondaryTextColor());
+        }
         if (layout.contentHeight() > 110) {
             line(frame, text("matches", matches.size(), state.source().size(), page + 1, pages()), sx, sy + 90, sw, UiWorkbench.secondaryTextColor());
-            line(frame, text(quantities ? "quantity_help" : "single"), sx, sy + 105, sw, UiWorkbench.secondaryTextColor());
+            line(frame, text(onSequence != null ? "sequence_help" : quantities ? "quantity_help" : "single"), sx, sy + 105, sw, UiWorkbench.secondaryTextColor());
         }
         if (matches.isEmpty()) line(frame, text(source == Source.BOOKMARKS && !UiResourcePickerSources.bookmarksAvailable() ? "no_jei" : "no_matches"),
                 layout.gridX(), sy + 6, layout.gridWidth(), UiWorkbench.secondaryTextColor());

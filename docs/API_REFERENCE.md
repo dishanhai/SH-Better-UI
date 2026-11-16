@@ -101,7 +101,7 @@ appearance.preview(draft, () -> backgroundLayer.draw("dotMatrix", graphics, font
 | 电光轮廓 | `electricLogo` | 共用紫电、雷暴、霓虹和静态描边。专用场景的换图使用 `ElectricLogo.setTexture`。 |
 | 图案波面 | `patternWaves` | 共用 `PatternWavesProfile.Preset` 的六个样式。专用场景另有暂停控件。 |
 | 代码雨和 ASCII | `codeRain`、`ascii` | 共用 `CodeRainProfile` 的两个默认配置。专用场景通过 `CodeRainEffect` 演示点击波。 |
-| 形状波面和渐进揭示 | `shapeWaves`、`reveal` | 独立目录预览使用原生背景和同一个配置表单。 |
+| 形状波面和渐进揭示 | `shapeWaves`、`reveal` | 独立目录预览使用原生效果和同一个配置表单；渐进揭示不是背景选项。 |
 | 反重力、光束和激光流 | `antigravity`、`lightRays`、`laserFlow` | UUK 效果预览使用消费端原生配置。激光专用场景用 `LaserFlowSurface` 演示裁切。 |
 
 ## 全库客户端主题

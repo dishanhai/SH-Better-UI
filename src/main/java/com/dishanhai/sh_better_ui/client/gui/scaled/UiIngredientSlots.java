@@ -37,6 +37,7 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
     private Screen owner;
     private double pointerX, pointerY;
     private boolean allowDrag = true;
+    private boolean rounded;
     private boolean cancelledPress;
 
     public UiIngredientSlots(Font font, Bounds area, Component name, int columns, List<ItemStack> items,
@@ -76,6 +77,7 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
     }
 
     public void setAllowDrag(boolean value) { allowDrag = value; if (!value) cancelInteraction(); }
+    public void setRounded(boolean value) { rounded = value; }
 
     /** Call when unmounting a widget before its Screen closes. */
     public void cancelInteraction() {
@@ -186,9 +188,9 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
         for (int i = 0; i < items.size(); i++) {
             int sx = x(i), sy = y(i);
             boolean marked = i == state.target() || i == state.pressed() || i == hovered || isFocused() && i == state.selected();
-            canvas.fill(sx, sy, sx + side, sy + side,
+            fillSlot(canvas, sx, sy, side,
                     marked ? preferences.highContrast() ? theme.text() : theme.accent() : theme.border());
-            if (side > 2) canvas.fill(sx + 1, sy + 1, sx + side - 1, sy + side - 1, theme.surface() | 0xFF000000);
+            if (side > 2) fillSlot(canvas, sx + 1, sy + 1, side - 2, theme.surface() | 0xFF000000);
             if (side >= 18 && !(state.dragging() && i == state.pressed()))
                 canvas.item(font, items.get(i), sx + (side - 16) / 2, sy + (side - 16) / 2);
         }
@@ -196,5 +198,11 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
             canvas.item(font, items.get(state.pressed()), (int) pointerX - 8, (int) pointerY - 8);
         if (hovered >= 0 && !state.dragging() && !names.get(hovered).getString().isEmpty())
             canvas.tooltip(font, names.get(hovered), mouseX, mouseY);
+    }
+
+    private void fillSlot(Canvas canvas, int x, int y, int size, int color) {
+        if (!rounded || size < 4) { canvas.fill(x, y, x + size, y + size, color); return; }
+        canvas.fill(x + 1, y, x + size - 1, y + size, color);
+        canvas.fill(x, y + 1, x + size, y + size - 1, color);
     }
 }

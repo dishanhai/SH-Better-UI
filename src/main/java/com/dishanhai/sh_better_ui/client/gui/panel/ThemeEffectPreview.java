@@ -99,6 +99,18 @@ public final class ThemeEffectPreview implements AutoCloseable {
                     Runnable content = () -> caption(graphics, font, area, caption, DarkModeTheme.textColor());
                     if (!capsule.renderInset(graphics, area, preferences, content)) content.run();
                 }
+                case "reveal" -> {
+                    int size = Math.min(w, h) * 2 / 3;
+                    if (size > 0) {
+                        var icon = com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon.SHOP;
+                        if (preferences.useBackdropBlur()) {
+                            VisualReveal.drawTexture(graphics, icon.texture(), x + (w - size) / 2,
+                                    y + (h - size) / 2, size, size, ThemeEffects.profile("reveal", RevealProfile.DEFAULT));
+                        } else {
+                            icon.draw(graphics, x + w / 2 - 8, y + h / 2 - 8, 1, DarkModeTheme.accentColor(), preferences);
+                        }
+                    }
+                }
                 case "screenReturn" -> {
                     var effect = ThemeEffects.local(group);
                     float progress = (now - replayAt) * effect.speed() / 240f;
@@ -130,7 +142,7 @@ public final class ThemeEffectPreview implements AutoCloseable {
         return switch (group) {
             case "classic", "clearGlass", "smokeGlass", "network", "slate",
                     "glass", "liquidGlass", "clickRipple", "flowBorder", "breathingGlow",
-                    "pageSlide", "recipeTransition", "capsule", "screenReturn" -> true;
+                    "pageSlide", "recipeTransition", "capsule", "screenReturn", "reveal" -> true;
             default -> false;
         };
     }

@@ -7,6 +7,7 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.function.Supplier;
+import java.util.function.BiPredicate;
 
 /** Resource browsing and a single replacement draft. Confirmation is the only commit point. */
 public final class ResourcePickerState<T> {
@@ -67,9 +68,15 @@ public final class ResourcePickerState<T> {
 
     /** GTSH search conventions: name/ID, @mod, #tag, *ID and lazy $tooltip, combined with AND. */
     public List<Entry<T>> search(String query, String module, Sort sort, boolean grouped) {
+        return search(query, module, sort, grouped, (entry, word) -> false);
+    }
+
+    /** Allows platform search indexes to supply additional matches for ordinary words. */
+    public List<Entry<T>> search(String query, String module, Sort sort, boolean grouped,
+                                 BiPredicate<Entry<T>, String> additionalMatch) {
         String[] words = normalized(query).split("\\s+");
         var stream = source.stream().filter(entry -> module.isEmpty() || entry.namespace().equals(module))
-                .filter(entry -> matches(entry, words));
+                .filter(entry -> matches(entry, words, additionalMatch));
         Comparator<Entry<T>> order = switch (sort) {
             case DEFAULT -> null;
             case NAME -> Comparator.comparing(entry -> normalized(entry.name()));
@@ -83,7 +90,7 @@ public final class ResourcePickerState<T> {
         }
         return (order == null ? stream : stream.sorted(order)).toList();
     }
-    private static boolean matches(Entry<?> entry, String[] words) {
+    private static <T> boolean matches(Entry<T> entry, String[] words, BiPredicate<Entry<T>, String> additionalMatch) {
         for (String word : words) {
             if (word.isEmpty()) continue;
             String value = word.substring(1);
@@ -92,7 +99,7 @@ public final class ResourcePickerState<T> {
                 case '#' -> entry.tags().stream().anyMatch(tag -> normalized(tag).contains(value));
                 case '*' -> normalized(entry.id()).contains(value);
                 case '$' -> normalized(entry.tooltip().get()).contains(value);
-                default -> normalized(entry.name() + " " + entry.id()).contains(word);
+                default -> normalized(entry.name() + " " + entry.id()).contains(word) || additionalMatch.test(entry, word);
             };
             if (!matches) return false;
         }
