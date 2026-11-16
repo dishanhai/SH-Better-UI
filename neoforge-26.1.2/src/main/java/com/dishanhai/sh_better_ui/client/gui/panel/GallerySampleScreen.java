@@ -12,6 +12,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiFuseButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeRow;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiJellyRadio;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPillNav;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiHoldButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
@@ -172,6 +173,14 @@ abstract class GallerySampleScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (getFocused() instanceof UiPillNav nav && nav.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav && nav.mouseReleased(event)) {
+            setDragging(false);
+            return true;
+        }
         if (getFocused() instanceof UiSloshGauge gauge && gauge.mouseReleased(event)) {
             setDragging(false);
             return true;
@@ -198,6 +207,12 @@ abstract class GallerySampleScreen extends Screen {
 
     @Override
     public boolean keyPressed(KeyEvent event) {
+        if (event.isEscape() && getFocused() instanceof UiPillNav nav && nav.keyPressed(event)) {
+            setDragging(false);
+            return true;
+        }
+        if (event.isEscape() && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav
+                && nav.keyPressed(event)) return true;
         if (event.isEscape() && getFocused() instanceof UiFolderFloat<?> folder && folder.keyPressed(event)) {
             setDragging(false);
             return true;
@@ -235,6 +250,9 @@ abstract class GallerySampleScreen extends Screen {
 
     @Override
     public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
+        for (var child : java.util.List.copyOf(children())) {
+            if (child instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav) nav.pointerDown(event.x(), event.y());
+        }
         int before = revision;
         boolean handled = super.mouseClicked(event, doubleClick);
         if (revision != before) {
@@ -280,6 +298,7 @@ abstract class GallerySampleScreen extends Screen {
             if (child instanceof UiSloshGauge gauge) gauge.cancelDrag();
             if (child instanceof UiRubberSegment segment) segment.cancelDrag();
             if (child instanceof UiJellyRadio radio) radio.cancelPress();
+            if (child instanceof UiPillNav nav) nav.cancelInteraction();
             if (child instanceof UiHoldButton hold) hold.cancelHold();
         }
         cancelInteraction();

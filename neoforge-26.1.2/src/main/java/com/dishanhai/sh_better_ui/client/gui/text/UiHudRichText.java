@@ -22,7 +22,7 @@ import java.util.Objects;
 public final class UiHudRichText {
     private UiHudRichText() {}
 
-    public static Component prepare(Component text) { return UiTextEffects.normalize(text); }
+    public static Component prepare(Component text) { return UiRichText.prepare(UiTextEffects.normalize(text)); }
 
     /** Project a text-only rich document into one HUD row. */
     public static Component prepare(RichDocument document) {
@@ -123,7 +123,7 @@ public final class UiHudRichText {
                 int outlineAlpha = protection == 0 ? color >>> 24 : (protection >>> 24) * (color >>> 24) / 255;
                 if (outlineAlpha >= 4) {
                     int outlineArgb = outlineAlpha << 24 | (protection & 0xFFFFFF);
-                    var outline = FormattedCharSequence.codepoint(glyph.codePoint(), glyph.style().withColor(protection & 0xFFFFFF));
+                    var outline = FormattedCharSequence.codepoint(glyph.codePoint(), glyph.style().withColor(protection & 0xFFFFFF).withInsertion(null));
                     for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
                         if (ox != 0 || oy != 0) graphics.text(font, outline, gx + ox, gy + oy, outlineArgb, false);
                     }
@@ -153,7 +153,7 @@ public final class UiHudRichText {
             // Mixed widths need a positioned glyph pass; the uniform case can keep native shaping.
             if (baseOutline != 0 && text.accept((index, style, glyph) -> style.getColor() == null)) {
                 for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
-                    if (ox != 0 || oy != 0) graphics.text(font, text, x + ox, y + oy, baseOutline, false);
+                    if (ox != 0 || oy != 0) graphics.text(font, UiRichText.withoutObjects(text), x + ox, y + oy, baseOutline, false);
                 }
             } else {
                 float[] cursor = {x};
@@ -162,7 +162,7 @@ public final class UiHudRichText {
                     int fill = style.getColor() == null ? base : style.getColor().getValue();
                     int edge = palette.outlineColor(fill);
                     if (edge != 0) {
-                        var outline = FormattedCharSequence.codepoint(glyph, style.withColor(edge & 0xFFFFFF));
+                        var outline = FormattedCharSequence.codepoint(glyph, style.withColor(edge & 0xFFFFFF).withInsertion(null));
                         int left = Math.round(cursor[0]);
                         for (int oy = -1; oy <= 1; oy++) for (int ox = -1; ox <= 1; ox++) {
                             if (ox != 0 || oy != 0) graphics.text(font, outline, left + ox, y + oy, edge, false);

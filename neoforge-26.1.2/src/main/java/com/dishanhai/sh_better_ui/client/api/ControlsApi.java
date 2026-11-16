@@ -1,6 +1,13 @@
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiAnimatedList;
+import com.dishanhai.sh_better_ui.kernel.api.controls.AnimatedListState;
+
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSwipeRow;
+import com.dishanhai.sh_better_ui.client.gui.scaled.CardNavControl;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPillNav;
+import com.dishanhai.sh_better_ui.kernel.api.controls.PillNavState;
 import com.dishanhai.sh_better_ui.kernel.api.controls.SwipeRowState;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -50,6 +57,50 @@ import java.util.function.IntFunction;
 
 /** 山海：原生控件工厂。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** A focusable virtual ingredient grid; the host owns its data and handles each edit. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots ingredientSlots(
+            Font font, Bounds area, Component name, int columns, List<net.minecraft.world.item.ItemStack> items,
+            UiPreferences preferences, IntConsumer onChoose, IntConsumer onClear,
+            java.util.function.BiConsumer<Integer, Integer> onMove) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots(font, area, name, columns, items,
+                preferences, onChoose, onClear, onMove);
+    }
+    /** One-based data pagination; only user navigation invokes the callback. Mount as one widget. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiPagination pagination(Font font, Bounds area,
+            Component name, com.dishanhai.sh_better_ui.kernel.api.controls.PaginationState state,
+            UiPreferences preferences, java.util.function.LongConsumer onChange) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiPagination(font, area, name, state, preferences, onChange);
+    }
+
+    /** A focusable animated list; its bounds provide width and viewport height in GUI units. */
+    public <T> UiAnimatedList<T> animatedList(
+            Font font, Bounds area, Component name,
+            List<UiAnimatedList.Item<T>> items, int initialSelectedIndex,
+            AnimatedListState.Options options,
+            UiAnimatedList.Style style, UiPreferences preferences,
+            BiConsumer<T, Integer> onSelect) {
+        return new UiAnimatedList<>(font, area, name, items,
+                initialSelectedIndex, options, style, preferences, onSelect);
+    }
+
+    /** PillNav bounds reserve the header and dropdown; navigation actions belong to the host. */
+    public UiPillNav pillNav(Font font, Bounds area, Component name, List<UiPillNav.Item> items, String selected,
+            UiPillNav.Logo logo, PillNavState.Options options, UiPillNav.Palette palette, UiPreferences preferences,
+            BiConsumer<String, Integer> onSelect, Consumer<Boolean> onMenuToggle) {
+        return new UiPillNav(font, area, name, items, selected, logo,
+                options, palette, preferences, onSelect, onMenuToggle);
+    }
+
+    /** Card navigation. Bounds reserve the open viewport; forward outside clicks to pointerDown(). */
+    public UiCardNav cardNav(
+            Font font, Bounds area, Component name,
+            CardNavControl.Link logo, List<CardNavControl.Item> items,
+            CardNavControl.Link cta, CardNavControl.Options options,
+            UiPreferences preferences, Consumer<Boolean> onOpenChange) {
+        return new UiCardNav(font, area, name, logo, items, cta,
+                options, preferences, onOpenChange);
+    }
+
     /** Mounts as a native widget. Call tick() while mounted and route captured releases to the focused row. */
     public UiSwipeRow swipeRow(Bounds area, Component content, List<UiSwipeRow.Action> actions,
                               SwipeRowState.Options options, UiSwipeRow.Style style, UiPreferences preferences,

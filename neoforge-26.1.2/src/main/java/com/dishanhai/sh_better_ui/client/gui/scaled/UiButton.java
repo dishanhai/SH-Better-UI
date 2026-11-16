@@ -59,6 +59,7 @@ public final class UiButton extends Button {
     private Tooltip labelTooltip;
     private @Nullable GraphicIcon icon;
     private boolean iconWithLabel;
+    private boolean trailingIcon;
     private int iconOffsetY;
     private @Nullable ThemeButtonStyle themeBinding;
 
@@ -142,6 +143,14 @@ public final class UiButton extends Button {
     public void setLeadingIcon(@Nullable GraphicIcon icon) {
         this.icon = icon;
         iconWithLabel = true;
+        trailingIcon = false;
+    }
+
+    /** 在可见文字右侧显示图标；仍保留完整提示和旁白。 */
+    public void setTrailingIcon(@Nullable GraphicIcon icon) {
+        this.icon = icon;
+        iconWithLabel = true;
+        trailingIcon = true;
     }
 
     public void setIconOffsetY(int offset) {
@@ -390,12 +399,13 @@ public final class UiButton extends Button {
             int textWidth = 0;
             for (var line : visibleLines) textWidth = Math.max(textWidth, font.width(line));
             contentX += (width - inset - textWidth) / 2;
-            drawIcon(graphics, contentX, y, height, textColor, effective);
+            drawIcon(graphics, trailingIcon ? contentX + textWidth + ICON_GAP : contentX,
+                    y, height, textColor, effective);
         }
         int textY = y + (height - count * font.lineHeight) / 2;
         for (int i = 0; i < count; i++) {
             var line = visibleLines.get(i);
-            int textX = inset > 0 ? contentX + inset : x + (width - font.width(line)) / 2;
+            int textX = inset > 0 ? contentX + (trailingIcon ? 0 : inset) : x + (width - font.width(line)) / 2;
             graphics.text(font, line, textX, textY + i * font.lineHeight, textColor, false);
         }
     }

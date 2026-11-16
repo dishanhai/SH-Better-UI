@@ -25,7 +25,7 @@ class GalleryExamplesTest {
         assertNotNull(compiler);
         String classpath = System.getProperty("shbui.examples.compileClasspath");
         assertNotNull(classpath);
-        for (String id : List.of(JellyRadioDemo.ID, SwipeRowDemo.ID, "button", "fuse_button", "toggle", "capsule_toggle", "slider", "disclosure", "sections",
+        for (String id : List.of(PaginationDemo.ID, RichTextDemo.ID, JellyRadioDemo.ID, SwipeRowDemo.ID, "button", "fuse_button", "toggle", "capsule_toggle", "slider", "disclosure", "sections",
                 "scrollable_sections", "underlined_tabs", "stepper", "dialog", "toast", "code_slots", "hold_button", "rubber_segment", "call_chip")) {
             String example = GalleryExamples.code(id);
             assertNotNull(example, id);
@@ -47,7 +47,7 @@ class GalleryExamplesTest {
 
     @Test
     void documentedExtensionExampleCompiles() throws Exception {
-        String guide = Files.readString(Path.of("../docs/NEOFORGE_26_GALLERY_GAPS.md"));
+        String guide = Files.readString(Path.of("../docs/NEOFORGE_26_GALLERY_GAPS.md")).replace("\r\n", "\n");
         int heading = guide.indexOf("第三方客户端可在初始化时登记");
         int start = guide.indexOf("```java\n", heading);
         int end = guide.indexOf("```", start + 8);

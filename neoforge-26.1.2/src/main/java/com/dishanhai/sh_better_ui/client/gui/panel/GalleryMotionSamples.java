@@ -221,8 +221,8 @@ final class GalleryMotionSamples extends GallerySampleScreen {
         if (blur > 0 && !preferences.reducedMotion() && preferences.useBackdropBlur()) {
             var backdrop = BackdropCapture.request(graphics);
             if (backdrop != null) {
-                GalleryMaterialEffects.drawBackdrop(graphics, pages, backdrop,
-                        GalleryMaterialEffects.Effect.DIRECTIONAL_BLUR, blur, axisX == 0 ? 90 : 0);
+                com.dishanhai.sh_better_ui.client.gui.display.MaterialEffects.drawBackdrop(graphics, pages, backdrop,
+                        com.dishanhai.sh_better_ui.client.gui.display.MaterialEffects.Effect.DIRECTIONAL_BLUR, blur, axisX == 0 ? 90 : 0);
                 graphics.nextStratum();
             }
         }

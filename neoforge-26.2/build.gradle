@@ -5,16 +5,17 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.4.0'
 }
 
-ext.portMixinConfigs = ['sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json']
+ext.portMixinConfigs = ['sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json']
 apply from: '../gradle/neoforge-26-port.gradle'
 
 def previousPort = file('../neoforge-26.1.2/src/main/java')
 def overrides = [
+        'client/gui/scaled/UiAnimatedListPlatform.java',
         'client/blur/BlurRenderTarget.java',
         'client/blur/mixin/GuiRendererReadbackMixin.java',
         'client/glass/LiquidGlassPipeline.java',
         'client/gui/panel/ControlPanelPlatform.java',
-        'client/gui/panel/GalleryMaterialPipeline.java',
+        'client/gui/display/MaterialPipeline.java',
         'client/gui/panel/GallerySpatialPipeline.java',
         'client/spatial/GuiGeometryPipeline.java',
         'kernel/internal/NativePort.java'
@@ -28,7 +29,7 @@ sourceSets.main.java {
 sourceSets.test.java.srcDir('../neoforge-26.1.2/src/test/java')
 processResources {
     from('../neoforge-26.1.2/src/main/resources') {
-        include('sh_better_ui-26-blur.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
+        include('sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
                 'assets/sh_better_ui/shaders/core/gallery_material.*', 'assets/sh_better_ui/shaders/core/gallery_spatial*')
     }
 }

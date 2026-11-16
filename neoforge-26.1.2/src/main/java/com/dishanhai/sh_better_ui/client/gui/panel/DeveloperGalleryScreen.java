@@ -181,6 +181,8 @@ public final class DeveloperGalleryScreen extends Screen {
     /** Built-in descriptors share discovery and ordering with extension registrations. */
     public static void registerBuiltins(PreviewRegistry registry) {
         FolderFloatPreview.registerInto(registry);
+        AnimatedListPreview.registerInto(registry);
+        CardNavPreview.registerInto(registry);
         PhotonKnotPreview.registerInto(registry);
         LatticeLoaderPreview.registerInto(registry,
                 message -> Minecraft.getInstance().getNarrator().saySystemNow(message));
@@ -1016,6 +1018,7 @@ public final class DeveloperGalleryScreen extends Screen {
     }
 
     private enum Sample {
+        RICH_TEXT(RichTextDemo.ID, GraphicIcon.DOCUMENT, GalleryRichTextSample::new),
         BUTTON("button", GraphicIcon.RUN),
         HUD_SHORTCUT_KEYCAPS(ShortcutKeycapsDemo.ID, GraphicIcon.KEYBOARD, GalleryShortcutKeycapsSample::new),
         TOGGLE("toggle", GraphicIcon.SWITCH),
@@ -1060,6 +1063,8 @@ public final class DeveloperGalleryScreen extends Screen {
         SLOSH_GAUGE(SloshGaugeDemo.ID, GraphicIcon.ORGANIZE, GallerySloshGaugeSample::new),
         RUBBER_SEGMENT("rubber_segment", GraphicIcon.ORGANIZE, GalleryRubberSegmentSample::new),
         JELLY_RADIO(JellyRadioDemo.ID, GraphicIcon.ORGANIZE, GalleryJellyRadioSample::new),
+        PILL_NAV(PillNavDemo.ID, GraphicIcon.ORGANIZE, GalleryPillNavSample::new),
+        PAGINATION(PaginationDemo.ID, GraphicIcon.NEXT, GalleryPaginationSample::new),
         BELL_TOGGLE("bell_toggle", GraphicIcon.INFO, GalleryBellToggleSample::new),
         CALL_CHIP("call_chip", GraphicIcon.CODE, GalleryCallChipSample::new),
         SLIDE_CONFIRM("slide_confirm", GraphicIcon.SUCCESS, GalleryGestureSamples::new),
@@ -1125,7 +1130,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
+                case PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
                 case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
                         STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
                         DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
@@ -1172,7 +1177,10 @@ public final class DeveloperGalleryScreen extends Screen {
                 case RUBBER_SEGMENT -> 30;
                 case SLOSH_GAUGE -> SloshGaugeDemo.ORDER;
                 case JELLY_RADIO -> JellyRadioDemo.ORDER;
+                case PILL_NAV -> PillNavDemo.ORDER;
+                case PAGINATION -> PaginationDemo.ORDER;
                 case HUD_SHORTCUT_KEYCAPS -> ShortcutKeycapsDemo.ORDER;
+                case RICH_TEXT -> RichTextDemo.ORDER;
                 case HOLD_BUTTON -> 31;
                 case CALL_CHIP -> 33;
                 case BRANCHED_MENU -> BranchedMenuDemo.ORDER;
