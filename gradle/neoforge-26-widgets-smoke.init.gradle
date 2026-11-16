@@ -23,6 +23,7 @@ gradle.beforeProject { p ->
         boolean previewDiscovery = p.hasProperty('widgetSmokePreviewDiscovery')
         boolean pages = p.hasProperty('widgetSmokePages')
         boolean centeredMenu = p.hasProperty('widgetSmokeCenteredMenu')
+        boolean onlineMusic = p.hasProperty('widgetSmokeOnlineMusic')
         if (previewDiscovery && (layoutReview || readability)) {
             throw new GradleException('Preview discovery uses its own smoke profile')
         }
@@ -50,6 +51,7 @@ gradle.beforeProject { p ->
         if (previewDiscovery) profile += '-preview-discovery'
         if (pages) profile += '-pages'
         if (centeredMenu) profile += '-centered-menu'
+        if (onlineMusic) profile += '-online-music'
         if (narrator) profile += '-narrator'
         File directory = p.layout.buildDirectory.dir("widget-smoke/${p.version}/${profile}").get().asFile
         File missingVulkanDriver = new File(directory, 'missing-vulkan-icd.json')
@@ -80,9 +82,12 @@ gradle.beforeProject { p ->
             if (previewDiscovery) systemProperty 'shbui.widgetSmoke.previewDiscovery', 'true'
             if (pages) systemProperty 'shbui.widgetSmoke.pages', 'true'
             if (centeredMenu) systemProperty 'shbui.widgetSmoke.centeredMenu', 'true'
+            if (onlineMusic) systemProperty 'shbui.widgetSmoke.onlineMusic', 'true'
             if (narrator) systemProperty 'shbui.widgetSmoke.narrator', 'true'
             if (narratorAudio != null) systemProperty 'shbui.widgetSmoke.narratorAudio', p.file(narratorAudio).absolutePath
-            if (layoutReview) {
+            if (onlineMusic) {
+                programArguments.addAll('--width', '1440', '--height', '900')
+            } else if (layoutReview) {
                 systemProperty 'shbui.widgetSmoke.layoutScale', layoutScale
                 programArguments.addAll('--width', longLabels ? '1280' : '1080', '--height', longLabels ? '960' : '720')
             } else {
@@ -115,6 +120,13 @@ gradle.beforeProject { p ->
             def menuEvidence = new File(directory, 'centered-menu.png')
             def pageEvidence = new File(directory, 'declarative-page.txt')
             doFirst {
+                if (onlineMusic) {
+                    new File(directory, 'options.txt').setText('guiScale:2\nlang:zh_cn\n', 'UTF-8')
+                    ['search', 'lyrics', 'accounts', 'qr', 'light', 'compact'].each {
+                        java.nio.file.Files.deleteIfExists(new File(directory, "online-music-${it}.png").toPath())
+                    }
+                    java.nio.file.Files.deleteIfExists(new File(directory, 'online-music-layout.txt').toPath())
+                }
                 if (readability) readabilityImages.each { java.nio.file.Files.deleteIfExists(it.toPath()) }
                 if (previewDiscovery) previewEvidence.each { java.nio.file.Files.deleteIfExists(it.toPath()) }
                 if (centeredMenu) java.nio.file.Files.deleteIfExists(menuEvidence.toPath())
@@ -129,6 +141,9 @@ gradle.beforeProject { p ->
                 }
             }
             doLast {
+                if (onlineMusic && !new File(directory, 'online-music-layout.txt').isFile()) {
+                    throw new GradleException("Online music layout smoke did not finish. See ${directory}")
+                }
                 if (readability && !readabilityImages.every { it.isFile() }) {
                     throw new GradleException("Missing text readability smoke screenshots: ${readabilityImages.findAll { !it.isFile() }}")
                 }
