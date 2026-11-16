@@ -69,6 +69,22 @@ public final class SettingsApi {
         return DynamicThemePreview.screen(parent, () -> focus);
     }
 
+    /** Whether the client has published its real online music service; independent of developer mode. */
+    public boolean onlineMusicAvailable() {
+        return com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen.available();
+    }
+
+    /** Normal user-facing music page. Creating the route does not open a session or make requests. */
+    public UiScreen onlineMusicScreen(Screen parent) {
+        GuiEventListener focus = parent == null ? null : parent.getFocused();
+        return onlineMusicScreen(parent, () -> focus);
+    }
+
+    /** The focus supplier is evaluated after the parent is rebuilt on return. */
+    public UiScreen onlineMusicScreen(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
+        return com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen.create(parent, returnFocus);
+    }
+
     public DeveloperPanelScreen developerPanel(Screen parent) {
         return new DeveloperPanelScreen(parent);
     }

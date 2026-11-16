@@ -8,6 +8,7 @@ import com.dishanhai.sh_better_ui.config.GlassBackdropSettings;
 import com.dishanhai.sh_better_ui.config.TabScrollSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeOverrides;
+import com.dishanhai.sh_better_ui.config.ThemePaletteArchive;
 import com.dishanhai.sh_better_ui.kernel.internal.live.network.PlatformLiveActivityNetwork;
 import com.dishanhai.sh_better_ui.kernel.internal.page.network.PlatformPageNetwork;
 import com.dishanhai.sh_better_ui.kernel.internal.page.container.PlatformPageMenus;
@@ -73,6 +74,8 @@ public final class ShBetterUi {
         var themeBorder = builder.define("themeCustomBorder", "", ThemeSettings::validColor);
         var themeText = builder.define("themeCustomText", "", ThemeSettings::validColor);
         var themeAccent = builder.define("themeCustomAccent", "", ThemeSettings::validColor);
+        var registeredTheme = builder.define("themeRegisteredId", "", ThemeSettings::validRegisteredThemeId);
+        var paletteArchive = builder.define("themePaletteArchive", "{}", ThemePaletteArchive::valid);
         var themeEffects = builder.define("themeCustomEffects", "{}", ThemeOverrides::valid);
         var themeBackgroundEffect = builder.define("themeBackgroundEffect", ThemeSettings.DEFAULT_BACKGROUND_EFFECT,
                 ThemeSettings::validBackgroundEffect);
@@ -106,7 +109,7 @@ public final class ShBetterUi {
                             new ThemeSettings(themeMode.get(), themeBase.get(), themeBackground.get(),
                                     themeSurface.get(), themeBorder.get(), themeText.get(), themeAccent.get(),
                                         new ThemeOverrides(themeEffects.get()), themeBackgroundEffect.get(),
-                                        hudBackgroundEffect.get(), hudBlurRadius.get()),
+                                        hudBackgroundEffect.get(), hudBlurRadius.get(), registeredTheme.get(), new ThemePaletteArchive(paletteArchive.get())),
                                 new DynamicThemeSettings(dynamicTheme.get(), dynamicSpeed.get(), dynamicLowPerformance.get()),
                                 new SpatialStyle.Settings(spatialEnabled.get(), spatialShadows.get(), spatialLighting.get(),
                                         spatialBlur.get(), spatialQuality.get(), spatialProfiling.get()))
@@ -169,6 +172,8 @@ public final class ShBetterUi {
         updatedUi.set("themeBackgroundEffect", theme.backgroundEffect());
         updatedUi.set("hudBackgroundEffect", theme.hudBackgroundEffect());
         updatedUi.set("hudBlurRadius", theme.hudBlurRadius());
+        updatedUi.set("themeRegisteredId", theme.registeredThemeId());
+        updatedUi.set("themePaletteArchive", theme.paletteArchive().json());
         var dynamic = settings.dynamicTheme();
         updatedUi.set("dynamicFixedTheme", dynamic.fixedTheme());
         updatedUi.set("dynamicAnimationPercent", dynamic.animationPercent());
