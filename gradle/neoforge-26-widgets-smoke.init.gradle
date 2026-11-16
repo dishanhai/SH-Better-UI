@@ -24,6 +24,8 @@ gradle.beforeProject { p ->
         boolean pages = p.hasProperty('widgetSmokePages')
         boolean centeredMenu = p.hasProperty('widgetSmokeCenteredMenu')
         boolean onlineMusic = p.hasProperty('widgetSmokeOnlineMusic')
+        String onlineMusicScale = p.findProperty('widgetSmokeOnlineMusicScale') ?: '2'
+        if (onlineMusic && !(onlineMusicScale in ['2', '3'])) throw new GradleException('Online music smoke supports GUI Scale 2 or 3')
         if (previewDiscovery && (layoutReview || readability)) {
             throw new GradleException('Preview discovery uses its own smoke profile')
         }
@@ -52,6 +54,7 @@ gradle.beforeProject { p ->
         if (pages) profile += '-pages'
         if (centeredMenu) profile += '-centered-menu'
         if (onlineMusic) profile += '-online-music'
+        if (onlineMusic && onlineMusicScale != '2') profile += "-scale-${onlineMusicScale}"
         if (narrator) profile += '-narrator'
         File directory = p.layout.buildDirectory.dir("widget-smoke/${p.version}/${profile}").get().asFile
         File missingVulkanDriver = new File(directory, 'missing-vulkan-icd.json')
@@ -121,7 +124,7 @@ gradle.beforeProject { p ->
             def pageEvidence = new File(directory, 'declarative-page.txt')
             doFirst {
                 if (onlineMusic) {
-                    new File(directory, 'options.txt').setText('guiScale:2\nlang:zh_cn\n', 'UTF-8')
+                    new File(directory, 'options.txt').setText("guiScale:${onlineMusicScale}\nlang:zh_cn\n", 'UTF-8')
                     ['search', 'lyrics', 'accounts', 'qr', 'light', 'compact'].each {
                         java.nio.file.Files.deleteIfExists(new File(directory, "online-music-${it}.png").toPath())
                     }

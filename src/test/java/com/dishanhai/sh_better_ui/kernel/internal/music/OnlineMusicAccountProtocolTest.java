@@ -46,8 +46,9 @@ class OnlineMusicAccountProtocolTest {
         assertThrows(IllegalArgumentException.class, () -> netease.like(new OnlineTrack("qq", "1", "1", "", "", "", 0), true));
         assertThrows(IllegalArgumentException.class, () -> netease.playlists(0, 20));
         assertTrue(netease.supportsLikes());
-        assertFalse(qq.supportsLikes());
-        assertThrows(UnsupportedOperationException.class, () -> qq.like(new OnlineTrack("qq", "1", "1", "", "", "", 0), true));
+        assertTrue(qq.supportsLikes());
+        assertThrows(OnlineMusicSource.LoginRequired.class, () -> qq.like(new OnlineTrack("qq", "1", "1", "", "", "", 0), true));
+        assertThrows(IllegalArgumentException.class, () -> qq.like(new OnlineTrack("netease", "1", "1", "", "", "", 0), true));
     }
 
     @Test void requestsKeepTheCredentialsPresentWhenScheduled() {

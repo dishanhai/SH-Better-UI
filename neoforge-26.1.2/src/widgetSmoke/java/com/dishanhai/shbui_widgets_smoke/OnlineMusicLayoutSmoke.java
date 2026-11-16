@@ -30,6 +30,7 @@ final class OnlineMusicLayoutSmoke {
     static void frame(Minecraft client) {
         if (capturing || WidgetSmokePlatform.hasOverlay(client)) return;
         if (screen == null) { screen = new Probe(); WidgetSmokePlatform.open(client, screen); return; }
+        if (!client.isWindowActive()) { org.lwjgl.glfw.GLFW.glfwFocusWindow(client.getWindow().handle()); return; }
         if (++frames < 12) return;
         frames = 0;
         if (stage == 0) {
@@ -52,14 +53,25 @@ final class OnlineMusicLayoutSmoke {
         };
         capturing = true;
         Screenshot.takeScreenshot(WidgetSmokePlatform.target(client), image -> {
-            try (image) { image.writeToFile(client.gameDirectory.toPath().resolve("online-music-" + name + ".png")); }
+            try (image) {
+                image.writeToFile(client.gameDirectory.toPath().resolve("online-music-" + name + ".png"));
+                if (stage == 4) {
+                    var content = OnlineMusicLayout.of(screen.viewport()).content();
+                    int scale = client.getWindow().getGuiScale();
+                    int gapTop = content.y() + 48 + 2 + screen.font().lineHeight;
+                    for (int y = gapTop; y < gapTop + 5; y++) for (int x = content.x() + 4; x < content.x() + content.width() / 2 - 12; x++)
+                        if ((image.getPixel(x * scale, y * scale) & 0xffffff) != 0x0f172a)
+                            throw new IllegalStateException("Login status and scan instructions must have a clear vertical gap");
+                }
+            }
             catch (java.io.IOException failure) { throw new UncheckedIOException(failure); }
+            catch (RuntimeException failure) { screen.view.close(); client.stop(); throw failure; }
             client.schedule(() -> {
                 try {
                 switch (stage) {
                     case 1 -> screen.press("view.lyrics");
                     case 2 -> screen.press("view.accounts");
-                    case 3 -> screen.press("source.netease");
+                    case 3 -> { screen.press("source.qq"); screen.press("login.refresh"); }
                     case 4 -> {
                         screen.press("view.back"); screen.press("view.back");
                         if (!screen.query().getValue().equals("layout fixture")) throw new IllegalStateException("Search draft was lost");
@@ -82,6 +94,17 @@ final class OnlineMusicLayoutSmoke {
         void rebuild() { view.suspend(); clearWidgets(); init(); }
         UiTextField query() { return children().stream().filter(UiTextField.class::isInstance).map(UiTextField.class::cast).findFirst().orElseThrow(); }
         void press(String key) {
+            int pageIndex = switch (key) { case "view.search" -> 0; case "view.lyrics" -> 1; case "view.accounts" -> 2; default -> -1; };
+            if (pageIndex >= 0) {
+                var rail = children().stream().filter(UiNavigationRail.class::isInstance).map(UiNavigationRail.class::cast).findFirst().orElseThrow();
+                setFocused(rail);
+                rail.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_HOME, 0, 0));
+                int forward = OnlineMusicLayout.of(viewport()).sidebar() ? org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN : org.lwjgl.glfw.GLFW.GLFW_KEY_RIGHT;
+                for (int i = 0; i < pageIndex; i++) rail.keyPressed(new net.minecraft.client.input.KeyEvent(forward, 0, 0));
+                if (!rail.keyPressed(new net.minecraft.client.input.KeyEvent(org.lwjgl.glfw.GLFW.GLFW_KEY_ENTER, 0, 0)))
+                    throw new IllegalStateException("Navigation did not activate through its native keyboard handler");
+                return;
+            }
             var label = Component.translatable(PREFIX + key).getString();
             children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
                     .filter(b -> b.visible && b.active && b.getMessage().getString().equals(label))

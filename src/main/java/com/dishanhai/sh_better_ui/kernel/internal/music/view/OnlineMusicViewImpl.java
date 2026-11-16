@@ -616,11 +616,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean wide = c.width() >= 360;
         int imageX = wide ? c.x() + c.width() / 2 + 4 : c.x();
         var imageArea = new Bounds(imageX, c.y() + 48, wide ? c.width() / 2 - 4 : c.width(), Math.max(0, c.height() - 96));
+        int bodyBottom = imageArea.bottom();
+        int statusY = imageArea.y() + 2;
+        int instructionsY = statusY + host.font().lineHeight + 6;
+        if (!wide) imageArea = new Bounds(imageArea.x(), instructionsY, imageArea.width(), Math.max(0, bodyBottom - instructionsY));
         boolean fitsImage = snapshot == null || snapshot.image() == null ||
                 (imageArea.width() >= snapshot.image().width() && imageArea.height() >= snapshot.image().height());
-        if (imageArea.height() >= 12 && wide) text(ui, fitsImage ? status : label("login.enlarge"), c.x() + 4, imageArea.y() + 2, c.width() / 2 - 12);
-        if (wide && imageArea.height() >= 24) OnlineMusicViewPaint.paragraph(ui, host.font(), label("login.scan." + accountSource),
-                new Bounds(c.x() + 4, imageArea.y() + 4, c.width() / 2 - 16, imageArea.height() - 4), UiTheme.current().text());
+        if (bodyBottom - statusY >= host.font().lineHeight) text(ui, fitsImage ? status : label("login.enlarge"), c.x() + 4, statusY, wide ? c.width() / 2 - 12 : c.width() - 8);
+        if (wide && bodyBottom - instructionsY >= host.font().lineHeight) OnlineMusicViewPaint.paragraph(ui, host.font(), label("login.scan." + accountSource),
+                new Bounds(c.x() + 4, instructionsY, c.width() / 2 - 16, bodyBottom - instructionsY), UiTheme.current().text());
         if (snapshot != null && snapshot.image() != null) {
             var image = snapshot.image(); int scale = Math.min(3, Math.min(imageArea.width() / image.width(), imageArea.height() / image.height()));
             if (scale < 1) OnlineMusicViewPaint.paragraph(ui, host.font(), label("login.enlarge"), imageArea, UiTheme.current().text());

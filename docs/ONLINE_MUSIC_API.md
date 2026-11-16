@@ -7,6 +7,8 @@
 
 ## 完整播放器页面
 
+扫码详情页的状态与说明按实际字体行高分开布局，并在窄布局中为状态行预留空间。2026-11-16 已用 26.1.2 隔离客户端验证 GUI 缩放 2／3：两行之间的留白像素断言先复现旧版失败，再验证修复通过。执行截图测试时可加 `-PwidgetSmokeOnlineMusicScale=3`；默认仍为 2，缩放 3 的截图另存到 `default-online-music-scale-3` 配置目录。
+
 页面结构移植自同一上游版本的 `NCMScreen`、`NavigateBar`、`ControlsBar`、`MusicLyricsPanel` 和 `AccountManagerOverlay`：宽窗口左侧导航与音源、中间搜索及歌曲列表、底部常驻播放栏；歌词页将曲目信息与上下文歌词并排，账号页先展示两家平台卡片，再进入扫码详情。窄窗口改用顶部导航；返回搜索页保留查询、结果和分页位置。歌词行可点击跳转；试听偏移沿用会话的真实时间轴。未提供封面地址时使用音乐图标占位，不加载额外远程图片。
 
 ```java
@@ -77,13 +79,19 @@ var lists = player.playlists("netease", 1);
 lists.thenAccept(items -> {
     if (!items.isEmpty()) player.playlist(items.get(0), 1).thenAccept(tracks -> { /* 更新列表 */ });
 });
-var liked = player.liked("netease", 1); // QQ 喜欢列表也可读取
-if (player.supportsLikes("netease")) player.like(selectedTrack, true);
+var liked = player.liked("netease", 1); // QQ 使用 "qq"
+if (player.supportsLikes(selectedTrack.source())) player.like(selectedTrack, true);
 player.like(selectedTrack, false); // 取消喜欢；失败通过 future 传回
 player.rememberCredentials("netease", false); // 删除已保存文件，保留本次登录
 ```
 
-账号、歌单和喜欢列表均为后台操作，一页二十项，从 1 开始。页面在账号详情提供歌单和喜欢列表入口，歌单可继续进入曲目并分页播放，返回保留歌单页码和位置；曲目行可执行喜欢或取消喜欢。网易云支持喜欢写入；QQ 只支持读取喜欢列表，因其写入需要尚未核实的私有签名加密通道，`supportsLikes("qq")` 返回 `false`，页面禁用对应写入按钮。明确的登录失效响应会清理当前凭据和保存副本；其他网络或业务失败不当作退出登录。新旧账号请求用凭据快照隔离，切换账号取消旧结果；已经到达平台的写请求不能保证撤销。
+账号、歌单和喜欢列表均为后台操作，一页二十项，从 1 开始。页面在账号详情提供歌单和喜欢列表入口，歌单可继续进入曲目并分页播放，返回保留歌单页码和位置；曲目行可执行喜欢或取消喜欢。网易云与 QQ 均实现喜欢写入，`supportsLikes("qq")` 返回 `true`，页面沿用现有能力判断启用操作。明确的登录失效响应会清理当前凭据和保存副本；其他网络或业务失败不当作退出登录。新旧账号请求用凭据快照隔离，切换账号取消旧结果；已经到达平台的写请求不能保证撤销。
+
+QQ 的 `like(track, target)` 先读取 `IsSongFanByMid`，已处于目标状态时不写入；否则按 MID 取详情，核实数字歌曲 ID 与类型后，仅向固定的「我喜欢」201 目录发送 `AddSonglist`／`DelSonglist`。写入采用同一份 JSON 的 zzc 签名与 ag-1（随机 12 字节 IV、AES-128-GCM）编码，固定请求 `https://u6.y.qq.com/cgi-bin/musics.fcg`，禁止重定向、自动重发及明文回退。HTTP、外层、业务块和 `retCode` 均成功，且再次读回目标状态后 future 才成功完成；超时或读回不一致返回失败，平台可能已经接受写入，可重新读取喜欢列表确认。`2000`（签名要求）和业务拒绝不作为账号失效。凭据快照共享可中断的写锁，避免同一播放器的相反操作交错；取消后不再进入下一阶段。
+
+协议按 MIT 授权的 [qmweb-sign 固定版本](https://github.com/jixunmoe/qmweb-sign/tree/15305a3cc39f80eb1646ab2bae46468231765736) 移植，使用 JDK 加密能力；发布包附完整许可与来源。确定性测试覆盖上游签名／密文向量、同文签名与加密、随机 IV、逐层响应码、身份核实、幂等、读回不一致、超时不重试、重定向拒绝和并发取消。尚未使用本人账号执行真实红心写入或客户端按钮验收。
+
+2026-11-16 此轮 QQ 写入补齐后的最终验证：新增 `QQFavoritesTest` 的 9 项测试在三端通过；Forge 1.20.1／NeoForge 1.21.1／26.1.2 的完整 `build --offline --no-daemon` 和发布包检查通过。三端常规测试分别为 1252／1264／253 项，均无失败，各有 4 项实网测试默认跳过；内核测试各 504 项通过。三个发布 JAR 均核对包含 `QQFavorites`、`QQWebProtocol` 与 qmweb-sign 完整许可、固定来源。本轮未启动客户端、未使用真实账号、未部署；26.2 沿用已有构建阻塞记录，未重复验证。
 
 搜索框停输 300 ms 后请求建议，可通过原生按钮点击、Tab 聚焦及 Enter 选择。`player.suggest(source, query)` 合并音源在线建议与本会话已加载曲目的本地候选，最多八项。曲名、歌手和专辑复用项目现有 ICU 拼音索引，支持中文、全拼及首字母；索引按音源隔离，最多保留最近加载的五百首，退出或更换凭据时清空。搜索第一页优先保留完整远端页，以本地匹配补足空位；网络失败时已有本地匹配可作为第一页结果。拼音能力不意味着已完整索引平台曲库或账号所有未加载歌单。
 

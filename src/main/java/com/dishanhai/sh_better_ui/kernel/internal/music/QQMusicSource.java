@@ -12,10 +12,13 @@ import static com.dishanhai.sh_better_ui.kernel.internal.music.SourceJson.*;
 
 final class QQMusicSource implements OnlineMusicSource {
     private final MusicHttp http = new MusicHttp();
+    private final QQFavorites favorites;
+    QQMusicSource() { this(new QQFavorites()); }
+    QQMusicSource(QQFavorites favorites) { this.favorites = favorites; }
     private record Account(String id, String key) {}
     private volatile Account account = new Account("0", "");
     @Override public OnlineMusicSource requestSnapshot() {
-        var snapshot = new QQMusicSource(); snapshot.account = account; return snapshot;
+        var snapshot = new QQMusicSource(favorites); snapshot.account = account; return snapshot;
     }
     @Override public void credentials(String value) {
         String valid = MusicHttp.cookie(value);
@@ -120,6 +123,13 @@ final class QQMusicSource implements OnlineMusicSource {
                 "song_begin", (page - 1) * limit, "song_num", limit, "userinfo", true, "orderlist", true),
                 Map.of("ct", "24", "cv", "0"), current);
         return parseSongList(data, limit);
+    }
+    @Override public boolean supportsLikes() { return true; }
+    @Override public void like(OnlineTrack track, boolean liked) throws Exception {
+        if (track == null || !id().equals(track.source()) || !track.id().matches("[A-Za-z0-9]{1,40}"))
+            throw new IllegalArgumentException("Invalid QQ track");
+        var current = credentialsSnapshot();
+        favorites.like(track, liked, current.id(), current.key());
     }
     private Account credentialsSnapshot() throws LoginRequired {
         var current = account;

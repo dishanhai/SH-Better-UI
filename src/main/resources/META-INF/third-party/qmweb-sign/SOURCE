@@ -1,0 +1,7 @@
+qmweb-sign — zzc signature and ag-1 request/response protocol
+https://github.com/jixunmoe/qmweb-sign
+Fixed reference: 15305a3cc39f80eb1646ab2bae46468231765736
+Sources: src/ag1_cipher.ts, src/zzc_sign.ts, src/zzc_sign.test.ts, src/ag1_cipher.test.ts
+Copyright (c) 2024 Jixun Wu. MIT License (see LICENSE).
+Java adaptation by dishanhai: kernel/internal/music/QQWebProtocol.java.
+Uses JDK cryptography; no npm package, scripts or additional runtime are bundled.
