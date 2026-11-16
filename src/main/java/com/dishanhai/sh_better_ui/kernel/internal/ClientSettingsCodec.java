@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.ThemeOverrides;
+import com.dishanhai.sh_better_ui.config.ThemePaletteArchive;
 import com.dishanhai.sh_better_ui.kernel.api.ConfigCodec;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
@@ -16,6 +17,10 @@ final class ClientSettingsCodec {
                     (JsonSerializer<ThemeOverrides>) (value, type, context) -> JsonParser.parseString(value.json()))
             .registerTypeAdapter(ThemeOverrides.class,
                     (JsonDeserializer<ThemeOverrides>) (value, type, context) -> new ThemeOverrides(value.toString()))
+            .registerTypeAdapter(ThemePaletteArchive.class,
+                    (JsonSerializer<ThemePaletteArchive>) (value, type, context) -> JsonParser.parseString(value.json()))
+            .registerTypeAdapter(ThemePaletteArchive.class,
+                    (JsonDeserializer<ThemePaletteArchive>) (value, type, context) -> new ThemePaletteArchive(value.toString()))
             .create();
 
     static final ConfigCodec<ClientUiSettings> CODEC = ConfigCodec.of(

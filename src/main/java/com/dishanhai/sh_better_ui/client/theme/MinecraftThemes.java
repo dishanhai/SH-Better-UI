@@ -7,6 +7,10 @@ import com.dishanhai.sh_better_ui.client.music.ClientMusic;
 import com.dishanhai.sh_better_ui.client.music.MusicSnapshot;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.theme.BuiltinThemes;
+import com.dishanhai.sh_better_ui.theme.Theme;
+import com.dishanhai.sh_better_ui.theme.ThemeRegistry;
+import com.dishanhai.sh_better_ui.theme.ThemeResolver;
+import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.theme.ThemeManager;
 import com.dishanhai.sh_better_ui.theme.ThemeSnapshot;
 import com.dishanhai.sh_better_ui.theme.accessibility.ThemePreferences;
@@ -46,6 +50,38 @@ import static com.dishanhai.sh_better_ui.theme.context.ContextKeys.*;
 
 /** Physical-client bridge. The Forge and NeoForge entry points call it from their own lifecycle events. */
 public final class MinecraftThemes {
+    public static final String CONFIGURED_PALETTE_ID = "sh_better_ui:configured_palette";
+    private static final ThemeRegistry FALLBACK_REGISTRY = BuiltinThemes.registry();
+    private static ThemeRegistry paletteRegistry;
+    private static Map<String, ThemeToken<?>> paletteCatalog;
+    private static final Map<String, ThemeSnapshot> SELECTED_CACHE = new LinkedHashMap<>();
+    private String configuredThemeId;
+    private Theme configuredDefinition;
+    private ThemeRegistry configuredRegistry;
+    public static boolean isConfiguredPalette(String id) {
+        var current = runtime;
+        return current != null && Objects.equals(id, current.configuredThemeId)
+                && current.manager.registry().find(id).orElse(null) == current.configuredDefinition;
+    }
+    /** Uses immutable registry identity for reload invalidation; no resolver allocation on a cached frame. */
+    public static UiTheme registeredPalette(String id) {
+        var current = runtime;
+        var registry = current == null || stopped ? FALLBACK_REGISTRY : current.manager.registry();
+        var catalog = current == null || stopped ? BUILTIN_CATALOG : current.manager.tokenCatalog();
+        var snapshot = registeredSnapshot(registry, catalog, id);
+        return snapshot == null ? null : UiTheme.fromTokens(snapshot);
+    }
+    static synchronized ThemeSnapshot registeredSnapshot(ThemeRegistry registry, Map<String, ThemeToken<?>> catalog, String id) {
+        if (registry != paletteRegistry || !catalog.equals(paletteCatalog)) {
+            SELECTED_CACHE.clear(); paletteRegistry = registry; paletteCatalog = catalog;
+        }
+        if (registry.find(id).isEmpty()) return null;
+        var existing = SELECTED_CACHE.get(id); if (existing != null) return existing;
+        var result = new ThemeResolver().resolve(registry, catalog, java.util.List.of(id), null);
+        if (SELECTED_CACHE.size() >= 32) SELECTED_CACHE.clear();
+        SELECTED_CACHE.put(id, result); return result;
+    }
+
     private static final Map<String, ThemeToken<?>> BUILTIN_CATALOG = builtinCatalog();
     private static final ThemeReloadManager RELOAD = new ThemeReloadManager(MinecraftThemes::manager);
     private static volatile ThemeResourceLoader loader = new ThemeResourceLoader(new ThemeJsonParser());
@@ -113,6 +149,7 @@ public final class MinecraftThemes {
 
     /** Previews the draft preset without changing the published theme or its selection. */
     public static UiTheme previewPalette(ClientUiSettings draft, UiTheme fallback) {
+        if (draft.theme().mode() == ThemeSettings.Mode.CUSTOM) return fallback;
         var preset = draft.theme().mode().fixedThemeId();
         var applied = ClientUiSettings.current().theme().mode().fixedThemeId();
         if (!Objects.equals(preset, applied)) return fallback;
@@ -259,18 +296,72 @@ public final class MinecraftThemes {
         }
     }
 
+    private String configureUserPalette(ThemeSettings settings) {
+        configuredThemeId = availableConfiguredId(manager, configuredThemeId, configuredDefinition);
+        var theme = configuredPalette(manager, settings, configuredThemeId);
+        manager.register(theme, configuredDefinition == null || manager.registry().find(configuredThemeId).isEmpty()
+                ? ThemeRegistry.DuplicatePolicy.REJECT : ThemeRegistry.DuplicatePolicy.REPLACE_CODE);
+        configuredDefinition = theme; configuredRegistry = manager.registry();
+        return configuredThemeId;
+    }
+    static String availableConfiguredId(ThemeManager manager, String ownedId, Theme ownedDefinition) {
+        if (ownedId != null && manager.registry().find(ownedId).orElse(null) == ownedDefinition) return ownedId;
+        int suffix = 0; String candidate = CONFIGURED_PALETTE_ID;
+        while (manager.registry().find(candidate).isPresent()) candidate = CONFIGURED_PALETTE_ID + "_" + ++suffix;
+        return candidate;
+    }
+    static ThemePreferences selectionPreferences(ClientUiSettings settings, ThemePreferences previous, String derivedId) {
+        var result = settings.dynamicTheme().applyTo(previous);
+        String selected = settings.theme().mode() == ThemeSettings.Mode.CUSTOM && !settings.theme().registeredThemeId().isEmpty()
+                ? derivedId : settings.theme().mode().fixedThemeId();
+        return selected == null ? result : result.withFixedTheme(selected);
+    }
+
+    /** Derives from the source material rather than flattening it into five opaque colors. */
+    static Theme configuredPalette(ThemeManager manager, ThemeSettings settings, String id) {
+        String parent = settings.registeredThemeId();
+        if (parent.isEmpty() || parent.equals(id) || manager.registry().find(parent).isEmpty())
+            parent = settings.customBase() == ThemeSettings.Base.LIGHT ? BuiltinThemes.LIGHT_ID : BuiltinThemes.DARK;
+        var original = registeredSnapshot(manager.registry(), manager.tokenCatalog(), parent);
+        var builder = Theme.builder(id).parent(parent).source("SHBUI configured palette (runtime)");
+        applyRgb(builder, original, ThemeTokens.BACKGROUND, settings.background());
+        applyRgb(builder, original, ThemeTokens.SURFACE, settings.surface());
+        applyRgb(builder, original, ThemeTokens.SURFACE_SECONDARY, settings.surface());
+        applyRgb(builder, original, ThemeTokens.SURFACE_ELEVATED, settings.surface());
+        applyRgb(builder, original, ThemeTokens.SURFACE_OVERLAY, settings.surface());
+        applyRgb(builder, original, ThemeTokens.BORDER, settings.border());
+        applyRgb(builder, original, ThemeTokens.TEXT, settings.text());
+        applyRgb(builder, original, ThemeTokens.ACCENT, settings.accent());
+        applyRgb(builder, original, ThemeTokens.PRIMARY, settings.accent());
+        applyRgb(builder, original, ThemeTokens.BORDER_FOCUSED, settings.accent());
+        if (!settings.accent().isEmpty()) {
+            int primary = (original.resolve(ThemeTokens.PRIMARY).argb() & 0xff000000)
+                    | Integer.parseInt(settings.accent().substring(1), 16);
+            int background = original.resolve(ThemeTokens.BACKGROUND).argb() | 0xff000000;
+            int text = com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.readable(
+                    original.resolve(ThemeTokens.ON_PRIMARY).argb(), primary, background, 4.5);
+            builder.token(ThemeTokens.ON_PRIMARY, ColorValue.argb(text));
+        }
+        return builder.build();
+    }
+    private static void applyRgb(Theme.Builder builder, ThemeSnapshot base, ThemeToken<ColorValue> token, String rgb) {
+        if (!rgb.isEmpty()) builder.token(token, ColorValue.argb((base.resolve(token).argb() & 0xff000000)
+                | Integer.parseInt(rgb.substring(1), 16)));
+    }
+
     private ThemePreferences syncPreferences() {
         var settings = ClientUiSettings.current();
         var preferences = manager.preferences();
-        if (settings == previousSettings) return preferences;
+        boolean registryChanged = manager.registry() != configuredRegistry;
+        if (settings == previousSettings && !(settings.theme().mode() == ThemeSettings.Mode.CUSTOM && !settings.theme().registeredThemeId().isEmpty() && registryChanged)) return preferences;
         if (previousSettings == null || !settings.theme().equals(previousSettings.theme())) {
             configureEnvironmentPalette(manager, UiTheme.resolve(settings.theme()));
         }
-        var preset = settings.theme().mode().fixedThemeId();
+        var preset = settings.theme().mode() == ThemeSettings.Mode.CUSTOM && !settings.theme().registeredThemeId().isEmpty()
+                ? configureUserPalette(settings.theme()) : settings.theme().mode().fixedThemeId();
         if (previousSettings == null || !previousSettings.dynamicTheme().equals(settings.dynamicTheme())
-                || !Objects.equals(preset, previousSettings.theme().mode().fixedThemeId())) {
-            preferences = settings.dynamicTheme().applyTo(preferences);
-            if (preset != null) preferences = preferences.withFixedTheme(preset);
+                || !settings.theme().equals(previousSettings.theme()) || registryChanged) {
+            preferences = selectionPreferences(settings, preferences, preset);
         }
         if (previousSettings == null || previousSettings.highContrast() != settings.highContrast()) {
             preferences = preferences.withHighContrast(settings.highContrast());

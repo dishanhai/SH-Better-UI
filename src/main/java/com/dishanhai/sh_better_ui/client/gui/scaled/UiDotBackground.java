@@ -33,12 +33,18 @@ public final class UiDotBackground {
         return BASE.withTheme(theme);
     }
 
+    /** Material flags do not move a CUSTOM theme's background into the dormant HUD setting. */
+    static String configuredEffect(ThemeSettings settings, boolean hudMaterial) {
+        return hudMaterial && settings.mode() == ThemeSettings.Mode.HUD_GLASS
+                ? settings.hudBackgroundEffect() : settings.backgroundEffect();
+    }
+
     public void renderThemed(Screen owner, GuiGraphics graphics, int width, int height, UiPreferences preferences,
                              boolean allowPointer) {
         var themeSettings = ThemeEffects.settings().theme();
         var registry = ShBetterUiApi.backgrounds();
         boolean hud = UiTheme.current().hudGlass();
-        String effect = hud ? themeSettings.hudBackgroundEffect() : themeSettings.backgroundEffect();
+        String effect = configuredEffect(themeSettings, hud);
         boolean dots = effect.equals(ThemeSettings.DEFAULT_BACKGROUND_EFFECT);
         boolean registered = !dots && registry.find(effect).isPresent();
         if (hud && (preferences.highContrast() || (!dots && !registered))) {

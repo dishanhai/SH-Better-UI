@@ -50,7 +50,7 @@ public record UiTheme(boolean light, int background, int surface, int border, in
 
     private static UiTheme configured() {
         var settings = ClientUiSettings.current().theme();
-        if (settings.mode() != ThemeSettings.Mode.CUSTOM) return resolve(settings);
+        if (settings.mode() != ThemeSettings.Mode.CUSTOM || !settings.registeredThemeId().isEmpty()) return resolve(settings);
         // 绘制只在客户端渲染线程进行。配置线程通过不可变快照发布变更。
         return resolveCustom(settings);
     }
@@ -69,7 +69,7 @@ public record UiTheme(boolean light, int background, int surface, int border, in
                 CLEAR_GLASS.background, CLEAR_GLASS.surface, CLEAR_GLASS.border, CLEAR_GLASS.text,
                 CLEAR_GLASS.accent, CLEAR_GLASS.overrides, settings.hudBlurRadius(), CLEAR_GLASS.backdrop,
                 CLEAR_GLASS.secondarySurface, CLEAR_GLASS.elevatedSurface, CLEAR_GLASS.overlaySurface);
-        UiTheme base = settings.light() ? LIGHT : DARK;
+        UiTheme base = resolveBase(settings);
         if (settings.mode() != ThemeSettings.Mode.CUSTOM) return base;
         int mask = (settings.background().isEmpty() ? 0 : BACKGROUND)
                 | (settings.surface().isEmpty() ? 0 : SURFACE)
@@ -78,7 +78,17 @@ public record UiTheme(boolean light, int background, int surface, int border, in
                 | (settings.accent().isEmpty() ? 0 : ACCENT);
         return new UiTheme(base.light, rgb(settings.background(), base.background), rgb(settings.surface(), base.surface),
                 rgb(settings.border(), base.border), rgb(settings.text(), base.text), rgb(settings.accent(), base.accent),
-                mask);
+                mask | base.overrides, base.blurRadius, base.backdrop,
+                rgb(settings.surface(), base.secondarySurface), rgb(settings.surface(), base.elevatedSurface), rgb(settings.surface(), base.overlaySurface));
+    }
+
+    /** Selected material before the current palette overrides, including resource/code registrations. */
+    public static UiTheme resolveBase(ThemeSettings settings) {
+        if (settings.mode() == ThemeSettings.Mode.CUSTOM && !settings.registeredThemeId().isEmpty()) {
+            var selected = MinecraftThemes.registeredPalette(settings.registeredThemeId());
+            if (selected != null) return selected;
+        }
+        return settings.light() ? LIGHT : DARK;
     }
 
     public static void preview(UiTheme theme, Runnable render) {
@@ -162,6 +172,6 @@ public record UiTheme(boolean light, int background, int surface, int border, in
     private static int multiplyAlpha(int a, int b) { return (a * b + 127) / 255; }
 
     private static int rgb(String value, int fallback) {
-        return value.isEmpty() ? fallback : 0xFF000000 | Integer.parseInt(value.substring(1), 16);
+        return value.isEmpty() ? fallback : (fallback & 0xff000000) | Integer.parseInt(value.substring(1), 16);
     }
 }
