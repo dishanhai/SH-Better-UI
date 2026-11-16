@@ -63,6 +63,7 @@ public final class VisualRevealRenderer extends RenderType {
         AntigravityRenderer.registerShaders(event.getResourceProvider(), event::registerShader);
         PatternWavesRenderer.registerShaders(event.getResourceProvider(), event::registerShader);
         ShapeWavesRenderer.registerShaders(event.getResourceProvider(), event::registerShader);
+        CrystalDriftRenderer.registerShaders(event.getResourceProvider(), event::registerShader);
         event.registerShader(new ShaderInstance(event.getResourceProvider(),
                 ResourceLocation.fromNamespaceAndPath(ShBetterUi.MOD_ID, "visual_reveal"), DefaultVertexFormat.POSITION_TEX),
                 loaded -> shader = loaded);
