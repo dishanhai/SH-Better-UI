@@ -1,6 +1,28 @@
 <!-- Author: dishanhai -->
 # 待辦
 
+- [ ] 修复 NeoForge 26.2 全量构建：2026-11-16 的 `compileJava` 在 `UiResourcePicker`、`UiIngredientSlots` 和 `UiRegistryItemPicker` 共报 9 处错误，涉及 `Minecraft.screen` 与 `setScreen` 的版本差异；完成平台适配后重跑 `build` 和相关客户端验收。
+
+2026-11-16 本次复核：Forge 1.20.1、NeoForge 1.21.1 和 26.1.2 的完整 `build` 已通过；下方提及的旧构建失败保留为历史记录，客户端验收仍需完成。
+
+- [ ] 在 Forge 1.20.1／NeoForge 1.21.1／26.1.2 的真实消费实例复验 UUK GTSH 资源选取器：世界内物品栏、JEI 物品书签、不同模组字体与 Modern UI、模组／标签／提示文本过滤、来源切换保留草稿、富文本及图标、高对比、旁白、窗口失焦与 Esc 取消。26.1.2 尚无 JEI 书签后端。公共 API 与自动测试见 `docs/RESOURCE_PICKER_API.md`。
+
+- [ ] 在 Forge 1.20.1、NeoForge 1.21.1／26.1.2／26.2 客户端验收开发者面板「分页导航」：标准／纯页码／图标／RTL、每页行数、空数据、首尾禁用、省略号、长标签和窄窗口，检查按下反馈、同目标松开提交、拖出／Esc／失焦取消、键盘、旁白、高对比、减少动效及 GUI 缩放。测试结束后关闭本次实例与辅助进程；当前未部署游戏实例。
+
+## Animated List（2026-11-16）
+
+- [ ] 工作区完整构建回归：隔离 Forge 全量测试 1085 项中 `GraphicIconShaderTest.builtInShadersReferenceTheirPackagedFragmentsAndSharedVertexStage` 仍将内建着色器清单断言为旧的 4 项，而当前图标改动已扩为 10 项；NeoForge 26.x 全量测试编译还受并行 CardNavInputTest 的旧 Font 构造器影响。本次未修改其他功能的测试。列表独立验证和四端 JAR 校验另行记录在 API 文档。
+- [ ] 在 Forge 1.20.1、NeoForge 1.21.1／26.1.2／26.2 客户端打开 `sh_better_ui:animated_list`，验收 pop/slide/fade/none、首次错峰、animateOnce、空列表及按 ID 更新数据。
+- [ ] 复验明暗/自定义主题、原生图片纹理、玻璃背景、长文本省略、GUI 缩放、旁白、高对比、减效、键鼠切换、快速滚动、滚动条拖放/越界/Esc 取消及卸载清理。尚未更新任何游戏实例 JAR。API 见 [ANIMATED_LIST_API](docs/ANIMATED_LIST_API.md)。
+
+
+- [ ] 富文本公开 Font 入口修复已通过独立客户端显示验证；待其他控件开发完成后重跑工作区完整构建。当前阻塞包括 CardNavControl 的 FormattedCharSequence／FormattedText 类型错误、NeoForge UiPillNavPlatform 的滚轮方法签名和 PillNavStateTest 的宽度断言；相关文件属于并行工作，未在本次修复中改动。未更新游戏实例 JAR。
+
+- [x] 隔离客户端确认 Forge 1.20.1／NeoForge 1.21.1 的原生内联图标与图库可见；Forge + Modern UI 3.12.0.1 复现只占宽不绘制的问题，改为公开 Font 批次入口后图标和十种 PNG 效果恢复。26.1.2 主菜单的 PNG、效果和未绑定物品组件回退通过截图检查。
+- [ ] 补验「富文本与内联图标」预览的 Tooltip、全屏／返回、资源重载、高对比／减少动效、旁白与整合包组合；26.x 世界注册数据就绪后的真实物品模型及 26.2 图形后端另验。结束后清理测试进程。
+
+- [ ] 在 Forge 1.20.1、NeoForge 1.21.1 和 26.1.2 客户端验收全局 `<rich:item>` 富文本：按钮、Tooltip、HUD、长文本换行与省略号、GUI 缩放、资源重载、RTL、高对比和文字特效；核对未注册 ID 的屏障回退。26.1.2 直接世界 Font 批次仍只投影占位宽度。结束后清理本次测试实例与辅助进程。
+
 - [ ] 在 Forge 1.20.1、NeoForge 1.21.1／26.1.2／26.2 客户端验收开发者面板「HUD 快捷键键帽」预览，检查全屏、返回、窄窗口及高对比，并与 SHCLIB HUD 的键帽显示对照。
 
 - [ ] 数字键帽（0–9）、功能键帽（F1–F12）、字母键帽（A–Z、a–z）、控制键帽（Tab、Caps Lock 等）和 macOS 键帽接入 UUK 控件后，在 Forge 1.20.1、NeoForge 1.21.1／26.1.2／26.2 客户端验收明暗主题和常用 GUI 缩放下的辨识度。
@@ -661,3 +683,9 @@ PR #1 整合快照以 JDK 21 編譯核心並保留 Java 17 classfile。雙端 `k
 - [ ] 接入并验证第三方领地/保护权限策略。
 - [ ] 补齐 worker 总 RSS 监控/限制及平台资源基准，不把 JVM 堆预算当总进程内存限制。
 - [ ] 完成 AC01–AC16 真实客户端、单人/专服/多人、缩放/键盘/旁白及长时间验收；结束后清理本任务实例和进程。
+- [ ] CardNav 客户端验收：Forge 1.20.1、NeoForge 1.21.1、26.1.2、26.2 的常用 GUI 缩放、三种动效、宽窄切换、受控展开、连续反向、外部点击／Esc、取消放开、滚动长内容、全屏往返、旁白语音、高对比与减少动效；结束后清理实例及辅助进程。API 与原生绘制差异见 `docs/CARD_NAV_API.md`。
+
+## PillNav 胶囊导航
+
+- [ ] 在 Forge 1.20.1、NeoForge 1.21.1、26.1.2 客户端验收开发者图库的 PillNav：深浅主题、分离／合并、填充与翻滚、滑块与圆点、尺寸与材质、自动折叠、滚轮菜单、按压拖离取消、Esc、失焦、受控选择、资源重载、GUI 缩放、高对比、减少动效与旁白；逐帧对照所给 React/CSS 源码。
+- [ ] 全量回归：2026-11-16 的 PillNav 验证中，Forge／NeoForge 1.21.1 均在 `GraphicIconShaderTest.builtInShadersReferenceTheirPackagedFragmentsAndSharedVertexStage` 出现一项非 PillNav 失败。待图标效果的工作区改动稳定后重新执行全量 `build`；本次不覆盖该功能的未提交修改。
