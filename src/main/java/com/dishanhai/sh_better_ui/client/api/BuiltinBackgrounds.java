@@ -16,6 +16,9 @@ final class BuiltinBackgrounds {
     private BuiltinBackgrounds() {}
 
     static void registerInto(BackgroundRegistry registry) {
+        registry.register(new BackgroundSpec(BlackHoleBackdrop.ID,
+                "sh_better_ui.panel.theme.group." + BlackHoleBackdrop.ID,
+                BlackHoleBackdropProfile.DEFAULT, logo -> new BlackHoleBackdrop()));
         ambient(registry, "soft_aurora", AmbientBackdrop.Style.AURORA, AmbientBackdropProfile.AURORA);
         ambient(registry, "silk_ripples", AmbientBackdrop.Style.SILK, AmbientBackdropProfile.SILK);
         ambient(registry, "iridescent_flow", AmbientBackdrop.Style.IRIDESCENT, AmbientBackdropProfile.IRIDESCENT);

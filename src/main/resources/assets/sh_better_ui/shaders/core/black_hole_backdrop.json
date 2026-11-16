@@ -1,0 +1,127 @@
+{
+  "blend": {
+    "func": "add",
+    "srcrgb": "srcalpha",
+    "dstrgb": "1-srcalpha",
+    "srcalpha": "one",
+    "dstalpha": "1-srcalpha"
+  },
+  "vertex": "sh_better_ui:black_hole_backdrop",
+  "fragment": "sh_better_ui:black_hole_backdrop",
+  "attributes": [
+    "Position",
+    "UV0"
+  ],
+  "samplers": [],
+  "uniforms": [
+    {
+      "name": "ModelViewMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "ProjMat",
+      "type": "matrix4x4",
+      "count": 16,
+      "values": [
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1,
+        0,
+        0,
+        0,
+        0,
+        1
+      ]
+    },
+    {
+      "name": "ColorModulator",
+      "type": "float",
+      "count": 4,
+      "values": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "Surface",
+      "type": "float",
+      "count": 4,
+      "values": [
+        1,
+        1,
+        0,
+        0.08
+      ]
+    },
+    {
+      "name": "Opacity",
+      "type": "float",
+      "count": 1,
+      "values": [
+        1
+      ]
+    },
+    {
+      "name": "BackgroundColor",
+      "type": "float",
+      "count": 4,
+      "values": [
+        1,
+        1,
+        1,
+        1
+      ]
+    },
+    {
+      "name": "Disk",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.16,
+        1,
+        1,
+        0.55
+      ]
+    },
+    {
+      "name": "InkColor",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.9607843137254902,
+        0.9607843137254902,
+        0.9607843137254902,
+        1
+      ]
+    }
+  ]
+}
