@@ -19,6 +19,8 @@ final class BuiltinBackgrounds {
         ambient(registry, "soft_aurora", AmbientBackdrop.Style.AURORA, AmbientBackdropProfile.AURORA);
         ambient(registry, "silk_ripples", AmbientBackdrop.Style.SILK, AmbientBackdropProfile.SILK);
         ambient(registry, "iridescent_flow", AmbientBackdrop.Style.IRIDESCENT, AmbientBackdropProfile.IRIDESCENT);
+        ambient(registry, "contour_flow", AmbientBackdrop.Style.CONTOUR, AmbientBackdropProfile.CONTOUR);
+        ambient(registry, "mist_glow", AmbientBackdrop.Style.MIST, AmbientBackdropProfile.MIST);
         registry.register(new BackgroundSpec(CrystalDrift.ID,
                 "sh_better_ui.panel.theme.group.sh_better_ui:crystal_drift", CrystalDriftProfile.DEFAULT,
                 logo -> new CrystalDrift()));

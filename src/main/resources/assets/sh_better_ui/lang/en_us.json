@@ -2165,5 +2165,7 @@
   "sh_better_ui.panel.theme.group.sh_better_ui:silk_ripples": "Silk ripples",
   "sh_better_ui.panel.theme.group.sh_better_ui:iridescent_flow": "Iridescent flow",
   "sh_better_ui.theme_editor.field.primaryColor": "Primary color",
-  "sh_better_ui.theme_editor.field.secondaryColor": "Secondary color"
+  "sh_better_ui.theme_editor.field.secondaryColor": "Secondary color",
+  "sh_better_ui.panel.theme.group.sh_better_ui:contour_flow": "Flowing contours",
+  "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "Mist glow"
 }
