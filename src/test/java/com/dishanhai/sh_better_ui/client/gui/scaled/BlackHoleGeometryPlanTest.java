@@ -41,6 +41,15 @@ class BlackHoleGeometryPlanTest {
             assertEquals(1,skinny.width()); assertEquals(quality.resolution(),skinny.height());
         }
     }
+    @Test void balancedPreservesFullHdDetailAndHighPreservesTwoKDetail() {
+        var balanced = BlackHoleGeometryPlan.key(p, 1920, 1080, 16f / 9);
+        assertEquals(1536, balanced.width());
+        assertEquals(864, balanced.height());
+        var high = copy(p.size(), p.tilt(), p.inclination(), p.diskOuterRadius(), BlackHoleBackdropProfile.Quality.HIGH);
+        assertEquals(2048, BlackHoleGeometryPlan.key(high, 2048, 1280, 1.6f).width());
+        // Higher resolution still consumes no more than the existing shared frame budget.
+        assertEquals(8, new BlackHoleGeometryPlan.Budget(16_384).takeRows(1, 2048, 1280));
+    }
     @Test void guiScalingUsesPhysicalDimensionsUntilResolutionCap() {
         var logical=BlackHoleGeometryPlan.key(p,128,64,2);
         var physical=BlackHoleGeometryPlan.key(p,256,128,2);
@@ -48,7 +57,7 @@ class BlackHoleGeometryPlanTest {
         assertEquals(logical.height()*2,physical.height());
     }
     @Test void progressiveRowsCoverEveryPixelWithoutExceedingFrameBudget() {
-        for (int width:new int[]{1,127,384,768,1024}) {
+        for (int width:new int[]{1,127,384,768,1024,1536,2048}) {
             int remaining=1024, total=0;
             while (remaining>0) {
                 int rows=BlackHoleGeometryPlan.rowsPerFrame(width,remaining,16_384);

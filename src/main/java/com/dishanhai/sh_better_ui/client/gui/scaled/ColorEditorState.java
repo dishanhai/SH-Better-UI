@@ -10,13 +10,20 @@ public final class ColorEditorState {
     private record Channels(float h, float s, float v, float a) {}
     private Channels current, committed;
     private final int defaultArgb;
+    private final boolean alphaEditable;
     private final IntConsumer onPreview, onCommit;
     private boolean editing;
     public ColorEditorState(int initialArgb, int defaultArgb, IntConsumer onPreview, IntConsumer onCommit) {
-        this.defaultArgb = defaultArgb;
+        this(initialArgb, defaultArgb, true, onPreview, onCommit);
+    }
+    public ColorEditorState(int initialArgb, int defaultArgb, boolean alphaEditable,
+                            IntConsumer onPreview, IntConsumer onCommit) {
+        this.alphaEditable = alphaEditable;
+        this.defaultArgb = alphaEditable ? defaultArgb : defaultArgb | 0xff000000;
         this.onPreview = Objects.requireNonNull(onPreview); this.onCommit = Objects.requireNonNull(onCommit);
         setValue(initialArgb);
     }
+    public boolean alphaEditable() { return alphaEditable; }
     public int color() { return argb(current); }
     public int committedColor() { return argb(committed); }
     public int defaultColor() { return defaultArgb; }
@@ -26,11 +33,13 @@ public final class ColorEditorState {
     }
     /** Replaces host state without echoing callbacks. Preserves hue when the supplied color is achromatic. */
     public void setValue(int argb) {
+        if (!alphaEditable) argb |= 0xff000000;
         float[] hsv = HsvColor.toHsv(argb);
         float hue = hsv[1] == 0 && current != null ? current.h : hsv[0];
         current = committed = new Channels(hue, hsv[1], hsv[2], (argb >>> 24) / 255f); editing = false;
     }
     public void preview(int channel, float value) {
+        if (channel == 3 && !alphaEditable) throw new IllegalArgumentException("Alpha is not editable in RGB mode");
         if (!Float.isFinite(value)) throw new IllegalArgumentException("Channel value must be finite");
         float next = Math.max(0, Math.min(1, value));
         Channels changed = switch (channel) {
@@ -60,6 +69,7 @@ public final class ColorEditorState {
         if (oldCommitted != defaultArgb) onCommit.accept(defaultArgb);
     }
     public int rampColor(int channel, float position) {
+        if (channel == 3 && !alphaEditable) throw new IllegalArgumentException("Alpha is not editable in RGB mode");
         float t = Math.max(0, Math.min(1, position));
         return switch (channel) {
             case 0 -> HsvColor.toArgb(t * 360f, 1, 1, 255);

@@ -10,11 +10,16 @@ import java.util.*;
 import static com.dishanhai.sh_better_ui.kernel.internal.music.SourceJson.*;
 
 final class NeteaseSource implements OnlineMusicSource {
-    private final MusicHttp http = new MusicHttp();
+    @FunctionalInterface interface Transport {
+        JsonObject json(String url, String body, String type, String referer, String cookie) throws IOException;
+    }
+    private final Transport http;
+    NeteaseSource() { this(new MusicHttp()::json); }
+    NeteaseSource(Transport http) { this.http = Objects.requireNonNull(http); }
     private volatile String cookie = "";
     @Override public void credentials(String value) { cookie = MusicHttp.cookie(value); }
     @Override public OnlineMusicSource requestSnapshot() {
-        var snapshot = new NeteaseSource(); snapshot.cookie = cookie; return snapshot;
+        var snapshot = new NeteaseSource(http); snapshot.cookie = cookie; return snapshot;
     }
     @Override public boolean supportsLikes() { return true; }
     @Override public String id() { return "netease"; }
@@ -65,7 +70,7 @@ final class NeteaseSource implements OnlineMusicSource {
         var ids = array(playlistData, "trackIds");
         int start = (int) Math.min(ids.size(), (page - 1L) * limit);
         var selected = new ArrayList<String>();
-        for (int i = start; i < ids.size() && selected.size() < limit; i++) {
+        for (int i = start, end = Math.min(ids.size(), start + limit); i < end; i++) {
             if (!ids.get(i).isJsonObject()) continue;
             String songId = text(ids.get(i).getAsJsonObject(), "id");
             if (songId.matches("[0-9]{1,24}")) selected.add(songId);
@@ -80,7 +85,7 @@ final class NeteaseSource implements OnlineMusicSource {
         var ids = array(data, "ids");
         int start = (int) Math.min(ids.size(), (page - 1L) * limit);
         var selected = new ArrayList<String>();
-        for (int i = start; i < ids.size() && selected.size() < limit; i++) {
+        for (int i = start, end = Math.min(ids.size(), start + limit); i < end; i++) {
             var item = ids.get(i);
             if (!item.isJsonPrimitive()) continue;
             String songId = item.getAsString();
@@ -101,7 +106,17 @@ final class NeteaseSource implements OnlineMusicSource {
         var data = accountCall("/weapi/v3/song/detail", Map.of("c", new Gson().toJson(request)), session);
         requireArray(data, "songs");
         var wrapped = new JsonObject(); var result = new JsonObject();
-        result.add("songs", array(data, "songs")); wrapped.add("result", result);
+        // Ignore unrelated/duplicate records before applying the requested-count bound.
+        // Otherwise an unexpected first record can crowd a legitimate requested song out.
+        var requested = new HashSet<>(ids);
+        var seen = new HashSet<String>();
+        var selectedSongs = new JsonArray();
+        for (var song : array(data, "songs")) {
+            if (!song.isJsonObject()) continue;
+            String songId = text(song.getAsJsonObject(), "id");
+            if (requested.contains(songId) && seen.add(songId)) selectedSongs.add(song);
+        }
+        result.add("songs", selectedSongs); wrapped.add("result", result);
         var byId = new HashMap<String, OnlineTrack>();
         for (var track : parseSearch(wrapped, ids.size())) byId.put(track.id(), track);
         var ordered = new ArrayList<OnlineTrack>();

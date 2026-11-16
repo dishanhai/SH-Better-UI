@@ -19,7 +19,8 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     CompletableFuture<List<OnlineTrack>> search(String source, String query, int page);
     /** Replaces credentials and stops playback. Saved only when explicitly enabled for this source. */
     void credentials(String source, String cookie);
-    /** Opt in before login/import. Disabling removes saved credentials while keeping the current login.
+    /** Opt in before or after login/import; current credentials are saved immediately.
+     * Disabling removes saved credentials while keeping the current login.
      * Built-in storage accepts source IDs matching [a-z0-9_-]{1,40}; other IDs remain session-only. */
     default void rememberCredentials(String source, boolean remember) { throw new UnsupportedOperationException(); }
     default boolean remembersCredentials(String source) { return false; }

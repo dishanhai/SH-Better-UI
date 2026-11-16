@@ -37,7 +37,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private OnlineTrack track;
     private byte[] audio;
     private long generation, duration, offset;
-    private boolean preview, playRequested;
+    private boolean preview, playRequested, savedCredentialsRestored;
     private State state = State.IDLE;
     private Failure failure = Failure.NONE;
     private LyricsState lyricsState = LyricsState.EMPTY;
@@ -71,7 +71,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         provider.credentials(valid);
         try {
             if (credentialStore != null) {
-                if (valid.isBlank() && sourceId.matches("[a-z0-9_-]{1,40}")) credentialStore.revoke(sourceId);
+                if (valid.isBlank() && sourceId.matches("[a-z0-9_-]{1,40}")) {
+                    if (cancelLogin) credentialStore.revoke(sourceId);
+                    else credentialStore.revokeIfCurrent(sourceId, persistenceVersions.getOrDefault(sourceId, -1L));
+                    remembered.remove(sourceId); persistenceVersions.remove(sourceId);
+                }
                 else if (remembersCredentials(sourceId)) saveCredentials(sourceId, valid);
             }
         } catch (java.io.IOException | RuntimeException error) {
@@ -86,9 +90,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return obsolete;
     }
     private void saveCredentials(String sourceId, String cookie) throws java.io.IOException {
-        if (!credentialStore.putIfCurrent(sourceId, cookie, persistenceVersions.getOrDefault(sourceId, -1L))) {
+        long next = credentialStore.replaceIfCurrent(sourceId, cookie, persistenceVersions.getOrDefault(sourceId, -1L));
+        if (next < 0) {
             remembered.remove(sourceId); persistenceVersions.remove(sourceId);
-        }
+        } else persistenceVersions.put(sourceId, next);
     }
     private List<CompletableFuture<?>> applyCredentials(String sourceId, String cookie) {
         accountGenerations.merge(sourceId, 1L, Long::sum);
@@ -113,8 +118,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 String cookie = credentials.getOrDefault(sourceId, "");
                 if (remember) {
                     long revision = credentialStore.revision(sourceId);
-                    if (!cookie.isBlank() && !credentialStore.putIfCurrent(sourceId, cookie, revision))
-                        throw new java.io.IOException("Music credential preference changed");
+                    if (!cookie.isBlank()) {
+                        revision = credentialStore.replaceIfCurrent(sourceId, cookie, revision);
+                        if (revision < 0) throw new java.io.IOException("Music credential preference changed");
+                    }
                     persistenceVersions.put(sourceId, revision);
                 } else { credentialStore.revoke(sourceId); persistenceVersions.remove(sourceId); }
             }
@@ -128,10 +135,14 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     }
     /** Only disk access; construction never validates accounts or starts network requests. */
     void restoreSavedCredentials() {
-        if (credentialStore == null) return;
         var obsolete = new ArrayList<CompletableFuture<?>>();
         synchronized (this) {
+            requireOpen();
+            if (credentialStore == null || savedCredentialsRestored) return;
+            savedCredentialsRestored = true;
             for (var sourceId : sources.keySet()) {
+                // Restore is startup-only; never overwrite explicit session credentials or logout.
+                if (accountGenerations.containsKey(sourceId)) continue;
                 try {
                     var saved = credentialStore.loadWithRevision(sourceId);
                     if (saved.cookie().isBlank()) continue;

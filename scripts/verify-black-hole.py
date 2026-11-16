@@ -165,8 +165,9 @@ def target(w, h, internal=0x8058, nearest=False):
 
 W, H = args.width, args.height
 require(0 < W <= 4096 and 0 < H <= 4096, 'Dimensions must be 1..4096')
-geometry = target(1024, 1024, 0x881A, True)  # production RGBA16F, discrete NEAREST fate
-scene = target(1024, 1024)
+geometry = target(1, 1, 0x881A, True)  # production RGBA16F, discrete NEAREST fate
+scene = target(1, 1)
+scene_width, scene_height = 1, 1
 bloom_a, bloom_b = target(256, 256), target(256, 256)
 old_scene = target(384, 384)
 output = target(W, H, 0x8814)  # float diagnostics before conversion to PNG
@@ -174,7 +175,7 @@ viewport = bind(G, 'glViewport', None, I, I, I, I)
 draw = bind(G, 'glDrawArrays', None, U, I, I)
 finish = bind(G, 'glFinish', None)
 read = bind(G, 'glReadPixels', None, I, I, I, I, U, U, P)
-quality = {'LOW': (.04, 192, 384), 'BALANCED': (.025, 320, 768), 'HIGH': (.016, 512, 1024)}
+quality = {'LOW': (.04, 192, 384), 'BALANCED': (.025, 320, 1536), 'HIGH': (.016, 512, 2048)}
 last_geometry = None
 trace_calls = 0
 
@@ -214,6 +215,8 @@ def build_geometry(size=1, tilt=.08, inclination=.25, outer=18, tier='BALANCED')
     rw, rh = max(1, round(W*ratio)), max(1, round(H*ratio))
     if key == last_geometry:
         return rw, rh
+    bind(G, 'glBindTexture', None, U, U)(0x0DE1, geometry[1])
+    bind(G, 'glTexImage2D', None, U, I, I, I, I, I, U, U, P)(0x0DE1, 0, 0x881A, rw, rh, 0, 0x1908, 0x1406, None)
     activate(geometry, rw, rh, trace_program)
     v4(location(trace_program, 'Surface'), W/H, size, 0, tilt)
     v4(location(trace_program, 'Physics'), inclination, outer, 0, 0)
@@ -241,23 +244,28 @@ def build_geometry(size=1, tilt=.08, inclination=.25, outer=18, tier='BALANCED')
 
 def render(phase=0, size=1, tilt=.08, inclination=.25, outer=18, brightness=1, outline=0,
            glow=1.2, opacity=1, base_alpha=1, ink_alpha=1, tier='BALANCED', finite=False, capture=True):
+    global scene_width, scene_height
     rw, rh = build_geometry(size, tilt, inclination, outer, tier)
+    if rw > scene_width or rh > scene_height:
+        scene_width, scene_height = max(rw, scene_width), max(rh, scene_height)
+        bind(G, 'glBindTexture', None, U, U)(0x0DE1, scene[1])
+        bind(G, 'glTexImage2D', None, U, I, I, I, I, I, U, U, P)(0x0DE1, 0, 0x8058, scene_width, scene_height, 0, 0x1908, 0x1406, None)
     start = time.perf_counter()
     activate(scene, rw, rh, shade_program)
     sampler(shade_program, 'Geometry', geometry[1])
-    v2(location(shade_program, 'ContentScale'), rw/1024, rh/1024)
+    v2(location(shade_program, 'ContentScale'), 1, 1)
     v4(location(shade_program, 'Motion'), phase, brightness, outline, 0)
     color(shade_program, ink_alpha, base_alpha)
     draw(4, 0, 6)
     ratio = min(1, 256/max(rw, rh)); bw, bh = max(1, round(rw*ratio)), max(1, round(rh*ratio))
     if glow > 0 and brightness > 0:
         spread = 1+glow*1.5
-        for dst, source_texture, sw, sh, capacity, dx, dy, threshold in [
-            (bloom_a, scene[1], rw, rh, 1024, spread/bw, 0, .35),
-            (bloom_b, bloom_a[1], bw, bh, 256, 0, spread/bh, 0)]:
+        for dst, source_texture, sw, sh, cw, ch, dx, dy, threshold in [
+            (bloom_a, scene[1], rw, rh, scene_width, scene_height, spread/bw, 0, .35),
+            (bloom_b, bloom_a[1], bw, bh, 256, 256, 0, spread/bh, 0)]:
             activate(dst, bw, bh, bloom_program)
             sampler(bloom_program, 'Source', source_texture)
-            v2(location(bloom_program, 'ContentScale'), sw/capacity, sh/capacity)
+            v2(location(bloom_program, 'ContentScale'), sw/cw, sh/ch)
             v2(location(bloom_program, 'Texel'), 1/sw, 1/sh)
             v4(location(bloom_program, 'Filter'), dx, dy, threshold, 0)
             draw(4, 0, 6)
@@ -265,7 +273,7 @@ def render(phase=0, size=1, tilt=.08, inclination=.25, outer=18, brightness=1, o
     sampler(composite_program, 'Scene', scene[1]); sampler(composite_program, 'Bloom', bloom_b[1], 1)
     mat(location(composite_program, 'ModelViewMat'), 1, 0, identity); mat(location(composite_program, 'ProjMat'), 1, 0, identity)
     v4(location(composite_program, 'ColorModulator'), 1, 1, 1, 1)
-    v4(location(composite_program, 'ContentScale'), rw/1024, rh/1024, bw/256, bh/256)
+    v4(location(composite_program, 'ContentScale'), rw/scene_width, rh/scene_height, bw/256, bh/256)
     v4(location(composite_program, 'Finish'), 1/rw, 1/rh, glow if brightness > 0 else 0, opacity)
     draw(4, 0, 6); finish()
     elapsed = (time.perf_counter()-start)*1000
@@ -312,11 +320,26 @@ report['comparison'] = {'dimensions': [W, H], 'baseline_ref': args.before_ref, '
                          'geometry_work_for_phase_change': trace_calls-calls}
 report['checks'].extend(['phase changes reuse geometry', 'frozen phase identical', '2pi wrap continuous', 'finite RGBA16F geometry with discrete fate'])
 for name, parameters in [('transparent', {'base_alpha': 0}), ('opacity-zero', {'opacity': 0}), ('brightness-zero', {'brightness': 0}),
+                          ('edge-on-low', {'inclination': 1.35, 'tier': 'LOW'}), ('inclined-high', {'inclination': .9, 'tier': 'HIGH'}),
                           ('outline', {'outline': 1}), ('glow-heavy', {'glow': 3}), ('glow-zero', {'glow': 0})]:
     image, _ = render(**parameters, finite=True)
     image.save(args.output/(name+'.png'))
     if name == 'opacity-zero': require(image.getextrema()[3] == (0, 0), 'Zero opacity failed')
     if name == 'brightness-zero': require(image.getextrema() == ((8, 8), (8, 8), (8, 8), (255, 255)), 'Zero brightness failed')
+# A smaller render after a larger one must not sample stale pixels outside its viewport.
+low_before, _ = render(tier='LOW', finite=True)
+render(tier='HIGH', finite=True)
+low_after, _ = render(tier='LOW', finite=True)
+require(delta(low_before, low_after)['max_channel_255'] <= 1, 'Grow-only scene leaked stale pixels after shrinking viewport')
+report['checks'].append('rectangular targets and large-to-small viewport reuse agree within 1/255')
+# Deliberately poison padding instead of relying on driver-initialized texture contents.
+for attachment in (scene, bloom_a, bloom_b):
+    bind(G, 'glBindFramebuffer', None, U, U)(0x8D40, attachment[0])
+    bind(G, 'glClearColor', None, F, F, F, F)(1, 0, 1, 1)
+    bind(G, 'glClear', None, U)(0x4000)
+low_poisoned, _ = render(tier='LOW', finite=True)
+require(delta(low_after, low_poisoned)['max_channel_255'] <= 1, 'Texture padding leaked magenta into active viewport')
+report['checks'].append('poisoned scene/bloom padding does not leak')
 if args.animation:
     frames = []
     for frame in range(32):
@@ -325,7 +348,7 @@ if args.animation:
         new = render(seconds*.18)[0].convert('RGB').resize((512, 320), Image.Resampling.LANCZOS)
         pair = Image.new('RGB', (1024, 350), (8, 8, 8)); pair.paste(old, (0, 30)); pair.paste(new, (512, 30))
         painter = ImageDraw.Draw(pair); painter.text((12, 9), 'BEFORE / 256px + whole-scene blur', fill='white')
-        painter.text((524, 9), 'AFTER / cached 768px geometry + moving emission', fill='white')
+        painter.text((524, 9), 'AFTER / cached 1536px geometry + moving emission', fill='white')
         frames.append(pair)
     frames[0].save(args.output/'motion-before-after.gif', save_all=True, append_images=frames[1:], duration=100, loop=0)
 if args.benchmark:

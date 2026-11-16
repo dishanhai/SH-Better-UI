@@ -28,11 +28,14 @@ public final class ThemeCustomizationScreen extends Screen {
     private final UiDotBackground background = new UiDotBackground();
     private final Set<Integer> invalidColors = new HashSet<>();
     private ThemeSettings draft;
+    private final ThemeSettings initialDraft;
     private ThemeSettings beforeReset;
     private String[] colors;
     private AppearanceService.ThemeSection section;
     private int page, pages, rows, left, panelWidth, footer;
-    private UiButton done;
+    private UiButton done, registeredChooser;
+    private Component selectionError;
+    private final java.util.ArrayList<UiButton> colorPickers = new java.util.ArrayList<>();
 
     public ThemeCustomizationScreen(AppearanceService appearance, Screen parent, ClientUiSettings settings,
                                     AppearanceService.ThemeSection section, Consumer<ThemeSettings> apply) {
@@ -43,8 +46,40 @@ public final class ThemeCustomizationScreen extends Screen {
         this.section = section;
         this.apply = apply;
         preferences = UiPreferences.fromSettings(settings);
-        draft = settings.theme().withMode(ThemeSettings.Mode.CUSTOM);
+        ThemeSettings initial;
+        try {
+            initial = initialDraft(settings, id ->
+                    com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.themes().registry().find(id).isPresent());
+        } catch (IllegalArgumentException fullArchive) {
+            initial = settings.theme().withMode(ThemeSettings.Mode.CUSTOM);
+            selectionError = label("palette_capacity");
+        }
+        draft = initialDraft = initial;
         readColors();
+    }
+
+    static ThemeSettings initialDraft(ClientUiSettings settings, java.util.function.Predicate<String> registered) {
+        var theme = settings.theme();
+        String dynamic = settings.dynamicTheme().fixedTheme();
+        // Legacy custom + dynamic selection displays the dynamic theme at runtime. Seed that
+        // actual base while archiving (not flattening or overwriting) the dormant custom palette.
+        if (theme.mode().fixedThemeId() == null
+                && (theme.mode() != ThemeSettings.Mode.CUSTOM || theme.registeredThemeId().isEmpty())
+                && !dynamic.isEmpty()
+                && !com.dishanhai.sh_better_ui.client.theme.MinecraftThemes.isConfiguredPalette(dynamic)
+                && registered.test(dynamic)) return theme.withRegisteredTheme(dynamic);
+        return initialDraft(theme);
+    }
+
+    static ThemeSettings initialDraft(ThemeSettings theme) {
+        if (theme.mode() == ThemeSettings.Mode.CUSTOM) return theme;
+        String id = switch (theme.mode()) {
+            case LIGHT -> com.dishanhai.sh_better_ui.theme.BuiltinThemes.LIGHT_ID;
+            case DARK -> com.dishanhai.sh_better_ui.theme.BuiltinThemes.DARK;
+            case LIQUID_GLASS, HUD_GLASS -> theme.mode().fixedThemeId();
+            default -> throw new IllegalStateException("Unexpected theme mode");
+        };
+        return theme.withRegisteredTheme(id);
     }
 
     private void readColors() {
@@ -57,6 +92,7 @@ public final class ThemeCustomizationScreen extends Screen {
         left = (width - panelWidth) / 2;
         footer = height - 26;
         done = null;
+        colorPickers.clear();
         if (width < 240 || height < 180) {
             button(left, footer, panelWidth, label("cancel"), this::returnToParent);
             return;
@@ -75,7 +111,7 @@ public final class ThemeCustomizationScreen extends Screen {
         int listTop = backgrounds ? 88 : 64;
         rows = Math.max(1, (footer - listTop - 34) / 24);
         int count = switch (section) {
-            case COLORS -> 6;
+            case COLORS -> 7;
             case BACKGROUNDS -> appearance.backgrounds().entries().size();
             case EFFECTS -> effectGroups().size();
         };
@@ -95,7 +131,7 @@ public final class ThemeCustomizationScreen extends Screen {
             button(left + panelWidth - 64, footer - 30, 64, label("next"), () -> page(1)).active = page + 1 < pages;
         }
         int third = (panelWidth - 8) / 3;
-        button(left, footer, third, label(beforeReset == null ? "reset" : "undo"), this::reset);
+        button(left, footer, third, label(beforeReset == null ? "reset_palette" : "undo"), this::reset);
         button(left + third + 4, footer, third, label("cancel"), this::returnToParent);
         done = button(left + 2 * (third + 4), footer, panelWidth - 2 * (third + 4), label("done"), () -> {
             if (!invalidColors.isEmpty()) return;
@@ -107,17 +143,38 @@ public final class ThemeCustomizationScreen extends Screen {
 
     private void color(int index, int y) {
         if (index == 0) {
-            button(left, y, panelWidth, label("base", Component.translatable("sh_better_ui.panel.theme.mode."
-                    + (draft.customBase() == ThemeSettings.Base.DARK ? "dark" : "light"))), () -> {
+            registeredChooser = button(left, y, panelWidth, label("registered", selectedThemeName()), this::nextRegisteredTheme);
+            registeredChooser.setPreview(selectionError == null ? label("color_picker_hint") : selectionError);
+            return;
+        }
+        if (index == 1) {
+            boolean lightBase = draft.registeredThemeId().isEmpty()
+                    ? draft.customBase() == ThemeSettings.Base.LIGHT : UiTheme.resolveBase(draft).light();
+            var baseButton = button(left, y, panelWidth, label("base", Component.translatable("sh_better_ui.panel.theme.mode."
+                    + (lightBase ? "light" : "dark"))), () -> {
                 draft = draft.withPalette(draft.customBase() == ThemeSettings.Base.DARK
                         ? ThemeSettings.Base.LIGHT : ThemeSettings.Base.DARK,
                         draft.background(), draft.surface(), draft.border(), draft.text(), draft.accent());
                 beforeReset = null;
                 rebuild();
             });
+            baseButton.active = draft.registeredThemeId().isEmpty();
             return;
         }
-        int color = index - 1;
+        int color = index - 2;
+        var picker = button(left, y, panelWidth / 2 - 6,
+                label("color_picker", label("color." + COLORS[color])), () -> {
+                    if (!invalidColors.isEmpty()) return;
+                    minecraft.setScreen(new ThemePaletteScreen(this, settings.withTheme(draft), color,
+                            label("color." + COLORS[color]), value -> {
+                                colors[color] = value;
+                                draft = ThemePaletteEdit.replace(draft, color, value);
+                                beforeReset = null;
+                            }));
+                });
+        colorPickers.add(picker);
+        picker.active = invalidColors.isEmpty();
+        picker.setPreview(label("color_picker_hint"));
         var input = new UiTextField(font, new Bounds(left + panelWidth / 2, y, panelWidth / 2 - 40, 20),
                 label("color." + COLORS[color]), 7, preferences);
         input.setValue(colors[color]);
@@ -132,6 +189,7 @@ public final class ThemeCustomizationScreen extends Screen {
                 beforeReset = null;
             }
             if (done != null) done.active = invalidColors.isEmpty();
+            colorPickers.forEach(control -> control.active = invalidColors.isEmpty());
         });
         if (invalidColors.contains(color)) input.setError(label("invalid_color"));
         addRenderableWidget(input);
@@ -144,6 +202,38 @@ public final class ThemeCustomizationScreen extends Screen {
             rebuild();
         });
         reset.setPreview(label("inherit"));
+    }
+
+    private Component selectedThemeName() {
+        if (draft.registeredThemeId().isEmpty()) return label("registered_custom");
+        return com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.themes().registry()
+                .find(draft.registeredThemeId()).map(theme -> Component.translatable(theme.nameKey()))
+                .orElse(Component.literal(draft.registeredThemeId()));
+    }
+
+    private void nextRegisteredTheme() {
+        if (!invalidColors.isEmpty()) return;
+        var ids = com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.themes().registry()
+                .themes().keySet().stream()
+                .filter(id -> !com.dishanhai.sh_better_ui.client.theme.MinecraftThemes.isConfiguredPalette(id))
+                .sorted().toList();
+        int next = ids.indexOf(draft.registeredThemeId()) + 1;
+        if (selectRegisteredTheme(next < ids.size() ? ids.get(next) : "")) rebuild();
+    }
+
+    private boolean selectRegisteredTheme(String id) {
+        try {
+            var next = draft.withRegisteredTheme(id);
+            draft = next;
+        } catch (IllegalArgumentException fullArchive) {
+            selectionError = label("palette_capacity");
+            if (registeredChooser != null) registeredChooser.setPreview(selectionError);
+            return false;
+        }
+        selectionError = null;
+        beforeReset = null;
+        readColors();
+        return true;
     }
 
     private void configureBackground() {
@@ -183,10 +273,11 @@ public final class ThemeCustomizationScreen extends Screen {
     }
 
     private void reset() {
+        selectionError = null;
         if (beforeReset == null) {
             beforeReset = draft;
-            draft = ThemeSettings.DEFAULT.withMode(ThemeSettings.Mode.CUSTOM)
-                    .withHudBackgroundEffect(draft.hudBackgroundEffect()).withHudBlurRadius(draft.hudBlurRadius());
+            // Reset only this theme's draft; other registered theme palettes remain archived.
+            draft = draft.withPalette(draft.customBase(), "", "", "", "", "");
         } else {
             draft = beforeReset;
             beforeReset = null;
@@ -230,27 +321,28 @@ public final class ThemeCustomizationScreen extends Screen {
             g.drawCenteredString(font, title, width / 2, 12, palette.text());
             if (width < 240 || height < 180) g.drawCenteredString(font, label("too_small"), width / 2, height / 2, palette.text());
             else {
-                var hint = label(section == AppearanceService.ThemeSection.COLORS ? "color_hint"
+                var hint = selectionError != null ? selectionError : label(section == AppearanceService.ThemeSection.COLORS ? "color_hint"
                         : section == AppearanceService.ThemeSection.BACKGROUNDS ? "background_hint" : "effect_hint");
                 g.drawString(font, font.plainSubstrByWidth(hint.getString(), panelWidth),
                         left, 52, palette.text(), false);
-                if (section == AppearanceService.ThemeSection.COLORS) {
-                    for (int i = page * rows; i < Math.min(6, (page + 1) * rows); i++) if (i > 0) {
-                        int y = 64 + (i - page * rows) * 24;
-                        g.drawString(font, label("color." + COLORS[i - 1]), left + 2, y + 6, palette.text(), false);
-                    }
-                }
                 if (pages > 1) g.drawCenteredString(font, Component.translatable("sh_better_ui.theme_editor.page", page + 1, pages),
                         width / 2, footer - 24, palette.text());
             }
             super.render(g, mouseX, mouseY, partialTick);
+            if (width >= 240 && height >= 180 && section == AppearanceService.ThemeSection.COLORS) {
+                for (int i = page * rows; i < Math.min(7, (page + 1) * rows); i++) if (i > 1) {
+                    int y = 64 + (i - page * rows) * 24;
+                    g.fill(left + 3, y + 3, left + 15, y + 17, palette.border());
+                    g.fill(left + 4, y + 4, left + 14, y + 16, ThemePaletteScreen.resolve(draft, i - 2));
+                }
+            }
         }));
     }
 
     @Override public void removed() { background.reset(); }
     private void returnToParent() { minecraft.setScreen(parent); }
     @Override public void onClose() {
-        if (invalidColors.isEmpty() && draft.equals(settings.theme().withMode(ThemeSettings.Mode.CUSTOM))) {
+        if (invalidColors.isEmpty() && draft.equals(initialDraft)) {
             returnToParent();
             return;
         }

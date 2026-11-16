@@ -42,7 +42,7 @@ public final class BuiltinThemes {
         }
     }
 
-    static ThemeRegistry registry() {
+    public static ThemeRegistry registry() {
         return MuoniumThemes.registerInto(new ThemeRegistry()
                 .with(theme(DARK).build())
                 .with(theme(LIGHT_ID).parent(DARK).token(LIGHT, true)

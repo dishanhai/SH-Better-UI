@@ -104,6 +104,28 @@ final class MusicCredentialStore {
         }
     }
 
+    /** A successful replacement invalidates older session writers and returns the new lease. */
+    synchronized long replaceIfCurrent(String source, String cookie, long revision) throws IOException {
+        validateSource(source);
+        synchronized (LEASE_LOCK) {
+            if (currentRevision(source) != revision) return -1;
+            put(source, cookie);
+            long next = revision + 1;
+            REVISIONS.put(new LeaseKey(directory, source), next);
+            return next;
+        }
+    }
+
+    /** An expired old account must not remove a newer account saved by another session. */
+    synchronized boolean revokeIfCurrent(String source, long revision) throws IOException {
+        validateSource(source);
+        synchronized (LEASE_LOCK) {
+            if (currentRevision(source) != revision) return false;
+            revoke(source);
+            return true;
+        }
+    }
+
     private long currentRevision(String source) { return REVISIONS.getOrDefault(new LeaseKey(directory, source), 0L); }
 
     private String loadOne(String source) throws IOException {

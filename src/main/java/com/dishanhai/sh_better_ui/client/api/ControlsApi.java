@@ -52,7 +52,6 @@ import net.minecraft.network.chat.Component;
 
 import java.util.List;
 import java.util.function.BiConsumer;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.IntConsumer;
@@ -61,6 +60,14 @@ import java.util.function.Supplier;
 
 /** 山海：原生控件工厂、实时状态与加载提示。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** Setting-card decoration. Register widgets() separately and render the card before its children. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiSettingCard settingCard(Font font, Bounds area,
+            Component title, Component description, net.minecraft.client.gui.components.AbstractWidget primary,
+            Component detailsLabel, UiPreferences preferences, Runnable onDetails) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiSettingCard(font, area, title, description,
+                primary, detailsLabel, preferences, onDetails);
+    }
+
     /** Single-focus media action card; host confirms playback via setPlaying(). Minimum 128 x 48. */
     public com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard mediaCard(Bounds area,
             Component title, Component subtitle, UiPreferences preferences, Runnable onActivate) {
@@ -147,6 +154,14 @@ public final class ControlsApi {
             java.util.function.IntConsumer preview, java.util.function.IntConsumer commit) {
         return new com.dishanhai.sh_better_ui.client.gui.scaled.UiColorEditor(
                 area, name, initialArgb, defaultArgb, preferences, preview, commit);
+    }
+
+    /** RGB-only mode uses three ramps and opaque callback values; default overload retains alpha editing. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiColorEditor colorEditor(Bounds area,
+            Component name, int initialArgb, int defaultArgb, boolean alphaEditable, UiPreferences preferences,
+            java.util.function.IntConsumer preview, java.util.function.IntConsumer commit) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiColorEditor(
+                area, name, initialArgb, defaultArgb, alphaEditable, preferences, preview, commit);
     }
 
     ControlsApi() {}

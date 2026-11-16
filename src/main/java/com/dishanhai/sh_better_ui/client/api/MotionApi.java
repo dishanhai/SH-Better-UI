@@ -52,6 +52,11 @@ public final class MotionApi {
         return new MusicRhythm();
     }
 
+    /** Shared reversible progress with staggered windows for layered settings panels. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiLayeredMotion layeredMotion(long openMs, long closeMs) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiLayeredMotion(openMs, closeMs);
+    }
+
     public long nowMs() {
         return PageTransition.nowMs();
     }

@@ -195,4 +195,95 @@ class OnlineMusicAccountSessionTest {
             assertEquals("first", used.get());
         } finally { release.countDown(); }
     }
+    @Test void newerSavedAccountRevokesOldSessionWriterButKeepsItsLogin() throws Exception {
+        var store = new MusicCredentialStore(directory);
+        try (var first = new OnlinePlayerSession(List.of(new Source()), store);
+             var second = new OnlinePlayerSession(List.of(new Source()), new MusicCredentialStore(directory))) {
+            first.rememberCredentials("test", true); first.credentials("test", "first");
+            second.restoreSavedCredentials(); second.credentials("test", "second");
+            assertFalse(first.remembersCredentials("test"));
+            assertTrue(second.remembersCredentials("test"));
+            first.credentials("test", "late-old-update");
+            assertEquals("second", store.load("test"));
+            assertTrue(first.authenticated("test"));
+            second.credentials("test", "second-updated");
+            assertEquals("second-updated", store.load("test"));
+        }
+    }
+
+    @Test void expiryOfOlderSessionDoesNotDeleteNewerSavedAccount() throws Exception {
+        var store = new MusicCredentialStore(directory);
+        var expired = new Source() {
+            @Override public OnlineMusicAccount account() throws Exception { throw new LoginRequired(); }
+        };
+        try (var first = new OnlinePlayerSession(List.of(expired), store);
+             var second = new OnlinePlayerSession(List.of(new Source()), new MusicCredentialStore(directory))) {
+            first.rememberCredentials("test", true); first.credentials("test", "expired");
+            second.restoreSavedCredentials(); second.credentials("test", "new-account");
+            assertThrows(ExecutionException.class, () -> first.account("test").get(2, TimeUnit.SECONDS));
+            assertFalse(first.authenticated("test"));
+            assertEquals("new-account", store.load("test"));
+            assertTrue(second.remembersCredentials("test"));
+        }
+    }
+
+    @Test void restoreIsOnceOnlyAndNeverOverridesExplicitSessionCredentials() throws Exception {
+        var store = new MusicCredentialStore(directory); store.put("test", "saved");
+        var source = new Source();
+        try (var session = new OnlinePlayerSession(List.of(source), store)) {
+            session.credentials("test", "session-only");
+            session.restoreSavedCredentials();
+            assertEquals("session-only", source.cookie);
+            assertFalse(session.remembersCredentials("test"));
+        }
+        source = new Source();
+        try (var session = new OnlinePlayerSession(List.of(source), store)) {
+            session.restoreSavedCredentials();
+            session.rememberCredentials("test", false);
+            store.put("test", "another-session");
+            session.restoreSavedCredentials();
+            assertEquals("saved", source.cookie);
+            assertFalse(session.remembersCredentials("test"));
+        }
+    }
+
+    @Test void closedSessionCannotRestoreOrEnablePersistence() {
+        var session = new OnlinePlayerSession(List.of(new Source()), new MusicCredentialStore(directory));
+        session.close();
+        assertThrows(IllegalStateException.class, session::restoreSavedCredentials);
+        assertThrows(IllegalStateException.class, () -> session.rememberCredentials("test", true));
+        assertFalse(java.nio.file.Files.exists(directory.resolve("test.credential")));
+    }
+
+    @Test void pendingQrWithEmptyOptInCannotOverwriteNewerSavedAccount() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var source = new Source() {
+            @Override public QrChallenge qrLogin() {
+                return new QrChallenge() {
+                    @Override public OnlineMusicLogin.Image image() { return new OnlineMusicLogin.Image(21, 21, new BitSet()); }
+                    @Override public Poll poll() throws Exception {
+                        entered.countDown(); release.await();
+                        return new Poll(OnlineMusicLogin.State.CONFIRMED, "qr-session-only");
+                    }
+                };
+            }
+        };
+        var store = new MusicCredentialStore(directory);
+        try (var first = new OnlinePlayerSession(List.of(source), store);
+             var second = new OnlinePlayerSession(List.of(new Source()), new MusicCredentialStore(directory))) {
+            first.rememberCredentials("test", true);
+            assertTrue(store.load().isEmpty());
+            var login = first.login("test");
+            assertTrue(entered.await(5, TimeUnit.SECONDS));
+            second.credentials("test", "newer-saved"); second.rememberCredentials("test", true);
+            release.countDown();
+            long until = System.nanoTime() + TimeUnit.SECONDS.toNanos(5);
+            while (login.snapshot().state() != OnlineMusicLogin.State.CONFIRMED && System.nanoTime() < until) Thread.sleep(5);
+            assertEquals(OnlineMusicLogin.State.CONFIRMED, login.snapshot().state());
+            assertTrue(first.authenticated("test")); assertFalse(first.remembersCredentials("test"));
+            assertEquals("qr-session-only", source.cookie);
+            assertEquals("newer-saved", store.load("test"));
+        } finally { release.countDown(); }
+    }
+
 }

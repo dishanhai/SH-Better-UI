@@ -8,7 +8,7 @@ import java.util.Objects;
 /** 山海：全库客户端主题。自定义颜色采用六位 RGB，空字符串继承基底。 */
 public record ThemeSettings(Mode mode, Base customBase, String background, String surface,
                             String border, String text, String accent, ThemeOverrides effects, String backgroundEffect,
-                            String hudBackgroundEffect, Integer hudBlurRadius) {
+                            String hudBackgroundEffect, Integer hudBlurRadius, String registeredThemeId, ThemePaletteArchive paletteArchive) {
     public enum Mode {
         DARK, LIGHT, CUSTOM, LIQUID_GLASS, HUD_GLASS;
 
@@ -27,6 +27,9 @@ public record ThemeSettings(Mode mode, Base customBase, String background, Strin
     public static final ThemeSettings DEFAULT = new ThemeSettings(Mode.DARK, Base.DARK, "", "", "", "", "");
 
     public ThemeSettings {
+        if (registeredThemeId == null) registeredThemeId = "";
+        if (!validRegisteredThemeId(registeredThemeId)) throw new IllegalArgumentException("Invalid registered theme ID");
+        if (paletteArchive == null) paletteArchive = ThemePaletteArchive.EMPTY;
         Objects.requireNonNull(effects);
         Objects.requireNonNull(mode);
         Objects.requireNonNull(customBase);
@@ -68,35 +71,57 @@ public record ThemeSettings(Mode mode, Base customBase, String background, Strin
                 hudBackgroundEffect, BuiltinThemes.DEFAULT_HUD_BLUR_RADIUS);
     }
 
+    /** Compatibility constructor for configurations saved before registered palette selection. */
+    public ThemeSettings(Mode mode, Base customBase, String background, String surface, String border,
+                         String text, String accent, ThemeOverrides effects, String backgroundEffect,
+                         String hudBackgroundEffect, Integer hudBlurRadius) {
+        this(mode, customBase, background, surface, border, text, accent, effects, backgroundEffect,
+                hudBackgroundEffect, hudBlurRadius, "", ThemePaletteArchive.EMPTY);
+    }
+
+    public static boolean validRegisteredThemeId(Object value) {
+        return DynamicThemeSettings.validFixedTheme(value);
+    }
+    public String selectedThemeId() { return mode == Mode.CUSTOM && !registeredThemeId.isEmpty() ? registeredThemeId : mode.fixedThemeId(); }
+    public ThemeSettings withRegisteredTheme(String id) {
+        if (!validRegisteredThemeId(id)) throw new IllegalArgumentException("Invalid registered theme ID");
+        if (registeredThemeId.equals(id)) return withMode(Mode.CUSTOM);
+        var saved = paletteArchive.with(registeredThemeId,
+                new ThemePaletteArchive.Palette(customBase, background, surface, border, text, accent));
+        var palette = saved.get(id);
+        return new ThemeSettings(Mode.CUSTOM, palette.base(), palette.background(), palette.surface(), palette.border(),
+                palette.text(), palette.accent(), effects, backgroundEffect, hudBackgroundEffect, hudBlurRadius, id, saved);
+    }
+
     public ThemeSettings withEffects(ThemeOverrides next) {
         return new ThemeSettings(mode, customBase, background, surface, border, text, accent, next,
-                backgroundEffect, hudBackgroundEffect, hudBlurRadius);
+                backgroundEffect, hudBackgroundEffect, hudBlurRadius, registeredThemeId, paletteArchive);
     }
 
     public ThemeSettings withMode(Mode next) {
         return new ThemeSettings(next, customBase, background, surface, border, text, accent, effects,
-                backgroundEffect, hudBackgroundEffect, hudBlurRadius);
+                backgroundEffect, hudBackgroundEffect, hudBlurRadius, registeredThemeId, paletteArchive);
     }
 
     /** Changes the custom palette without dropping background, HUD or effect overrides. */
     public ThemeSettings withPalette(Base base, String background, String surface, String border, String text, String accent) {
         return new ThemeSettings(mode, base, background, surface, border, text, accent, effects,
-                backgroundEffect, hudBackgroundEffect, hudBlurRadius);
+                backgroundEffect, hudBackgroundEffect, hudBlurRadius, registeredThemeId, paletteArchive);
     }
 
     public ThemeSettings withBackgroundEffect(String next) {
         return new ThemeSettings(mode, customBase, background, surface, border, text, accent, effects,
-                next, hudBackgroundEffect, hudBlurRadius);
+                next, hudBackgroundEffect, hudBlurRadius, registeredThemeId, paletteArchive);
     }
 
     public ThemeSettings withHudBackgroundEffect(String next) {
         return new ThemeSettings(mode, customBase, background, surface, border, text, accent, effects,
-                backgroundEffect, next, hudBlurRadius);
+                backgroundEffect, next, hudBlurRadius, registeredThemeId, paletteArchive);
     }
 
     public ThemeSettings withHudBlurRadius(int next) {
         return new ThemeSettings(mode, customBase, background, surface, border, text, accent, effects,
-                backgroundEffect, hudBackgroundEffect, next);
+                backgroundEffect, hudBackgroundEffect, next, registeredThemeId, paletteArchive);
     }
 
     public static boolean validHudBackgroundEffect(Object value) {
@@ -131,7 +156,7 @@ public record ThemeSettings(Mode mode, Base customBase, String background, Strin
         return value instanceof String color && (color.isEmpty() || color.matches("#?[0-9a-fA-F]{6}"));
     }
 
-    private static String normalize(String value) {
+    static String normalize(String value) {
         if (!validColor(value)) throw new IllegalArgumentException("Expected an empty value or a six-digit RGB color");
         if (value.isEmpty()) return value;
         return "#" + (value.startsWith("#") ? value.substring(1) : value).toUpperCase(java.util.Locale.ROOT);

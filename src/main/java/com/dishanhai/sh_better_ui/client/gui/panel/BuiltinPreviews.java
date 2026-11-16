@@ -29,6 +29,7 @@ public final class BuiltinPreviews {
         FolderFloatPreview.registerInto(registry);
         AnimatedListPreview.registerInto(registry);
         CardNavPreview.registerInto(registry);
+        SettingCardPreview.registerInto(registry);
         registry.register(new PreviewSpec("sh_better_ui:" + BranchedMenuDemo.ID, PreviewSpec.Category.CONTROLS,
                 BranchedMenuDemo.ORDER, BranchedMenuDemo.TITLE, BranchedMenuDemo.HEIGHT, 0, "",
                 BranchedMenuGalleryPreview::new));

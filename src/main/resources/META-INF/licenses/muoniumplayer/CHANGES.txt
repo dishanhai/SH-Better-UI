@@ -23,3 +23,15 @@ This adaptation does not imply endorsement or affiliation by MuoniumPlayer.
 
 The fluid background and glass plumbing are original native SHBUI implementations.
 The upstream Skija/QPlayer/AMLL/Folia shaders and cover-processing code are not copied.
+
+Control-center adaptation (2026-11):
+- Referenced MConfigHudScreen.java and MConfigTheme.java for navigation, grouped
+  setting-card hierarchy, translucent materials and theme-card presentation.
+- Referenced SheetClock.java's shared reversible timeline principle; implemented
+  UiLayeredMotion independently using SHBUI native Java APIs and reduced-motion
+  preferences. No Skija renderer or upstream animation code is bundled.
+- Native controls, keyboard navigation, responsive layout and explicit draft
+  commit/cancel semantics are newly implemented for SHBUI.
+- Optional Muonium compatibility controls require the separately installed
+  MuoniumPlayer mod and invoke its public settings API; they do not ship its
+  music/HUD/DSP/model backends or assets.

@@ -17,7 +17,8 @@ import java.util.function.IntConsumer;
 
 /** Four HSV/alpha ramps and an explicit reset action. Mount as one widget; forward captured mouse releases. */
 public final class UiColorEditor extends AbstractWidget implements AutoCloseable, UiCancelableInteraction {
-    public static final int MIN_WIDTH = 180, MIN_HEIGHT = 132;
+    public static final int MIN_WIDTH = 180, MIN_HEIGHT = 132, RGB_MIN_HEIGHT = 112;
+    private final boolean alphaEditable;
     private static final String KEY = "sh_better_ui.color_editor.";
     private static final String[] CHANNELS = {"hue", "saturation", "value", "alpha"};
     private final ColorEditorState state;
@@ -26,12 +27,24 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
     private boolean resetHeld, closed, pointerFocusPending;
     public UiColorEditor(Bounds area, Component name, int initialArgb, int defaultArgb,
                          UiPreferences preferences, IntConsumer onPreview, IntConsumer onCommit) {
+        this(area, name, initialArgb, defaultArgb, true, preferences, onPreview, onCommit);
+    }
+    /** RGB-only mode hides alpha and normalizes all host values and callbacks to opaque ARGB. */
+    public UiColorEditor(Bounds area, Component name, int initialArgb, int defaultArgb, boolean alphaEditable,
+                         UiPreferences preferences, IntConsumer onPreview, IntConsumer onCommit) {
         super(area.x(), area.y(), area.width(), area.height(), Objects.requireNonNull(name));
-        if (area.width() < MIN_WIDTH || area.height() < MIN_HEIGHT) throw new IllegalArgumentException("Color editor requires at least 180 x 132 GUI units");
+        this.alphaEditable = alphaEditable;
+        if (area.width() < MIN_WIDTH || area.height() < minimumHeight())
+            throw new IllegalArgumentException("Color editor requires at least 180 x " + minimumHeight() + " GUI units");
         setPreferences(preferences);
-        state = new ColorEditorState(initialArgb, defaultArgb, onPreview, onCommit);
+        state = new ColorEditorState(initialArgb, defaultArgb, alphaEditable, onPreview, onCommit);
         setTooltip(Tooltip.create(Component.translatable(KEY + "usage")));
     }
+    public boolean alphaEditable() { return alphaEditable; }
+    public int channelCount() { return alphaEditable ? 4 : 3; }
+    private int minimumHeight() { return alphaEditable ? MIN_HEIGHT : RGB_MIN_HEIGHT; }
+    private int resetY() { return getY() + 32 + channelCount() * 20; }
+    String formatColor(int color) { return alphaEditable ? HsvColor.format(color) : String.format(java.util.Locale.ROOT, "#%06X", color & 0xffffff); }
     public ColorEditorState state() { return state; }
     public void setValue(int argb) { pointerFocusPending = false; dragging = -1; resetHeld = false; state.setValue(argb); }
     public void setPreferences(UiPreferences preferences) {
@@ -67,7 +80,7 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
         commitInteraction(); return true;
     }
     @Override public void close() { cancelInteraction(); closed = true; }
-    private boolean enabled() { return !closed && active && visible && width >= MIN_WIDTH && height >= MIN_HEIGHT; }
+    private boolean enabled() { return !closed && active && visible && width >= MIN_WIDTH && height >= minimumHeight(); }
     @Override public void setFocused(boolean focused) { super.setFocused(focused); if (focused) pointerFocusPending = false;
         else if (!pointerFocusPending && state != null) cancelInteraction(); }
     private int rampX() { return getX() + 62; }
@@ -75,16 +88,16 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
     private int rampY(int channel) { return getY() + 30 + channel * 20; }
     private int hit(double x, double y) {
         if (!enabled()) return -1;
-        for (int i = 0; i < 4; i++) if (x >= rampX() && x < rampX() + rampWidth() && y >= rampY(i) && y < rampY(i) + 14) return i;
-        return resetHit(x, y) ? 4 : -1;
+        for (int i = 0; i < channelCount(); i++) if (x >= rampX() && x < rampX() + rampWidth() && y >= rampY(i) && y < rampY(i) + 14) return i;
+        return resetHit(x, y) ? channelCount() : -1;
     }
-    private boolean resetHit(double x, double y) { return x >= getX() + 8 && x < getX() + width - 8 && y >= getY() + 112 && y < getY() + 128; }
+    private boolean resetHit(double x, double y) { return x >= getX() + 8 && x < getX() + width - 8 && y >= resetY() && y < resetY() + 16; }
     private void previewPointer(double x) { state.preview(dragging, (float)((x - rampX()) / (rampWidth() - 1))); }
     @Override public boolean mouseClicked(double x, double y, int button) {
         if (button != 0) return false;
         int target = hit(x, y); if (target < 0) return false;
         cancelInteraction(); selected = target; pointerFocusPending = true;
-        if (target == 4) resetHeld = true;
+        if (target == channelCount()) resetHeld = true;
         else { dragging = target; previewPointer(x); }
         return true;
     }
@@ -109,13 +122,13 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
         if (key == GLFW.GLFW_KEY_ESCAPE && (state.editing() || dragging >= 0 || resetHeld)) { cancelInteraction(); return true; }
         if (!enabled() || !isFocused()) { if (!enabled()) cancelInteraction(); return false; }
         if (key == GLFW.GLFW_KEY_UP || key == GLFW.GLFW_KEY_DOWN) {
-            selected = Math.floorMod(selected + (key == GLFW.GLFW_KEY_UP ? -1 : 1), 5); return true;
+            selected = Math.floorMod(selected + (key == GLFW.GLFW_KEY_UP ? -1 : 1), channelCount() + 1); return true;
         }
         if (key == GLFW.GLFW_KEY_ENTER || key == GLFW.GLFW_KEY_KP_ENTER || key == GLFW.GLFW_KEY_SPACE) {
             dragging = -1; resetHeld = false;
-            if (selected == 4) state.reset(); else state.commit(); return true;
+            if (selected == channelCount()) state.reset(); else state.commit(); return true;
         }
-        if (selected == 4) return false;
+        if (selected == channelCount()) return false;
         float step = selected == 0 ? 1f / 360 : 1f / 100;
         if ((modifiers & GLFW.GLFW_MOD_SHIFT) != 0) step *= 10;
         if (key == GLFW.GLFW_KEY_LEFT || key == GLFW.GLFW_KEY_RIGHT) {
@@ -128,15 +141,15 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
         pointerFocusPending = false;
         if (resetHeld && !resetHit(mx, my)) resetHeld = false;
         if (!enabled() || !Minecraft.getInstance().isWindowActive()) cancelInteraction();
-        if (width < MIN_WIDTH || height < MIN_HEIGHT || closed) return;
+        if (width < MIN_WIDTH || height < minimumHeight() || closed) return;
         var paint = paint();
         int ink = paint.text();
         DarkModeTheme.rounded(g, getX(), getY(), width, height, 5, paint.stroke(), paint.border(), paint.background());
         var font = Minecraft.getInstance().font;
-        checker(g, getX() + 8, getY() + 7, 22, 16);
+        if (alphaEditable) checker(g, getX() + 8, getY() + 7, 22, 16);
         g.fill(getX() + 8, getY() + 7, getX() + 30, getY() + 23, state.color());
-        g.drawString(font, HsvColor.format(state.color()), getX() + 36, getY() + 10, ink, false);
-        for (int row = 0; row < 4; row++) {
+        g.drawString(font, formatColor(state.color()), getX() + 36, getY() + 10, ink, false);
+        for (int row = 0; row < channelCount(); row++) {
             int x = rampX(), y = rampY(row), w = rampWidth();
             var label = Component.translatable(KEY + CHANNELS[row]);
             g.drawString(font, font.plainSubstrByWidth(label.getString(), 50), getX() + 8, y + 3, ink, false);
@@ -151,10 +164,10 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
             g.fill(Math.max(x, thumb - 1), y + 1, Math.min(x + w, thumb + 2), y + 13, 0xffffffff);
             if (isFocused() && selected == row) g.fill(x, y + 16, x + w, y + 18, ink);
         }
-        int resetY = getY() + 112;
+        int resetY = resetY();
         DarkModeTheme.rounded(g, getX() + 8, resetY, width - 16, 16, 3,
-                isFocused() && selected == 4 ? paint.stroke() : 1,
-                preferences.highContrast() || isFocused() && selected == 4 ? ink : DarkModeTheme.borderColor(), paint.resetFill());
+                isFocused() && selected == channelCount() ? paint.stroke() : 1,
+                preferences.highContrast() || isFocused() && selected == channelCount() ? ink : DarkModeTheme.borderColor(), paint.resetFill());
         g.drawString(font, font.plainSubstrByWidth(Component.translatable(KEY + "reset").getString(), width - 24), getX() + 12, resetY + 4, paint.resetText(), false);
     }
     private static void checker(GuiGraphics g, int x, int y, int width, int height) {
@@ -165,9 +178,9 @@ public final class UiColorEditor extends AbstractWidget implements AutoCloseable
                     y + (row + 1) * height / 3, ((row + col) & 1) == 0 ? 0xff555555 : 0xff999999);
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput output) {
-        Component channel = Component.translatable(KEY + (selected == 4 ? "reset" : CHANNELS[selected]));
-        String value = selected == 4 ? HsvColor.format(state.defaultColor()) : Math.round(state.channel(selected) * (selected == 0 ? 360 : 100)) + (selected == 0 ? "°" : "%");
-        output.add(NarratedElementType.TITLE, Component.empty().append(getMessage()).append(". ").append(channel).append(" " + value + ". " + HsvColor.format(state.color())));
+        Component channel = Component.translatable(KEY + (selected == channelCount() ? "reset" : CHANNELS[selected]));
+        String value = selected == channelCount() ? formatColor(state.defaultColor()) : Math.round(state.channel(selected) * (selected == 0 ? 360 : 100)) + (selected == 0 ? "°" : "%");
+        output.add(NarratedElementType.TITLE, Component.empty().append(getMessage()).append(". ").append(channel).append(" " + value + ". " + formatColor(state.color())));
         output.add(NarratedElementType.USAGE, Component.translatable(KEY + "usage"));
     }
 }

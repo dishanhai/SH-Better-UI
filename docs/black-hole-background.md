@@ -108,17 +108,20 @@ validation output. Initial allocation/shader compilation can still cost time.
 
 Physical geometry is built only when size, roll, inclination, disk radius, quality
 or actual framebuffer extent changes. Phase, color, exposure, opacity and glow do
-not retrace light paths. Two bounded 1024×1024 RGBA16F slots hold geometry, with replacement built in strips, with a shared limit of 16,384 traced pixels
+not retrace light paths. Two bounded 2048×2048 RGBA16F slots hold geometry, with replacement built in strips, with a shared limit of 16,384 traced pixels
 per host-frame timestamp. Geometry is published atomically, never as half-built
 stripes. A non-preemptive build is allowed to finish before a newer key takes over.
 
-LOW/BALANCED/HIGH cap the longest edge at 384/768/1024 physical framebuffer pixels
+LOW/BALANCED/HIGH cap the longest edge at 384/1536/2048 physical framebuffer pixels
 (including GUI and pose scale), with unchanged 192/320/512 RK4 steps. Every display
 frame shades the cached disk coordinates with moving material detail; the scene
 body is no longer globally low-pass filtered. Highlight bloom uses two small
 separable blur passes instead of 49 samples on every full-screen output pixel.
-Two geometry targets, one 1024² RGBA8 shading target and two 256² bloom targets
-bound image storage to approximately 20.5 MiB, excluding driver overhead.
+Two exact-size rectangular geometry targets, one grow-only RGBA8 shading target
+and two 256² bloom targets bound image storage to approximately 80.5 MiB at the
+2048² worst case, excluding driver overhead. Targets are allocated lazily; two
+1536×864 geometry slots plus a matching scene and bloom use about 25.8 MiB.
+A LOW-only session does not allocate maximum-size targets.
 
 The black-hole-specific clock advances ordinary frame intervals up to 250 ms in
 real time, so 10 FPS does not run at half speed. Longer stalls do not catch up;
@@ -166,3 +169,32 @@ The resolution, progressive geometry cache, independent per-frame material shadi
 and clock changes address these separate causes. Before/after comparisons use the
 same viewport, default camera and physical model; they are not screenshots of an
 actual Minecraft UI and do not include the user's additional HUD-glass blur.
+
+
+### Follow-up clarity correction
+
+The previous 768px balanced cap still enlarged the image 2.5× at 1080p and 5× at
+4K. The balanced/high caps are now 1536/2048 physical pixels (LOW remains 384).
+This improves the spatial detail budget; it is not native-4K rendering. Geometry
+is allocated at its actual rectangular extent and the shared shade target grows
+only when needed, to avoid allocation churn when two previews have different sizes.
+Sampling uses each texture's actual width and height, not a fixed square assumption.
+
+The emission previously consisted mostly of broad smooth sine bands, which could
+look blurred even with bloom disabled. Narrower advected bands and radial filaments
+now provide disk-local structure, with derivative-based filtering including the
+fourth harmonic and an analytic mean fallback at subpixel sizes. This is a prescribed
+emissivity model, not a GRMHD simulation. Strong bloom remains configurable; the
+scene body is never convolved with it. Optional HUD-glass blur is independent.
+
+The unchanged 16,384-pixel trace budget trades cold-cache latency for clarity:
+1080p balanced builds in 87 host frames, and the maximum 2048² high-quality square
+needs 256 frames. These are frame counts, not wall-clock guarantees. The first
+complete image is still published atomically; animated emission then reuses it.
+Use LOW for faster startup or lower memory. No synchronous full-frame raytrace or
+unbounded cache was added.
+
+Validation uses the production GLSL in software EGL, including rectangular targets,
+large-to-small viewport reuse, finite values, freeze/wrap, glow/opacity controls
+and steady-frame no-retrace checks. This does not replace actual Minecraft visual
+acceptance, GPU memory tracking or hardware frame-time testing.
