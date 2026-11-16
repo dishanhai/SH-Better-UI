@@ -55,6 +55,11 @@ final class ThemeButtonStyle implements AutoCloseable {
         }
     }
 
+    float blurRadius(float fallback) {
+        return active() && (style == UiStyle.LIQUID_GLASS || scope.resolve(LIQUID_GLASS))
+                ? LiquidGlassTheme.normalizeBlurRadius(Math.max(0f, scope.resolve(BLUR))) : fallback;
+    }
+
     boolean active() { return !tones.isClosed(); }
 
     UiPreferences preferences(UiPreferences base) {
@@ -62,7 +67,7 @@ final class ThemeButtonStyle implements AutoCloseable {
         boolean contrast = next.highContrast() || base.highContrast();
         boolean reduced = next.reducedMotion() || base.reducedMotion();
         boolean blur = base.backgroundBlur() && !next.lowPerformance()
-                && (style != UiStyle.DEFAULT || !scope.resolve(LIQUID_GLASS) || scope.resolve(BACKDROP));
+                && scope.resolve(BACKDROP) && !contrast;
         if (contrast == base.highContrast() && reduced == base.reducedMotion() && blur == base.backgroundBlur()) {
             return base;
         }
@@ -75,7 +80,8 @@ final class ThemeButtonStyle implements AutoCloseable {
                 | (selected ? 8 : 0) | (!enabled ? 16 : 0);
         tones.state(STATES.get(mask));
         var tokens = tones.value();
-        boolean solid = (style == UiStyle.DEFAULT && !tokens.glass) || highContrast;
+        boolean solid = (style == UiStyle.DEFAULT && !tokens.glass) || highContrast
+                || !scope.resolve(BACKDROP) || scope.preferences().lowPerformance();
         int tint = opacity(tokens.fill, tokens.opacity);
         int fill = solid ? ContrastPolicy.composite(tint, tokens.background) : tint | 0xff000000;
         if (selected) fill = ContrastPolicy.composite(tokens.selected, fill);
@@ -94,7 +100,7 @@ final class ThemeButtonStyle implements AutoCloseable {
         int border = selected ? tokens.focus : GuiMotion.lerpColor(tokens.border, tokens.accent,
                 highContrast ? 0 : Math.max(hover, press));
         return new Paint(fill, text, border, tokens.focus, tokens.accent, tokens.background,
-                tokens.radius, tokens.borderWidth, tokens.glass);
+                tokens.radius, tokens.borderWidth, tokens.glass, scope.resolve(BACKDROP) && !scope.preferences().lowPerformance());
     }
 
     private static int opacity(int color, float amount) {
@@ -119,7 +125,12 @@ final class ThemeButtonStyle implements AutoCloseable {
     public void close() { owner.close(); }
 
     record Paint(int fill, int text, int border, int focus, int accent, int background,
-                 float radius, int borderWidth, boolean glass) {}
+                 float radius, int borderWidth, boolean glass, boolean backdrop) {
+        Paint(int fill, int text, int border, int focus, int accent, int background,
+              float radius, int borderWidth, boolean glass) {
+            this(fill, text, border, focus, accent, background, radius, borderWidth, glass, true);
+        }
+    }
 
     private record Tones(int fill, int text, int background, int border, int focus, int accent, int disabledText,
                          int hover, int pressed, int selected, int disabled, float radius, int borderWidth,

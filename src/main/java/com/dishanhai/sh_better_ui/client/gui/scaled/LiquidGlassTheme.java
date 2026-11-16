@@ -46,7 +46,7 @@ public final class LiquidGlassTheme {
     public static void plate(GuiGraphics g, int x, int y, int width, int height, float radius, int edge, int fill,
                              UiPreferences preferences) {
         surface(g, x, y, width, height, radius, preferences, false, GlassStyle.LIQUID_REGULAR,
-                POPOVER_BLUR_RADIUS, 1f, fill, edge, false, 1f, false);
+                POPOVER_BLUR_RADIUS, 1f, UiTheme.current().innerGlassFill(fill), edge, false, 1f, false);
     }
 
     public static int textColor() { return ThemeEffects.material("liquidGlass").text(UiTheme.current().text(TEXT)); }
@@ -54,12 +54,12 @@ public final class LiquidGlassTheme {
     public static int accentColor() { return ThemeEffects.material("liquidGlass").accent(UiTheme.current().accent(ACCENT)); }
 
     private static int edgeColor() { return UiTheme.current().border(EDGE); }
-    static int popoverFill() { return UiTheme.current().controlFill(POPOVER_FILL, 0f); }
+    static int popoverFill() { return UiTheme.current().rootGlassFill(POPOVER_FILL); }
 
     /** 浮在内容上的工具列或导航底板。先绘制其后方的内容。 */
     public static void toolbar(GuiGraphics g, int x, int y, int width, int height, UiPreferences preferences) {
         surface(g, x, y, width, height, 12f, preferences, true,
-                GlassStyle.LIQUID_CLEAR, 7f, 1f, UiTheme.current().controlFill(0xB8252B34, 0.0f),
+                GlassStyle.LIQUID_CLEAR, themeBlurRadius(7f), 1f, UiTheme.current().innerGlassFill(UiTheme.current().controlFill(0xB8252B34, 0.0f)),
                 edgeColor(), false, 1f, false);
     }
 
@@ -82,12 +82,18 @@ public final class LiquidGlassTheme {
             var foreground = new GlassDraw.ForegroundBounds(x + inset, y + inset,
                     width - 2 * inset, height - 2 * inset);
             if (clearSurface(g, GlassRegion.rounded(x, y, width, height, radius), foreground,
-                    textColor(), settings.theme().hudBlurRadius())) return;
+                    textColor(), themeBlurRadius(settings.theme().hudBlurRadius()))) {
+                // Optical refraction does not know semantic palette colors. Overlay the scoped
+                // surface tint so transparent themes differ in material, not only text color.
+                if (UiTheme.current().glassRootTint())
+                    RoundedCorners.draw(g, x, y, width, height, radius, 1f, edgeColor(), popoverFill());
+                return;
+            }
         }
         float opacity = revealCoverage(progress);
         int edge = GuiMotion.lerpColor(accentColor(), edgeColor(), progress);
         surface(g, x, y, width, height, radius, preferences, true, GlassStyle.LIQUID_REGULAR,
-                POPOVER_BLUR_RADIUS, opacity, revealFill(progress), edge, false, opacity, false);
+                themeBlurRadius(POPOVER_BLUR_RADIUS), opacity, revealFill(progress), edge, false, opacity, false);
     }
 
     /** Shared clear optical surface for HUD and screen panels. Draw the foreground after the glass. */
@@ -97,13 +103,14 @@ public final class LiquidGlassTheme {
     }
 
     private static boolean clearSurface(GuiGraphics graphics, GlassRegion region,
-                                        GlassDraw.ForegroundBounds foreground, int textColor, int blurRadius) {
+                                        GlassDraw.ForegroundBounds foreground, int textColor, float blurRadius) {
         int luma = ((textColor >> 16 & 255) * 54 + (textColor >> 8 & 255) * 183 + (textColor & 255) * 19) >> 8;
         var material = clearMaterial(luma >= 128, blurRadius);
         return ClientUiKernel.paintHudGlass(graphics, new GlassDraw(region, material, GlassDraw.Profile.SNELL, foreground));
     }
 
-    static GlassMaterial clearMaterial(boolean lightText, int blurRadius) {
+    static GlassMaterial clearMaterial(boolean lightText, float blurRadius) {
+        blurRadius = normalizeBlurRadius(blurRadius);
         var clear = lightText ? CLEAR_LIGHT_TEXT : CLEAR_DARK_TEXT;
         if (blurRadius == 0) return clear;
         var optics = clear.optics();
@@ -131,8 +138,8 @@ public final class LiquidGlassTheme {
         if (width <= 0 || height <= 0) return;
         popoverShadow(g, x, y, width, height, POPOVER_RADIUS, preferences, 1f);
         surface(g, x, y, width, height, POPOVER_RADIUS, preferences, true,
-                GlassStyle.LIQUID_REGULAR, POPOVER_BLUR_RADIUS, blurStrength,
-                UiTheme.current().controlFill(LAYERED_POPOVER_FILL, 0f), edgeColor(), false, 1f, false);
+                GlassStyle.LIQUID_REGULAR, themeBlurRadius(POPOVER_BLUR_RADIUS), blurStrength,
+                UiTheme.current().overlayGlassFill(LAYERED_POPOVER_FILL), edgeColor(), false, 1f, false);
     }
 
     static void centeredMenu(GuiGraphics g, GuiRect rect, float radius, UiPreferences preferences,
@@ -141,7 +148,7 @@ public final class LiquidGlassTheme {
         float blurRadius = UiExpansionController.menuBlurRadius(glow);
         float x = rect.getX(), y = rect.getY(), w = rect.getW(), h = rect.getH();
         surface(g, x, y, w, h, radius, preferences, true, GlassStyle.LIQUID_REGULAR, blurRadius, 1f,
-                popoverFill(), edgeColor(), false, 1f, focused);
+                UiTheme.current().elevatedGlassFill(POPOVER_FILL), edgeColor(), false, 1f, focused);
         if (glow <= 0f) return;
         int color = accentColor() & 0xFFFFFF;
         RoundedCorners.draw(g, x, y, w, h, radius, 3f,
@@ -160,15 +167,15 @@ public final class LiquidGlassTheme {
 
         int fromFill = paint == null ? buttonFill(state, primary, selected, emphasis) : paint.fill();
         if (buttonBlurRadius == 0f) fromFill |= 0xFF000000;
-        int fill = GuiMotion.lerpColor(fromFill, UiTheme.current().controlFill(LAYERED_POPOVER_FILL, 0f), progress);
+        int fill = GuiMotion.lerpColor(fromFill, UiTheme.current().overlayGlassFill(LAYERED_POPOVER_FILL), progress);
         boolean buttonSamples = sampleBackground && buttonBlurRadius > 0f;
-        float radius = GuiMotion.lerp(buttonSamples ? buttonBlurRadius : 0f, POPOVER_BLUR_RADIUS, progress);
+        float radius = GuiMotion.lerp(buttonSamples ? buttonBlurRadius : 0f, themeBlurRadius(POPOVER_BLUR_RADIUS), progress);
         float strength = buttonSamples ? 1f : progress;
-        if (!useBackdrop(preferences)) {
-            fill |= 0xFF000000;
+        if (!useBackdrop(preferences, paint)) {
+            fill = opaqueFallback(fill, paint);
         } else if (radius > 0f && !GlassBlur.tryBackdrop(g, rect, strength,
                 progress == 0f ? GlassStyle.LIQUID_CLEAR : GlassStyle.LIQUID_REGULAR, radius, corner)) {
-            fill = GuiMotion.lerpColor(fill, fill | 0xFF000000, buttonSamples ? 1f : progress);
+            fill = GuiMotion.lerpColor(fill, opaqueFallback(fill, paint), buttonSamples ? 1f : progress);
         }
         boolean highContrast = preferences.highContrast();
         boolean focused = state.enabled() && state.focused();
@@ -224,7 +231,7 @@ public final class LiquidGlassTheme {
     public static void button(GuiGraphics g, int x, int y, int width, int height,
                               DarkModeTheme.State state, UiPreferences preferences, boolean sampleBackground,
                               boolean primary, boolean selected, float emphasis, Runnable content) {
-        button(g, x, y, width, height, state, preferences, sampleBackground, DEFAULT_BUTTON_BLUR_RADIUS,
+        button(g, x, y, width, height, state, preferences, sampleBackground, themeBlurRadius(DEFAULT_BUTTON_BLUR_RADIUS),
                 primary, selected, emphasis, content);
     }
 
@@ -330,13 +337,13 @@ public final class LiquidGlassTheme {
             edge = material.edge(edge);
         }
         float corner = RoundedCorners.fit(width, height, radius);
-        boolean backdrop = useBackdrop(preferences);
+        boolean backdrop = useBackdrop(preferences, paint);
         if (backdrop && sampleBackground && blurRadius > 0f) {
             boolean sampled = GlassBlur.tryBackdrop(g, new GuiRect(x, y, width, height), blurStrength,
                     style, blurRadius, corner);
-            if (!sampled) fill |= 0xFF000000;
+            if (!sampled) fill = opaqueFallback(fill, paint);
         } else if (!backdrop || blurRadius == 0f) {
-            fill |= 0xFF000000;
+            fill = opaqueFallback(fill, paint);
         }
         boolean highContrast = preferences.highContrast();
         edge = paint == null ? outlineColor(edge, focused, highContrast) : focused ? paint.focus() : paint.border();
@@ -350,8 +357,20 @@ public final class LiquidGlassTheme {
         if (!capsule) popoverHighlight(g, x, y, width, height, corner, preferences, opacity);
     }
 
-    private static boolean useBackdrop(UiPreferences preferences) {
-        return preferences.useBackdropBlur() && !ThemeEffects.settings().dynamicTheme().lowPerformance();
+    static int opaqueFallback(int fill) { return opaqueFallback(fill, null); }
+
+    static int opaqueFallback(int fill, ThemeButtonStyle.Paint paint) {
+        int background = paint == null ? UiTheme.current().background() : paint.background();
+        return com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.composite(fill, background | 0xff000000);
+    }
+
+    static float themeBlurRadius(float fallback) { return UiTheme.current().materialBlurRadius(fallback); }
+
+    static boolean useBackdrop(UiPreferences preferences) { return useBackdrop(preferences, null); }
+
+    static boolean useBackdrop(UiPreferences preferences, ThemeButtonStyle.Paint paint) {
+        return preferences.useBackdropBlur() && (paint == null ? UiTheme.current().backdrop() : paint.backdrop())
+                && !ThemeEffects.settings().dynamicTheme().lowPerformance();
     }
 
     private static void popoverHighlight(GuiGraphics g, float x, float y, float width, float height, float corner,

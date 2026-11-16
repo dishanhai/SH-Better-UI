@@ -2307,5 +2307,10 @@
   "sh_better_ui.media_card.selected": "Selected",
   "sh_better_ui.media_card.demo_title": "Midnight sessions",
   "sh_better_ui.media_card.demo_artist": "Interactive preview · no audio playback",
-  "sh_better_ui.panel.developer.gallery.sample.media_card": "Media card"
+  "sh_better_ui.panel.developer.gallery.sample.media_card": "Media card",
+  "sh_better_ui.theme.dynamic.muonium_liquid_glass": "Muonium · Liquid Glass",
+  "sh_better_ui.theme.dynamic.muonium_aurora_frost": "Muonium · Aurora Frost",
+  "sh_better_ui.theme.dynamic.muonium_crystal": "Muonium · Crystal",
+  "sh_better_ui.panel.theme.group.sh_better_ui:muonium_fluid": "Muonium fluid",
+  "sh_better_ui.theme_editor.field.followTheme": "Follow active theme colors"
 }

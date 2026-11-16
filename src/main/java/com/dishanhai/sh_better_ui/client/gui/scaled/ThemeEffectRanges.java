@@ -27,7 +27,7 @@ final class ThemeEffectRanges {
                 default -> null;
             };
             case "sh_better_ui:soft_aurora", "sh_better_ui:silk_ripples", "sh_better_ui:iridescent_flow",
-                    "sh_better_ui:contour_flow", "sh_better_ui:mist_glow" -> switch (field) {
+                    "sh_better_ui:contour_flow", "sh_better_ui:mist_glow", "sh_better_ui:muonium_fluid" -> switch (field) {
                 case "speed" -> range(0, 2, 2);
                 case "scale" -> range(0.25, 4, 2);
                 case "intensity", "opacity" -> range(0, 1, 2);

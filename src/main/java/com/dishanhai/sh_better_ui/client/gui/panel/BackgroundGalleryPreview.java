@@ -86,7 +86,8 @@ final class BackgroundGalleryPreview implements PreviewScene {
     @Override public void render(UiFrame frame) {
         if (canvas == null || canvas.width() <= 0 || canvas.height() <= 0) { suspend(); return; }
         var graphics = frame.graphics();
-        DarkModeTheme.background(graphics, canvas.x(), canvas.y(), canvas.width(), canvas.height());
+        if (id.equals(MuoniumFluidBackdrop.ID) && !frame.preferences().highContrast()) TransparencyPreview.draw(graphics, canvas);
+        else DarkModeTheme.background(graphics, canvas.x(), canvas.y(), canvas.width(), canvas.height());
         var mouse = host.interactive() ? frame.mouse() : null;
         double x = mouse == null ? -1 : mouse.x(), y = mouse == null ? -1 : mouse.y();
         graphics.enableScissor(canvas.x(), canvas.y(), canvas.right(), canvas.bottom());

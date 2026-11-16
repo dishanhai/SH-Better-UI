@@ -2307,5 +2307,10 @@
   "sh_better_ui.media_card.selected": "已选中",
   "sh_better_ui.media_card.demo_title": "午夜音乐集",
   "sh_better_ui.media_card.demo_artist": "交互预览 · 不播放音频",
-  "sh_better_ui.panel.developer.gallery.sample.media_card": "媒体卡片"
+  "sh_better_ui.panel.developer.gallery.sample.media_card": "媒体卡片",
+  "sh_better_ui.theme.dynamic.muonium_liquid_glass": "Muonium · 液态玻璃",
+  "sh_better_ui.theme.dynamic.muonium_aurora_frost": "Muonium · 极光霜蓝",
+  "sh_better_ui.theme.dynamic.muonium_crystal": "Muonium · 琉璃",
+  "sh_better_ui.panel.theme.group.sh_better_ui:muonium_fluid": "Muonium 流体",
+  "sh_better_ui.theme_editor.field.followTheme": "跟随当前主题颜色"
 }

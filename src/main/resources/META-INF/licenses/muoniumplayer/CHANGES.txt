@@ -8,8 +8,10 @@ License: Apache License, Version 2.0 (LICENSE in this directory).
 The original upstream NOTICE is preserved unmodified alongside this file.
 
 Modifications by SHBUI contributors:
-- Adapted Velvet Rose, Midnight Graphite and Porcelain Ink palette values to
+- Adapted Velvet Rose, Midnight Graphite, Porcelain Ink, Liquid Glass, Aurora
+  Frost and Crystal palette values to
   renderer-independent UUK semantic tokens and the native theme registry.
+- Added transparent root/inner material roles and native blur/radius mapping.
 - Added contrast-safe text/focus roles, opaque low-cost surfaces and theme tests.
 - No Skija/Skia implementation, music service code, logos, fonts, artwork or other
   third-party assets are included by this adaptation. Upstream NOTICE names its
@@ -18,3 +20,6 @@ Modifications by SHBUI contributors:
 The media-card control is newly implemented against SHBUI's native APIs, inspired
 by Muonium's music-card information hierarchy, not copied widget code/assets.
 This adaptation does not imply endorsement or affiliation by MuoniumPlayer.
+
+The fluid background and glass plumbing are original native SHBUI implementations.
+The upstream Skija/QPlayer/AMLL/Folia shaders and cover-processing code are not copied.

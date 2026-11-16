@@ -41,7 +41,8 @@ public final class ThemeEffectPreview implements AutoCloseable {
             previousGroup = group;
             replayAt = now;
         }
-        DarkModeTheme.background(graphics, x, y, w, h);
+        if (group.equals(MuoniumFluidBackdrop.ID) && !preferences.highContrast()) TransparencyPreview.draw(graphics, area);
+        else DarkModeTheme.background(graphics, x, y, w, h);
         graphics.enableScissor(x, y, area.right(), area.bottom());
         try {
             var background = background(group);
