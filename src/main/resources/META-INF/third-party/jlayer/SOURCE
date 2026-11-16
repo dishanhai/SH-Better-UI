@@ -1,0 +1,15 @@
+JavaLayer MPEG audio decoder
+Original authors include JavaZOOM and MDM (mdm@techie.com).
+Original project: https://github.com/umjammer/jlayer
+Source used: MuoniumPlayer-multiversion, revision 9b4cc7e7bd143315da716075a6d024a0d4c0c81b,
+muonium-common/src/main/java/repackage/javazoom/jl/decoder/
+https://github.com/zihe114514/MuoniumPlayer-multiversion/tree/9b4cc7e7bd143315da716075a6d024a0d4c0c81b/muonium-common/src/main/java/repackage/javazoom/jl/decoder
+
+Distributed under GNU Library General Public License version 2 or later, as stated in
+the retained file headers; this distribution uses GNU Lesser General Public License 2.1.
+Modification by dishanhai: package relocated to
+com.dishanhai.sh_better_ui.kernel.internal.music.decoder to avoid mod class collisions.
+No decoder algorithm changes. Complete modified source is included in SHBUI's sources JAR
+and source repository, and can be rebuilt/replaced independently of the playback UI.
+No additional restrictions are imposed on modifying or reverse engineering this decoder
+for debugging such modifications. See LICENSE-LGPL-2.1 for the complete license.
