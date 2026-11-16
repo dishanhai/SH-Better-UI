@@ -1423,5 +1423,12 @@
   "sh_better_ui.panel.developer.themes.disabled": "已停用",
   "sh_better_ui.panel.developer.themes.selected": "選取狀態",
   "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
-  "sh_better_ui.panel.developer.themes.hint": "僅預覽，不更改目前主題"
+  "sh_better_ui.panel.developer.themes.hint": "僅預覽，不更改目前主題",
+  "sh_better_ui.online_music.refresh.search": "發現下一首心動",
+  "sh_better_ui.online_music.refresh.lyrics": "讓歌詞與音樂同行",
+  "sh_better_ui.online_music.refresh.accounts": "你的音樂空間",
+  "sh_better_ui.online_music.refresh.subtitle": "搜尋、聆聽，讓音樂自然流動。",
+  "sh_better_ui.online_music.refresh.empty_detail": "在上方搜尋歌曲或歌手，播放時仍可繼續瀏覽。",
+  "sh_better_ui.online_music.refresh.choose_track": "選擇一首歌曲，開始聆聽",
+  "sh_better_ui.online_music.refresh.artist_duration": "歌手 · 時長"
 }

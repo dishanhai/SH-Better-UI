@@ -2291,5 +2291,12 @@
   "sh_better_ui.panel.developer.themes.disabled": "已禁用",
   "sh_better_ui.panel.developer.themes.selected": "选中状态",
   "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
-  "sh_better_ui.panel.developer.themes.hint": "仅预览，不更改当前主题"
+  "sh_better_ui.panel.developer.themes.hint": "仅预览，不更改当前主题",
+  "sh_better_ui.online_music.refresh.search": "发现下一首心动",
+  "sh_better_ui.online_music.refresh.lyrics": "让歌词与音乐同行",
+  "sh_better_ui.online_music.refresh.accounts": "你的音乐空间",
+  "sh_better_ui.online_music.refresh.subtitle": "搜索、聆听，让音乐自然流动。",
+  "sh_better_ui.online_music.refresh.empty_detail": "在上方搜索歌曲或歌手，播放时仍可继续浏览。",
+  "sh_better_ui.online_music.refresh.choose_track": "选择一首歌曲，开始聆听",
+  "sh_better_ui.online_music.refresh.artist_duration": "歌手 · 时长"
 }
