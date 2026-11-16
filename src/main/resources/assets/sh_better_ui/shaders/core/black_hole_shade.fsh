@@ -21,16 +21,24 @@ void main() {
     vec2 radialDelta = vec2(dFdx(radius), dFdy(radius));
     float armFootprint = dot(abs(6.0 * angularDelta + 2.2 * radialDelta), vec2(1.0));
     float detailFootprint = dot(abs(13.0 * angularDelta - 0.75 * radialDelta), vec2(1.0));
-    float armContrast = 1.0 - smoothstep(1.2, 3.14, armFootprint);
+    float filamentFootprint = dot(abs(5.0 * angularDelta + 18.0 * radialDelta), vec2(1.0));
+    float filamentContrast = 1.0 - smoothstep(1.0, 2.4, filamentFootprint);
+    // The fourth power below contains up to the fourth harmonic.
+    float armContrast = 1.0 - smoothstep(1.2, 3.14, 4.0 * armFootprint);
     float detailContrast = 1.0 - smoothstep(1.0, 2.4, detailFootprint);
     if (hit.a < -0.5) { fragColor = vec4(0.0, 0.0, 0.0, 1.0); return; }
     float light;
     if (hit.a > 0.5) {
         // Prescribed rotating emissivity filaments, not changes to the metric or GRMHD.
         // Integer phase harmonics make the 2pi clock wrap exactly continuous.
-        float arm = 0.5 + 0.5 * armContrast * sin(6.0 * angle + radius * 2.2 - 8.0 * Motion.x);
+        float arm = 0.5 + 0.5 * sin(6.0 * angle + radius * 2.2 - 8.0 * Motion.x);
         float detail = 0.5 + 0.5 * detailContrast * sin(13.0 * angle - radius * 0.75 - 16.0 * Motion.x);
-        float pattern = 0.045 + arm * arm * (1.25 + 0.35 * detail);
+        // Fine advected radial structure is evaluated in disk coordinates, not a screen-space
+        // sharpening filter. Fade below the pixel footprint to avoid sparkling at the photon ring.
+        float filament = 0.72 + 0.28 * filamentContrast * cos(5.0 * angle + 18.0 * radius - 24.0 * Motion.x);
+        float arm2 = arm * arm;
+        float band = mix(0.2734375, arm2 * arm2, armContrast); // mean(sin-normalized^4) = 35/128
+        float pattern = 0.045 + band * (1.65 + 0.45 * detail) * filament;
         float emission = hit.b * pattern * Motion.y;
         light = emission / (1.0 + emission);
         float alpha = InkColor.a + BackgroundColor.a * (1.0 - InkColor.a);

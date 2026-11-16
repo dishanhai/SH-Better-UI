@@ -14,7 +14,8 @@ Skija, Skia, platform icons, custom-source scripts and DSP are not distributed h
 QR login adaptations use per-attempt, domain/path-scoped cookies, an exact HTTPS host
 allowlist, finite background polling, cancellation and opt-in encrypted credential handoff.
 Additional adaptations: account and playlist reads, NetEase liked-song operations and
-both providers' search suggestions. QQ liked-song writes remain explicitly unsupported.
+both providers' search suggestions. QQ liked-song writes use the bounded
+QQFavorites request path documented in docs/ONLINE_MUSIC_API.md.
 Page adaptations replace the upstream renderer with UUK/native widgets, semantic theme
 colors, responsive navigation, search results, a persistent transport bar, contextual
 lyrics and account-source cards. No unavailable upstream feature is presented as active.
@@ -24,3 +25,8 @@ Additional original presentation: borderless, softly following lyrics, keyboard 
 manual lyric browsing and provider album art. Inspired by MusicLyricsPanel composition;
 no QQ Music assets, album images, shaders or fonts are bundled. Album art is fetched
 only from the selected music provider at runtime and remains its respective owner's content.
+
+Additional modifications (2026-11-16): music-scoped QQ cookie aliases, strict RPC
+status handling, deterministic NetEase playlist pagination, account-library entry
+points, retry and stale-request isolation, and confirmed/unknown favorite feedback.
+No additional upstream source or third-party assets are bundled by these changes.
