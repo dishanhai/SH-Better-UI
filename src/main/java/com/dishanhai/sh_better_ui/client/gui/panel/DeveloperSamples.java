@@ -445,6 +445,14 @@ enum DeveloperSamples {
             """),
     SLOSH_GAUGE(SloshGaugeDemo.ID, SloshGaugeDemo.ORDER,
             SloshGaugeDemo.MIN_HEIGHT, SloshGaugePreview::new, SloshGaugeDemo.CODE),
+    MEDIA_CARD("media_card", 32, 80, MediaCardPreview::new, """
+            var card = ShBetterUiApi.controls().mediaCard(new Bounds(x, y, 240, 64),
+                    Component.literal("Album title"), Component.literal("Artist"),
+                    ShBetterUiApi.settings().preferences(), this::togglePlayback);
+            addRenderableWidget(card);
+            // Reflect confirmed playback state, including asynchronous failures.
+            card.setPlaying(player.isPlaying());
+            """),
     RUBBER_SEGMENT("rubber_segment", 30, 64, RubberSegmentPreview::new, """
             import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
             import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;

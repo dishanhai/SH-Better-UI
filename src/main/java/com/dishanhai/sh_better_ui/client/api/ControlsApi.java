@@ -61,6 +61,12 @@ import java.util.function.Supplier;
 
 /** 山海：原生控件工厂、实时状态与加载提示。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** Single-focus media action card; host confirms playback via setPlaying(). Minimum 128 x 48. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard mediaCard(Bounds area,
+            Component title, Component subtitle, UiPreferences preferences, Runnable onActivate) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard(area, title, subtitle, preferences, onActivate);
+    }
+
     /** Manual-activation page navigation. Mount the returned control as one widget. */
     public com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail navigationRail(
             Font font, Bounds area, Component name,

@@ -1430,5 +1430,14 @@
   "sh_better_ui.online_music.refresh.subtitle": "搜尋、聆聽，讓音樂自然流動。",
   "sh_better_ui.online_music.refresh.empty_detail": "在上方搜尋歌曲或歌手，播放時仍可繼續瀏覽。",
   "sh_better_ui.online_music.refresh.choose_track": "選擇一首歌曲，開始聆聽",
-  "sh_better_ui.online_music.refresh.artist_duration": "歌手 · 時長"
+  "sh_better_ui.online_music.refresh.artist_duration": "歌手 · 時長",
+  "sh_better_ui.theme.dynamic.muonium_velvet_rose": "Muonium · 絲絨玫瑰",
+  "sh_better_ui.theme.dynamic.muonium_midnight_graphite": "Muonium · 午夜石墨",
+  "sh_better_ui.theme.dynamic.muonium_porcelain_ink": "Muonium · 瓷白墨",
+  "sh_better_ui.media_card.play": "播放",
+  "sh_better_ui.media_card.pause": "暫停",
+  "sh_better_ui.media_card.selected": "已選取",
+  "sh_better_ui.media_card.demo_title": "午夜音樂集",
+  "sh_better_ui.media_card.demo_artist": "互動預覽 · 不播放音訊",
+  "sh_better_ui.panel.developer.gallery.sample.media_card": "媒體卡片"
 }

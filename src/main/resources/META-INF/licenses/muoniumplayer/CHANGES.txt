@@ -1,0 +1,20 @@
+SHBUI adaptation of MuoniumPlayer UI palettes
+
+Upstream: https://github.com/zihe114514/MuoniumPlayer-multiversion
+Revision: 9b4cc7e7bd143315da716075a6d024a0d4c0c81b
+Source: muonium-common/src/main/java/com/muoniumplayer/core/screens/ncm/NCMTheme.java
+Copyright 2026 MuoniumPlayer Team
+License: Apache License, Version 2.0 (LICENSE in this directory).
+The original upstream NOTICE is preserved unmodified alongside this file.
+
+Modifications by SHBUI contributors:
+- Adapted Velvet Rose, Midnight Graphite and Porcelain Ink palette values to
+  renderer-independent UUK semantic tokens and the native theme registry.
+- Added contrast-safe text/focus roles, opaque low-cost surfaces and theme tests.
+- No Skija/Skia implementation, music service code, logos, fonts, artwork or other
+  third-party assets are included by this adaptation. Upstream NOTICE names its
+  dependencies for attribution; it does not imply they are bundled in SHBUI.
+
+The media-card control is newly implemented against SHBUI's native APIs, inspired
+by Muonium's music-card information hierarchy, not copied widget code/assets.
+This adaptation does not imply endorsement or affiliation by MuoniumPlayer.

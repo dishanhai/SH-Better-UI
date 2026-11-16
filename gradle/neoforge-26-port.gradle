@@ -257,6 +257,9 @@ tasks.register('verifyLibraryJar') {
         def archive = tasks.jar.archiveFile.get().asFile
         new java.util.zip.ZipFile(archive).withCloseable { zip ->
             ([
+                    'META-INF/licenses/muoniumplayer/LICENSE',
+                    'META-INF/licenses/muoniumplayer/NOTICE',
+                    'META-INF/licenses/muoniumplayer/CHANGES.txt',
                     'META-INF/neoforge.mods.toml',
                     "${packagePath}/ShBetterUi.class",
                     "${packagePath}/client/api/ShBetterUiApi.class",
