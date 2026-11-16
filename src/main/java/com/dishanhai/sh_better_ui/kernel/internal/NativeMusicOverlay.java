@@ -22,6 +22,7 @@ public final class NativeMusicOverlay implements UIModule {
     private LocalMusicIsland island;
     private LocalMusicHud card;
     private boolean restoreIsland = true;
+    private final MusicIslandTaskAdapter tasks = new MusicIslandTaskAdapter();
     private long ambientAt = Long.MIN_VALUE;
     private NativeMusicOverlay(boolean persistent) { this.persistent = persistent; }
     static ModuleDiscovery.Candidate candidate(boolean persistent) {
@@ -48,7 +49,7 @@ public final class NativeMusicOverlay implements UIModule {
         active = this;
     }
     @Override public void stop(ModuleContext context) { if (active == this) active = null; suspend(); }
-    private void suspend() { restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
+    private void suspend() { tasks.reset(); restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
     private MusicOverlaySettings settings() { return context.engine().configs().get(MusicOverlaySettings.KEY); }
     private void save(MusicOverlaySettings value) {
         var configs = context.engine().configs();
@@ -58,17 +59,18 @@ public final class NativeMusicOverlay implements UIModule {
     private void draw(HudService.Frame frame) {
         var mc = Minecraft.getInstance();
         var value = settings();
-        if ((!value.hudEnabled() && !value.islandEnabled()) || mc.level == null || mc.player == null
-                || mc.options.hideGui || mc.screen != null || mc.options.keyPlayerList.isDown()) { suspend(); return; }
+        if ((!value.hudEnabled() && !value.islandEnabled()) || mc.level == null || mc.player == null) { suspend(); return; }
+        boolean hidden = mc.options.hideGui || mc.screen != null || mc.options.keyPlayerList.isDown();
         if (card == null) card = new LocalMusicHud(ShBetterUiApi.music());
         if (island == null) island = new LocalMusicIsland(ShBetterUiApi.music());
         var viewport = new Bounds(0, 0, frame.width(), frame.height());
         var ui = new UiFrame(frame.graphics(), viewport, new UiMouseState(-1,-1,-1,-1,false,true,false,0),
                 frame.preferences(), PageTransition.nowMs(), frame.partialTick());
-        if (value.hudEnabled()) card.render(ui, mc.font,
+        if (value.hudEnabled() && !hidden) card.render(ui, mc.font,
                 MusicOverlayLayout.panel(frame.width(),frame.height(),false,value.hudScale(),value.x(),value.y()));
         if (value.islandEnabled()) {
-            island.setScene(true,false,false,false);
+            island.setScene(true,mc.options.keyPlayerList.isDown(),mc.options.hideGui || mc.screen != null,mc.screen != null);
+            island.setStyle(value.islandStyle());
             island.setAmbient(value.ambientEnabled() ? IslandAmbientState.Settings.DEFAULT : IslandAmbientState.Settings.DISABLED);
             if (value.ambientEnabled() && (ambientAt == Long.MIN_VALUE || ui.nowMs() < ambientAt || ui.nowMs()-ambientAt>=250)) {
                 ambientAt=ui.nowMs();
@@ -77,9 +79,19 @@ public final class NativeMusicOverlay implements UIModule {
                 island.updateAmbient(mc.getFps(), info==null?-1:info.getLatency(), time.getHour(), time.getMinute(),ui.nowMs());
             }
             if (restoreIsland) { island.setExpanded(value.expanded(), ui.nowMs(), frame.preferences().reducedMotion()); restoreIsland = false; }
+            if (value.taskNotices()) {
+                for (var update : tasks.observe(ShBetterUiApi.music().getFrame())) {
+                    if (update.cancel()) island.cancelNotice(update.id());
+                    else island.notify(new IslandNoticeQueue.Notice(update.id(),text("task."+update.messageKey()).getString(),
+                            update.detail(),-1,update.ttlMs(),update.messageKey().equals("provider_unavailable")?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs()));
+                }
+            } else {
+                tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER);
+            }
+            if (hidden) return;
             var full = MusicOverlayLayout.panel(frame.width(),frame.height(),true,value.islandScale(),value.islandX(),value.islandY());
             island.render(ui,mc.font,MusicOverlayLayout.compact(full,value.islandScale()),full,false);
-        }
+        } else { tasks.reset(); island.suspend(); restoreIsland=true; }
     }
     public static boolean available() { return active != null && active.context.scope().isOpen(); }
     public static void open(Screen parent) { if (available()) Minecraft.getInstance().setScreen(new SettingsScreen(active,parent)); }
@@ -91,16 +103,19 @@ public final class NativeMusicOverlay implements UIModule {
         private Component error;
         SettingsScreen(NativeMusicOverlay owner, Screen parent) { super(text("title")); this.owner=owner;this.parent=parent;draft=owner.settings(); }
         @Override protected void init() {
-            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-60)/6)), y=26;
+            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-60)/8)), y=26;
             addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{draft=draft.withHud(!draft.hudEnabled());b.setMessage(toggle("hud",draft.hudEnabled()));}));
             addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{draft=draft.withIsland(!draft.islandEnabled());b.setMessage(toggle("island",draft.islandEnabled()));}));
             addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{draft=draft.withExpanded(!draft.expanded());b.setMessage(toggle("expand",draft.expanded()));}));
             addRenderableWidget(new UiButton(x,y+3*step,w,step-2,text("edit_hud"),b->minecraft.setScreen(new PositionScreen(this,false))));
             addRenderableWidget(new UiButton(x,y+4*step,w,step-2,text("edit_island"),b->minecraft.setScreen(new PositionScreen(this,true))));
             addRenderableWidget(new UiButton(x,y+5*step,w,step-2,toggle("ambient",draft.ambientEnabled()),b->{draft=draft.withAmbient(!draft.ambientEnabled());b.setMessage(toggle("ambient",draft.ambientEnabled()));}));
+            addRenderableWidget(new UiButton(x,y+6*step,w,step-2,toggle("task_notices",draft.taskNotices()),b->{draft=draft.withTaskNotices(!draft.taskNotices());b.setMessage(toggle("task_notices",draft.taskNotices()));}));
+            addRenderableWidget(new UiButton(x,y+7*step,w,step-2,styleLabel(),b->{draft=draft.withIslandStyle(switch(draft.islandStyle()){case "classic"->"pill";case "pill"->"minimal";default->"classic";});b.setMessage(styleLabel());}));
             addRenderableWidget(new UiButton(x,height-26,w/2-2,20,text("apply"), b->{try{owner.save(draft);onClose();}catch(RuntimeException e){error=text("save_failed");}}));
             addRenderableWidget(new UiButton(x+w/2+2,height-26,w/2-2,20,text("cancel"),b->onClose()));
         }
+        private Component styleLabel(){return text("style").copy().append(": ").append(text("style."+draft.islandStyle()));}
         private Component toggle(String key,boolean on){return text(key).copy().append(": ").append(Component.translatable(on?"options.on":"options.off"));}
         @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xF018202C);g.drawCenteredString(font,title,width/2,10,0xFFFFFFFF);super.render(g,x,y,partial);if(error!=null)g.drawCenteredString(font,error,width/2,height-39,0xFFFF7777);}
         @Override public void onClose(){minecraft.setScreen(parent);}
@@ -144,7 +159,7 @@ public final class NativeMusicOverlay implements UIModule {
         public boolean mouseScrolled(double x,double y,double horizontal,double vertical){return mouseScrolled(x,y,vertical);}
         @Override public boolean keyPressed(int key,int scan,int mods){if(getFocused()==handle&&(key==61||key==45||key==334||key==333)){resize(key==61||key==334?.1f:-.1f);return true;}if(getFocused()==handle&&key>=262&&key<=265){xFraction=clamp(xFraction+(key==262?.02f:key==263?-.02f:0));yFraction=clamp(yFraction+(key==264?.02f:key==265?-.02f:0));place();return true;}return super.keyPressed(key,scan,mods);}
         private static float clamp(float value){return Math.max(0,Math.min(1,value));}
-        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xFF18202C);g.drawCenteredString(font,text("drag"),width/2,10,0xFFFFFFFF);var frame=new UiFrame(g,new Bounds(0,0,width,height),new UiMouseState(x,y,x,y,true,false,true,0),UiPreferences.configured(),PageTransition.nowMs(),partial);if(editIsland){island.setScene(true,false,false,false);island.setExpanded(true,frame.nowMs(),frame.preferences().reducedMotion());island.render(frame,font,MusicOverlayLayout.compact(bounds,scale),bounds,false);}else card.render(frame,font,bounds);if(dragging||getFocused()==handle)g.renderOutline(bounds.x(),bounds.y(),bounds.width(),bounds.height(),0xFFFFFFFF);super.render(g,x,y,partial);}
+        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xFF18202C);g.drawCenteredString(font,text("drag"),width/2,10,0xFFFFFFFF);var frame=new UiFrame(g,new Bounds(0,0,width,height),new UiMouseState(x,y,x,y,true,false,true,0),UiPreferences.configured(),PageTransition.nowMs(),partial);if(editIsland){island.setStyle(parent.draft.islandStyle());island.setScene(true,false,false,false);island.setExpanded(true,frame.nowMs(),frame.preferences().reducedMotion());island.render(frame,font,MusicOverlayLayout.compact(bounds,scale),bounds,false);}else card.render(frame,font,bounds);if(dragging||getFocused()==handle)g.renderOutline(bounds.x(),bounds.y(),bounds.width(),bounds.height(),0xFFFFFFFF);super.render(g,x,y,partial);}
         @Override public void onClose(){minecraft.setScreen(parent);}
         // NeoForge Screen.render invokes this after our opaque custom background.
         // Do not blur the already-rendered HUD preview; this signature is harmless on Forge 1.20.1.

@@ -44,3 +44,10 @@ Native HUD and island interaction adaptation (2026-11):
 - No upstream Skija renderer, downloaded native library, font, music backend,
   branded artwork, or compiled MuoniumPlayer artifact is included by this work.
 - This increment does not claim complete HUD, island, or UI-library parity.
+
+Native island scheduling and About increment (2026-11):
+- Referenced DownloadDynamicIsland notification ordering and visible-budget
+  principles; independently implemented SHBUI priority/expiry scheduling,
+  native shell variants and real MusicApi state projection.
+- About is an original SHBUI information page; no corresponding upstream page
+  was found in the inspected reference revision. No MP identity/assets copied.
