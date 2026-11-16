@@ -11,14 +11,23 @@ import java.util.*;
 import static com.dishanhai.sh_better_ui.kernel.internal.music.SourceJson.*;
 
 final class QQMusicSource implements OnlineMusicSource {
-    private final MusicHttp http = new MusicHttp();
+    @FunctionalInterface interface Transport {
+        JsonObject json(String url, String body, String type, String referer, String cookie) throws IOException;
+        default JsonObject json(String url, String body, String type, String referer) throws IOException {
+            return json(url, body, type, referer, "");
+        }
+    }
+    private final Transport http;
     private final QQFavorites favorites;
     QQMusicSource() { this(new QQFavorites()); }
-    QQMusicSource(QQFavorites favorites) { this.favorites = favorites; }
+    QQMusicSource(QQFavorites favorites) { this(favorites, new MusicHttp()::json); }
+    QQMusicSource(QQFavorites favorites, Transport http) {
+        this.favorites = Objects.requireNonNull(favorites); this.http = Objects.requireNonNull(http);
+    }
     private record Account(String id, String key) {}
     private volatile Account account = new Account("0", "");
     @Override public OnlineMusicSource requestSnapshot() {
-        var snapshot = new QQMusicSource(favorites); snapshot.account = account; return snapshot;
+        var snapshot = new QQMusicSource(favorites, http); snapshot.account = account; return snapshot;
     }
     @Override public void credentials(String value) {
         String valid = MusicHttp.cookie(value);
@@ -27,11 +36,18 @@ final class QQMusicSource implements OnlineMusicSource {
             int equals = part.indexOf('=');
             if (equals > 0) fields.put(part.substring(0, equals).strip(), part.substring(equals + 1).strip());
         }
-        String id = fields.getOrDefault("uin", fields.getOrDefault("qqmusic_uin", "0"));
-        String key = fields.getOrDefault("qm_keyst", fields.getOrDefault("qqmusic_key", ""));
+        // The browser may contain both a QQ login identity and a distinct music identity.
+        // Prefer the music-scoped alias; an empty optional alias must not hide a usable one.
+        String id = cookieAlias(fields, "qqmusic_uin", "uin");
+        if (id.isEmpty()) id = "0";
+        String key = cookieAlias(fields, "qm_keyst", "qqmusic_key");
         if (!id.matches("[0-9]{1,24}") || (!valid.isEmpty() && (id.equals("0") || key.isBlank())))
             throw new IllegalArgumentException("Missing QQ Music account cookies");
         account = new Account(id, key);
+    }
+    private static String cookieAlias(Map<String, String> fields, String primary, String fallback) {
+        String value = fields.getOrDefault(primary, "");
+        return value.isBlank() ? fields.getOrDefault(fallback, "") : value;
     }
     private String cookies() {
         return cookies(account);
@@ -66,11 +82,7 @@ final class QQMusicSource implements OnlineMusicSource {
         var json = http.json("https://c6.y.qq.com/rsc/fcgi-bin/fcg_get_profile_homepage.fcg?" +
                 MusicHttp.form(Map.of("ct", "20", "cv", "4747474", "cid", "205360838", "userid", current.id(), "format", "json")),
                 null, null, "https://y.qq.com/", cookies(current));
-        if (json.has("code") && number(json, "code") != 0) {
-            long code = number(json, "code");
-            if (code == 1000 || code == 104009 || code == 401) throw new LoginRequired();
-            throw new IOException("QQ profile request rejected: " + code);
-        }
+        checkStatus(json, "profile");
         var creator = object(object(json, "data"), "creator");
         if (creator.size() == 0) throw new IOException("QQ profile response missing creator");
         return new OnlineMusicAccount(id(), current.id(), nickname(text(creator, "nick")));
@@ -87,7 +99,7 @@ final class QQMusicSource implements OnlineMusicSource {
                 MusicHttp.form(Map.of("ct", "20", "cv", "4747474", "cid", "205360956", "userid", current.id(),
                         "reqtype", "3", "sin", "0", "ein", Long.toString(Math.min(end + merged.size() - 1, 99999)), "format", "json")),
                 null, null, "https://y.qq.com/", cookies(current));
-        if (subscribed.has("code") && number(subscribed, "code") != 0) throw new IOException("QQ subscribed playlists rejected request");
+        checkStatus(subscribed, "subscribed playlists");
         appendPlaylists(merged, requireArray(subscribed, "cdlist", "disslist", "list", "playlist"));
         var all = new ArrayList<>(merged.values());
         int start = (int) Math.min(all.size(), (page - 1L) * limit);
@@ -255,12 +267,19 @@ final class QQMusicSource implements OnlineMusicSource {
         if (!current.key().isEmpty()) { authenticated.put("qq", current.id()); authenticated.put("authst", current.key()); }
         var body = Map.of("comm", authenticated, "req", Map.of("module", module, "method", method, "param", parameters));
         var json = http.json("https://u.y.qq.com/cgi-bin/musicu.fcg", gson.toJson(body), "application/json", "https://y.qq.com/", cookies(current));
+        checkStatus(json, "RPC envelope");
         var req = object(json, "req");
-        if (!json.has("req") || !req.has("code") || number(req, "code") != 0) {
-            if (number(req, "code") == 1000 || number(req, "code") == 104009 || number(req, "code") == 401) throw new LoginRequired();
-            throw new IOException("QQ rejected request");
-        }
+        checkStatus(req, "RPC result");
         if (!req.has("data") || !req.get("data").isJsonObject()) throw new IOException("QQ response missing data");
         return object(req, "data");
+    }
+    /** Reject malformed success codes instead of treating a missing/non-numeric field as zero. */
+    private static void checkStatus(JsonObject response, String operation) throws IOException, LoginRequired {
+        String value = text(response, "code");
+        final long code;
+        try { code = Long.parseLong(value); }
+        catch (NumberFormatException malformed) { throw new IOException("QQ " + operation + " response missing valid status"); }
+        if (code == 1000 || code == 104009 || code == 401) throw new LoginRequired();
+        if (code != 0) throw new IOException("QQ " + operation + " rejected: " + code);
     }
 }
