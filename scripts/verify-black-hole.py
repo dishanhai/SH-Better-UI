@@ -18,7 +18,11 @@ from PIL import Image, ImageDraw
 
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('--output', type=Path, required=True)
-parser.add_argument('--benchmark', action='store_true', help='12 warmups + 20 samples per quality, RGBA8 production format')
+parser.add_argument('--benchmark', action='store_true')
+parser.add_argument('--width', type=int, default=2048)
+parser.add_argument('--height', type=int, default=1280)
+parser.add_argument('--before-ref', default='290c8f6', help='Git revision for matched-resolution old renderer comparison')
+parser.add_argument('--animation', action='store_true', help='Write a side-by-side GIF of the actual shaders')
 args = parser.parse_args()
 args.output.mkdir(parents=True, exist_ok=True)
 # Software rendering keeps this test independent from a desktop login/session.
@@ -90,16 +94,32 @@ def program(vertex, fragment):
     return result
 
 
+# Reconstruct the real baseline shader from this repository, never from a UI screenshot.
+import subprocess
+import tempfile
+from PIL import ImageChops, ImageStat
+repo = Path(__file__).resolve().parents[1]
+current_root = shader_root
+baseline_dir = tempfile.TemporaryDirectory(prefix='blackhole-before-')
+for name in ['black_hole_backdrop.vsh', 'black_hole_backdrop.fsh', 'black_hole_composite.fsh', 'icon_gradient_sweep.vsh']:
+    content = subprocess.check_output(['git', 'show', args.before_ref+':src/main/resources/assets/sh_better_ui/shaders/core/'+name], cwd=repo)
+    (Path(baseline_dir.name)/name).write_bytes(content)
+shader_root = Path(baseline_dir.name)
+before_trace = program('black_hole_backdrop.vsh', 'black_hole_backdrop.fsh')
+before_composite = program('icon_gradient_sweep.vsh', 'black_hole_composite.fsh')
+shader_root = current_root
 trace_program = program('black_hole_backdrop.vsh', 'black_hole_backdrop.fsh')
+shade_program = program('black_hole_backdrop.vsh', 'black_hole_shade.fsh')
+bloom_program = program('black_hole_backdrop.vsh', 'black_hole_bloom.fsh')
 composite_program = program('icon_gradient_sweep.vsh', 'black_hole_composite.fsh')
-report['checks'].append('trace and bloom composite compile/link passed')
+report['checks'].append('baseline and all four revised programs compiled/linked')
 use = bind(G, 'glUseProgram', None, U)
 get_uniform = bind(G, 'glGetUniformLocation', I, U, C.c_char_p)
 v4 = bind(G, 'glUniform4f', None, I, F, F, F, F)
 v2 = bind(G, 'glUniform2f', None, I, F, F)
 v1 = bind(G, 'glUniform1i', None, I, I)
 mat = bind(G, 'glUniformMatrix4fv', None, I, I, U, C.POINTER(F))
-identity = (F * 16)(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
+identity = (F*16)(1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1)
 vao, vbo = U(), U()
 bind(G, 'glGenVertexArrays', None, I, C.POINTER(U))(1, C.byref(vao))
 bind(G, 'glBindVertexArray', None, U)(vao)
@@ -108,145 +128,223 @@ bind(G, 'glBindBuffer', None, U, U)(0x8892, vbo)
 vertices = []
 for x, y in [(0, 0), (0, 1), (1, 1), (0, 0), (1, 1), (1, 0)]:
     vertices.extend([2*x-1, 2*y-1, 0, x, y])
-data = (F * len(vertices))(*vertices)
+data = (F*len(vertices))(*vertices)
 bind(G, 'glBufferData', None, U, C.c_ssize_t, P, U)(0x8892, C.sizeof(data), data, 0x88E4)
-
-
-def attributes(prog):
-    for name, size, offset in [('Position', 3, 0), ('UV0', 2, 12)]:
-        location = bind(G, 'glGetAttribLocation', I, U, C.c_char_p)(prog, name.encode())
-        require(location >= 0, 'Missing attribute '+name)
-        bind(G, 'glEnableVertexAttribArray', None, U)(location)
-        bind(G, 'glVertexAttribPointer', None, U, I, U, U, I, P)(location, size, 0x1406, 0, 20, P(offset))
 
 
 def location(prog, name):
     return get_uniform(prog, name.encode())
 
 
-def target():
+def attributes(prog):
+    use(prog)
+    for name, size, offset in [('Position', 3, 0), ('UV0', 2, 12)]:
+        at = bind(G, 'glGetAttribLocation', I, U, C.c_char_p)(prog, name.encode())
+        require(at >= 0, 'Missing attribute '+name)
+        bind(G, 'glEnableVertexAttribArray', None, U)(at)
+        bind(G, 'glVertexAttribPointer', None, U, I, U, U, I, P)(at, size, 0x1406, 0, 20, P(offset))
+
+
+targets = []
+
+
+def target(w, h, internal=0x8058, nearest=False):
     fbo, texture = U(), U()
     bind(G, 'glGenFramebuffers', None, I, C.POINTER(U))(1, C.byref(fbo))
     bind(G, 'glBindFramebuffer', None, U, U)(0x8D40, fbo)
     bind(G, 'glGenTextures', None, I, C.POINTER(U))(1, C.byref(texture))
     bind(G, 'glBindTexture', None, U, U)(0x0DE1, texture)
-    bind(G, 'glTexImage2D', None, U, I, I, I, I, I, U, U, P)(0x0DE1, 0, 0x8814, 768, 768, 0, 0x1908, 0x1406, None)
-    for name, value in [(0x2801, 0x2601), (0x2800, 0x2601), (0x2802, 0x812F), (0x2803, 0x812F)]:
+    bind(G, 'glTexImage2D', None, U, I, I, I, I, I, U, U, P)(0x0DE1, 0, internal, w, h, 0, 0x1908, 0x1406, None)
+    for name, value in [(0x2801, 0x2600 if nearest else 0x2601), (0x2800, 0x2600 if nearest else 0x2601), (0x2802, 0x812F), (0x2803, 0x812F)]:
         bind(G, 'glTexParameteri', None, U, U, I)(0x0DE1, name, value)
     bind(G, 'glFramebufferTexture2D', None, U, U, U, U, I)(0x8D40, 0x8CE0, 0x0DE1, texture, 0)
-    require(bind(G, 'glCheckFramebufferStatus', U, U)(0x8D40) == 0x8CD5, 'Float target incomplete')
+    require(bind(G, 'glCheckFramebufferStatus', U, U)(0x8D40) == 0x8CD5, 'Target incomplete')
+    targets.append((fbo, texture))
     return fbo, texture
 
 
-scene_fbo, scene_texture = target()
-output_fbo, output_texture = target()
+W, H = args.width, args.height
+require(0 < W <= 4096 and 0 < H <= 4096, 'Dimensions must be 1..4096')
+geometry = target(1024, 1024, 0x881A, True)  # production RGBA16F, discrete NEAREST fate
+scene = target(1024, 1024)
+bloom_a, bloom_b = target(256, 256), target(256, 256)
+old_scene = target(384, 384)
+output = target(W, H, 0x8814)  # float diagnostics before conversion to PNG
 viewport = bind(G, 'glViewport', None, I, I, I, I)
 draw = bind(G, 'glDrawArrays', None, U, I, I)
 finish = bind(G, 'glFinish', None)
 read = bind(G, 'glReadPixels', None, I, I, I, I, U, U, P)
-bind_fbo = bind(G, 'glBindFramebuffer', None, U, U)
-scene_format = 0x8814  # RGBA32F finite-output diagnostics
-last_composite_ms = 0.0
-quality = {'LOW': (.04, 192, 128), 'BALANCED': (.025, 320, 256), 'HIGH': (.016, 512, 384)}
+quality = {'LOW': (.04, 192, 384), 'BALANCED': (.025, 320, 768), 'HIGH': (.016, 512, 1024)}
+last_geometry = None
+trace_calls = 0
 
 
-def pixels(w, h):
-    floating = (F * (w*h*4))()
-    read(0, 0, w, h, 0x1908, 0x1406, floating)
-    require(all(math.isfinite(value) for value in floating), 'Non-finite output')
-    data = (C.c_ubyte * (w*h*4))()
-    read(0, 0, w, h, 0x1908, 0x1401, data)
-    return Image.frombytes('RGBA', (w, h), bytes(data))
+def activate(target_value, w, h, prog):
+    bind(G, 'glBindFramebuffer', None, U, U)(0x8D40, target_value[0])
+    viewport(0, 0, w, h)
+    attributes(prog)
 
 
-def render(w=512, h=256, phase=0, size=1, tilt=.08, inclination=.25, outer=18,
-           brightness=1, outline=0, glow=1.2, opacity=1, base_alpha=1, ink_alpha=1, tier='BALANCED'):
-    global last_composite_ms
+def sampler(prog, name, texture, unit=0):
+    bind(G, 'glActiveTexture', None, U)(0x84C0+unit)
+    bind(G, 'glBindTexture', None, U, U)(0x0DE1, texture)
+    v1(location(prog, name), unit)
+
+
+def color(prog, ink_alpha=1, base_alpha=1):
+    v4(location(prog, 'InkColor'), 245/255, 245/255, 245/255, ink_alpha)
+    v4(location(prog, 'BackgroundColor'), 8/255, 8/255, 8/255, base_alpha)
+
+
+def pixels(finite=False):
+    if finite:
+        floats = (F*(W*H*4))()
+        read(0, 0, W, H, 0x1908, 0x1406, floats)
+        require(all(math.isfinite(v) for v in floats), 'Non-finite composite output')
+    data = (C.c_ubyte*(W*H*4))()
+    read(0, 0, W, H, 0x1908, 0x1401, data)
+    return Image.frombytes('RGBA', (W, H), bytes(data))
+
+
+def build_geometry(size=1, tilt=.08, inclination=.25, outer=18, tier='BALANCED'):
+    global last_geometry, trace_calls
+    key = (W, H, size, tilt, inclination, outer, tier)
     step, steps, cap = quality[tier]
-    ratio = min(1, cap/max(w, h))
-    rw, rh = max(1, round(w*ratio)), max(1, round(h*ratio))
-    # Match the production reusable 384px capacity and viewport crop.
-    bind(G, 'glBindTexture', None, U, U)(0x0DE1, scene_texture)
-    bind(G, 'glTexImage2D', None, U, I, I, I, I, I, U, U, P)(0x0DE1, 0, scene_format, 384, 384, 0, 0x1908, 0x1406, None)
-    bind_fbo(0x8D40, scene_fbo)
-    viewport(0, 0, rw, rh)
-    use(trace_program); attributes(trace_program)
-    v4(location(trace_program, 'Surface'), w/h, size, phase, tilt)
-    v4(location(trace_program, 'Physics'), inclination, outer, brightness, outline)
+    ratio = min(1, cap/max(W, H))
+    rw, rh = max(1, round(W*ratio)), max(1, round(H*ratio))
+    if key == last_geometry:
+        return rw, rh
+    activate(geometry, rw, rh, trace_program)
+    v4(location(trace_program, 'Surface'), W/H, size, 0, tilt)
+    v4(location(trace_program, 'Physics'), inclination, outer, 0, 0)
     v2(location(trace_program, 'Integration'), step, steps)
-    v4(location(trace_program, 'InkColor'), 245/255, 245/255, 245/255, ink_alpha)
-    v4(location(trace_program, 'BackgroundColor'), 8/255, 8/255, 8/255, base_alpha)
-    start = time.perf_counter(); draw(4, 0, 6); finish()
-    trace_ms = (time.perf_counter()-start)*1000
-    pixels(rw, rh)  # finite-check the numerical trace itself
-    bind_fbo(0x8D40, output_fbo); viewport(0, 0, w, h)
-    use(composite_program); attributes(composite_program)
-    mat(location(composite_program, 'ModelViewMat'), 1, 0, identity)
-    mat(location(composite_program, 'ProjMat'), 1, 0, identity)
+    bind(G, 'glEnable', None, U)(0x0C11)
+    rows = max(1, 16384//rw)
+    times = []
+    for y in range(0, rh, rows):
+        count = min(rows, rh-y)
+        require(count*rw <= 16384, 'Geometry stripe exceeds frame budget')
+        bind(G, 'glScissor', None, I, I, I, I)(0, y, rw, count)
+        start = time.perf_counter(); draw(4, 0, 6); finish()
+        times.append((time.perf_counter()-start)*1000)
+        trace_calls += 1
+    bind(G, 'glDisable', None, U)(0x0C11)
+    floats = (F*(rw*rh*4))()
+    read(0, 0, rw, rh, 0x1908, 0x1406, floats)
+    require(all(math.isfinite(v) for v in floats), 'Non-finite half-float geometry')
+    require(all(floats[i] in (-1, 0, 1) for i in range(3, len(floats), 4)), 'Corrupt discrete fate')
+    last_geometry = key
+    report.setdefault('geometry_builds', []).append({'tier': tier, 'extent': [rw, rh], 'stripes': len(times),
+        'first_ms': times[0], 'median_ms': statistics.median(times), 'p95_ms': sorted(times)[max(0, math.ceil(len(times)*.95)-1)], 'sum_ms': sum(times)})
+    return rw, rh
+
+
+def render(phase=0, size=1, tilt=.08, inclination=.25, outer=18, brightness=1, outline=0,
+           glow=1.2, opacity=1, base_alpha=1, ink_alpha=1, tier='BALANCED', finite=False, capture=True):
+    rw, rh = build_geometry(size, tilt, inclination, outer, tier)
+    start = time.perf_counter()
+    activate(scene, rw, rh, shade_program)
+    sampler(shade_program, 'Geometry', geometry[1])
+    v2(location(shade_program, 'ContentScale'), rw/1024, rh/1024)
+    v4(location(shade_program, 'Motion'), phase, brightness, outline, 0)
+    color(shade_program, ink_alpha, base_alpha)
+    draw(4, 0, 6)
+    ratio = min(1, 256/max(rw, rh)); bw, bh = max(1, round(rw*ratio)), max(1, round(rh*ratio))
+    if glow > 0 and brightness > 0:
+        spread = 1+glow*1.5
+        for dst, source_texture, sw, sh, capacity, dx, dy, threshold in [
+            (bloom_a, scene[1], rw, rh, 1024, spread/bw, 0, .35),
+            (bloom_b, bloom_a[1], bw, bh, 256, 0, spread/bh, 0)]:
+            activate(dst, bw, bh, bloom_program)
+            sampler(bloom_program, 'Source', source_texture)
+            v2(location(bloom_program, 'ContentScale'), sw/capacity, sh/capacity)
+            v2(location(bloom_program, 'Texel'), 1/sw, 1/sh)
+            v4(location(bloom_program, 'Filter'), dx, dy, threshold, 0)
+            draw(4, 0, 6)
+    activate(output, W, H, composite_program)
+    sampler(composite_program, 'Scene', scene[1]); sampler(composite_program, 'Bloom', bloom_b[1], 1)
+    mat(location(composite_program, 'ModelViewMat'), 1, 0, identity); mat(location(composite_program, 'ProjMat'), 1, 0, identity)
     v4(location(composite_program, 'ColorModulator'), 1, 1, 1, 1)
+    v4(location(composite_program, 'ContentScale'), rw/1024, rh/1024, bw/256, bh/256)
     v4(location(composite_program, 'Finish'), 1/rw, 1/rh, glow if brightness > 0 else 0, opacity)
-    v1(location(composite_program, 'Scene'), 0)
-    v2(location(composite_program, 'ContentScale'), rw/384, rh/384)
-    bind(G, 'glBindTexture', None, U, U)(0x0DE1, scene_texture)
-    start = time.perf_counter(); draw(4, 0, 6); finish()
-    last_composite_ms = (time.perf_counter()-start)*1000
-    return pixels(w, h), trace_ms
+    draw(4, 0, 6); finish()
+    elapsed = (time.perf_counter()-start)*1000
+    return pixels(finite) if capture else None, elapsed
 
 
-cases = [('default', {}), ('phase2', {'phase': 2}), ('portrait', {'w': 256, 'h': 512}),
-         ('wide', {'w': 512, 'h': 128}), ('odd', {'w': 257, 'h': 129}), ('narrow', {'w': 1, 'h': 257}),
-         ('low', {'tier': 'LOW'}), ('high', {'tier': 'HIGH'}),
-         ('face-on', {'inclination': 1.4}), ('edge-on', {'inclination': .1}),
-         ('outer-min', {'outer': 6.5}), ('outer-max', {'outer': 24}),
-         ('glow-zero', {'glow': 0}), ('glow-heavy', {'glow': 3}), ('outline', {'outline': 1}),
-         ('size-min', {'size': .5}), ('size-max', {'size': 1.8}),
-         ('roll-min', {'tilt': -.7}), ('roll-max', {'tilt': .7}),
-         ('brightness-max', {'brightness': 2}),
-         ('combined-extreme', {'size': 1.8, 'tilt': .7, 'inclination': .1, 'outer': 24, 'glow': 3, 'outline': 1, 'brightness': 2})]
-report['trace_timing_ms'] = {}
-for name, parameters in cases:
-    image, elapsed = render(**parameters)
-    image.save(args.output / (name+'.png'))
-    report['trace_timing_ms'][name] = elapsed
-    a, _ = render(**dict(parameters, phase=0))
-    b, _ = render(**dict(parameters, phase=math.tau))
-    delta = max(abs(x-y) for x, y in zip(a.tobytes(), b.tobytes()))
-    require(delta <= 1, f'Phase discontinuity in {name}: {delta}')
-    report['checks'].append(f'{name}: finite float trace/composite, wrap delta {delta}/255')
-require(render(opacity=0)[0].getextrema()[3] == (0, 0), 'opacity zero')
-require(render(brightness=0)[0].getextrema() == ((8, 8), (8, 8), (8, 8), (255, 255)), 'brightness zero')
-transparent = render(base_alpha=0)[0]
-transparent.save(args.output / 'transparent.png')
-require(transparent.getextrema()[3][0] < 255, 'Transparent background missing')
-report['checks'].append('opacity zero, brightness zero, transparent base passed')
+def render_before(phase=0):
+    ratio = min(1, 256/max(W, H)); rw, rh = max(1, round(W*ratio)), max(1, round(H*ratio))
+    activate(old_scene, rw, rh, before_trace)
+    v4(location(before_trace, 'Surface'), W/H, 1, phase, .08)
+    v4(location(before_trace, 'Physics'), .25, 18, 1, 0)
+    v2(location(before_trace, 'Integration'), .025, 320); color(before_trace)
+    draw(4, 0, 6)
+    activate(output, W, H, before_composite)
+    sampler(before_composite, 'Scene', old_scene[1])
+    mat(location(before_composite, 'ModelViewMat'), 1, 0, identity); mat(location(before_composite, 'ProjMat'), 1, 0, identity)
+    v4(location(before_composite, 'ColorModulator'), 1, 1, 1, 1)
+    v2(location(before_composite, 'ContentScale'), rw/384, rh/384)
+    v4(location(before_composite, 'Finish'), 1/rw, 1/rh, 1.2, 1)
+    draw(4, 0, 6)
+    return pixels()
+
+
+def delta(a, b):
+    diff = ImageChops.difference(a.convert('RGB'), b.convert('RGB'))
+    bands = diff.split(); maximum = ImageChops.lighter(ImageChops.lighter(bands[0], bands[1]), bands[2])
+    histogram = maximum.histogram()
+    return {'mean_rgb_absolute_255': sum(ImageStat.Stat(diff).mean)/3,
+            'max_channel_255': max(hi for lo, hi in diff.getextrema()),
+            'fraction_pixels_over_3': sum(histogram[4:])/(W*H)}
+
+
+before0 = render_before(); before1 = render_before(.18)
+after0, _ = render(finite=True); calls = trace_calls
+after1, _ = render(.18, finite=True); frozen, _ = render(0)
+require(trace_calls == calls, 'Phase change incorrectly triggered geometry work')
+require(frozen.tobytes() == after0.tobytes(), 'Frozen phase must be deterministic')
+wrap, _ = render(math.tau)
+require(delta(after0, wrap)['max_channel_255'] <= 2, 'Periodic phase discontinuity')
+for name, image in [('before-0s', before0), ('before-1s', before1), ('after-0s', after0), ('after-1s', after1)]:
+    image.save(args.output/(name+'.png'))
+report['comparison'] = {'dimensions': [W, H], 'baseline_ref': args.before_ref, 'elapsed_seconds': 1,
+                         'speed_radians_per_second': .18, 'before': delta(before0, before1), 'after': delta(after0, after1),
+                         'geometry_work_for_phase_change': trace_calls-calls}
+report['checks'].extend(['phase changes reuse geometry', 'frozen phase identical', '2pi wrap continuous', 'finite RGBA16F geometry with discrete fate'])
+for name, parameters in [('transparent', {'base_alpha': 0}), ('opacity-zero', {'opacity': 0}), ('brightness-zero', {'brightness': 0}),
+                          ('outline', {'outline': 1}), ('glow-heavy', {'glow': 3}), ('glow-zero', {'glow': 0})]:
+    image, _ = render(**parameters, finite=True)
+    image.save(args.output/(name+'.png'))
+    if name == 'opacity-zero': require(image.getextrema()[3] == (0, 0), 'Zero opacity failed')
+    if name == 'brightness-zero': require(image.getextrema() == ((8, 8), (8, 8), (8, 8), (255, 255)), 'Zero brightness failed')
+if args.animation:
+    frames = []
+    for frame in range(32):
+        seconds = frame/10
+        old = render_before(seconds*.18).convert('RGB').resize((512, 320), Image.Resampling.LANCZOS)
+        new = render(seconds*.18)[0].convert('RGB').resize((512, 320), Image.Resampling.LANCZOS)
+        pair = Image.new('RGB', (1024, 350), (8, 8, 8)); pair.paste(old, (0, 30)); pair.paste(new, (512, 30))
+        painter = ImageDraw.Draw(pair); painter.text((12, 9), 'BEFORE / 256px + whole-scene blur', fill='white')
+        painter.text((524, 9), 'AFTER / cached 768px geometry + moving emission', fill='white')
+        frames.append(pair)
+    frames[0].save(args.output/'motion-before-after.gif', save_all=True, append_images=frames[1:], duration=100, loop=0)
+if args.benchmark:
+    report['steady_frame_ms'] = {}
+    for tier in quality:
+        for i in range(6): render(i*.018, tier=tier, capture=False)
+        calls = trace_calls
+        samples = [render(i*.018, tier=tier, capture=False)[1] for i in range(20)]
+        require(trace_calls == calls, 'Steady benchmark retraced geometry')
+        report['steady_frame_ms'][tier] = {'median': statistics.median(samples), 'p95': sorted(samples)[18], 'geometry_calls': 0}
 error = bind(G, 'glGetError', U)()
 require(error == 0, f'GL error {error:#x}')
 report['gl_error'] = error
-if args.benchmark:
-    scene_format = 0x8058  # production RGBA8; float correctness was tested separately above
-    report['benchmark'] = {}
-    for tier in quality:
-        for _ in range(12):
-            render(tier=tier)
-        traces, composites, combined, cached = [], [], [], []
-        for _ in range(20):
-            _, elapsed = render(tier=tier)
-            traces.append(elapsed)
-            composites.append(last_composite_ms)
-            combined.append(elapsed + last_composite_ms)
-            start = time.perf_counter(); draw(4, 0, 6); finish()
-            cached.append((time.perf_counter()-start)*1000)
-        summary = lambda values: {'median_ms': statistics.median(values), 'p95_ms': sorted(values)[18]}
-        report['benchmark'][tier] = {'trace': summary(traces), 'composite': summary(composites),
-                                     'trace_plus_composite': summary(combined), 'cached_composite_only': summary(cached)}
-    report['benchmark_scope'] = 'RGBA8 scene, 512x256 output; 12 warmups/20 samples; each draw includes glFinish; excludes allocation, uniforms and readback; software GL only'
-report['timing_scope'] = 'software EGL RGBA32F numerical trace only, draw+glFinish; excludes target allocation/bloom; not Minecraft/hardware FPS'
-(args.output / 'results.json').write_text(json.dumps(report, indent=2)+'\n')
-for fbo in [scene_fbo, output_fbo]:
+report['timing_scope'] = 'software EGL; geometry stripes include glFinish, steady shade+bloom+composite excludes allocation/readback; not Minecraft/hardware FPS'
+(args.output/'results.json').write_text(json.dumps(report, indent=2)+'\n')
+for fbo, texture in targets:
     bind(G, 'glDeleteFramebuffers', None, I, C.POINTER(U))(1, C.byref(fbo))
-for texture in [scene_texture, output_texture]:
     bind(G, 'glDeleteTextures', None, I, C.POINTER(U))(1, C.byref(texture))
-for prog in [trace_program, composite_program]:
+for prog in [trace_program, shade_program, bloom_program, composite_program, before_trace, before_composite]:
     bind(G, 'glDeleteProgram', None, U)(prog)
 bind(G, 'glDeleteBuffers', None, I, C.POINTER(U))(1, C.byref(vbo))
 bind(G, 'glDeleteVertexArrays', None, I, C.POINTER(U))(1, C.byref(vao))
@@ -254,4 +352,5 @@ make_current(display, None, None, None)
 bind(E, 'eglDestroyContext', U, P, P)(display, context)
 bind(E, 'eglDestroySurface', U, P, P)(display, surface)
 bind(E, 'eglTerminate', U, P)(display)
+baseline_dir.cleanup()
 print(json.dumps(report, indent=2))

@@ -1,0 +1,57 @@
+{
+  "vertex": "sh_better_ui:black_hole_backdrop",
+  "fragment": "sh_better_ui:black_hole_shade",
+  "attributes": [
+    "Position",
+    "UV0"
+  ],
+  "samplers": [
+    {
+      "name": "Geometry"
+    }
+  ],
+  "uniforms": [
+    {
+      "name": "ContentScale",
+      "type": "float",
+      "count": 2,
+      "values": [
+        1,
+        1
+      ]
+    },
+    {
+      "name": "Motion",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0,
+        1,
+        0,
+        0
+      ]
+    },
+    {
+      "name": "InkColor",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.96,
+        0.96,
+        0.96,
+        1
+      ]
+    },
+    {
+      "name": "BackgroundColor",
+      "type": "float",
+      "count": 4,
+      "values": [
+        0.03,
+        0.03,
+        0.03,
+        1
+      ]
+    }
+  ]
+}

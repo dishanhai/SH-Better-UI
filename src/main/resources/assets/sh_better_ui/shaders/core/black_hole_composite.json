@@ -15,6 +15,9 @@
   "samplers": [
     {
       "name": "Scene"
+    },
+    {
+      "name": "Bloom"
     }
   ],
   "uniforms": [
@@ -89,8 +92,10 @@
     {
       "name": "ContentScale",
       "type": "float",
-      "count": 2,
+      "count": 4,
       "values": [
+        1,
+        1,
         1,
         1
       ]

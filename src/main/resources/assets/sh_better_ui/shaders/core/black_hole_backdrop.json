@@ -37,28 +37,6 @@
         0.025,
         320
       ]
-    },
-    {
-      "name": "InkColor",
-      "type": "float",
-      "count": 4,
-      "values": [
-        0.96,
-        0.96,
-        0.96,
-        1
-      ]
-    },
-    {
-      "name": "BackgroundColor",
-      "type": "float",
-      "count": 4,
-      "values": [
-        0.03,
-        0.03,
-        0.03,
-        1
-      ]
     }
   ]
 }
