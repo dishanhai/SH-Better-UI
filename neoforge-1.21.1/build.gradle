@@ -134,7 +134,9 @@ tasks.register('verifyLibraryJar') {
         def archive = tasks.jar.archiveFile.get().asFile
         def zip = new java.util.zip.ZipFile(archive)
         try {
-            ['META-INF/neoforge.mods.toml', 'com/dishanhai/sh_better_ui/ShBetterUi.class',
+            ['META-INF/neoforge.mods.toml', 'META-INF/licenses/muoniumplayer/LICENSE',
+                    'META-INF/licenses/muoniumplayer/NOTICE',
+                    'META-INF/licenses/muoniumplayer/CHANGES.txt', 'com/dishanhai/sh_better_ui/ShBetterUi.class',
              'sh_better_ui/automation/uuk-script-worker.jar',
              'com/dishanhai/sh_better_ui/client/api/ShBetterUiApi.class',
              'com/dishanhai/sh_better_ui/client/api/PlatformUiApi.class',

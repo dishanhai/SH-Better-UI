@@ -2298,5 +2298,14 @@
   "sh_better_ui.online_music.refresh.subtitle": "Search, listen, and stay in the flow.",
   "sh_better_ui.online_music.refresh.empty_detail": "Search for a song or artist above. Your music stays in the player below.",
   "sh_better_ui.online_music.refresh.choose_track": "Choose a track to begin",
-  "sh_better_ui.online_music.refresh.artist_duration": "Artist · Time"
+  "sh_better_ui.online_music.refresh.artist_duration": "Artist · Time",
+  "sh_better_ui.theme.dynamic.muonium_velvet_rose": "Muonium · Velvet Rose",
+  "sh_better_ui.theme.dynamic.muonium_midnight_graphite": "Muonium · Midnight Graphite",
+  "sh_better_ui.theme.dynamic.muonium_porcelain_ink": "Muonium · Porcelain Ink",
+  "sh_better_ui.media_card.play": "Play",
+  "sh_better_ui.media_card.pause": "Pause",
+  "sh_better_ui.media_card.selected": "Selected",
+  "sh_better_ui.media_card.demo_title": "Midnight sessions",
+  "sh_better_ui.media_card.demo_artist": "Interactive preview · no audio playback",
+  "sh_better_ui.panel.developer.gallery.sample.media_card": "Media card"
 }

@@ -129,7 +129,10 @@ tasks.register('verifyLibraryJar') {
         def artifact = layout.buildDirectory.file("libs/${releaseJarName}").get().asFile
         def zip = new java.util.zip.ZipFile(artifact)
         try {
-            def required = ['META-INF/mods.toml', 'pack.mcmeta', 'kubejs.plugins.txt',
+            def required = ['META-INF/licenses/muoniumplayer/LICENSE',
+                            'META-INF/licenses/muoniumplayer/NOTICE',
+                            'META-INF/licenses/muoniumplayer/CHANGES.txt',
+                            'META-INF/mods.toml', 'pack.mcmeta', 'kubejs.plugins.txt',
                             'sh_better_ui.text.mixins.json', 'sh_better_ui.text_compat.mixins.json', 'sh_better_ui.kernel.mixins.json',
                             'com/dishanhai/sh_better_ui/ShBetterUi.class',
                             'com/dishanhai/sh_better_ui/client/UiClient.class',
