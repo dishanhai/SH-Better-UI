@@ -2291,5 +2291,12 @@
   "sh_better_ui.panel.developer.themes.disabled": "Disabled",
   "sh_better_ui.panel.developer.themes.selected": "Selected state",
   "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
-  "sh_better_ui.panel.developer.themes.hint": "Preview only; current theme is unchanged"
+  "sh_better_ui.panel.developer.themes.hint": "Preview only; current theme is unchanged",
+  "sh_better_ui.online_music.refresh.search": "Find your next favorite",
+  "sh_better_ui.online_music.refresh.lyrics": "Words, in time",
+  "sh_better_ui.online_music.refresh.accounts": "Your music, together",
+  "sh_better_ui.online_music.refresh.subtitle": "Search, listen, and stay in the flow.",
+  "sh_better_ui.online_music.refresh.empty_detail": "Search for a song or artist above. Your music stays in the player below.",
+  "sh_better_ui.online_music.refresh.choose_track": "Choose a track to begin",
+  "sh_better_ui.online_music.refresh.artist_duration": "Artist · Time"
 }

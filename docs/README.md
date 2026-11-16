@@ -5,6 +5,8 @@
 
 ## API 与接入
 
+- [音乐工作台视觉刷新](music-visual-refresh.md)
+
 - [原生导航组与关键帧动画](navigation-motion.md)
 
 - [反重力粒子 API](antigravity-api.md)
