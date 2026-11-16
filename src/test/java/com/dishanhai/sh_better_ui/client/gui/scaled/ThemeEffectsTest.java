@@ -19,7 +19,7 @@ class ThemeEffectsTest {
         for (String group : ThemeEffects.groups()) {
             overrides = overrides.withGroup(group, ThemeEffects.template(group));
         }
-        assertEquals(27, overrides.groups().size());
+        assertEquals(30, overrides.groups().size());
         var persisted = new ThemeOverrides(overrides.json());
         assertEquals(overrides, persisted);
         assertDoesNotThrow(() -> ThemeEffects.validate(persisted));

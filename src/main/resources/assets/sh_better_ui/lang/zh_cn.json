@@ -2136,5 +2136,10 @@
   "sh_better_ui.theme_editor.field.accentColor": "强调色",
   "sh_better_ui.theme_editor.option.full": "全区域",
   "sh_better_ui.theme_editor.option.glass": "玻璃",
-  "sh_better_ui.theme_editor.option.chrome": "镀铬"
+  "sh_better_ui.theme_editor.option.chrome": "镀铬",
+  "sh_better_ui.panel.theme.group.sh_better_ui:soft_aurora": "柔和极光",
+  "sh_better_ui.panel.theme.group.sh_better_ui:silk_ripples": "丝绸波纹",
+  "sh_better_ui.panel.theme.group.sh_better_ui:iridescent_flow": "虹彩流体",
+  "sh_better_ui.theme_editor.field.primaryColor": "主色",
+  "sh_better_ui.theme_editor.field.secondaryColor": "辅色"
 }
