@@ -1,0 +1,9 @@
+QR Code generator library (Java)
+Copyright (c) Project Nayuki. MIT License.
+https://github.com/nayuki/QR-Code-generator
+Revision: bcfe1b018cec5f1f91b5705eca5bb4cdd34e9f8d
+Imported QrCode, QrSegment, BitBuffer and DataTooLongException from
+java/src/main/java/io/nayuki/qrcodegen/.
+Modification by dishanhai: package relocated into UUK's internal music implementation.
+Original copyright and MIT license headers are retained in every source file.
+Complete corresponding Java sources are distributed in SHBUI's sources JAR.

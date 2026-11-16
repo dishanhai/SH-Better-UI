@@ -7,6 +7,8 @@ import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService;
 
 /** Native service keys supported by the NeoForge 26 client port. */
 public final class UIApis {
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService> ONLINE_MUSIC =
+            com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService.KEY;
     public static final ServiceKey<UIPlatform> PLATFORM = UIPlatform.KEY;
     public static final ServiceKey<MaterialCatalog> MATERIAL_CATALOG = MaterialCatalog.KEY;
     public static final CapabilityKey MATERIAL_DISCOVERY = new CapabilityKey(MATERIAL_CATALOG.id());

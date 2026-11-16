@@ -186,6 +186,10 @@ public final class DeveloperGalleryScreen extends Screen {
         PhotonKnotPreview.registerInto(registry);
         LatticeLoaderPreview.registerInto(registry,
                 message -> Minecraft.getInstance().getNarrator().saySystemNow(message));
+        registry.register(new PreviewSpec("sh_better_ui:online_music", PreviewSpec.Category.MATERIALS, 18,
+                "sh_better_ui.panel.developer.gallery.sample.online_music", OnlineMusicGalleryPreview.HEIGHT, 0,
+                "var player = UnifiedUI.get().require(OnlineMusicService.KEY).open();\nplayer.search(\"netease\", query, 1);\n// player.close() when the owner exits.",
+                OnlineMusicGalleryPreview::new));
         for (var sample : SAMPLES) {
             var category = sample.category() == Category.CONTROLS
                     ? PreviewSpec.Category.CONTROLS : PreviewSpec.Category.MATERIALS;
