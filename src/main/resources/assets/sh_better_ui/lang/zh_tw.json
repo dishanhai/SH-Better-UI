@@ -1248,5 +1248,10 @@
   "sh_better_ui.panel.theme.group.sh_better_ui:silk_ripples": "絲綢波紋",
   "sh_better_ui.panel.theme.group.sh_better_ui:iridescent_flow": "虹彩流體",
   "sh_better_ui.theme_editor.field.primaryColor": "主色",
-  "sh_better_ui.theme_editor.field.secondaryColor": "輔色"
+  "sh_better_ui.theme_editor.field.secondaryColor": "輔色",
+  "sh_better_ui.theme_editor.field.speed": "速度",
+  "sh_better_ui.theme_editor.field.scale": "縮放",
+  "sh_better_ui.theme_editor.field.intensity": "強度",
+  "sh_better_ui.theme_editor.field.opacity": "不透明度",
+  "sh_better_ui.theme_editor.field.backgroundColor": "背景色"
 }
