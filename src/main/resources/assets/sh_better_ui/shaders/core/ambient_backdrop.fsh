@@ -47,6 +47,19 @@ void main() {
         line *= 1.0 - smoothstep(0.8, 2.0, footprint);
         light = 0.07 + 0.31 * line;
         tone = 0.5 + 0.25 * sin(height * 0.5 + t);
+    } else if (Style == 5) {
+        // Original four-source fluid field, not a port of the QPlayer/AMLL shaders.
+        // Work is fixed per pixel, with no noise octaves, texture fetches or blur targets.
+        vec2 q = vec2(p.x / max(Surface.x, 0.001), p.y);
+        q += 0.10 * vec2(sin(q.y * 4.0 + t), cos(q.x * 4.0 - t));
+        vec2 a = q - vec2(-0.28 + 0.18 * cos(t), 0.22 * sin(t));
+        vec2 b = q - vec2(0.30 + 0.16 * sin(t), 0.24 * cos(t));
+        vec2 c = q - vec2(0.26 * cos(t), -0.30 + 0.12 * sin(2.0 * t));
+        vec2 d = q - vec2(0.20 * sin(t), 0.32 + 0.13 * cos(2.0 * t));
+        float first = exp(-dot(a, a) * 18.0) + 0.65 * exp(-dot(c, c) * 20.0);
+        float second = exp(-dot(b, b) * 18.0) + 0.65 * exp(-dot(d, d) * 20.0);
+        light = 0.03 + 0.95 * (1.0 - exp(-1.3 * (first + second)));
+        tone = second / max(first + second, 0.0001);
     } else {
         // Two broad drifting mist pools, without particles, light rays or offscreen blur.
         vec2 a = p - vec2(0.32 * sin(t), 0.18 * cos(t));

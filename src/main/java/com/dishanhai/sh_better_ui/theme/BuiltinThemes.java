@@ -20,7 +20,8 @@ public final class BuiltinThemes {
     public static final String HUD_GLASS = "sh_better_ui:hud_glass";
     public static final int DEFAULT_HUD_BLUR_RADIUS = 4;
     static final Set<String> IDS = Set.of(DARK, LIGHT_ID, NETHER, END, LIQUID_GLASS, HUD_GLASS,
-            MuoniumThemes.VELVET_ROSE, MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK);
+            MuoniumThemes.VELVET_ROSE, MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK,
+            MuoniumThemes.LIQUID_GLASS, MuoniumThemes.AURORA_FROST, MuoniumThemes.CRYSTAL);
 
     private BuiltinThemes() {}
 

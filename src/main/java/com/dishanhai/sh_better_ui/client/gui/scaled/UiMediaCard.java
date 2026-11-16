@@ -71,7 +71,12 @@ public final class UiMediaCard extends AbstractWidget {
         if (!enabled() || !Minecraft.getInstance().isWindowActive()) cancelInteraction();
         if (width < MIN_WIDTH || height < MIN_HEIGHT) return;
         var state = motion.sample(isHovered(), held, isFocused(), active, preferences, PageTransition.nowMs());
-        DarkModeTheme.button(g, getX(), getY(), width, height, state, false, selected, 0, () -> drawContent(g));
+        if (UiTheme.current().liquidGlass()) {
+            LiquidGlassTheme.button(g, getX(), getY(), width, height, state, preferences, true,
+                    false, selected, 0, () -> drawContent(g));
+        } else {
+            DarkModeTheme.button(g, getX(), getY(), width, height, state, false, selected, 0, () -> drawContent(g));
+        }
     }
     private void drawContent(GuiGraphics g) {
         var font = Minecraft.getInstance().font;

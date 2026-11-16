@@ -16,6 +16,9 @@ final class BuiltinBackgrounds {
     private BuiltinBackgrounds() {}
 
     static void registerInto(BackgroundRegistry registry) {
+        registry.register(new BackgroundSpec(MuoniumFluidBackdrop.ID,
+                "sh_better_ui.panel.theme.group." + MuoniumFluidBackdrop.ID,
+                MuoniumFluidProfile.DEFAULT, logo -> new MuoniumFluidBackdrop()));
         registry.register(new BackgroundSpec(BlackHoleBackdrop.ID,
                 "sh_better_ui.panel.theme.group." + BlackHoleBackdrop.ID,
                 BlackHoleBackdropProfile.DEFAULT, logo -> new BlackHoleBackdrop()));

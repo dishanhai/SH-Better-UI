@@ -74,6 +74,9 @@ public final class ThemeTokens {
     public static final ThemeToken<Boolean> LIQUID_GLASS = key("appearance.liquidGlass", TokenType.BOOLEAN, false);
     public static final ThemeToken<Boolean> HUD_GLASS = key("appearance.hudGlass", TokenType.BOOLEAN, false);
 
+    /** Opt-in surface tint over successful clear optical glass; legacy HUD remains untinted. */
+    public static final ThemeToken<Boolean> GLASS_ROOT_TINT = key("appearance.glassRootTint", TokenType.BOOLEAN, false);
+
     private static final List<ThemeToken<?>> ALL = List.of(PRIMARY, ON_PRIMARY, SECONDARY, ACCENT, BACKGROUND, SURFACE,
             SURFACE_SECONDARY, SURFACE_ELEVATED, SURFACE_OVERLAY, TEXT, TEXT_SECONDARY, TEXT_DISABLED,
             TEXT_ADAPTIVE_COLOR, TEXT_FOREGROUND_PROTECTION,
@@ -81,7 +84,7 @@ public final class ThemeTokens {
             SUCCESS, WARNING, ERROR, INFO, RADIUS_NONE, RADIUS_SMALL, RADIUS_MEDIUM, RADIUS_LARGE,
             RADIUS_FULL, SPACING_XS, SPACING_SM, SPACING_MD, SPACING_LG, SPACING_XL, FONT, FONT_SIZE,
             FONT_WEIGHT, LINE_HEIGHT, FAST, NORMAL, SLOW, STANDARD, EMPHASIZED, SPRING, OPACITY, BLUR,
-            GLOW, PULSE, SHADOW, BACKDROP, TRANSFORM, LIGHT, LIQUID_GLASS, HUD_GLASS);
+            GLOW, PULSE, SHADOW, BACKDROP, TRANSFORM, LIGHT, LIQUID_GLASS, HUD_GLASS, GLASS_ROOT_TINT);
 
     private ThemeTokens() {}
 
