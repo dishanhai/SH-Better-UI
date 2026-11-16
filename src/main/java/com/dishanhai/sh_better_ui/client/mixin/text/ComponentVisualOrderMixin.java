@@ -20,7 +20,7 @@ abstract class ComponentVisualOrderMixin {
     private void shbui$visualEffects(CallbackInfoReturnable<FormattedCharSequence> result) {
         Component source = (MutableComponent) (Object) this;
         Component normalized = GuideMeTextEffects.applyTo(source);
-        if (source == normalized) normalized = VanillaTextEffects.normalize(source);
+        normalized = VanillaTextEffects.normalize(normalized);
         if (source != normalized) result.setReturnValue(Language.getInstance().getVisualOrder(normalized));
     }
 }

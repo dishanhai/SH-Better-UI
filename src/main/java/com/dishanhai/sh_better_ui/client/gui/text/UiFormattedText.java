@@ -123,6 +123,7 @@ public final class UiFormattedText {
             Glyph glyph = glyphs.get(i);
             positions[i] = cursor + glyph.x();
             cursor += font.getSplitter().stringWidth(glyph.sequence());
+            if (UiRichText.isObject(glyph.style(), glyph.codePoint())) continue;
             int fill = glyph.style().getColor() == null ? argb : glyph.style().getColor().getValue();
             int protection = palette == null ? 0 : palette.outlineColor(fill);
             if (protection != 0) {

@@ -141,12 +141,15 @@ final class NativeEffectPreviews implements PreviewScene {
                 materials.drawGlassText(g, host.font(), title.getVisualOrderText(), x + 6, middle + 3, 0xffd3d8db);
             }
             case ICON_SHADER -> {
-                var shaders = List.of(GraphicIconShader.GRADIENT_SWEEP, GraphicIconShader.COLOR_CYCLE,
-                        GraphicIconShader.ENERGY_WAVE, GraphicIconShader.PULSE);
-                int width = canvas.width() / shaders.size();
+                var shaders = GraphicIconShader.BUILT_INS;
+                int columns = Math.min(5, Math.max(1, canvas.width() / 32));
+                int rows = (shaders.size() + columns - 1) / columns;
+                int width = canvas.width() / columns;
                 for (int i = 0; i < shaders.size(); i++) {
-                    GraphicIcon.SHOP.withShader(shaders.get(i)).draw(g, x + i * width + (width - 16) / 2,
-                            middle - 8, 1, 0xffffffff, frame.preferences());
+                    var icon = frame.preferences().highContrast() ? GraphicIcon.SHOP : GraphicIcon.SHOP.withShader(shaders.get(i));
+                    icon.draw(g, x + i % columns * width + (width - 16) / 2,
+                            canvas.y() + (i / columns * 2 + 1) * canvas.height() / (rows * 2) - 8,
+                            1, 0xffffffff, frame.preferences());
                 }
             }
             case RADIAL_GRADIENT -> ShBetterUiApi.blur().drawRadialGradient(g, canvas);

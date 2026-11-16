@@ -26,8 +26,15 @@ public record GraphicIconShader(ResourceLocation id, BiConsumer<ShaderInstance, 
     public static final GraphicIconShader COLOR_CYCLE = builtIn("icon_color_cycle", 3600L);
     public static final GraphicIconShader ENERGY_WAVE = builtIn("icon_energy_wave", 2000L);
     public static final GraphicIconShader PULSE = builtIn("icon_pulse", 1800L);
+    public static final GraphicIconShader HOLOGRAM = rich("icon_hologram", 3200L, 0);
+    public static final GraphicIconShader GLITCH = rich("icon_glitch", 2600L, 1);
+    public static final GraphicIconShader SCANLINE = rich("icon_scanline", 2800L, 2);
+    public static final GraphicIconShader SPARKLE = rich("icon_sparkle", 4000L, 3);
+    public static final GraphicIconShader DISSOLVE = rich("icon_dissolve", 4200L, 4);
+    public static final GraphicIconShader OUTLINE = rich("icon_outline", 3000L, 5);
 
-    static final List<GraphicIconShader> BUILT_INS = List.of(GRADIENT_SWEEP, COLOR_CYCLE, ENERGY_WAVE, PULSE);
+    public static final List<GraphicIconShader> BUILT_INS = List.of(GRADIENT_SWEEP, COLOR_CYCLE, ENERGY_WAVE,
+            PULSE, HOLOGRAM, GLITCH, SCANLINE, SPARKLE, DISSOLVE, OUTLINE);
 
     public GraphicIconShader {
         Objects.requireNonNull(id, "id");
@@ -48,6 +55,13 @@ public record GraphicIconShader(ResourceLocation id, BiConsumer<ShaderInstance, 
 
     static float phase(Frame frame, long periodMillis) {
         return frame.reducedMotion() ? 0.5f : Math.floorMod(frame.timeMillis(), periodMillis) / (float) periodMillis;
+    }
+
+    private static GraphicIconShader rich(String path, long period, int effect) {
+        return new GraphicIconShader(ResourceLocation.tryParse("sh_better_ui:" + path), (shader, frame) -> {
+            shader.safeGetUniform("IconPhase").set(phase(frame, period));
+            shader.safeGetUniform("IconEffect").set((float) effect);
+        });
     }
 
     boolean draw(GuiGraphics graphics, ResourceLocation texture, int x, int y, int size, UiPreferences preferences) {

@@ -1,6 +1,28 @@
 <!-- 作者：山海／dishanhai -->
 # 富文字 API
 
+## 原生组件与全局 FormattedCharSequence
+
+开发者预览、PNG 别名和 `,rndr:…` 效果的完整用法见 [富文本图标与效果](RICH_ICON_EFFECTS.md)。仅 `<rich:…>` 触发解析，普通 `<item>` 不解析。内置图片可写作 `<rich:vmaterial-shop>`；例如 `<rich:vmaterial-shop,rndr:hologram>` 使用全息效果。
+
+`client.gui.text.UiRichText` 将内联物品接入原生组件、按钮、Tooltip 和 HUD 的文本链路。标记支持 `<rich:item=minecraft:diamond>` 和 `<rich:item>minecraft:diamond</rich:item>`；物品 ID 必须包含命名空间。无效标记保留原文，未注册的 ID 和空气物品显示屏障图标。只引用本地注册表，不下载资源或执行动作。
+
+```java
+var label = UiRichText.parse("<rich:item=minecraft:diamond> Diamond");
+var item = UiRichText.item("minecraft:diamond");
+FormattedCharSequence line = UiRichText.sequence(label);
+int width = font.width(line);
+// 普通 GuiGraphics.drawString / 26.1.2 GuiGraphicsExtractor.text 即可绘制。
+```
+
+静态文案放在消费模组的语言文件中；示例字串仅说明 API。原生入口自动处理组件、字符串及直接传入的正向序列；已重排的文字应在双向排序前使用 `prepare(Component)` / `sequence(Component)`。手动使用 `StringSplitter` 的宿主先 `prepare`，并在语言变更后从原组件重新处理。原组件不会被修改。
+
+组合图标与名称时可用 `UiRichText.withItem(id, localizedLabel)`；它用中性根组件隔离图标专用字体，后续中文不会继承物品字体。`UiRichText.fit(font, component, width)` 会保留样式与行内对象并在空间不足时省略，避免先 `getString()` 再裁切导致样式丢失。
+
+每个物品使用独立字体中的 U+FFFC，占宽 10、绘制大小 9×9 GUI 像素，跟随宿主变换与裁剪。原生量宽、换行、居中、截断和省略号均将物品作为一个整体；SHBUI 的既有文字色板与特效可包围物品标记。物品保留宿主的 click/hover 元数据，占位字形的 font/insertion 由桥接保留使用；不会自动添加鼠标操作或 Tooltip。
+
+Forge 1.20.1 与 NeoForge 1.21.1 在原生 Font 批次内复用 GUI 物品与 PNG 渲染，要求标准 `MultiBufferSource.BufferSource`；其他 buffer 实现只保留占位宽度。NeoForge 26.1.2 在 `GuiGraphicsExtractor.text` 中提交物品与 PNG，直接用于世界渲染的 Font 批次只保留占位宽度。可变尺寸图像、流体、实体和交互控件继续使用下方的 `RichTextView`，不投影到固定行高的原生序列。
+
 ## 世界 HUD 文字
 
 `UiHudRichText` 提供單行 HUD 文字入口。`prepare(Component)` 先解析 SHBUI 格式標記，宿主再量寬、截斷及分頁；`prepare(RichDocument)` 接受文字和翻譯節點，保留顏色、字型、粗體、斜體、底線等樣式。HUD 不承載圖片或互動節點，傳入這些節點會明確拒絕。語言或來源變更後須重新 prepare。

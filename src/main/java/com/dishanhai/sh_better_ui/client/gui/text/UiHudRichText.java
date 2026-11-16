@@ -17,7 +17,7 @@ public final class UiHudRichText {
     private UiHudRichText() {}
 
     /** Resolve formatting before measuring or truncating; prepare again after a language change. */
-    public static Component prepare(Component text) { return UiTextEffects.normalize(text); }
+    public static Component prepare(Component text) { return UiRichText.prepare(UiTextEffects.normalize(text)); }
 
     /** Project a text-only rich document into one HUD row. */
     public static Component prepare(RichDocument document) {
