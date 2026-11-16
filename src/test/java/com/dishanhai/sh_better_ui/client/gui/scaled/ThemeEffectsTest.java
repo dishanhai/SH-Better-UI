@@ -13,11 +13,12 @@ import static org.junit.jupiter.api.Assertions.*;
 class ThemeEffectsTest {
     @Test
     void allTemplatesRoundTripThroughClientConfig() {
+        com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.backgrounds();
         var overrides = ThemeOverrides.EMPTY;
         for (String group : ThemeEffects.groups()) {
             overrides = overrides.withGroup(group, ThemeEffects.template(group));
         }
-        assertEquals(26, overrides.groups().size());
+        assertEquals(29, overrides.groups().size());
         var persisted = new ThemeOverrides(overrides.json());
         assertEquals(overrides, persisted);
         assertDoesNotThrow(() -> ThemeEffects.validate(persisted));

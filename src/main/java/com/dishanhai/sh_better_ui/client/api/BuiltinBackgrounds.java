@@ -15,6 +15,9 @@ final class BuiltinBackgrounds {
     private BuiltinBackgrounds() {}
 
     static void registerInto(BackgroundRegistry registry) {
+        ambient(registry, "soft_aurora", AmbientBackdrop.Style.AURORA, AmbientBackdropProfile.AURORA);
+        ambient(registry, "silk_ripples", AmbientBackdrop.Style.SILK, AmbientBackdropProfile.SILK);
+        ambient(registry, "iridescent_flow", AmbientBackdrop.Style.IRIDESCENT, AmbientBackdropProfile.IRIDESCENT);
         register(registry, "dotMatrix", logo -> new BackgroundSpec.Renderer() {
             private final UiDotMatrix dots = new UiDotMatrix();
             private final UiPointerTracker pointer = new UiPointerTracker();
@@ -107,6 +110,13 @@ final class BuiltinBackgrounds {
                 }
             };
         });
+    }
+
+    private static void ambient(BackgroundRegistry registry, String name, AmbientBackdrop.Style style,
+                                AmbientBackdropProfile profile) {
+        String id = "sh_better_ui:" + name;
+        registry.register(new BackgroundSpec(id, "sh_better_ui.panel.theme.group." + id, profile,
+                logo -> new AmbientBackdrop(id, style, profile)));
     }
 
     private static BackgroundSpec.Renderer rain(CodeRain rain) {

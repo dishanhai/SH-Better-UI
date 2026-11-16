@@ -1243,5 +1243,10 @@
   "sh_better_ui.resource_picker.quantity_help": "確認後套用數量",
   "sh_better_ui.resource_picker.no_jei": "JEI 書籤無法使用",
   "sh_better_ui.resource_picker.no_matches": "沒有符合的資源",
-  "sh_better_ui.resource_picker.page": "第 %s / %s 頁"
+  "sh_better_ui.resource_picker.page": "第 %s / %s 頁",
+  "sh_better_ui.panel.theme.group.sh_better_ui:soft_aurora": "柔和極光",
+  "sh_better_ui.panel.theme.group.sh_better_ui:silk_ripples": "絲綢波紋",
+  "sh_better_ui.panel.theme.group.sh_better_ui:iridescent_flow": "虹彩流體",
+  "sh_better_ui.theme_editor.field.primaryColor": "主色",
+  "sh_better_ui.theme_editor.field.secondaryColor": "輔色"
 }
