@@ -160,7 +160,10 @@ class OnlineMusicAccountSessionTest {
         var folder = directory.resolve("storage");
         try (var session = new OnlinePlayerSession(List.of(source), new MusicCredentialStore(folder))) {
             session.rememberCredentials("test", true); session.credentials("test", "old-cookie");
-            java.nio.file.Files.delete(folder.resolve("test.credential")); java.nio.file.Files.delete(folder);
+            java.nio.file.Files.delete(folder.resolve("test.credential"));
+            // POSIX encryption creates a local key; remove this test fixture before blocking its directory.
+            java.nio.file.Files.deleteIfExists(folder.resolve(".key"));
+            java.nio.file.Files.delete(folder);
             java.nio.file.Files.writeString(folder, "blocks-directory");
             assertThrows(java.io.UncheckedIOException.class, () -> session.credentials("test", "new-cookie"));
             assertTrue(session.authenticated("test")); assertEquals("old-cookie", source.cookie);
