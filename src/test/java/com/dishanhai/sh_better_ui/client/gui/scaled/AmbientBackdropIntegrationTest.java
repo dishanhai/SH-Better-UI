@@ -19,14 +19,14 @@ import java.util.function.Consumer;
 import static org.junit.jupiter.api.Assertions.*;
 
 class AmbientBackdropIntegrationTest {
-    private static final String[] IDS = {"sh_better_ui:soft_aurora", "sh_better_ui:silk_ripples", "sh_better_ui:iridescent_flow"};
-    private static final AmbientBackdropProfile[] DEFAULTS = {AmbientBackdropProfile.AURORA, AmbientBackdropProfile.SILK, AmbientBackdropProfile.IRIDESCENT};
+    private static final String[] IDS = {"sh_better_ui:soft_aurora", "sh_better_ui:silk_ripples", "sh_better_ui:iridescent_flow", "sh_better_ui:contour_flow", "sh_better_ui:mist_glow"};
+    private static final AmbientBackdropProfile[] DEFAULTS = {AmbientBackdropProfile.AURORA, AmbientBackdropProfile.SILK, AmbientBackdropProfile.IRIDESCENT, AmbientBackdropProfile.CONTOUR, AmbientBackdropProfile.MIST};
     private static final AppearanceService APPEARANCE = new AppearanceService() {
         @Override public Screen edit(Screen parent, ClientUiSettings settings, String group, JsonObject inherited,
                                      JsonObject local, Consumer<JsonObject> apply) { throw new UnsupportedOperationException(); }
     };
 
-    @Test void allThreeBackgroundsShareUukRegistryAndOwnIndependentRenderers() {
+    @Test void allFiveBackgroundsShareUukRegistryAndOwnIndependentRenderers() {
         var registry = APPEARANCE.backgrounds();
         assertSame(ShBetterUiApi.backgrounds(), registry);
         for (int i = 0; i < IDS.length; i++) {

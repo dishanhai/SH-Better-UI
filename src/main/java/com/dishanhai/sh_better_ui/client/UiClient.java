@@ -229,6 +229,7 @@ public final class UiClient {
 
     /** 資源重載仍停留在玻璃畫面時，立即以新資源恢復管線，不必重開畫面。 */
     private static void reloadCurrentScreen() {
+        com.dishanhai.sh_better_ui.client.gui.scaled.DitherBackground.invalidateAll();
         ClientMusic.artwork().invalidate();
         GaussBlur.release();
         Screen screen = Minecraft.getInstance().screen;

@@ -28,7 +28,7 @@ void main() {
         float ridge = 0.5 + 0.5 * sin(fold);
         light = 0.18 + 0.7 * ridge * ridge * ridge;
         tone = 0.35 + 0.35 * sin(fold + 0.8);
-    } else {
+    } else if (Style == 2) {
         // Smooth interfering circular fields, tinted rather than hue-flashing.
         vec2 a = p - 0.25 * vec2(cos(t), sin(t));
         vec2 b = p + 0.3 * vec2(sin(t), cos(t));
@@ -36,6 +36,26 @@ void main() {
         float field = sin(length(a) * 5.0 - 2.0 * t) + cos(length(b) * 6.0 + t);
         light = 0.35 + 0.3 * sin(field * 1.5);
         tone = 0.5 + 0.5 * sin(field + p.x * 2.0);
+    } else if (Style == 3) {
+        // Original topographic contours on a gently deforming analytic height field.
+        float height = p.y * 3.8 + 0.85 * sin(p.x * 1.7 + t)
+                     + 0.45 * cos(p.y * 2.3 - p.x * 0.6 - t);
+        float level = height * 6.0;
+        float footprint = fwidth(level);
+        float line = 1.0 - smoothstep(0.08, 0.08 + max(footprint * 0.8, 0.02), abs(sin(level)));
+        // Fade unresolved contours instead of letting subpixel lines shimmer.
+        line *= 1.0 - smoothstep(0.8, 2.0, footprint);
+        light = 0.07 + 0.31 * line;
+        tone = 0.5 + 0.25 * sin(height * 0.5 + t);
+    } else {
+        // Two broad drifting mist pools, without particles, light rays or offscreen blur.
+        vec2 a = p - vec2(0.32 * sin(t), 0.18 * cos(t));
+        vec2 b = p + vec2(0.4 * cos(t), 0.24 * sin(t));
+        float footprint = length(fwidth(p));
+        float first = exp(-dot(a, a) / (0.24 + footprint));
+        float second = exp(-dot(b, b) / (0.46 + footprint));
+        light = 0.06 + 0.27 * first + 0.21 * second;
+        tone = second / max(first + second, 0.0001);
     }
     vec4 ink = mix(PrimaryColor, SecondaryColor, clamp(tone, 0.0, 1.0));
     float weight = clamp(light * Surface.w, 0.0, 1.0);

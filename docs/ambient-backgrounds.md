@@ -1,6 +1,6 @@
 # Original ambient backgrounds / 原创氛围背景
 
-Three lightweight, independent SHBUI backgrounds are available through the normal
+Five lightweight, independent SHBUI backgrounds are available through the normal
 background selector and UUK `AppearanceService.backgrounds()`:
 
 | ID | Appearance | Suggested use |
@@ -8,6 +8,8 @@ background selector and UUK `AppearanceService.backgrounds()`:
 | `sh_better_ui:soft_aurora` | Soft, broad colored light curtains | Quiet dark navigation/settings surfaces |
 | `sh_better_ui:silk_ripples` | Diagonal satin folds | Restrained purple/blue decorative panels |
 | `sh_better_ui:iridescent_flow` | Smooth overlapping color fields | Larger previews and accent surfaces |
+| `sh_better_ui:contour_flow` | Fine, slowly deforming topographic contours | Quiet blue-green technical/navigation panels |
+| `sh_better_ui:mist_glow` | Two broad, overlapping pastel mist pools | Subtle atmospheric backing behind content |
 
 These are continuous analytic surfaces, not variants of the existing particle,
 light-ray, glyph-grid or shape-wave backgrounds. They are not coupled to Crystal
@@ -50,11 +52,13 @@ clock; separate screens do not advance one another's effects.
 - Invalid/empty bounds and zero opacity do not submit the effect.
 - Missing shader resources fall back to the configured base color with opacity.
 - No pointer interaction: the background cannot intercept or react to controls.
-- All three styles share a single shader resource, with one quad/pass per layer.
+- All five styles share a single shader resource, with one quad/pass per layer.
   No textures, loops, offscreen targets, per-frame pixel readback, or screen-owned
   GPU allocations are used. Runtime cost scales with visible pixels; rendering a
   frozen background still rasterizes it. These are bounded design properties,
-  not a measured FPS guarantee.
+  not a measured FPS guarantee. Contours use derivative-based edge coverage and
+  fade unresolved lines; mist uses broad analytic falloff with pixel-footprint
+  softening. Neither new mode adds a loop, CPU bitmap/cache or GPU allocation.
 - Normal GUI pose and host scissor clipping apply. The renderer restores the host's
   blend/depth/cull/write state after submission.
 
@@ -64,7 +68,7 @@ existing reload hooks. Minecraft's shader manager owns its resource lifetime.
 ## Acceptance checklist
 
 Automated profile/clock/registry tests and software OpenGL offscreen validation do
-not replace testing in Minecraft on real GPUs. Check all three styles on both
+not replace testing in Minecraft on real GPUs. Check all five styles on both
 loaders: theme selection and saved parameter edits; wide/tall windows; GUI scale,
 pose transforms and scissor; reduced motion and high contrast; transparent colors;
 zero intensity/opacity; resource reload and shader failure fallback; screen close

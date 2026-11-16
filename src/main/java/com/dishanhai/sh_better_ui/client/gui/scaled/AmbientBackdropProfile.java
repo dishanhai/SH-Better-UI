@@ -10,6 +10,11 @@ public record AmbientBackdropProfile(float speed, float scale, float intensity, 
     public static final AmbientBackdropProfile IRIDESCENT = new AmbientBackdropProfile(
             .25f, 1f, .65f, 1f, 0xFF78CAD0, 0xFFE3A2CA, 0xFF171E2C);
 
+    public static final AmbientBackdropProfile CONTOUR = new AmbientBackdropProfile(
+            .25f, 1f, .65f, 1f, 0xFF83C6C0, 0xFF7F9CBC, 0xFF131E27);
+    public static final AmbientBackdropProfile MIST = new AmbientBackdropProfile(
+            .25f, 1f, .65f, 1f, 0xFFA1B6D9, 0xFFD0AFC6, 0xFF1B1E2B);
+
     public AmbientBackdropProfile {
         speed = range(speed, 0f, 2f);
         scale = range(scale, .25f, 4f);
