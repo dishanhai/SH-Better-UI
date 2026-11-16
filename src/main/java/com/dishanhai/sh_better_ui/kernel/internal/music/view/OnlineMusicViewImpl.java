@@ -18,11 +18,14 @@ import java.util.concurrent.CompletableFuture;
 /** Complete UUK player page; all widgets remain native and all asynchronous work belongs to the session. */
 public final class OnlineMusicViewImpl implements OnlineMusicView {
     private enum Page { SEARCH, LYRICS, ACCOUNTS }
+    private enum Library { NONE, PLAYLISTS, TRACKS, LIKED }
     private static final String TEXT = "sh_better_ui.online_music.";
     private final OnlineMusicPlayer player;
     private final List<AbstractWidget> searchControls = new ArrayList<>(), lyricControls = new ArrayList<>(),
-            accountControls = new ArrayList<>(), detailControls = new ArrayList<>();
+            accountControls = new ArrayList<>(), detailControls = new ArrayList<>(), libraryControls = new ArrayList<>();
     private final List<UiButton> resultRows = new ArrayList<>(), lyricRows = new ArrayList<>();
+    private final List<UiButton> libraryRows = new ArrayList<>(), searchLikes = new ArrayList<>(), searchUnlikes = new ArrayList<>(),
+            libraryLikes = new ArrayList<>(), libraryUnlikes = new ArrayList<>();
     private UiNavigationRail navigation;
     private final Map<String, UiButton> sources = new LinkedHashMap<>(), accounts = new LinkedHashMap<>(), loginSources = new LinkedHashMap<>();
     private PreviewContext host;
@@ -30,14 +33,28 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private UiTextField queryField;
     private UiButton searchButton, previous, next, playback, stop, nowPlaying, lyricsToggle, back;
     private UiButton loginRefresh, loginImport, loginSignOut;
+    private UiButton remember, openPlaylists, openLiked, libraryPrevious, libraryNext;
     private UiSlider seek;
     private Page page = Page.SEARCH;
     private String source = "netease", accountSource = "netease", query = "", submittedQuery = "", searchState = "search_hint";
     private List<OnlineTrack> results = List.of();
     private CompletableFuture<List<OnlineTrack>> pending;
+    private CompletableFuture<List<String>> pendingSuggestions;
+    private CompletableFuture<List<OnlinePlaylist>> pendingPlaylists;
+    private CompletableFuture<List<OnlineTrack>> pendingLibrary;
+    private CompletableFuture<OnlineMusicAccount> pendingAccount;
+    private CompletableFuture<Void> pendingLike;
     private OnlineMusicLogin login;
-    private boolean accountDetail, closed;
+    private boolean accountDetail, closed, accountWasSignedIn;
     private int remotePage = 1, first, visibleRows;
+    private Library library = Library.NONE;
+    private OnlinePlaylist selectedPlaylist;
+    private List<OnlinePlaylist> playlists = List.of();
+    private List<OnlineTrack> libraryTracks = List.of();
+    private List<String> suggestions = List.of();
+    private String libraryState = "library.empty", accountState = "", accountName = "", likeState = "", suggestedQuery = "";
+    private int libraryPage = 1, libraryFirst, savedPlaylistPage = 1, savedPlaylistFirst;
+    private long suggestAfter;
     private final List<Integer> lyricIndices = new ArrayList<>();
     private long lyricOffset;
 
@@ -47,17 +64,22 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (closed) throw new IllegalStateException("Music view closed");
         if (navigation != null) { navigation.close(); navigation = null; }
         host = context; layout = OnlineMusicLayout.of(context.viewport()); queryField = null;
-        searchControls.clear(); lyricControls.clear(); accountControls.clear(); detailControls.clear();
-        resultRows.clear(); lyricRows.clear(); lyricIndices.clear(); sources.clear(); accounts.clear(); loginSources.clear();
+        searchControls.clear(); lyricControls.clear(); accountControls.clear(); detailControls.clear(); libraryControls.clear();
+        resultRows.clear(); lyricRows.clear(); libraryRows.clear(); searchLikes.clear(); searchUnlikes.clear(); libraryLikes.clear(); libraryUnlikes.clear(); lyricIndices.clear(); sources.clear(); accounts.clear(); loginSources.clear();
         if (!layout.supported()) return;
-        buildNavigation(); buildSearch(); buildLyrics(); buildAccounts(); buildTransport();
+        buildNavigation(); buildSearch(); buildLyrics(); buildAccounts(); buildLibrary(); buildTransport();
         var h = layout.header();
         back = button(new Bounds(h.x(), h.y() + 2, Math.min(88, h.width() / 2), 22), label("view.back"), () -> {
-            if (page == Page.ACCOUNTS && accountDetail) { cancelLogin(); accountDetail = false; updateVisibility(); }
+            if (page == Page.ACCOUNTS && library != Library.NONE) {
+                if (library == Library.TRACKS) {
+                    cancelLibrary(); library = Library.PLAYLISTS; libraryPage = savedPlaylistPage; libraryFirst = savedPlaylistFirst;
+                    libraryState = playlists.isEmpty() ? "library.empty" : "library.results"; updateVisibility();
+                } else { cancelLibrary(); library = Library.NONE; updateVisibility(); }
+            } else if (page == Page.ACCOUNTS && accountDetail) { cancelLogin(); accountDetail = false; updateVisibility(); }
             else show(Page.SEARCH);
         }, null);
         back.setLeadingIcon(GraphicIcon.BACK);
-        updateRows(); updateVisibility();
+        updateRows(); updateLibraryRows(); updateVisibility();
     }
     private void buildNavigation() {
         var n = layout.navigation();
@@ -88,7 +110,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         queryField = host.add(new UiTextField(host.font(), new Bounds(h.x() + offset, h.y() + 2, h.width() - offset - 28, 22), label("query"), 200, host.preferences()));
         searchControls.add(queryField);
-        queryField.setValue(query); queryField.setHint(label("query")); queryField.setOnChange(value -> query = value);
+        queryField.setValue(query); queryField.setHint(label("query")); queryField.setOnChange(this::queryChanged);
         queryField.setOnSubmit(value -> { query = value; search(1, true); });
         searchButton = button(new Bounds(h.right() - 24, h.y() + 2, 24, 22), label("search"), () -> {
             if (pending != null) { cancelSearch(); searchState = "cancelled"; updateRows(); }
@@ -98,18 +120,24 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         visibleRows = layout.rows().size(); first = first / visibleRows * visibleRows;
         for (var row : layout.rows()) {
             int slot = resultRows.size();
-            int titleWidth = row.width() >= 320 ? row.width() * 54 / 100 : row.width() - 36;
+            int titleWidth = row.width() - 52;
             var button = button(new Bounds(row.x(), row.y(), titleWidth, row.height()), Component.empty(), () -> {
-                int i = first + slot; if (i < results.size()) player.play(results.get(i));
+                int i = first + slot;
+                if (showSuggestions()) { if (i < suggestions.size()) { String selected = suggestions.get(i); queryField.setValue(selected); query = selected; search(1, true); } }
+                else if (i < results.size()) player.play(results.get(i));
             }, searchControls);
             resultRows.add(button);
+            searchLikes.add(trackAction(row, slot, false, true));
+            searchUnlikes.add(trackAction(row, slot, false, false));
         }
         var pager = layout.pager();
         previous = button(new Bounds(pager.x(), pager.y(), 24, 20), label("previous"), () -> {
+            if (showSuggestions()) { first = Math.max(0, first - visibleRows); updateRows(); return; }
             if (first > 0) { first = Math.max(0, first - visibleRows); updateRows(); }
             else if (remotePage > 1) search(remotePage - 1, false);
         }, searchControls); previous.setIcon(GraphicIcon.PREVIOUS);
         next = button(new Bounds(pager.right() - 24, pager.y(), 24, 20), label("next"), () -> {
+            if (showSuggestions()) { if (first + visibleRows < suggestions.size()) first += visibleRows; updateRows(); return; }
             if (first + visibleRows < results.size()) { first += visibleRows; updateRows(); }
             else if (results.size() == 20) search(remotePage + 1, false);
         }, searchControls); next.setIcon(GraphicIcon.NEXT);
@@ -133,27 +161,71 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         for (String id : List.of("netease", "qq")) {
             final String selected = id; int i = accounts.size();
             var card = button(new Bounds(left + i * (width + 12), c.y() + 10, width, 44), label("source." + id), () -> {
-                accountSource = selected; accountDetail = true;
-                if (!player.authenticated(selected)) startLogin();
+                accountSource = selected; accountDetail = true; accountName = ""; accountState = "";
+                accountWasSignedIn = player.authenticated(selected);
+                if (player.authenticated(selected)) loadAccount();
                 updateVisibility(); host.screen().setFocused(back);
             }, accountControls);
             card.setLeadingIcon(GraphicIcon.USER); accounts.put(id, card);
             var tab = button(new Bounds(c.x() + i * (c.width() / 2 + 2), c.y(), (c.width() - 4) / 2, 22), label("source." + id), () -> {
-                if (!accountSource.equals(selected)) { cancelLogin(); accountSource = selected; if (!player.authenticated(selected)) startLogin(); }
+                if (!accountSource.equals(selected)) { cancelLogin(); cancelLibrary(); accountSource = selected; accountState = ""; accountName = ""; accountWasSignedIn = player.authenticated(selected); if (accountWasSignedIn) loadAccount(); }
                 updateVisibility();
             }, detailControls);
             loginSources.put(id, tab);
         }
-        loginRefresh = button(new Bounds(c.x(), c.bottom() - 44, (c.width() - 4) / 2, 20), label("login.refresh"), this::startLogin, detailControls);
-        loginSignOut = button(new Bounds(c.x() + c.width() / 2 + 2, c.bottom() - 44, (c.width() - 4) / 2, 20), label("login.sign_out"), () -> {
-            cancelLogin(); player.credentials(accountSource, ""); updateVisibility();
+        remember = button(new Bounds(c.x(), c.y() + 24, c.width(), 20), label("login.remember_off"), () -> {
+            try { player.rememberCredentials(accountSource, !player.remembersCredentials(accountSource)); accountState = "login.preference_saved"; }
+            catch (RuntimeException failure) { accountState = "login.storage_failed"; }
+            updateVisibility();
         }, detailControls);
-        loginImport = button(new Bounds(c.x(), c.bottom() - 20, c.width(), 20), label("login.import"), () -> {
-            try { player.credentials(accountSource, OnlineMusicViewPaint.clipboard().strip()); searchState = "credentials_loaded"; }
-            catch (IllegalArgumentException failure) { searchState = "credentials_invalid"; }
-            cancelLogin(); show(Page.SEARCH);
+        remember.setPreview(label("login.remember_hint"));
+        int half = (c.width() - 4) / 2, third = (c.width() - 8) / 3;
+        openPlaylists = button(new Bounds(c.x(), c.bottom() - 44, half, 20), label("library.playlists"), () -> loadPlaylists(1), detailControls);
+        openLiked = button(new Bounds(c.x() + half + 4, c.bottom() - 44, half, 20), label("library.liked"), () -> loadLiked(1), detailControls);
+        loginRefresh = button(new Bounds(c.x(), c.bottom() - 20, third, 20), label("login.refresh"), this::startLogin, detailControls);
+        loginSignOut = button(new Bounds(c.x() + (third + 4) * 2, c.bottom() - 20, c.width() - (third + 4) * 2, 20), label("login.sign_out"), () -> {
+            try { cancelLogin(); cancelLibrary(); player.credentials(accountSource, ""); accountName = ""; accountState = "login.signed_out"; }
+            catch (RuntimeException failure) { accountState = "login.storage_failed"; }
+            updateVisibility();
+        }, detailControls);
+        loginImport = button(new Bounds(c.x() + third + 4, c.bottom() - 20, third, 20), label("login.import"), () -> {
+            try { cancelLibrary(); player.credentials(accountSource, OnlineMusicViewPaint.clipboard().strip()); accountState = "credentials_loaded"; cancelLogin(); loadAccount(); }
+            catch (IllegalArgumentException failure) { accountState = "credentials_invalid"; }
+            catch (RuntimeException failure) { accountState = "login.storage_failed"; }
+            updateVisibility();
         }, detailControls);
         loginImport.setPreview(label("login.import_hint"));
+    }
+    private UiButton trackAction(Bounds row, int slot, boolean inLibrary, boolean like) {
+        var button = button(new Bounds(row.right() - (like ? 48 : 24), row.y(), 24, row.height()),
+                label(like ? "library.like" : "library.unlike"), () -> {
+                    int i = (inLibrary ? libraryFirst : first) + slot;
+                    var list = inLibrary ? libraryTracks : results;
+                    if (i < list.size()) changeLike(list.get(i), like);
+                }, inLibrary ? libraryControls : searchControls);
+        button.setIcon(like ? GraphicIcon.FAVORITE : GraphicIcon.REMOVE);
+        return button;
+    }
+    private void buildLibrary() {
+        for (var row : layout.rows()) {
+            int slot = libraryRows.size();
+            libraryRows.add(button(new Bounds(row.x(), row.y(), row.width() - 52, row.height()), Component.empty(), () -> {
+                int i = libraryFirst + slot;
+                if (library == Library.PLAYLISTS && i < playlists.size()) loadPlaylist(playlists.get(i), 1);
+                else if (i < libraryTracks.size()) player.play(libraryTracks.get(i));
+            }, libraryControls));
+            libraryLikes.add(trackAction(row, slot, true, true));
+            libraryUnlikes.add(trackAction(row, slot, true, false));
+        }
+        var pager = layout.pager();
+        libraryPrevious = button(new Bounds(pager.x(), pager.y(), 24, 20), label("previous"), () -> {
+            if (libraryFirst > 0) { libraryFirst = Math.max(0, libraryFirst - visibleRows); updateLibraryRows(); }
+            else if (libraryPage > 1) loadLibraryPage(libraryPage - 1);
+        }, libraryControls); libraryPrevious.setIcon(GraphicIcon.PREVIOUS);
+        libraryNext = button(new Bounds(pager.right() - 24, pager.y(), 24, 20), label("next"), () -> {
+            if (libraryFirst + visibleRows < librarySize()) { libraryFirst += visibleRows; updateLibraryRows(); }
+            else if (librarySize() == 20) loadLibraryPage(libraryPage + 1);
+        }, libraryControls); libraryNext.setIcon(GraphicIcon.NEXT);
     }
     private void buildTransport() {
         var t = layout.transport(); boolean wide = t.width() >= 480;
@@ -177,13 +249,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         return result;
     }
     private void show(Page next) {
-        if (page == Page.ACCOUNTS && next != page) { cancelLogin(); accountDetail = false; }
+        if (page == Page.ACCOUNTS && next != page) { cancelLogin(); cancelLibrary(); library = Library.NONE; accountDetail = false; }
+        if (page == Page.SEARCH && next != page) cancelSuggestions();
         page = next; updateVisibility();
         if (next == Page.SEARCH) host.screen().setFocused(queryField); else host.screen().setFocused(back);
     }
     private void selectSource(String next) {
         if (!source.equals(next)) {
-            cancelSearch(); source = next; results = List.of(); first = 0; remotePage = 1; searchState = "search_hint";
+            cancelSearch(); cancelSuggestions(); source = next; results = List.of(); first = 0; remotePage = 1; searchState = "search_hint";
         }
         show(Page.SEARCH); updateRows();
     }
@@ -192,38 +265,167 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         searchControls.forEach(w -> w.visible = page == Page.SEARCH);
         lyricControls.forEach(w -> w.visible = page == Page.LYRICS);
         accountControls.forEach(w -> w.visible = page == Page.ACCOUNTS && !accountDetail);
-        detailControls.forEach(w -> w.visible = page == Page.ACCOUNTS && accountDetail);
+        detailControls.forEach(w -> w.visible = page == Page.ACCOUNTS && accountDetail && library == Library.NONE);
+        libraryControls.forEach(w -> w.visible = page == Page.ACCOUNTS && accountDetail && library != Library.NONE);
         back.visible = page != Page.SEARCH;
         if (navigation != null) navigation.state().select(page.ordinal());
         sources.forEach((id, button) -> {
             if (id.equals("toggle")) button.setMessage(label("source." + source)); else button.setSelected(id.equals(source));
         });
         loginSources.forEach((id, button) -> button.setSelected(id.equals(accountSource)));
+        boolean signedIn = player.authenticated(accountSource);
+        remember.setMessage(label(player.remembersCredentials(accountSource) ? "login.remember_on" : "login.remember_off"));
+        remember.setSelected(player.remembersCredentials(accountSource));
+        openPlaylists.visible &= signedIn; openLiked.visible &= signedIn;
+        updateRows(); updateLibraryRows();
+    }
+    private void queryChanged(String value) {
+        query = value; cancelSuggestions();
+        if (!value.isBlank()) { suggestAfter = System.nanoTime() + 300_000_000L; suggestedQuery = value; }
+        first = 0; updateRows();
+    }
+    private boolean showSuggestions() { return !suggestions.isEmpty() && query.equals(suggestedQuery); }
+    private void cancelSuggestions() {
+        if (pendingSuggestions != null) pendingSuggestions.cancel(true);
+        pendingSuggestions = null; suggestions = List.of(); suggestedQuery = ""; suggestAfter = 0;
     }
     private void search(int pageNumber, boolean fresh) {
         String text = fresh ? query.strip() : submittedQuery;
         if (text.isEmpty()) { searchState = "search_hint"; return; }
-        cancelSearch(); if (fresh) submittedQuery = text;
+        cancelSearch(); cancelSuggestions(); likeState = ""; if (fresh) submittedQuery = text;
         remotePage = pageNumber; first = 0; results = List.of(); searchState = "searching";
         pending = player.search(source, text, pageNumber); updateRows();
     }
     private void cancelSearch() {
         if (pending != null) { pending.cancel(true); searchState = "cancelled"; pending = null; }
     }
-    private void startLogin() { cancelLogin(); login = player.login(accountSource); }
+    private void cancelLibrary() {
+        if (pendingPlaylists != null) pendingPlaylists.cancel(true);
+        if (pendingLibrary != null) pendingLibrary.cancel(true);
+        if (pendingAccount != null) pendingAccount.cancel(true);
+        pendingPlaylists = null; pendingLibrary = null; pendingAccount = null;
+    }
+    private void loadAccount() {
+        if (pendingAccount != null) pendingAccount.cancel(true);
+        if (player.authenticated(accountSource)) pendingAccount = player.account(accountSource);
+    }
+    private void loadPlaylists(int number) {
+        cancelLibrary(); cancelLogin(); library = Library.PLAYLISTS; libraryPage = number; libraryFirst = 0;
+        likeState = "";
+        playlists = List.of(); libraryTracks = List.of(); libraryState = "library.loading";
+        pendingPlaylists = player.playlists(accountSource, number); updateVisibility(); host.screen().setFocused(back);
+    }
+    private void loadPlaylist(OnlinePlaylist playlist, int number) {
+        if (library == Library.PLAYLISTS) { savedPlaylistPage = libraryPage; savedPlaylistFirst = libraryFirst; }
+        cancelLibrary(); library = Library.TRACKS; selectedPlaylist = playlist; libraryPage = number; libraryFirst = 0;
+        likeState = "";
+        libraryTracks = List.of(); libraryState = "library.loading";
+        pendingLibrary = player.playlist(playlist, number); updateVisibility(); host.screen().setFocused(back);
+    }
+    private void loadLiked(int number) {
+        cancelLibrary(); cancelLogin(); library = Library.LIKED; libraryPage = number; libraryFirst = 0;
+        likeState = "";
+        libraryTracks = List.of(); libraryState = "library.loading";
+        pendingLibrary = player.liked(accountSource, number); updateVisibility(); host.screen().setFocused(back);
+    }
+    private void loadLibraryPage(int number) {
+        if (library == Library.PLAYLISTS) loadPlaylists(number);
+        else if (library == Library.TRACKS) loadPlaylist(selectedPlaylist, number);
+        else if (library == Library.LIKED) loadLiked(number);
+    }
+    private int librarySize() { return library == Library.PLAYLISTS ? playlists.size() : libraryTracks.size(); }
+    private void changeLike(OnlineTrack track, boolean like) {
+        if (pendingLike != null) return;
+        likeState = "library.updating";
+        pendingLike = player.like(track, like); updateRows(); updateLibraryRows();
+    }
+    private void updateLibraryRows() {
+        if (libraryPrevious == null) return;
+        for (int slot = 0; slot < libraryRows.size(); slot++) {
+            int i = libraryFirst + slot; var row = libraryRows.get(slot);
+            boolean available = page == Page.ACCOUNTS && accountDetail && library != Library.NONE && i < librarySize();
+            row.visible = available; row.active = available;
+            if (available) {
+                if (library == Library.PLAYLISTS) {
+                    var playlist = playlists.get(i); row.setMessage(Component.literal(playlist.name()));
+                    row.setPreview(label("library.playlist_details", playlist.name(), playlist.trackCount()));
+                } else {
+                    var track = libraryTracks.get(i); row.setMessage(Component.literal(track.title()));
+                    row.setPreview(label("play_track", track.title(), track.artist()).append("\n").append(Component.literal(track.album())));
+                }
+            }
+            boolean actions = available && library != Library.PLAYLISTS;
+            libraryLikes.get(slot).visible = actions; libraryUnlikes.get(slot).visible = actions;
+            boolean supported = actions && player.supportsLikes(libraryTracks.get(i).source());
+            boolean enabled = supported && pendingLike == null && player.authenticated(libraryTracks.get(i).source());
+            libraryLikes.get(slot).active = enabled; libraryUnlikes.get(slot).active = enabled;
+            if (actions) { libraryLikes.get(slot).setPreview(supported ? label("library.like_track", libraryTracks.get(i).title()) : label("library.like_unsupported")); libraryUnlikes.get(slot).setPreview(supported ? label("library.unlike_track", libraryTracks.get(i).title()) : label("library.like_unsupported")); }
+        }
+        boolean ready = pendingPlaylists == null && pendingLibrary == null;
+        libraryPrevious.active = ready && (libraryFirst > 0 || libraryPage > 1);
+        libraryNext.active = ready && (libraryFirst + visibleRows < librarySize() || librarySize() == 20);
+    }
+    private static String operationFailure(Throwable failure) {
+        while (failure.getCause() != null) failure = failure.getCause();
+        return failure instanceof OnlineMusicSource.LoginRequired ? "library.login_required" : "library.failed";
+    }
+    private void pollOperations() {
+        if (page == Page.SEARCH && suggestAfter != 0 && System.nanoTime() >= suggestAfter) {
+            suggestAfter = 0;
+            if (query.equals(suggestedQuery) && !query.isBlank()) pendingSuggestions = player.suggest(source, query.strip());
+        }
+        if (pendingSuggestions != null && pendingSuggestions.isDone()) {
+            try { suggestions = pendingSuggestions.join(); first = 0; } catch (RuntimeException ignored) { suggestions = List.of(); }
+            pendingSuggestions = null; updateRows();
+        }
+        if (pendingAccount != null && pendingAccount.isDone()) {
+            try { var account = pendingAccount.join(); accountState = ""; accountName = account.name(); }
+            catch (RuntimeException failure) { accountState = operationFailure(failure); }
+            pendingAccount = null;
+        }
+        if (pendingPlaylists != null && pendingPlaylists.isDone()) {
+            try { playlists = pendingPlaylists.join(); libraryState = playlists.isEmpty() ? "library.empty" : "library.results"; }
+            catch (RuntimeException failure) { libraryState = operationFailure(failure); }
+            pendingPlaylists = null; updateLibraryRows();
+        }
+        if (pendingLibrary != null && pendingLibrary.isDone()) {
+            try { libraryTracks = pendingLibrary.join(); libraryState = libraryTracks.isEmpty() ? "library.empty" : "library.results"; }
+            catch (RuntimeException failure) { libraryState = operationFailure(failure); likeState = ""; }
+            pendingLibrary = null; updateLibraryRows();
+        }
+        if (pendingLike != null && pendingLike.isDone()) {
+            boolean updated = false;
+            try { pendingLike.join(); likeState = "library.updated"; updated = true; }
+            catch (RuntimeException failure) { likeState = operationFailure(failure); }
+            pendingLike = null;
+            if (updated && page == Page.ACCOUNTS && library == Library.LIKED) {
+                loadLiked(libraryPage); likeState = "library.updated";
+            }
+            updateRows(); updateLibraryRows();
+        }
+    }
+    private void startLogin() { cancelLogin(); accountState = ""; login = player.login(accountSource); }
     private void cancelLogin() { if (login != null) { login.close(); login = null; } }
     private void updateRows() {
         if (queryField == null) return;
         var current = player.snapshot().track();
         for (int slot = 0; slot < resultRows.size(); slot++) {
-            int i = first + slot; var row = resultRows.get(slot); row.active = i < results.size();
-            row.setMessage(row.active ? Component.literal(results.get(i).title()) : Component.empty());
-            row.setSelected(row.active && results.get(i).equals(current));
-            if (row.active) row.setPreview(label("play_track", results.get(i).title(), results.get(i).artist())
+            int i = first + slot; var row = resultRows.get(slot); boolean suggesting = showSuggestions();
+            row.active = i < (suggesting ? suggestions.size() : results.size());
+            row.setMessage(row.active ? Component.literal(suggesting ? suggestions.get(i) : results.get(i).title()) : Component.empty());
+            row.setSelected(!suggesting && row.active && results.get(i).equals(current));
+            if (row.active && !suggesting) row.setPreview(label("play_track", results.get(i).title(), results.get(i).artist())
                     .append("\n").append(Component.literal(results.get(i).album())));
+            else if (row.active) row.setPreview(label("suggestion_pick", suggestions.get(i)));
+            boolean actions = page == Page.SEARCH && !suggesting && i < results.size();
+            searchLikes.get(slot).visible = actions; searchUnlikes.get(slot).visible = actions;
+            boolean supported = actions && player.supportsLikes(results.get(i).source());
+            boolean enabled = supported && pendingLike == null && player.authenticated(results.get(i).source());
+            searchLikes.get(slot).active = enabled; searchUnlikes.get(slot).active = enabled;
+            if (actions) { searchLikes.get(slot).setPreview(supported ? label("library.like_track", results.get(i).title()) : label("library.like_unsupported")); searchUnlikes.get(slot).setPreview(supported ? label("library.unlike_track", results.get(i).title()) : label("library.like_unsupported")); }
         }
-        previous.active = pending == null && (first > 0 || remotePage > 1);
-        next.active = pending == null && (first + visibleRows < results.size() || results.size() == 20);
+        previous.active = showSuggestions() ? first > 0 : pending == null && (first > 0 || remotePage > 1);
+        next.active = showSuggestions() ? first + visibleRows < suggestions.size() : pending == null && (first + visibleRows < results.size() || results.size() == 20);
         searchButton.setMessage(label(pending == null ? "search" : "cancel"));
         searchButton.setIcon(pending == null ? GraphicIcon.SEARCH : GraphicIcon.CLOSE);
     }
@@ -238,6 +440,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             text(ui, label("view.brand"), layout.navigation().x() + 6, layout.navigation().y() + 7, layout.navigation().width() - 12);
             muted(ui, label("view.sources"), layout.navigation().x() + 6, layout.navigation().y() + 104, layout.navigation().width() - 12);
         }
+        pollOperations();
         if (pending != null && pending.isDone()) {
             try { results = pending.join(); searchState = results.isEmpty() ? "empty" : "results"; }
             catch (RuntimeException failure) { searchState = "search_failed"; }
@@ -248,29 +451,44 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (page == Page.SEARCH) renderResults(ui, current);
         else {
             var h = layout.header();
-            text(ui, label("view." + page.name().toLowerCase(Locale.ROOT)), h.x() + back.getWidth() + 8, h.y() + 8, h.width() - back.getWidth() - 8);
-            if (page == Page.LYRICS) renderLyrics(ui, current); else renderAccounts(ui);
+            Component title = page == Page.ACCOUNTS && library != Library.NONE
+                    ? (library == Library.TRACKS && selectedPlaylist != null ? Component.literal(selectedPlaylist.name()) : label(library == Library.PLAYLISTS ? "library.playlists" : "library.liked"))
+                    : page == Page.ACCOUNTS && !accountState.isEmpty() ? label(accountState)
+                    : page == Page.ACCOUNTS && accountDetail && !accountName.isBlank() ? Component.literal(accountName)
+                    : label("view." + page.name().toLowerCase(Locale.ROOT));
+            if (page == Page.ACCOUNTS && accountDetail && library == Library.NONE && login != null && accountState.isEmpty() && !player.authenticated(accountSource)) {
+                var loginSnapshot = login.snapshot();
+                title = loginSnapshot.image() != null && layout.content().height() - 96 < loginSnapshot.image().height()
+                        ? label("login.enlarge") : label("login." + loginSnapshot.state().name().toLowerCase(Locale.ROOT));
+            }
+            text(ui, title, h.x() + back.getWidth() + 8, h.y() + 8, h.width() - back.getWidth() - 8);
+            if (page == Page.LYRICS) renderLyrics(ui, current); else if (library != Library.NONE) renderLibrary(ui); else renderAccounts(ui);
         }
     }
     private void renderResults(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var c = layout.content();
-        for (int slot = 0; slot < resultRows.size(); slot++) resultRows.get(slot).visible = first + slot < results.size();
-        muted(ui, label("view.song"), c.x() + 6, c.y() + 4, c.width() / 2);
-        if (c.width() >= 320) muted(ui, label("view.artist"), c.x() + c.width() * 56 / 100, c.y() + 4, c.width() / 3);
-        muted(ui, label("view.duration"), c.right() - 32, c.y() + 4, 32);
+        for (int slot = 0; slot < resultRows.size(); slot++) resultRows.get(slot).visible = first + slot < (showSuggestions() ? suggestions.size() : results.size());
+        muted(ui, label(showSuggestions() ? "suggestions" : "view.song"), c.x() + 6, c.y() + 4, c.width() - 12);
         for (int slot = 0; slot < resultRows.size(); slot++) {
-            int i = first + slot; if (i >= results.size()) break;
-            var track = results.get(i); var row = layout.rows().get(slot);
+            int i = first + slot; if (showSuggestions() || i >= results.size()) break;
+            var track = results.get(i);
             resultRows.get(slot).setSelected(track.equals(current.track()));
-            if (c.width() >= 320) muted(ui, Component.literal(track.artist()), c.x() + c.width() * 56 / 100, row.y() + 8, c.width() * 44 / 100 - 44);
-            muted(ui, Component.literal(time(track.durationMs())), c.right() - 32, row.y() + 8, 32);
         }
         var pager = layout.pager();
-        var status = label(searchState, remotePage, results.isEmpty() ? 0 : first + 1, Math.min(first + visibleRows, results.size()));
+        var status = label(!likeState.isEmpty() ? likeState : showSuggestions() ? "suggestions" : searchState, remotePage, results.isEmpty() ? 0 : first + 1, Math.min(first + visibleRows, results.size()));
         text(ui, status, pager.x() + 30, pager.y() + 6, pager.width() - 60);
         previous.setPreview(status.copy().append("\n").append(label("previous")));
         next.setPreview(status.copy().append("\n").append(label("next")));
-        if (results.isEmpty()) OnlineMusicViewPaint.paragraph(ui, host.font(), label(searchState),
+        if (results.isEmpty() && !showSuggestions()) OnlineMusicViewPaint.paragraph(ui, host.font(), label(searchState),
+                new Bounds(c.x() + 8, c.y() + 28, c.width() - 16, Math.max(0, c.height() - 54)), UiTheme.current().text());
+    }
+    private void renderLibrary(UiFrame ui) {
+        var c = layout.content();
+        muted(ui, label(library == Library.PLAYLISTS ? "library.playlists" : "view.song"), c.x() + 6, c.y() + 4, c.width() - 12);
+        var pager = layout.pager();
+        var status = label(!likeState.isEmpty() ? likeState : libraryState, libraryPage, librarySize() == 0 ? 0 : libraryFirst + 1, Math.min(libraryFirst + visibleRows, librarySize()));
+        text(ui, status, pager.x() + 30, pager.y() + 6, pager.width() - 60);
+        if (librarySize() == 0) OnlineMusicViewPaint.paragraph(ui, host.font(), label(libraryState),
                 new Bounds(c.x() + 8, c.y() + 28, c.width() - 16, Math.max(0, c.height() - 54)), UiTheme.current().text());
     }
     private void renderTransport(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
@@ -342,20 +560,22 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             return;
         }
         var c = layout.content(); var snapshot = login == null ? null : login.snapshot();
+        boolean signedIn = player.authenticated(accountSource);
+        if (signedIn != accountWasSignedIn) { accountWasSignedIn = signedIn; if (signedIn) loadAccount(); updateVisibility(); }
         String state = snapshot == null ? player.authenticated(accountSource) ? "confirmed" : "idle" : snapshot.state().name().toLowerCase(Locale.ROOT);
         var status = label("login." + state);
         loginSignOut.active = player.authenticated(accountSource);
         boolean busy = snapshot != null && (snapshot.state() == OnlineMusicLogin.State.CREATING || snapshot.state() == OnlineMusicLogin.State.WAITING || snapshot.state() == OnlineMusicLogin.State.SCANNED);
         loginRefresh.setMessage(label(busy ? "login.restart" : "login.refresh"));
-        var details = status.copy().append("\n").append(label("login.scan." + accountSource)).append("\n").append(label("login.session_only"));
-        loginRefresh.setPreview(details); back.setPreview(details);
+        var details = status.copy().append("\n").append(label("login.scan." + accountSource)).append("\n").append(label("login.remember_hint"));
+        loginRefresh.setPreview(details); back.setPreview(details); remember.setPreview(details);
         boolean wide = c.width() >= 360;
         int imageX = wide ? c.x() + c.width() / 2 + 4 : c.x();
-        var imageArea = new Bounds(imageX, c.y() + 42, wide ? c.width() / 2 - 4 : c.width(), Math.max(0, c.height() - 90));
+        var imageArea = new Bounds(imageX, c.y() + 48, wide ? c.width() / 2 - 4 : c.width(), Math.max(0, c.height() - 96));
         boolean fitsImage = snapshot == null || snapshot.image() == null ||
                 (imageArea.width() >= snapshot.image().width() && imageArea.height() >= snapshot.image().height());
-        text(ui, fitsImage ? status : label("login.enlarge"), c.x() + 4, c.y() + 28, c.width() - 8);
-        if (wide) OnlineMusicViewPaint.paragraph(ui, host.font(), label("login.scan." + accountSource).append("\n\n").append(label("login.session_only")),
+        if (imageArea.height() >= 12 && wide) text(ui, fitsImage ? status : label("login.enlarge"), c.x() + 4, imageArea.y() + 2, c.width() / 2 - 12);
+        if (wide && imageArea.height() >= 24) OnlineMusicViewPaint.paragraph(ui, host.font(), label("login.scan." + accountSource),
                 new Bounds(c.x() + 4, imageArea.y() + 4, c.width() / 2 - 16, imageArea.height() - 4), UiTheme.current().text());
         if (snapshot != null && snapshot.image() != null) {
             var image = snapshot.image(); int scale = Math.min(3, Math.min(imageArea.width() / image.width(), imageArea.height() / image.height()));
@@ -375,6 +595,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return Component.translatable(TEXT + key, args); }
-    @Override public void suspend() { if (navigation != null) navigation.cancelInteraction(); cancelSearch(); cancelLogin(); accountDetail = false; player.pause(); }
+    @Override public void suspend() { if (navigation != null) navigation.cancelInteraction(); cancelSearch(); cancelSuggestions(); cancelLogin(); cancelLibrary(); if (pendingLike != null) pendingLike.cancel(true); pendingLike = null; library = Library.NONE; accountDetail = false; player.pause(); }
     @Override public void close() { if (!closed) { suspend(); if (navigation != null) navigation.close(); player.close(); closed = true; } }
 }
