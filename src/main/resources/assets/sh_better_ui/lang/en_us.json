@@ -2322,7 +2322,7 @@
   "sh_better_ui.color_editor.saturation": "Saturation",
   "sh_better_ui.color_editor.value": "Brightness",
   "sh_better_ui.color_editor.alpha": "Opacity",
-  "sh_better_ui.color_editor.reset": "Reset to starting color",
+  "sh_better_ui.color_editor.reset": "Reset color",
   "sh_better_ui.color_editor.usage": "↑/↓ choose a channel or Reset; ←/→ adjust; Shift for coarse steps; Home/End for bounds; Enter confirms; Esc cancels the current edit.",
   "sh_better_ui.color_editor.demo": "Accent preview",
   "sh_better_ui.panel.developer.gallery.sample.color_editor": "Color editor"

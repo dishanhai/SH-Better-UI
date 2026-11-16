@@ -1453,8 +1453,8 @@
   "sh_better_ui.color_editor.hue": "色相",
   "sh_better_ui.color_editor.saturation": "飽和度",
   "sh_better_ui.color_editor.value": "亮度",
-  "sh_better_ui.color_editor.alpha": "透明度",
-  "sh_better_ui.color_editor.reset": "還原起始顏色",
+  "sh_better_ui.color_editor.alpha": "不透明度",
+  "sh_better_ui.color_editor.reset": "重設色彩",
   "sh_better_ui.color_editor.usage": "↑/↓選擇通道或重設；←/→微調；Shift粗調；Home/End到邊界；Enter確認；Esc撤銷目前編輯。",
   "sh_better_ui.color_editor.demo": "強調色預覽",
   "sh_better_ui.panel.developer.gallery.sample.color_editor": "色彩編輯器"
