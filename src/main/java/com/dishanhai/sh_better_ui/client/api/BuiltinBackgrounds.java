@@ -18,6 +18,9 @@ final class BuiltinBackgrounds {
         ambient(registry, "soft_aurora", AmbientBackdrop.Style.AURORA, AmbientBackdropProfile.AURORA);
         ambient(registry, "silk_ripples", AmbientBackdrop.Style.SILK, AmbientBackdropProfile.SILK);
         ambient(registry, "iridescent_flow", AmbientBackdrop.Style.IRIDESCENT, AmbientBackdropProfile.IRIDESCENT);
+        registry.register(new BackgroundSpec(CrystalDrift.ID,
+                "sh_better_ui.panel.theme.group.sh_better_ui:crystal_drift", CrystalDriftProfile.DEFAULT,
+                logo -> new CrystalDrift()));
         register(registry, "dotMatrix", logo -> new BackgroundSpec.Renderer() {
             private final UiDotMatrix dots = new UiDotMatrix();
             private final UiPointerTracker pointer = new UiPointerTracker();
