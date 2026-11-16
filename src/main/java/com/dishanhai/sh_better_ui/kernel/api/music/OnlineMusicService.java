@@ -11,4 +11,8 @@ public interface OnlineMusicService extends UIService {
     ServiceKey<OnlineMusicService> KEY = new ServiceKey<>(UiId.parse("sh_better_ui:online_music"), OnlineMusicService.class, 1);
     OnlineMusicPlayer open();
     OnlineMusicPlayer open(List<OnlineMusicSource> sources);
+    /** Complete, independently owned page; mount with the existing PreviewContext contract. */
+    OnlineMusicView view();
+    /** Mount an existing/custom-source session. The resulting view takes ownership of that session. */
+    OnlineMusicView view(OnlineMusicPlayer player);
 }

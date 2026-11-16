@@ -4,12 +4,16 @@ https://github.com/zihe114514/MuoniumPlayer-multiversion
 Revision: 9b4cc7e7bd143315da716075a6d024a0d4c0c81b
 Adapted by dishanhai: MuWeapi, selected search/stream/lyric protocol logic from
 MuNeteaseApi and MuQQApi (including QR login, QQ OAuth exchange and hash33),
-and YRC timing from LyricParser.
+and YRC timing from LyricParser. Player page structure is adapted from NCMScreen,
+NavigateBar, ControlsBar, MusicLyricsPanel and AccountManagerOverlay at the same revision.
 Modifications: UUK API integration, bounded HTTPS requests, MP3-only sources,
 existing SHBUI lyric models and asynchronous session ownership.
 These adaptations remain licensed under Apache-2.0, independently of SHBUI's MIT code.
-The upstream NOTICE is reproduced unmodified. Only the selected protocol code is used;
+The upstream NOTICE is reproduced unmodified. Selected protocols and page structure are used;
 Skija, Skia, platform icons, custom-source scripts and DSP are not distributed here.
 QR login adaptations use per-attempt, domain/path-scoped cookies, an exact HTTPS host
 allowlist, finite background polling, cancellation and session-only credential handoff.
+Page adaptations replace the upstream renderer with UUK/native widgets, semantic theme
+colors, responsive navigation, search results, a persistent transport bar, contextual
+lyrics and account-source cards. No unavailable upstream feature is presented as active.
 The separately licensed JavaLayer decoder is documented in ../jlayer/SOURCE.

@@ -29,6 +29,8 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiRecipePageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTimeline;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiKeyframeAnimation;
+import java.util.List;
 import com.dishanhai.sh_better_ui.client.gui.text.TextLayoutMotion;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -102,6 +104,11 @@ public final class MotionApi {
 
     public FluidMorph fluidMorph(GuiRect capsule, GuiRect panel, float panelRadius, float progress) {
         return FluidMorph.between(capsule, panel, panelRadius, progress);
+    }
+
+    /** Continuous multi-stop values; close the returned track when its view is removed. */
+    public UiKeyframeAnimation keyframes(List<UiKeyframeAnimation.Keyframe> frames) {
+        return new UiKeyframeAnimation(frames);
     }
 
     public UiTimeline timeline(int fps, int durationFrames) {

@@ -16,6 +16,8 @@ kotlin { jvmToolchain(25) }
 def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
+        'client/gui/scaled/UiNavigationRail.java',
+        'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
         'client/gui/scaled/UiPagination.java',
         'client/gui/panel/PaginationDemo.java',
@@ -86,6 +88,7 @@ def sharedSources = [
         'client/gui/scaled/FolderFloatControl.java',
         'client/gui/scaled/GuiMotion.java',
         'client/gui/scaled/InterruptibleAnimation.java',
+        'client/gui/scaled/UiKeyframeAnimation.java',
         'client/gui/scaled/LaserFlowProfile.java',
         'client/gui/scaled/LightRaysMotion.java',
         'client/gui/scaled/LightRaysProfile.java',
@@ -151,6 +154,8 @@ def sharedSources = [
 sourceSets.main.java {
     srcDir(sharedJava)
     exclude { entry ->
+        if (!entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
+                entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicViewPaint.java".toString()) return true
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
                 !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
@@ -169,6 +174,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
+        include("${packagePath}/client/gui/scaled/UiKeyframeAnimationTest.java")
+        include("${packagePath}/client/gui/scaled/NavigationRailStateTest.java")
         include("${packagePath}/client/gui/scaled/PopupMotionTest.java")
         include("${packagePath}/client/gui/scaled/UiPromptBarTest.java")
         include("${packagePath}/client/gui/scaled/CardNavInputTest.java")
