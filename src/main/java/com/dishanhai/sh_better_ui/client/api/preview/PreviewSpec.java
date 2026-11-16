@@ -14,7 +14,9 @@ public record PreviewSpec(String id, Category category, int order, String titleK
                           int toolbarRightInset, String code, Supplier<? extends PreviewScene> factory) {
     public enum Category {
         CONTROLS("sh_better_ui.panel.developer.gallery.controls"),
-        MATERIALS("sh_better_ui.panel.developer.gallery.materials");
+        MATERIALS("sh_better_ui.panel.developer.gallery.materials"),
+        BACKGROUNDS("sh_better_ui.panel.developer.gallery.backgrounds"),
+        THEMES("sh_better_ui.panel.developer.gallery.themes");
 
         private final String titleKey;
 

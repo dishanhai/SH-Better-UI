@@ -21,6 +21,8 @@ public final class BuiltinPreviews {
         DeveloperAnimationPreview.registerInto(registry);
         VisualAlignmentPreview.registerInto(registry);
         AppearanceGalleryPreview.registerInto(registry);
+        BackgroundGalleryPreview.registerInto(registry);
+        GlobalThemeGalleryPreview.registerInto(registry);
         NativeEffectPreviews.registerInto(registry);
         PhotonKnotPreview.registerInto(registry);
         GestureEffectPreviews.registerInto(registry);

@@ -2255,5 +2255,19 @@
   "sh_better_ui.online_music.view.now_playing": "正在播放",
   "sh_better_ui.navigation.selected": "已选择：%s",
   "sh_better_ui.navigation.narration": "%s：%s，第 %s 项，共 %s 项",
-  "sh_better_ui.online_music.view.back": "返回"
+  "sh_better_ui.online_music.view.back": "返回",
+  "sh_better_ui.panel.developer.gallery.backgrounds": "背景预览",
+  "sh_better_ui.panel.developer.gallery.themes": "主题预览",
+  "sh_better_ui.panel.developer.gallery.background.restart": "重新播放背景",
+  "sh_better_ui.panel.developer.gallery.background.high_contrast": "高对比模式已隐藏背景",
+  "sh_better_ui.panel.developer.appearance": "外观预览",
+  "sh_better_ui.panel.developer.themes.title": "全局 UI 主题",
+  "sh_better_ui.panel.developer.themes.previous": "上一个主题",
+  "sh_better_ui.panel.developer.themes.next": "下一个主题",
+  "sh_better_ui.panel.developer.themes.primary": "主要操作",
+  "sh_better_ui.panel.developer.themes.secondary": "次要操作",
+  "sh_better_ui.panel.developer.themes.disabled": "已禁用",
+  "sh_better_ui.panel.developer.themes.selected": "选中状态",
+  "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
+  "sh_better_ui.panel.developer.themes.hint": "仅预览，不更改当前主题"
 }

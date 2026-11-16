@@ -55,4 +55,33 @@ class PreviewRegistryTest {
         }
         assertTrue(registry.find(spec.id()).isEmpty());
     }
+    @Test
+    void dynamicSourcesAreLazyStableAndRevokeCleanly() {
+        var registry = new PreviewRegistry();
+        var spec = new PreviewSpec("addon:live", CONTROLS, 0, "gui.done", () -> host -> {});
+        var source = new java.util.concurrent.atomic.AtomicReference<List<PreviewSpec>>(List.of());
+        var handle = registry.registerSource(source::get);
+        source.set(List.of(spec));
+        assertSame(spec, registry.find(spec.id()).orElseThrow());
+        assertSame(registry.entries(), registry.entries());
+        assertThrows(IllegalStateException.class, () -> registry.register(spec));
+        assertThrows(IllegalStateException.class, () -> registry.registerSource(() -> List.of(spec)));
+        handle.close();
+        assertTrue(registry.entries().isEmpty());
+    }
+    @Test
+    void staleSourceHandleCannotRemoveReregisteredSupplier() {
+        var registry = new PreviewRegistry();
+        var spec = new PreviewSpec("addon:live", CONTROLS, 0, "gui.done", () -> host -> {});
+        java.util.function.Supplier<List<PreviewSpec>> supplier = () -> List.of(spec);
+        var original = registry.registerSource(supplier);
+        assertThrows(IllegalStateException.class, () -> registry.registerSource(supplier));
+        original.close();
+        var replacement = registry.registerSource(supplier);
+        original.close();
+        assertSame(spec, registry.find(spec.id()).orElseThrow());
+        replacement.close();
+        assertTrue(registry.entries().isEmpty());
+    }
+
 }

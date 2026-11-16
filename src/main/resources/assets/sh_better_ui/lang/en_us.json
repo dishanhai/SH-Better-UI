@@ -2255,5 +2255,19 @@
   "sh_better_ui.online_music.view.now_playing": "Now playing",
   "sh_better_ui.navigation.selected": "Selected: %s",
   "sh_better_ui.navigation.narration": "%s: %s, %s of %s",
-  "sh_better_ui.online_music.view.back": "Back"
+  "sh_better_ui.online_music.view.back": "Back",
+  "sh_better_ui.panel.developer.gallery.backgrounds": "Backgrounds",
+  "sh_better_ui.panel.developer.gallery.themes": "UI themes",
+  "sh_better_ui.panel.developer.gallery.background.restart": "Restart effect",
+  "sh_better_ui.panel.developer.gallery.background.high_contrast": "Background hidden in high contrast",
+  "sh_better_ui.panel.developer.appearance": "Appearance previews",
+  "sh_better_ui.panel.developer.themes.title": "UI themes",
+  "sh_better_ui.panel.developer.themes.previous": "Previous theme",
+  "sh_better_ui.panel.developer.themes.next": "Next theme",
+  "sh_better_ui.panel.developer.themes.primary": "Primary action",
+  "sh_better_ui.panel.developer.themes.secondary": "Secondary action",
+  "sh_better_ui.panel.developer.themes.disabled": "Disabled",
+  "sh_better_ui.panel.developer.themes.selected": "Selected state",
+  "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
+  "sh_better_ui.panel.developer.themes.hint": "Preview only; current theme is unchanged"
 }

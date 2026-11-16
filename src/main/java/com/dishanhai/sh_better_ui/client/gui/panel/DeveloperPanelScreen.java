@@ -80,6 +80,8 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
     private boolean entered;
     private UiOverlayHost overlays;
     private Supplier<UiButton> returnEntry;
+    private UiButton backgrounds;
+    private UiButton themes;
     private UiButton controls;
     private UiButton materials;
     private UiButton bottomSheet;
@@ -137,6 +139,8 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
     protected void init() {
         controls = null;
         materials = null;
+        backgrounds = null;
+        themes = null;
         bottomSheet = null;
         animationExample = null;
         dialogExample = null;
@@ -187,10 +191,10 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
                 label("demo.animation"), GraphicIcon.RESUME,
                 () -> openFullscreenDemo(DeveloperAnimationPreview.ID, () -> animationExample));
 
-        dialogExample = addButton(contentX, top + EXAMPLES_Y + 13, columnWidth, label("example.open_dialog"),
-                GraphicIcon.CODE, () -> openGallery(Category.CONTROLS, "dialog", () -> dialogExample));
-        toastExample = addButton(rightX, top + EXAMPLES_Y + 13, rightWidth, label("example.open_toast"),
-                GraphicIcon.CODE, () -> openGallery(Category.CONTROLS, "toast", () -> toastExample));
+        backgrounds = addButton(contentX, top + EXAMPLES_Y + 13, columnWidth, label("gallery.backgrounds"),
+                GraphicIcon.TEMPLATE, () -> openGallery(Category.BACKGROUNDS, null, () -> backgrounds));
+        themes = addButton(rightX, top + EXAMPLES_Y + 13, rightWidth, label("gallery.themes"),
+                GraphicIcon.SETTINGS, () -> openGallery(Category.THEMES, null, () -> themes));
         int backX = contentX + contentWidth - 60;
         diagnostics = addButton(backX - GAP - 24, top + 7, 24, label("diagnostics"), null, this::openDiagnostics);
         diagnostics.setIcon(GraphicIcon.INFO);
@@ -292,7 +296,7 @@ public final class DeveloperPanelScreen extends Screen implements UiScreenReturn
         int x = left + PADDING;
         drawLabel(graphics, getTitle(), x, top + 14, pageStudio.getX() - GAP - x, LiquidGlassTheme.textColor());
         graphics.drawString(font, label("demos"), x, top + DEMOS_Y, LiquidGlassTheme.accentColor(), false);
-        graphics.drawString(font, label("examples"), x, top + EXAMPLES_Y, LiquidGlassTheme.accentColor(), false);
+        graphics.drawString(font, label("appearance"), x, top + EXAMPLES_Y, LiquidGlassTheme.accentColor(), false);
         if (panelHeight == FULL_PANEL_HEIGHT) {
             graphics.drawString(font, label("diagnostics"), x, top + DIAGNOSTICS_Y, LiquidGlassTheme.accentColor(), false);
             int y = top + DIAGNOSTICS_Y + 13;

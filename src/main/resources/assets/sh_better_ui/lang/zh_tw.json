@@ -1387,5 +1387,19 @@
   "sh_better_ui.navigation.selected": "已選擇：%s",
   "sh_better_ui.navigation.narration": "%s：%s，第 %s 項，共 %s 項",
   "sh_better_ui.online_music.view.seek_line": "從 %s 播放：%s",
-  "sh_better_ui.online_music.view.back": "返回"
+  "sh_better_ui.online_music.view.back": "返回",
+  "sh_better_ui.panel.developer.gallery.backgrounds": "背景預覽",
+  "sh_better_ui.panel.developer.gallery.themes": "主題預覽",
+  "sh_better_ui.panel.developer.gallery.background.restart": "重新播放背景",
+  "sh_better_ui.panel.developer.gallery.background.high_contrast": "高對比模式已隱藏背景",
+  "sh_better_ui.panel.developer.appearance": "外觀預覽",
+  "sh_better_ui.panel.developer.themes.title": "全域 UI 主題",
+  "sh_better_ui.panel.developer.themes.previous": "上一個主題",
+  "sh_better_ui.panel.developer.themes.next": "下一個主題",
+  "sh_better_ui.panel.developer.themes.primary": "主要操作",
+  "sh_better_ui.panel.developer.themes.secondary": "次要操作",
+  "sh_better_ui.panel.developer.themes.disabled": "已停用",
+  "sh_better_ui.panel.developer.themes.selected": "選取狀態",
+  "sh_better_ui.panel.developer.themes.selection": "%s / %s · %s",
+  "sh_better_ui.panel.developer.themes.hint": "僅預覽，不更改目前主題"
 }
