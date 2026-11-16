@@ -151,6 +151,8 @@ def sharedSources = [
 sourceSets.main.java {
     srcDir(sharedJava)
     exclude { entry ->
+        if (!entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
+                entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicViewPaint.java".toString()) return true
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
                 !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
