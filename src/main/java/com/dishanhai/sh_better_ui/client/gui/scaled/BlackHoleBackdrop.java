@@ -5,7 +5,7 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 
-/** Original decorative black-hole field, without pointer input or interaction capture. */
+/** Schwarzschild optical background, without pointer input or interaction capture. */
 public final class BlackHoleBackdrop implements BackgroundSpec.Renderer {
     public static final String ID = "sh_better_ui:black_hole";
     private final AmbientBackdropClock clock = new AmbientBackdropClock();
@@ -22,7 +22,7 @@ public final class BlackHoleBackdrop implements BackgroundSpec.Renderer {
         var pose = g.pose().last().pose();
         float determinant = pose.determinant();
         if (!pose.isFinite() || !Float.isFinite(determinant) || Math.abs(determinant) < 1e-8f) return;
-        if (!BlackHoleBackdropRenderer.draw(g, area, profile, phase)) {
+        if (!BlackHoleBackdropRenderer.draw(g, area, profile, phase, this)) {
             int color = profile.backgroundColor();
             int alpha = Math.round((color >>> 24) * profile.opacity());
             g.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(),

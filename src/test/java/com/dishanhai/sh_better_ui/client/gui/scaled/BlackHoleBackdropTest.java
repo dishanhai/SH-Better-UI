@@ -17,7 +17,7 @@ class BlackHoleBackdropTest {
     }
     @Test void everyFiniteParameterClampsAndArgbIsPreserved() throws Exception {
         float[] lows = {0, .5f, -.7f, .05f, 0, 0, 0, 0};
-        float[] highs = {2, 1.8f, .7f, .35f, 1.5f, 2, 1, 1};
+        float[] highs = {2, 1.8f, .7f, .35f, 1.5f, 2, 3, 1};
         float[] input = new float[8]; java.util.Arrays.fill(input, -100);
         var low = profile(input); java.util.Arrays.fill(input, 100); var high = profile(input);
         var fields = BlackHoleBackdropProfile.class.getRecordComponents();
@@ -43,4 +43,39 @@ class BlackHoleBackdropTest {
         clock.suspend(); assertEquals(phase, clock.advance(30000, false, .18f));
         assertTrue(clock.advance(30050, false, .18f) > phase);
     }
+    @Test void physicalDefaultsAndLegacyConstructorRemainCompatible() {
+        var legacy = profile(new float[]{.18f, 1, .08f, .16f, 1, 1, .55f, 1});
+        assertEquals(.25f, legacy.inclination()); assertEquals(0f, legacy.outline());
+        assertEquals(18f, legacy.diskOuterRadius());
+        assertEquals(BlackHoleBackdropProfile.Quality.BALANCED, legacy.quality());
+        assertEquals(.55f, legacy.glow());
+        assertEquals(1.2f, BlackHoleBackdropProfile.DEFAULT.glow());
+        assertEquals(0f, BlackHoleBackdropProfile.DEFAULT.outline());
+    }
+    @Test void addedPhysicalParametersRejectNonfiniteAndClamp() {
+        var low = physical(-1, -1, 0, BlackHoleBackdropProfile.Quality.LOW);
+        var high = physical(9, 9, 99, BlackHoleBackdropProfile.Quality.HIGH);
+        assertEquals(.1f, low.inclination()); assertEquals(0f, low.outline()); assertEquals(6.5f, low.diskOuterRadius());
+        assertEquals(1.4f, high.inclination()); assertEquals(1f, high.outline()); assertEquals(24f, high.diskOuterRadius());
+        for (float bad : new float[]{Float.NaN, Float.POSITIVE_INFINITY, Float.NEGATIVE_INFINITY}) {
+            assertThrows(IllegalArgumentException.class, () -> physical(bad, 0, 18, BlackHoleBackdropProfile.Quality.LOW));
+            assertThrows(IllegalArgumentException.class, () -> physical(.25f, bad, 18, BlackHoleBackdropProfile.Quality.LOW));
+            assertThrows(IllegalArgumentException.class, () -> physical(.25f, 0, bad, BlackHoleBackdropProfile.Quality.LOW));
+        }
+        assertThrows(NullPointerException.class, () -> physical(.25f, 0, 18, null));
+    }
+    @Test void qualityHasDiscreteIncreasingBudgets() {
+        var low = BlackHoleBackdropProfile.Quality.LOW;
+        var balanced = BlackHoleBackdropProfile.Quality.BALANCED;
+        var high = BlackHoleBackdropProfile.Quality.HIGH;
+        assertEquals(192, low.steps()); assertEquals(128, low.resolution()); assertEquals(.04f, low.stepSize());
+        assertEquals(320, balanced.steps()); assertEquals(256, balanced.resolution()); assertEquals(.025f, balanced.stepSize());
+        assertEquals(512, high.steps()); assertEquals(384, high.resolution()); assertEquals(.016f, high.stepSize());
+    }
+    private static BlackHoleBackdropProfile physical(float inclination, float outline, float radius,
+                                                     BlackHoleBackdropProfile.Quality quality) {
+        return new BlackHoleBackdropProfile(.18f, 1, .08f, .16f, 1, 1, 1.2f, 1, 0xFFFFFFFF, 0xFF080808,
+                inclination, outline, quality, radius);
+    }
+
 }

@@ -20,7 +20,10 @@ final class ThemeEffectRanges {
                 case "tilt" -> range(-.7, .7, 2);
                 case "diskWidth" -> range(.05, .35, 2);
                 case "lensing" -> range(0, 1.5, 2);
-                case "glow", "opacity" -> range(0, 1, 2);
+                case "glow" -> range(0, 3, 2);
+                case "opacity", "outline" -> range(0, 1, 2);
+                case "inclination" -> range(.1, 1.4, 2);
+                case "diskOuterRadius" -> range(6.5, 24, 2);
                 default -> null;
             };
             case "sh_better_ui:soft_aurora", "sh_better_ui:silk_ripples", "sh_better_ui:iridescent_flow",

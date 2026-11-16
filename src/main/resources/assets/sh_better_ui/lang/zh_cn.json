@@ -2231,7 +2231,14 @@
   "sh_better_ui.panel.theme.group.sh_better_ui:contour_flow": "流动等高线",
   "sh_better_ui.panel.theme.group.sh_better_ui:mist_glow": "雾光晕",
   "sh_better_ui.panel.theme.group.sh_better_ui:black_hole": "黑洞",
-  "sh_better_ui.theme_editor.field.diskWidth": "吸积盘宽度",
-  "sh_better_ui.theme_editor.field.lensing": "透镜强度",
-  "sh_better_ui.theme_editor.field.size": "大小"
+  "sh_better_ui.theme_editor.field.diskWidth": "旧盘宽度（已停用）",
+  "sh_better_ui.theme_editor.field.lensing": "旧透镜强度（已停用）",
+  "sh_better_ui.theme_editor.field.size": "大小",
+  "sh_better_ui.theme_editor.field.inclination": "观察倾角（弧度）",
+  "sh_better_ui.theme_editor.field.outline": "装饰轮廓（0 为隐藏）",
+  "sh_better_ui.theme_editor.field.quality": "光线追踪质量",
+  "sh_better_ui.theme_editor.field.diskOuterRadius": "吸积盘外半径（M）",
+  "sh_better_ui.theme_editor.option.low": "低",
+  "sh_better_ui.theme_editor.option.balanced": "均衡",
+  "sh_better_ui.theme_editor.option.high": "高"
 }
