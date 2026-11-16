@@ -28,6 +28,24 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：主控面板切页时移除前一页的输入控件，并保留草稿。 */
 class ControlPanelScreenTest {
     @Test
+    void customThemeExposesSeparatePaletteAndBackgroundEditors() {
+        var previous = ClientUiSettings.current();
+        try {
+            ClientUiSettings.update(ClientUiSettings.DEFAULT.withTheme(
+                    ThemeSettings.DEFAULT.withMode(ThemeSettings.Mode.CUSTOM)));
+            var screen = compactScreen();
+            switchTab(screen, "display");
+            assertNotNull(findButton(screen, "theme.customize"), "custom colors need an explicit entry");
+            assertNotNull(findButton(screen, "theme.background.select"), "background selection must be independent of effect editing");
+            assertTrue(button(screen, "theme.customize").active);
+            assertTrue(button(screen, "theme.background.select").active);
+            assertFalse(button(screen, "apply").active, "opening the tab must not change settings");
+        } finally {
+            ClientUiSettings.update(previous);
+        }
+    }
+
+    @Test
     void projectFeedbackTabShowsThreeLinksAndRetainsConfigurationDraft() {
         var screen = compactScreen();
         switchTab(screen, "feedback");

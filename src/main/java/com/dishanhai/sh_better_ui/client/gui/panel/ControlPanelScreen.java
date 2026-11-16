@@ -164,7 +164,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private int themeGroupIndex;
     private UiButton themeGroup;
     private UiButton themeConfigure;
+    private UiButton themeCustomize;
+    private UiButton themeBackgroundSelect;
     private boolean restoreThemeConfigureFocus;
+    private com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection returnThemeSection;
     private EditBox dynamicThemeId;
     private UiRubberSegment themeMode;
     private UiButton hudBackground;
@@ -241,8 +244,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         addFooter(x, innerWidth);
         buildPage();
         if (restoreThemeConfigureFocus && themeConfigure != null && minecraft != null && minecraft.screen == this) {
-            setFocused(themeConfigure);
+            setFocused(returnThemeSection == null ? themeConfigure : switch (returnThemeSection) {
+                case COLORS -> themeCustomize;
+                case BACKGROUNDS -> themeBackgroundSelect;
+                case EFFECTS -> themeGroup;
+            });
             restoreThemeConfigureFocus = false;
+            returnThemeSection = null;
         }
         if (restoreDeveloperFocus && developer != null && minecraft != null && minecraft.screen == this) {
             setFocused(developer);
@@ -267,6 +275,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         themeMode = null;
         themeGroup = null;
         themeConfigure = null;
+        themeCustomize = null;
+        themeBackgroundSelect = null;
         hudBackground = null;
         hudBlur = null;
         dynamicThemeId = null;
@@ -391,14 +401,28 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private void addThemeEditor(int x) {
         int half = (contentWidth - GAP) / 2;
-        themeGroup = row(button(x, 94, half, themeGroupName(), GraphicIcon.CUSTOM_THEME, false, () -> {
-            themeGroupIndex = (themeGroupIndex + 1) % themeGroups.size();
-            syncThemeEditor();
-        }));
+        themeGroup = row(button(x, 94, half, themeGroupName(), GraphicIcon.CUSTOM_THEME, false,
+                () -> customizeTheme(com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection.EFFECTS)));
         themeGroup.setPreview(label("theme.group.tooltip"));
         themeConfigure = row(button(x + half + GAP, 94, contentWidth - half - GAP,
                 themeConfigureLabel(), GraphicIcon.CUSTOM_THEME, false, this::configureThemeGroup));
+        themeCustomize = row(button(x, 120, half, label("theme.customize"), GraphicIcon.CUSTOM_THEME, false,
+                () -> customizeTheme(com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection.COLORS)));
+        themeBackgroundSelect = row(button(x + half + GAP, 120, contentWidth - half - GAP,
+                label("theme.background.select"), GraphicIcon.CUSTOM_THEME, false,
+                () -> customizeTheme(com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection.BACKGROUNDS)));
         syncThemeEditor();
+    }
+
+    private void customizeTheme(com.dishanhai.sh_better_ui.kernel.api.AppearanceService.ThemeSection section) {
+        restoreThemeConfigureFocus = true;
+        returnThemeSection = section;
+        minecraft.setScreen(UnifiedUI.get().require(UIApis.APPEARANCE).editTheme(this, draft.settings(), section, theme -> {
+            var spec = ShBetterUiApi.backgrounds().find(theme.backgroundEffect()).orElse(null);
+            if (spec != null && themeGroups.contains(spec.settingsGroup())) themeGroupIndex = themeGroups.indexOf(spec.settingsGroup());
+            edit(new Draft(draft.settings().withTheme(theme), draft.shortcut()));
+            status = label("theme.staged");
+        }));
     }
 
     private void addDynamicThemeControls(int x) {
@@ -765,6 +789,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 themeMode.select(THEMES.indexOf(mode));
                 boolean custom = mode == ThemeSettings.Mode.CUSTOM;
                 boolean hud = mode == ThemeSettings.Mode.HUD_GLASS;
+                themeCustomize.visible = themeCustomize.active = custom;
+                themeBackgroundSelect.visible = themeBackgroundSelect.active = custom;
                 themeGroup.active = custom;
                 themeGroup.visible = !hud;
                 hudBackground.visible = hudBackground.active = hud;

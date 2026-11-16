@@ -78,6 +78,12 @@ public record ThemeSettings(Mode mode, Base customBase, String background, Strin
                 backgroundEffect, hudBackgroundEffect, hudBlurRadius);
     }
 
+    /** Changes the custom palette without dropping background, HUD or effect overrides. */
+    public ThemeSettings withPalette(Base base, String background, String surface, String border, String text, String accent) {
+        return new ThemeSettings(mode, base, background, surface, border, text, accent, effects,
+                backgroundEffect, hudBackgroundEffect, hudBlurRadius);
+    }
+
     public ThemeSettings withBackgroundEffect(String next) {
         return new ThemeSettings(mode, customBase, background, surface, border, text, accent, effects,
                 next, hudBackgroundEffect, hudBlurRadius);

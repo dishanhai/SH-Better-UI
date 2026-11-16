@@ -183,10 +183,13 @@ public final class ThemeEffectEditor extends Screen {
             case NUMBER -> number(field, name, value, x, y, w);
             case TEXT -> {
                 var input = new EditBox(font, x, y, w, 20, name);
-                input.setMaxLength(256);
+                boolean imageSource = group.equals(com.dishanhai.sh_better_ui.kernel.api.appearance.BackgroundImage.ID)
+                        && field.name().equals("source");
+                input.setMaxLength(imageSource ? 1024 : 256);
                 input.setHint(name);
                 input.setValue(value.getAsString());
-                input.setTooltip(Tooltip.create(name));
+                input.setTooltip(Tooltip.create(imageSource
+                        ? Component.translatable("sh_better_ui.custom_theme.image.source_hint") : name));
                 input.setResponder(text -> change(field, new JsonPrimitive(text)));
                 addRenderableWidget(input);
             }
