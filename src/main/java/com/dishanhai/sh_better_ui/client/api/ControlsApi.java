@@ -141,6 +141,14 @@ public final class ControlsApi {
         return new UiCallChip(area, name, argument, icon, state, preferences, showTimer, onRetry);
     }
 
+    /** Transactional HSV/alpha editor. Preview is temporary; commit is the host's save boundary. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiColorEditor colorEditor(Bounds area,
+            Component name, int initialArgb, int defaultArgb, UiPreferences preferences,
+            java.util.function.IntConsumer preview, java.util.function.IntConsumer commit) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiColorEditor(
+                area, name, initialArgb, defaultArgb, preferences, preview, commit);
+    }
+
     ControlsApi() {}
 
     /** Native undoable button. Register it as a widget and call its tick() in the screen tick. */

@@ -94,7 +94,7 @@ public final class UiFullscreenPreview extends Screen {
 
     @Override
     public boolean mouseReleased(double x, double y, int button) {
-        if (getFocused() instanceof UiCancelableInteraction interaction && interaction.releasePointer(button)) {
+        if (getFocused() instanceof UiCancelableInteraction interaction && interaction.releasePointer(x, y, button)) {
             setDragging(false); return true;
         }
         return super.mouseReleased(x, y, button);

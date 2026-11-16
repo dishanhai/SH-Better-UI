@@ -7,4 +7,6 @@ public interface UiCancelableInteraction {
     boolean cancelInteraction();
     /** Finish a captured pointer gesture even when release lands outside its original bounds. */
     default boolean releasePointer(int button) { return false; }
+    /** Coordinate-aware capture for controls whose release position determines activation. */
+    default boolean releasePointer(double x, double y, int button) { return releasePointer(button); }
 }

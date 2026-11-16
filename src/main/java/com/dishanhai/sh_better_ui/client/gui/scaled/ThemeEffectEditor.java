@@ -54,6 +54,7 @@ public final class ThemeEffectEditor extends Screen {
     private int right;
     private int footer;
     private boolean invalid;
+    private UiColorEditor colorEditor;
 
     public ThemeEffectEditor(Screen parent, ClientUiSettings settings, String group, JsonObject inherited,
                              JsonObject local, Consumer<JsonObject> apply) {
@@ -74,6 +75,8 @@ public final class ThemeEffectEditor extends Screen {
 
     @Override
     protected void init() {
+        if (colorEditor != null) colorEditor.cancelInteraction();
+        colorEditor = null;
         inheritButtons.clear();
         confirm = null;
         presetButton = null;
@@ -111,7 +114,10 @@ public final class ThemeEffectEditor extends Screen {
             });
         } else {
             showColor(columnX, columnWidth);
-            button(left, footer, panelWidth, label("done"), this::closeDetail);
+            button(left, footer, panelWidth, label("done"), () -> {
+                if (colorEditor != null) colorEditor.commitInteraction();
+                closeDetail();
+            });
         }
     }
 
@@ -264,6 +270,18 @@ public final class ThemeEffectEditor extends Screen {
         }
         int channels = detail.kind() == Kind.RGB ? 3 : 4;
         int color = readColor(value);
+        if (detail.kind() != Kind.RGB && w >= UiColorEditor.MIN_WIDTH
+                && footer - y - 6 >= UiColorEditor.MIN_HEIGHT) {
+            // Capture the target. Cancelling an old editor after changing the list selection
+            // must restore the original entry, never overwrite the newly selected one.
+            var target = detail;
+            int targetEntry = entry;
+            colorEditor = addRenderableWidget(new UiColorEditor(new Bounds(x, y, w, UiColorEditor.MIN_HEIGHT),
+                    fieldLabel(target), color, color, preferences,
+                    next -> previewColorValue(target, targetEntry, next),
+                    next -> updateColorValue(target, targetEntry, next)));
+            return;
+        }
         for (int i = 0; i < channels; i++) {
             int shift = (2 - i + 4) % 4 * 8;
             String channel = List.of("red", "green", "blue", "alpha").get(i);
@@ -282,6 +300,9 @@ public final class ThemeEffectEditor extends Screen {
     }
 
     private void setPosition(BigDecimal position) {
+        // Native slider callbacks run before Screen transfers focus. Never commit the
+        // temporary color preview as a side effect of changing another field.
+        if (colorEditor != null) colorEditor.cancelInteraction();
         var colors = current(detail).getAsJsonArray().deepCopy();
         colors.get(entry).getAsJsonObject().addProperty("position", position);
         change(detail, colors);
@@ -304,7 +325,36 @@ public final class ThemeEffectEditor extends Screen {
         change(detail, colors);
     }
 
+    private void previewColorValue(ThemeEffectFields.Field target, int targetEntry, int argb) {
+        if (colorEditor == null || !colorEditor.hasPendingChange()) {
+            refresh(); // Cancel restores inheritance, not just the same visible ARGB.
+            return;
+        }
+        var accepted = ThemeEffectFields.values(settings, group, inherited, local);
+        var value = replaceColor(ThemeEffectFields.get(accepted, target.path()),
+                target.kind() == Kind.STOPS, targetEntry, argb);
+        var transientLocal = ThemeEffectFields.edit(settings, group, inherited, local, target.path(), value);
+        values = ThemeEffectFields.values(settings, group, inherited, transientLocal);
+        previewSettings = ThemeEffects.previewSettings(settings, group, inherited, transientLocal);
+    }
+
+    private void updateColorValue(ThemeEffectFields.Field target, int targetEntry, int argb) {
+        JsonElement source = current(target);
+        change(target, replaceColor(source, target.kind() == Kind.STOPS, targetEntry, argb));
+    }
+
+    /** Copy-on-write keeps other palette entries and stop positions intact during live editing. */
+    static JsonElement replaceColor(JsonElement source, boolean stops, int index, int argb) {
+        if (!source.isJsonArray()) return new JsonPrimitive(argb);
+        var colors = source.getAsJsonArray().deepCopy();
+        if (index < 0 || index >= colors.size()) throw new IllegalArgumentException("Invalid palette index");
+        if (stops) colors.get(index).getAsJsonObject().addProperty("argb", argb);
+        else colors.set(index, new JsonPrimitive(argb));
+        return colors;
+    }
+
     private void addColor() {
+        if (colorEditor != null) colorEditor.cancelInteraction();
         var colors = current(detail).getAsJsonArray().deepCopy();
         if (detail.kind() == Kind.STOPS) {
             float previous = colors.size() == 0 ? 0 : colors.get(colors.size() - 1).getAsJsonObject().get("position").getAsFloat();
@@ -323,6 +373,7 @@ public final class ThemeEffectEditor extends Screen {
     }
 
     private void removeColor() {
+        if (colorEditor != null) colorEditor.cancelInteraction();
         var colors = current(detail).getAsJsonArray().deepCopy();
         colors.remove(entry);
         if (detail.kind() == Kind.STOPS && colors.size() > 0) colors.get(0).getAsJsonObject().addProperty("position", 0);
@@ -373,6 +424,7 @@ public final class ThemeEffectEditor extends Screen {
     }
 
     private void selectEntry(int delta) {
+        if (colorEditor != null) colorEditor.cancelInteraction();
         entry += delta;
         rebuild();
     }
@@ -404,6 +456,11 @@ public final class ThemeEffectEditor extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
+        // Screen handles Escape before its focused child: let an active gesture cancel first.
+        if (key == GLFW.GLFW_KEY_ESCAPE && colorEditor != null && colorEditor.isEditing()) {
+            colorEditor.cancelInteraction();
+            return true;
+        }
         if (detail == null && (key == GLFW.GLFW_KEY_PAGE_UP || key == GLFW.GLFW_KEY_PAGE_DOWN)) {
             page(key == GLFW.GLFW_KEY_PAGE_UP ? -1 : 1);
             return true;
@@ -426,6 +483,15 @@ public final class ThemeEffectEditor extends Screen {
             setFocused(presetButton);
         }
         return handled;
+    }
+
+    @Override
+    public boolean mouseReleased(double x, double y, int button) {
+        if (colorEditor != null && colorEditor.mouseReleased(x, y, button)) {
+            setDragging(false);
+            return true;
+        }
+        return super.mouseReleased(x, y, button);
     }
 
     @Override
@@ -473,6 +539,7 @@ public final class ThemeEffectEditor extends Screen {
 
     @Override
     public void removed() {
+        if (colorEditor != null) colorEditor.cancelInteraction();
         if (backdrop != null) backdrop.reset();
         else preview.close();
         super.removed();
