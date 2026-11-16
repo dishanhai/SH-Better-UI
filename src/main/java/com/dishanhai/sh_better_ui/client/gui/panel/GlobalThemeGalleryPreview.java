@@ -98,7 +98,17 @@ final class GlobalThemeGalleryPreview implements PreviewScene {
         session.frame();
         var area = frame.viewport();
         UiTheme.preview(UiTheme.fromScope(session.scope()), () -> {
-            DarkModeTheme.background(frame.graphics(), area.x(), area.y() + 34, area.width(), area.height() - 34);
+            if (UiTheme.current().liquidGlass() && !host.preferences().highContrast()) {
+                // Real contrasting content behind the pane makes transmission observable, rather
+                // than presenting a translucent material over an indistinguishable solid swatch.
+                int top = area.y() + 34;
+                TransparencyPreview.draw(frame.graphics(), new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(
+                        area.x(), top, area.width(), Math.max(0, area.height() - 34)));
+                LiquidGlassTheme.popover(frame.graphics(), area.x() + 2, top + 2,
+                        Math.max(0, area.width() - 4), Math.max(0, area.height() - 38), host.preferences());
+            } else {
+                DarkModeTheme.background(frame.graphics(), area.x(), area.y() + 34, area.width(), area.height() - 34);
+            }
             frame.graphics().drawString(host.font(), Component.translatable(KEY + "hint"),
                     area.x() + 6, area.bottom() - 18, DarkModeTheme.textColor(), false);
         });

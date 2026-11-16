@@ -9,17 +9,28 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 
 final class OnlineMusicViewPaint {
+    static void clip(UiFrame ui, Bounds bounds) { ui.graphics().enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom()); }
+    static void unclip(UiFrame ui) { ui.graphics().disableScissor(); }
     static boolean editing(UiSlider slider) { return slider.isPointerEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
         var value = font.substrByWidth(text, Math.max(0, width));
-        ui.graphics().text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(value), x, y, color, false);
+        ink(ui, font, net.minecraft.locale.Language.getInstance().getVisualOrder(value), x, y, color);
+    }
+    private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
+                            int x, int y, int color) {
+        if ((UiTheme.current().background() >>> 24) == 255) {
+            ui.graphics().text(font, text, x, y, color, false); return;
+        }
+        var paint = LyricTextPalette.sample(color, color, UiTheme.current().background(), 0, ui.preferences().highContrast());
+        ui.graphics().fill(x - 2, y - 1, x + font.width(text) + 2, y + font.lineHeight + 1, paint.protection());
+        ui.graphics().text(font, text, x, y, paint.text(), paint.shadow());
     }
     static void paragraph(UiFrame ui, Font font, Component text, Bounds bounds, int color) {
         int y = bounds.y();
         for (var line : font.split(text, Math.max(1, bounds.width()))) {
             if (y + font.lineHeight > bounds.bottom()) break;
-            ui.graphics().text(font, line, bounds.x(), y, color, false);
+            ink(ui, font, line, bounds.x(), y, color);
             y += font.lineHeight + 3;
         }
     }
@@ -53,7 +64,14 @@ final class OnlineMusicViewPaint {
         }
         float scale = area.height() >= 32 ? 1.35f : 1f;
         var heading = Component.literal(font.plainSubstrByWidth(title.getString(), (int)(available / scale)));
-        ui.drawScaledText(font, heading, area.x() + inset, y, theme.text(), scale);
+        int headingColor = theme.text();
+        if ((theme.background() >>> 24) != 255) {
+            var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background(), 0, ui.preferences().highContrast());
+            ui.graphics().fill(area.x() + inset - 2, y - 1, area.x() + inset + (int)Math.ceil(font.width(heading) * scale) + 2,
+                    y + (int)Math.ceil(font.lineHeight * scale) + 1, paint.protection());
+            headingColor = paint.text();
+        }
+        ui.drawScaledText(font, heading, area.x() + inset, y, headingColor, scale);
         y += (int)Math.ceil(font.lineHeight * scale) + 6;
         if (y + font.lineHeight <= area.bottom() - 4)
             line(ui, font, subtitle, area.x() + inset, y, available, muted(ui));
@@ -86,7 +104,7 @@ final class OnlineMusicViewPaint {
             y = area.y() + Math.max(padding, (area.height() - titleHeight - font.lineHeight - 8) / 2);
         for (var textLine : titleLines) {
             if (y + font.lineHeight > area.bottom() - padding) break;
-            ui.graphics().text(font, textLine, x, y, theme.text(), false);
+            ink(ui, font, textLine, x, y, theme.text());
             y += font.lineHeight + 3;
         }
         y += 5;

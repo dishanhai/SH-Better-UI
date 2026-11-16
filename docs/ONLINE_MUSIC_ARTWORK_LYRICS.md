@@ -35,3 +35,27 @@ Automated checks do not constitute an in-game visual or authenticated-provider
 acceptance test. Real CDN availability depends on the user's connection and
 provider metadata. The experimental 26.x port retains an explicit empty artwork
 adapter; it is not advertised as supporting remote covers in this change.
+
+## Scrollable music canvases
+
+Search results and library lists now scroll within the loaded provider page,
+including their empty row spacing; their existing previous/next controls still
+request remote pages. Lyrics scroll over the whole lyric canvas, including the
+cover side. Each overflowing canvas has a narrow draggable scrollbar, supports
+fractional trackpad input, and can receive keyboard focus for Up/Down,
+PageUp/PageDown, Home and End. Normal row clicks pass through the scroll region.
+Outward wheel gestures at a boundary are not consumed. Drag release commits the
+position; Escape/focus loss cancels the drag. Scrolling does not start playback.
+
+At small GUI sizes, account content has a virtual vertical extent with scissored
+text/QR rendering; controls outside the viewport are hidden and cannot receive
+clicks. Account actions remain reachable by scrolling. Native row targets are
+not drawn outside their list viewport. Very short lyric viewports use immediate
+following so fractional animation cannot make every line temporarily invisible.
+
+Lyrics distinguish mouse focus from keyboard focus: seeking by click continues
+automatic following even after the host focuses the clicked native button.
+Keyboard focus keeps its target stable. Opaque lyric ink is contrast-corrected;
+on translucent unknown backgrounds a borderless, text-sized protective scrim
+and shadow keep text readable. The fullscreen preview host now uses the existing
+themed background path rather than introducing an unconditional opaque layer.

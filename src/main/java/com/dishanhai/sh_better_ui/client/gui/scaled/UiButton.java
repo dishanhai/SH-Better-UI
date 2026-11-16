@@ -50,6 +50,7 @@ public final class UiButton extends Button {
     private int iconOffsetY;
     private boolean sampleBackground = true;
     private float backgroundBlurRadius = LiquidGlassTheme.DEFAULT_BUTTON_BLUR_RADIUS;
+    private boolean explicitBackgroundBlurRadius;
     private float cornerRadius = -1;
 
     public void setCornerRadius(float radius) {
@@ -127,7 +128,7 @@ public final class UiButton extends Button {
         var paint = hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
                 state.highContrast(), selected, state.hover(), state.press()) : null;
         return paint == null || cornerRadius < 0 ? paint : new ThemeButtonStyle.Paint(paint.fill(), paint.text(),
-                paint.border(), paint.focus(), paint.accent(), paint.background(), cornerRadius, paint.borderWidth(), paint.glass());
+                paint.border(), paint.focus(), paint.accent(), paint.background(), cornerRadius, paint.borderWidth(), paint.glass(), paint.backdrop());
     }
 
     /** 位于已有玻璃工具列内时可跳过液态玻璃的重复背景取样。 */
@@ -138,10 +139,13 @@ public final class UiButton extends Button {
     /** 液态玻璃背景模糊半径，单位为 GUI 单位。0 关闭，最大 32；负数与非有限值无效。 */
     public void setBackgroundBlurRadius(float radius) {
         backgroundBlurRadius = LiquidGlassTheme.normalizeBlurRadius(radius);
+        explicitBackgroundBlurRadius = true;
     }
 
     public float getBackgroundBlurRadius() {
-        return backgroundBlurRadius;
+        if (explicitBackgroundBlurRadius) return backgroundBlurRadius;
+        return hasThemeBinding() ? themeBinding.blurRadius(backgroundBlurRadius)
+                : UiTheme.current().materialBlurRadius(backgroundBlurRadius);
     }
 
     /** 本地化功能提示；null 时显示完整按钮名称，键盘焦点沿用原生 tooltip。 */
@@ -276,7 +280,7 @@ public final class UiButton extends Button {
         boolean showSelectionMarker = modeLayout == null;
         if (renderStyle == UiStyle.LIQUID_GLASS) {
             LiquidGlassTheme.button(graphics, x, y, width, height, state, effective, sampleBackground,
-                    backgroundBlurRadius, primary, selected, emphasis, showSelectionMarker, paint, cornerRadius, content);
+                    getBackgroundBlurRadius(), primary, selected, emphasis, showSelectionMarker, paint, cornerRadius, content);
         } else {
             DarkModeTheme.button(graphics, x, y, width, height, state, primary, selected, emphasis,
                     showSelectionMarker, paint, content);
@@ -314,7 +318,7 @@ public final class UiButton extends Button {
                 : FluidMorph.between(capsule, target, paint.radius(), LiquidGlassTheme.POPOVER_RADIUS, progress);
         var panel = hasThemeBinding() ? themeBinding.preferences(panelPreferences) : panelPreferences;
         LiquidGlassTheme.morphPopover(graphics, frame, panel, state, primary, selected,
-                selectionEmphasis(now, effective), sampleBackground, backgroundBlurRadius, progress, paint);
+                selectionEmphasis(now, effective), sampleBackground, getBackgroundBlurRadius(), progress, paint);
         float labelOpacity = 1f - GuiMotion.clamp01(progress / 0.36f);
         if (labelOpacity > 0f) {
             GuiRect rect = frame.rect();

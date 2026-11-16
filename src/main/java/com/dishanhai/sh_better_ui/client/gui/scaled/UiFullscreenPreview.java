@@ -34,6 +34,7 @@ public final class UiFullscreenPreview extends Screen {
     private final UiPreferences preferences;
     private final Content content;
     private final Supplier<? extends GuiEventListener> returnFocus;
+    private final UiDotBackground background = new UiDotBackground();
     private UiButton back;
     private Bounds viewport;
     private Renderable preview;
@@ -92,6 +93,16 @@ public final class UiFullscreenPreview extends Screen {
     }
 
     @Override
+    public boolean keyPressed(int key, int scanCode, int modifiers) {
+        if (key == org.lwjgl.glfw.GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof UiCancelableInteraction interaction
+                && interaction.cancelInteraction()) {
+            setDragging(false);
+            return true;
+        }
+        return super.keyPressed(key, scanCode, modifiers);
+    }
+
+    @Override
     public boolean isPauseScreen() {
         return parent != null && parent.isPauseScreen();
     }
@@ -105,12 +116,21 @@ public final class UiFullscreenPreview extends Screen {
         if (target != null && parent.children().contains(target)) parent.setFocused(target);
     }
 
+    @Override
+    public void removed() {
+        background.reset();
+        super.removed();
+    }
+
     // NeoForge 的 Screen.render 会调用背景方法，预览底板由这里的 render 统一绘制。
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {}
 
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        DarkModeTheme.background(graphics, 0, 0, width, height);
+        // Use the same theme backdrop as native UUK screens: clear HUD glass can expose
+        // the world, selected theme effects render behind it, and high contrast/no-world
+        // fallback stays owned by UiDotBackground rather than an unconditional opaque fill.
+        background.renderThemed(this, graphics, width, height, preferences, true);
         graphics.enableScissor(viewport.x(), viewport.y(), viewport.right(), viewport.bottom());
         try {
             if (preview != null) preview.render(graphics, mouseX, mouseY, partialTick);

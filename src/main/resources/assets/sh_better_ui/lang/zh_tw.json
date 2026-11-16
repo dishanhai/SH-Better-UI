@@ -1,4 +1,9 @@
 {
+  "sh_better_ui.online_music.view.scroll_search": "捲動搜尋結果",
+  "sh_better_ui.online_music.view.scroll_library": "捲動歌單與歌曲",
+  "sh_better_ui.online_music.view.scroll_lyrics": "捲動歌詞",
+  "sh_better_ui.online_music.view.scroll_account": "捲動帳號設定",
+
   "sh_better_ui.online_music.view.follow_lyrics": "回到目前歌詞",
   "sh_better_ui.online_music.suggestions": "搜尋建議",
   "sh_better_ui.online_music.suggestion_pick": "搜尋 %s",
@@ -1440,5 +1445,10 @@
   "sh_better_ui.media_card.selected": "已選取",
   "sh_better_ui.media_card.demo_title": "午夜音樂集",
   "sh_better_ui.media_card.demo_artist": "互動預覽 · 不播放音訊",
-  "sh_better_ui.panel.developer.gallery.sample.media_card": "媒體卡片"
+  "sh_better_ui.panel.developer.gallery.sample.media_card": "媒體卡片",
+  "sh_better_ui.theme.dynamic.muonium_liquid_glass": "Muonium · 液態玻璃",
+  "sh_better_ui.theme.dynamic.muonium_aurora_frost": "Muonium · 極光霜藍",
+  "sh_better_ui.theme.dynamic.muonium_crystal": "Muonium · 琉璃",
+  "sh_better_ui.panel.theme.group.sh_better_ui:muonium_fluid": "Muonium 流體",
+  "sh_better_ui.theme_editor.field.followTheme": "跟隨目前主題色彩"
 }

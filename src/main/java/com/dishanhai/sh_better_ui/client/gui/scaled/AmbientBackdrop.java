@@ -7,7 +7,7 @@ import net.minecraft.client.gui.GuiGraphics;
 
 /** Original SHBUI procedural backgrounds; no third-party component or shader source. */
 public final class AmbientBackdrop implements BackgroundSpec.Renderer {
-    public enum Style { AURORA, SILK, IRIDESCENT, CONTOUR, MIST }
+    public enum Style { AURORA, SILK, IRIDESCENT, CONTOUR, MIST, FLUID }
     private final String group;
     private final Style style;
     private final AmbientBackdropProfile defaults;

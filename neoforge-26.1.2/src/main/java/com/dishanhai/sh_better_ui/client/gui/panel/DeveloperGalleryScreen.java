@@ -740,6 +740,11 @@ public final class DeveloperGalleryScreen extends Screen {
             return true;
         }
         if (event.isEscape()) {
+            if (getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCancelableInteraction interaction
+                    && interaction.cancelInteraction()) {
+                setDragging(false);
+                return true;
+            }
             if ((getFocused() instanceof UiSlider focusedSlider && focusedSlider.keyPressed(event))
                     || (scrollable != null && scrollable.cancelDrag())) {
                 setDragging(false);

@@ -9,10 +9,15 @@ final class LyricViewport {
     private boolean started;
     void reset() { started = false; manual = -1; resume = 0; }
     void scroll(int direction, int active, int size, long now) {
+        browseTo((manual < 0 ? Math.max(0, active) : manual) + direction, size, now);
+    }
+    void browseTo(int index, int size, long now) {
         if (size == 0) return;
-        manual = Math.max(0, Math.min(size - 1, (manual < 0 ? Math.max(0, active) : manual) + direction));
+        manual = Math.max(0, Math.min(size - 1, index));
         resume = now + 5000;
     }
+    static boolean canAnimate(int height) { return height >= 72; }
+    int scrollPosition(int active) { return Math.max(0, manual < 0 ? active : manual); }
     boolean browsing(long now) { return manual >= 0 && now < resume; }
     void follow() { manual = -1; resume = 0; }
     double sample(int active, int size, long now, boolean reducedMotion, boolean focused) {

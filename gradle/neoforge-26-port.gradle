@@ -89,6 +89,7 @@ def sharedSources = [
         'client/gui/scaled/GuiMotion.java',
         'client/gui/scaled/InterruptibleAnimation.java',
         'client/gui/scaled/UiKeyframeAnimation.java',
+        'client/gui/scaled/UiCancelableInteraction.java',
         'client/gui/scaled/LaserFlowProfile.java',
         'client/gui/scaled/LightRaysMotion.java',
         'client/gui/scaled/LightRaysProfile.java',
@@ -157,7 +158,8 @@ sourceSets.main.java {
         if (!entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 (entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicViewPaint.java".toString() ||
                  entry.path == "${packagePath}/kernel/internal/music/view/OnlineArtworkTexture.java".toString() ||
-                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineLyricButton.java".toString())) return true
+                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineLyricButton.java".toString() ||
+                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicScrollRegion.java".toString())) return true
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
                 !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
