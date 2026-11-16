@@ -235,7 +235,7 @@ public final class UiClient {
         if (screen != null && GaussBlur.isAllowed(screen)) GaussBlur.warmUp();
     }
 
-    @EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+    @EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
     public static final class ReloadRegistration {
         private ReloadRegistration() {
         }

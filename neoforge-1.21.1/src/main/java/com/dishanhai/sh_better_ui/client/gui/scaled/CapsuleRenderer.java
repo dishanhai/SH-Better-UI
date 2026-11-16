@@ -15,7 +15,7 @@ import net.neoforged.fml.common.EventBusSubscriber;
 import java.io.IOException;
 
 /** 山海：单个四边形内逐像素计算圆弧，注册的 shader 由游戏负责重载与释放。 */
-@EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
 public final class CapsuleRenderer extends RenderType {
     private static ShaderInstance shader;
     private static final RenderType TYPE = type("sh_better_ui_capsule", COLOR_WRITE);

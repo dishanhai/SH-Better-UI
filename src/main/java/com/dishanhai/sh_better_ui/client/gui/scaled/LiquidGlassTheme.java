@@ -291,8 +291,7 @@ public final class LiquidGlassTheme {
     }
 
     static float normalizeBlurRadius(float radius) {
-        if (!Float.isFinite(radius) || radius < 0f) throw new IllegalArgumentException();
-        return Math.min(radius, 32f);
+        return ThemeButtonStyle.normalizeBlurRadius(radius);
     }
 
     static int buttonFill(DarkModeTheme.State state, boolean primary, boolean selected, float emphasis) {

@@ -28,7 +28,7 @@ import org.lwjgl.opengl.GL30;
 import java.io.IOException;
 
 /** 山海：在 GUI 四边形内绘制独立贴图和径向渐变，资源重载由客户端管理。 */
-@EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+@EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
 public final class VisualRevealRenderer extends RenderType {
     private static ShaderInstance shader;
     private static ShaderInstance horizontalShader;

@@ -57,7 +57,12 @@ final class ThemeButtonStyle implements AutoCloseable {
 
     float blurRadius(float fallback) {
         return active() && (style == UiStyle.LIQUID_GLASS || scope.resolve(LIQUID_GLASS))
-                ? LiquidGlassTheme.normalizeBlurRadius(Math.max(0f, scope.resolve(BLUR))) : fallback;
+                ? normalizeBlurRadius(Math.max(0f, scope.resolve(BLUR))) : fallback;
+    }
+
+    static float normalizeBlurRadius(float radius) {
+        if (!Float.isFinite(radius) || radius < 0f) throw new IllegalArgumentException();
+        return Math.min(radius, 32f);
     }
 
     boolean active() { return !tones.isClosed(); }

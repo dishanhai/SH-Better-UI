@@ -33,7 +33,7 @@ public final class AutomationClient {
 
     private AutomationClient() {}
 
-    @EventBusSubscriber(modid = "sh_better_ui", value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+    @EventBusSubscriber(modid = "sh_better_ui", value = Dist.CLIENT)
     public static final class Keys {
         @SubscribeEvent
         public static void register(RegisterKeyMappingsEvent event) {

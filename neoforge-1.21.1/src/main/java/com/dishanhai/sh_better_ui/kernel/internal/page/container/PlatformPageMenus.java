@@ -37,7 +37,7 @@ public final class PlatformPageMenus {
         return player.openMenu(provider, binding::write);
     }
 
-    @EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT, bus = EventBusSubscriber.Bus.MOD)
+    @EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
     public static final class Client {
         @SubscribeEvent public static void register(RegisterMenuScreensEvent event) {
             event.register(TYPE.get(), NativePageContainerScreen::new);

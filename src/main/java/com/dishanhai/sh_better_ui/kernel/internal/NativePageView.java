@@ -761,7 +761,11 @@ final class NativePageView {
             this.changed = changed;
         }
 
-        @Override public void onClick(double x, double y) { dragTo(y); }
+        @Override public boolean mouseClicked(double x, double y, int button) {
+            if (!super.mouseClicked(x, y, button)) return false;
+            dragTo(y);
+            return true;
+        }
 
         @Override
         protected void onDrag(double x, double y, double dx, double dy) {
