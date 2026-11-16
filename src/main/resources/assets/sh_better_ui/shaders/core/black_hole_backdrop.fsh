@@ -1,11 +1,9 @@
 #version 150
 // Original Schwarzschild null geodesics, G=c=M=1. See docs for assumptions/limits.
 in vec2 iconUv;
-uniform vec4 Surface; // aspect, zoom, periodic emission phase, screen roll
-uniform vec4 Physics; // observer inclination, disk outer radius, brightness, outline
+uniform vec4 Surface; // aspect, zoom, unused, screen roll
+uniform vec4 Physics; // observer inclination, disk outer radius, unused, unused
 uniform vec2 Integration; // RK4 angular step, maximum steps
-uniform vec4 InkColor;
-uniform vec4 BackgroundColor;
 out vec4 fragColor;
 const float CAMERA = 30.0;
 const float OBSERVER_F = 1.0 - 2.0 / CAMERA;
@@ -22,7 +20,6 @@ vec3 radialAt(float phi, vec3 initial, vec3 tangent) {
     return cos(phi) * initial + sin(phi) * tangent;
 }
 vec4 trace(vec2 screen) {
-    if (Physics.z <= 0.0) return vec4(BackgroundColor.rgb * BackgroundColor.a, BackgroundColor.a);
     float c = cos(Surface.w), s = sin(Surface.w);
     screen = mat2(c, -s, s, c) * screen;
     vec3 initial = vec3(0.0, sin(Physics.x), cos(Physics.x));
@@ -32,7 +29,7 @@ vec4 trace(vec2 screen) {
     float sineAlpha = offsetLength * 0.82 / sqrt(1.0 + offsetLength * offsetLength * 0.82 * 0.82);
     float cosineAlpha = 1.0 / sqrt(1.0 + offsetLength * offsetLength * 0.82 * 0.82);
     float impact = CAMERA * sineAlpha / sqrt(OBSERVER_F);
-    if (impact < 0.0001) return vec4(0.0, 0.0, 0.0, 1.0);
+    if (impact < 0.0001) return vec4(0.0, 0.0, 0.0, -1.0);
     vec3 tangent = offset / max(offsetLength, 0.000001);
     // Reversing the spatial backtrace momentum reverses L/E for emitted photons.
     float lambda = -impact * cross(initial, tangent).y;
@@ -56,24 +53,19 @@ vec4 trace(vec2 screen) {
                 float shift = sqrt((1.0 - 3.0 / radius) / OBSERVER_F) / max(1.0 - omega * lambda, 0.001);
                 // Prescribed thin-disk bolometric emissivity, not a GRMHD solution.
                 float radialFlux = pow(6.0 / radius, 3.0) * (1.0 - sqrt(6.0 / radius));
-                float azimuth = atan(hit.z, hit.x);
-                float texture = 0.9 + 0.1 * sin(3.0 * azimuth - Surface.z + radius * 0.8);
-                float emission = 55.0 * radialFlux * pow(shift, 4.0) * texture * Physics.z;
-                float light = emission / (1.0 + emission);
-                float alpha = InkColor.a + BackgroundColor.a * (1.0 - InkColor.a);
-                return vec4(InkColor.rgb * light * InkColor.a + BackgroundColor.rgb * BackgroundColor.a * (1.0 - InkColor.a), alpha);
+                // Half-float data, never filtered: world hit x/z, base radiance, discrete fate.
+                return vec4(hit.x, hit.z, 55.0 * radialFlux * pow(shift, 4.0), 1.0);
             }
         }
-        if (next.x >= 0.5) return vec4(0.0, 0.0, 0.0, 1.0); // horizon r=2M
+        if (next.x >= 0.5) return vec4(0.0, 0.0, 0.0, -1.0); // horizon r=2M
         if (next.x <= 0.0) break; // escaped to infinity
         state = next;
         phi = nextPhi;
         previousHeight = height;
     }
-    // Optional decorative outline; default zero does not remove the physical shadow.
-    float rim = Physics.w * exp(-pow((impact - 5.196152423) / 0.045, 2.0));
-    float alpha = rim * InkColor.a + BackgroundColor.a * (1.0 - rim * InkColor.a);
-    return vec4(InkColor.rgb * rim * InkColor.a + BackgroundColor.rgb * BackgroundColor.a * (1.0 - rim * InkColor.a), alpha);
+    // Escape/budget-exhausted pixels remain background, not falsely captured.
+    // Store the optional reference-ring weight separately from the fate code.
+    return vec4(0.0, 0.0, exp(-pow((impact - 5.196152423) / 0.045, 2.0)), 0.0);
 }
 void main() {
     vec2 aspect = vec2(max(Surface.x, 1.0), max(1.0 / Surface.x, 1.0));

@@ -2,8 +2,8 @@
 
 `sh_better_ui:black_hole` now traces null geodesics of a non-rotating Schwarzschild
 black hole, instead of the previous hand-drawn light-band approximation. A real
-texture-space bloom pass spreads highlights. The production trace texture is
-RGBA8 and receives tone-mapped emission, so this is LDR threshold bloom, not an
+texture-space bloom pass spreads highlights. The physical hit cache is RGBA16F. Per-frame material shading is tone-mapped into
+RGBA8 before bloom, so bloom remains an LDR presentation effect, not an
 HDR energy-conserving optical point-spread simulation. The optional artificial outline
 starts at zero. Turning the outline off does **not** remove the physical dark
 shadow formed by captured rays.
@@ -38,7 +38,7 @@ capture. Quality modes use the same metric, not different gravitational strength
 
 The disk is prescribed, infinitesimally thin and opaque at the first valid ray
 crossing. Its radial emissivity follows `r^-3 * (1 - sqrt(6/r))`, multiplied
-by a small periodic pattern and exposure. Circular Keplerian angular velocity
+by prescribed moving emissivity filaments and exposure. Circular Keplerian angular velocity
 `Omega = r^-3/2` supplies a redshift/beaming factor
 `g = sqrt((1 - 3/r)/(1 - 2/30)) / (1 - Omega*lambda)`; bolometric emission
 scales by `g^4`. The tint and tone mapping are display choices, not a full
@@ -106,16 +106,32 @@ are development measurements, not real GPU or Minecraft frame-time guarantees.
 The trace/composite resource budgets and measured values are recorded with the
 validation output. Initial allocation/shader compilation can still cost time.
 
-One reusable 384×384 color target bounds its image storage to about 576 KiB
-(excluding driver overhead). LOW/BALANCED/HIGH limit the traced longest edge to
-128/256/384 pixels, with at most 192/320/512 RK4 steps of 0.04/0.025/0.016 radians.
-The integration budget is therefore about eight radians, not infinitely many
-orbits. Fixed-capacity storage avoids reallocating on each window/quality change.
-Static frames reuse the trace; one owner's animation is retraced at most 30 Hz.
-Different owners retrace independently to avoid phase leakage; many simultaneous
-instances still multiply tracing work. A small reconstruction filter softens
-undersampling. Bloom offsets are measured in trace texels, so lower quality also
-changes apparent blur width. Resource failure falls back until the next reload.
+Physical geometry is built only when size, roll, inclination, disk radius, quality
+or actual framebuffer extent changes. Phase, color, exposure, opacity and glow do
+not retrace light paths. Two bounded 1024×1024 RGBA16F slots hold geometry, with replacement built in strips, with a shared limit of 16,384 traced pixels
+per host-frame timestamp. Geometry is published atomically, never as half-built
+stripes. A non-preemptive build is allowed to finish before a newer key takes over.
+
+LOW/BALANCED/HIGH cap the longest edge at 384/768/1024 physical framebuffer pixels
+(including GUI and pose scale), with unchanged 192/320/512 RK4 steps. Every display
+frame shades the cached disk coordinates with moving material detail; the scene
+body is no longer globally low-pass filtered. Highlight bloom uses two small
+separable blur passes instead of 49 samples on every full-screen output pixel.
+Two geometry targets, one 1024² RGBA8 shading target and two 256² bloom targets
+bound image storage to approximately 20.5 MiB, excluding driver overhead.
+
+The black-hole-specific clock advances ordinary frame intervals up to 250 ms in
+real time, so 10 FPS does not run at half speed. Longer stalls do not catch up;
+reduce-motion, speed zero and close/resume preserve a frozen phase. Other ambient
+background clocks are unchanged. HUD-glass blur remains the user's separate
+material setting; this fix does not silently override it.
+
+First shader compilation and target allocation can still cause first-use cost.
+The initial or changed geometry appears after several bounded build frames; before
+the first complete result the configured base is shown. Multiple distinct geometry
+keys can compete for the bounded cache. More than two distinct visible keys may
+repeatedly evict each other and show the base fallback while rebuilding; no
+per-screen unbounded GPU allocation is introduced. Actual UI and GPU frame time still requires in-game acceptance.
 
 Before release, test both Forge 1.20.1 and NeoForge 1.21.1 in Minecraft: setting
 preview/cancel and persistence, repeated selection and close/reopen, all quality
@@ -134,15 +150,19 @@ u/v/phi differences were approximately 3.6e-5 / 3.8e-5 / 4.9e-5, and relative
 null-energy error was below 9.1e-7. This validates the sampled numerical arithmetic,
 not the full disk transfer, Minecraft GL-state restoration, or real hardware.
 
-### Measured cost (software renderer only)
+### Why the prior version appeared blurred and static
 
-The final 512×256 output / RGBA8 trace-target microbenchmark uses 12 warmups and
-20 samples per quality. Trace+composite median/p95 milliseconds: LOW 8.28/11.31,
-BALANCED 11.83/17.40, HIGH 15.54/22.13. A cached frame still pays the composite
-cost (about 6–7.5 ms here) because the bloom uses a bounded 7×7 Gaussian kernel
-plus five reconstruction samples. `glow=0` skips its 49 highlight taps. The
-first trace took about 106 ms including driver first-use/JIT cost. This physical
-version is substantially more expensive than the old analytic backdrop; it is
-not described as lightweight or guaranteed stutter-free. These measurements
-exclude initial target allocation, Minecraft overhead and real GPU behavior.
-Run the visual script with `--benchmark` to reproduce the timing protocol.
+The previous default traced only 256 pixels along the longest edge and then
+applied a five-tap filter to the entire scene. At 2048-pixel output width that
+source was enlarged eightfold. Its material term was only `0.9 + 0.1*sin(...)`;
+with default speed 0.18, local intensity repeated after 34.91 seconds and a single
+crest took 104.72 seconds to orbit. In a 512×256 default offscreen comparison,
+one second changed RGB by only 0.30/255 on average (maximum 2/255). No pixel
+changed by more than 3/255. These measurements explain poor visible motion, not
+a claim that the time uniform was disconnected. The old 50 ms frame-time cap also
+slowed animation below 20 FPS.
+
+The resolution, progressive geometry cache, independent per-frame material shading
+and clock changes address these separate causes. Before/after comparisons use the
+same viewport, default camera and physical model; they are not screenshots of an
+actual Minecraft UI and do not include the user's additional HUD-glass blur.

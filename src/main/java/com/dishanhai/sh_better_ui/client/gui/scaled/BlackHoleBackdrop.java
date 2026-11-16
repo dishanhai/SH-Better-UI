@@ -8,7 +8,7 @@ import net.minecraft.client.gui.GuiGraphics;
 /** Schwarzschild optical background, without pointer input or interaction capture. */
 public final class BlackHoleBackdrop implements BackgroundSpec.Renderer {
     public static final String ID = "sh_better_ui:black_hole";
-    private final AmbientBackdropClock clock = new AmbientBackdropClock();
+    private final BlackHoleAnimationClock clock = new BlackHoleAnimationClock();
 
     @Override
     public void close() { clock.suspend(); }
