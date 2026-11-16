@@ -1,0 +1,17 @@
+{
+  "en_us": {
+    "sh_better_ui.mp_theme.card_hint": "%s: preview and select for the current draft",
+    "sh_better_ui.mp_theme.selected": "✓ Selected draft",
+    "sh_better_ui.mp_theme.stage": "Select theme"
+  },
+  "zh_cn": {
+    "sh_better_ui.mp_theme.card_hint": "%s：预览并选入当前草稿",
+    "sh_better_ui.mp_theme.selected": "✓ 已选入草稿",
+    "sh_better_ui.mp_theme.stage": "选择此主题"
+  },
+  "zh_tw": {
+    "sh_better_ui.mp_theme.card_hint": "%s：預覽並選入目前草稿",
+    "sh_better_ui.mp_theme.selected": "✓ 已選入草稿",
+    "sh_better_ui.mp_theme.stage": "選擇此主題"
+  }
+}
