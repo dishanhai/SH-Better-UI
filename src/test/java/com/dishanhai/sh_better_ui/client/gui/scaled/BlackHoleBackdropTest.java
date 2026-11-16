@@ -69,8 +69,8 @@ class BlackHoleBackdropTest {
         var balanced = BlackHoleBackdropProfile.Quality.BALANCED;
         var high = BlackHoleBackdropProfile.Quality.HIGH;
         assertEquals(192, low.steps()); assertEquals(384, low.resolution()); assertEquals(.04f, low.stepSize());
-        assertEquals(320, balanced.steps()); assertEquals(768, balanced.resolution()); assertEquals(.025f, balanced.stepSize());
-        assertEquals(512, high.steps()); assertEquals(1024, high.resolution()); assertEquals(.016f, high.stepSize());
+        assertEquals(320, balanced.steps()); assertEquals(1536, balanced.resolution()); assertEquals(.025f, balanced.stepSize());
+        assertEquals(512, high.steps()); assertEquals(2048, high.resolution()); assertEquals(.016f, high.stepSize());
     }
     private static BlackHoleBackdropProfile physical(float inclination, float outline, float radius,
                                                      BlackHoleBackdropProfile.Quality quality) {

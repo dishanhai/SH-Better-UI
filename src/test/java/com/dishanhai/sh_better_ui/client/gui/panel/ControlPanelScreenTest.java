@@ -28,6 +28,91 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：主控面板切页时移除前一页的输入控件，并保留草稿。 */
 class ControlPanelScreenTest {
     @Test
+    void browserSeedsEffectiveLegacyDynamicThemeWithoutChangingSavedDraft() {
+        var base = ClientUiSettings.DEFAULT.withDynamicTheme(
+                new com.dishanhai.sh_better_ui.config.DynamicThemeSettings("test:active", 100, false));
+        for (var mode : new ThemeSettings.Mode[]{ThemeSettings.Mode.DARK, ThemeSettings.Mode.CUSTOM}) {
+            var settings = base.withTheme(ThemeSettings.DEFAULT.withMode(mode));
+            var effective = ControlPanelScreen.effectiveBrowserTheme(settings, id -> id.equals("test:active"));
+            assertEquals("test:active", effective.registeredThemeId());
+            assertEquals("", settings.theme().registeredThemeId());
+            assertEquals(mode, settings.theme().mode());
+            assertEquals(settings.theme(), ControlPanelScreen.effectiveBrowserTheme(settings, id -> false));
+        }
+        var registered = base.withTheme(ThemeSettings.DEFAULT.withRegisteredTheme("test:explicit"));
+        assertEquals("test:explicit", ControlPanelScreen.effectiveBrowserTheme(registered, id -> true).registeredThemeId());
+        var glass = base.withTheme(ThemeSettings.DEFAULT.withMode(ThemeSettings.Mode.LIQUID_GLASS));
+        assertEquals(glass.theme(), ControlPanelScreen.effectiveBrowserTheme(glass, id -> true));
+    }
+
+    @Test
+    void themePaginationAndRegistryRemountRestoreMountedKeyboardFocus() throws ReflectiveOperationException {
+        var screen = compactScreen();
+        try (var manager = new com.dishanhai.sh_better_ui.theme.ThemeManager()) {
+            manager.replaceResourceThemes(java.util.List.of(
+                    com.dishanhai.sh_better_ui.theme.Theme.builder("a:target").build()), java.util.List.of());
+            var browser = new MpThemeBrowser(manager, () -> ThemeSettings.DEFAULT, ignored -> {}, id -> false);
+            var browserField = ControlPanelScreen.class.getDeclaredField("themeBrowser"); browserField.setAccessible(true);
+            browserField.set(screen, browser);
+            switchTab(screen, "themes");
+            var card = screen.children().stream().filter(UiThemePreviewCard.class::isInstance)
+                    .map(UiThemePreviewCard.class::cast).filter(c -> c.themeId().equals("a:target")).findFirst().orElseThrow();
+            screen.setFocused(card);
+            var remount = ControlPanelScreen.class.getDeclaredMethod("remountThemePage", int.class); remount.setAccessible(true);
+            remount.invoke(screen, 0);
+            assertNotSame(card, screen.getFocused());
+            assertEquals("a:target", ((UiThemePreviewCard) screen.getFocused()).themeId());
+            manager.replaceResourceThemes(java.util.List.of(), java.util.List.of()); browser.refresh();
+            remount.invoke(screen, 0);
+            assertInstanceOf(UiThemePreviewCard.class, screen.getFocused());
+            assertTrue(screen.children().contains(screen.getFocused()));
+            assertNotEquals("a:target", ((UiThemePreviewCard) screen.getFocused()).themeId());
+            var nextField = ControlPanelScreen.class.getDeclaredField("themeNext"); nextField.setAccessible(true);
+            var next = (UiButton) nextField.get(screen); screen.setFocused(next); next.onPress();
+            assertNotSame(next, screen.getFocused());
+            assertTrue(screen.children().contains(screen.getFocused()));
+            assertTrue(((AbstractWidget) screen.getFocused()).active);
+            browser.close();
+        }
+    }
+
+    @Test
+    void searchingAndHistoryKeepPendingDraftAndRestoreTheQuery() throws ReflectiveOperationException {
+        var screen = compactScreen();
+        button(screen, "enabled").onPress();
+        var searchField = ControlPanelScreen.class.getDeclaredField("search"); searchField.setAccessible(true);
+        var search = (net.minecraft.client.gui.components.EditBox) searchField.get(screen);
+        search.setValue("display");
+        screen.keyPressed(GLFW.GLFW_KEY_F12, 0, 0);
+        assertTrue(button(screen, "apply").active);
+        assertNull(findButton(screen, "enabled"));
+        var rows = ControlPanelScreen.class.getDeclaredField("rows"); rows.setAccessible(true);
+        var result = ((Map<?, ?>) rows.get(screen)).keySet().stream().filter(UiButton.class::isInstance)
+                .map(UiButton.class::cast).findFirst().orElseThrow();
+        result.onPress();
+        assertNotNull(findButton(screen, "contrast"));
+        button(screen, "history.back").onPress();
+        assertEquals("display", search.getValue());
+        assertTrue(button(screen, "apply").active);
+        assertTrue(screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0));
+        assertEquals("", search.getValue());
+        assertNotNull(findButton(screen, "enabled"));
+    }
+
+    @Test
+    void responsiveSidebarFallsBackWithoutLosingTheDraft() throws ReflectiveOperationException {
+        var screen = compactScreen();
+        button(screen, "enabled").onPress();
+        var clear = Screen.class.getDeclaredMethod("clearWidgets"); clear.setAccessible(true);
+        screen.width = 590; screen.height = 406; clear.invoke(screen); initialize(screen);
+        var sidebar = ControlPanelScreen.class.getDeclaredField("sidebar"); sidebar.setAccessible(true);
+        assertNotNull(sidebar.get(screen)); assertTrue(button(screen, "apply").active);
+        screen.width = 320; screen.height = 210; clear.invoke(screen); initialize(screen);
+        assertNull(sidebar.get(screen)); assertTrue(button(screen, "apply").active);
+        assertNotNull(findButton(screen, "section.configuration"));
+    }
+
+    @Test
     void customThemeExposesSeparatePaletteAndBackgroundEditors() {
         var previous = ClientUiSettings.current();
         try {
@@ -127,7 +212,7 @@ class ControlPanelScreenTest {
     void primaryNavigationSeparatesSettingsDeveloperConfigurationAndOverview() {
         var screen = compactScreen();
         var navigation = mainNavigation(screen);
-        assertEquals(4, navigation.buttons().size());
+        assertEquals(7, navigation.buttons().size());
         assertNotNull(findButton(screen, "section.configuration"));
         switchTab(screen, "developer_config");
         assertNull(findButton(screen, "enabled"));
@@ -149,7 +234,7 @@ class ControlPanelScreenTest {
         screen.width = 420;
         screen.height = 240;
         screen.prepareReturnLayer();
-        screen.init();
+        initialize(screen);
         var pendingFocus = ControlPanelScreen.class.getDeclaredField("restoreDeveloperFocus");
         pendingFocus.setAccessible(true);
         assertTrue(pendingFocus.getBoolean(screen), "hidden pre-render layout must retain focus for activation");
@@ -195,7 +280,7 @@ class ControlPanelScreenTest {
         var screen = new ControlPanelScreen(null, binding, settings -> true);
         screen.width = 320;
         screen.height = 210;
-        screen.init();
+        initialize(screen);
         var field = ControlPanelScreen.class.getDeclaredField("entrance");
         field.setAccessible(true);
         var entrance = (UiCapsuleReveal) field.get(screen);
@@ -234,7 +319,7 @@ class ControlPanelScreenTest {
         var screen = new ControlPanelScreen(null, mapping, settings -> true);
         screen.width = 420;
         screen.height = 240;
-        screen.init();
+        initialize(screen);
 
         var backdrop = button(screen, "enabled");
         boolean initialBlur = ClientUiSettings.current().backdrop().enabled();
@@ -322,7 +407,7 @@ class ControlPanelScreenTest {
             var screen = new ControlPanelScreen(null, mapping, settings -> { saved.set(settings); return true; });
             screen.width = 320;
             screen.height = 210;
-            screen.init();
+            initialize(screen);
             switchTab(screen, "feedback");
             assertEquals(1, visibleSliders(screen));
             button(screen, "hover_animation").onPress();
@@ -359,7 +444,7 @@ class ControlPanelScreenTest {
         var screen = new ControlPanelScreen(null, mapping, settings -> true);
         screen.width = 320;
         screen.height = 210;
-        screen.init();
+        initialize(screen);
         finishEntrance(screen);
         var bar = bar(screen);
         bar.reveal(2);
@@ -416,13 +501,37 @@ class ControlPanelScreenTest {
         assertFalse(screen.isDragging());
     }
 
+    /** Screen.init(Minecraft,...) normally supplies Font. These unit hosts deliberately omit the client. */
+    private static void initialize(ControlPanelScreen screen) {
+        var splitter = new net.minecraft.client.StringSplitter((codePoint, style) -> 5f);
+        var font = new net.minecraft.client.gui.Font(ignored -> null, false) {
+            @Override public net.minecraft.client.StringSplitter getSplitter() { return splitter; }
+            @Override public int width(String text) { return (int) Math.ceil(splitter.stringWidth(text)); }
+            @Override public int width(net.minecraft.util.FormattedCharSequence text) { return (int) Math.ceil(splitter.stringWidth(text)); }
+            @Override public int width(net.minecraft.network.chat.FormattedText text) { return (int) Math.ceil(splitter.stringWidth(text)); }
+            @Override public java.util.List<net.minecraft.util.FormattedCharSequence> split(net.minecraft.network.chat.FormattedText text, int width) {
+                return splitter.splitLines(text, width, net.minecraft.network.chat.Style.EMPTY).stream()
+                        .map(net.minecraft.locale.Language.getInstance()::getVisualOrder).toList();
+            }
+            @Override public String plainSubstrByWidth(String text, int width) { return plainSubstrByWidth(text, width, false); }
+            @Override public String plainSubstrByWidth(String text, int width, boolean backwards) {
+                int count = Math.max(0, Math.min(text.length(), width / 5));
+                return backwards ? text.substring(text.length() - count) : text.substring(0, count);
+            }
+        };
+        try {
+            var field = Screen.class.getDeclaredField("font"); field.setAccessible(true); field.set(screen, font);
+        } catch (ReflectiveOperationException error) { throw new AssertionError(error); }
+        screen.init();
+    }
+
     private static ControlPanelScreen compactScreen() {
         var mapping = new KeyMapping("key.sh_better_ui.control_panel.test", InputConstants.Type.MOUSE,
                 GLFW.GLFW_MOUSE_BUTTON_4, "key.categories.sh_better_ui");
         var screen = new ControlPanelScreen(null, mapping, settings -> true);
         screen.width = 320;
         screen.height = 210;
-        screen.init();
+        initialize(screen);
         finishEntrance(screen);
         return screen;
     }
@@ -451,7 +560,7 @@ class ControlPanelScreenTest {
         var screen = new ControlPanelScreen(null, mapping, settings -> { saved.set(settings); return true; });
         screen.width = 420;
         screen.height = 240;
-        screen.init();
+        initialize(screen);
         switchTab(screen, "feedback");
         button(screen, "hover_animation").onPress();
         switchTab(screen, "developer_config");
@@ -461,7 +570,7 @@ class ControlPanelScreenTest {
         var clear = Screen.class.getDeclaredMethod("clearWidgets");
         clear.setAccessible(true);
         clear.invoke(screen);
-        screen.init();
+        initialize(screen);
         assertEquals(sampled ? 1 : 0, button(screen, "sampling").getSelectedModeIndex());
         switchTab(screen, "overview");
         switchTab(screen, "configuration");
@@ -475,7 +584,9 @@ class ControlPanelScreenTest {
     @SuppressWarnings("unchecked")
     void focusingAnOversizedInformationGroupKeepsItsVisibleStartAndDoesNotOscillate() throws ReflectiveOperationException {
         var screen = compactScreen();
-        int bodyTop = button(screen, "enabled").getY() - 16;
+        var bodyTopField = ControlPanelScreen.class.getDeclaredField("bodyTop");
+        bodyTopField.setAccessible(true);
+        int bodyTop = bodyTopField.getInt(screen);
         var group = new UiButton(30, bodyTop + 4, 100, 200, Component.empty(), ignored -> {});
         var rowsField = ControlPanelScreen.class.getDeclaredField("rows");
         rowsField.setAccessible(true);
@@ -495,10 +606,11 @@ class ControlPanelScreenTest {
     }
 
     @Test
-    void returningFromPrimaryTabsRestoresTheConfigurationReadingPosition() {
+    void returningFromPrimaryTabsRestoresTheConfigurationReadingPosition() throws ReflectiveOperationException {
         var screen = compactScreen();
         int initialY = button(screen, "enabled").getY();
-        assertTrue(screen.mouseScrolled(40, initialY + 4, -1));
+        var bodyTopField = ControlPanelScreen.class.getDeclaredField("bodyTop"); bodyTopField.setAccessible(true);
+        assertTrue(screen.mouseScrolled(40, bodyTopField.getInt(screen) + 4, -1));
         int scrolledY = button(screen, "enabled").getY();
         assertTrue(scrolledY < initialY);
         switchTab(screen, "developer_config");
