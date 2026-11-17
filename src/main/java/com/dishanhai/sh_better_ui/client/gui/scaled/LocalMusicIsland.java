@@ -7,7 +7,6 @@ import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.audio.AudioFrame;
 import com.dishanhai.sh_better_ui.client.audio.MusicRhythm;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
-import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.lyrics.common.hud.FloatingLyricRenderer;
 import com.dishanhai.sh_better_ui.client.music.MusicLyricFeed;
 import com.dishanhai.sh_better_ui.client.music.MusicService;
@@ -108,7 +107,7 @@ public final class LocalMusicIsland {
     }
 
     private boolean surfaceVisible(long nowMs) {
-        return lifecycle.visible(nowMs) && (!style.musicCapsule() || capsule.active()
+        return lifecycle.visible(nowMs) && (capsule.active() || (!style.musicCapsule() && !ambient.chips().isEmpty())
                 || lifecycle.pinned() || lifecycle.notificationActive(nowMs));
     }
 
@@ -147,7 +146,7 @@ public final class LocalMusicIsland {
 
     /** The host may supply its own authorized output capture for this view. */
     public void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio) {
-        if (compact.width() < 94 || compact.height() < 29) { notices.pause(); return; }
+        if (compact.width() < 94 || compact.height() < 28) { notices.pause(); return; }
         observeMusic(ui.nowMs());
         var snapshot = current.snapshot();
         var session = snapshot.session();
@@ -161,6 +160,9 @@ public final class LocalMusicIsland {
         var graphics = ui.graphics();
         var rect = outline.rect();
         MusicIsland.drawShell(graphics, outline, preferences, hovered, style);
+        graphics.enableScissor(Math.round(rect.getX()), Math.round(rect.getY()),
+                Math.round(rect.getX() + rect.getW()), Math.round(rect.getY() + rect.getH()));
+        try {
         ambientShown = false;
         if (activeNotice != null) {
             int left = Math.round(outline.rect().getX()) + 10;
@@ -175,7 +177,7 @@ public final class LocalMusicIsland {
                 graphics.fill(left, barY, left + (int) Math.round((right-left)*activeNotice.progress()),
                         barY + 2, preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
             }
-            notices.presented(activeNotice, ui.nowMs());
+            if (rect.getH() >= 2 * font.lineHeight + 18) notices.presented(activeNotice, ui.nowMs());
             return;
         }
 
@@ -186,8 +188,14 @@ public final class LocalMusicIsland {
             return;
         }
 
-        int x = compact.x() + 7;
-        int artY = compact.y() + (compact.height() - 18) / 2;
+        // Use the explicit lifecycle state, never the scaled surface height, to choose content.
+        // While expanding, keep compact content until the shell has room for readable details.
+        boolean detail = expanded && rect.getH() >= 76;
+        int surfaceLeft = Math.round(rect.getX());
+        int surfaceRight = Math.round(rect.getX() + rect.getW());
+        int surfaceTop = Math.round(rect.getY());
+        int x = detail ? surfaceLeft + 12 : compact.x() + 8;
+        int artY = detail ? surfaceTop + 12 : compact.y() + (compact.height() - 18) / 2;
         var cover = music.cover(current);
         if (cover.isPresent()) {
             var texture = cover.get();
@@ -196,49 +204,48 @@ public final class LocalMusicIsland {
             int height = Math.max(1, Math.round(texture.height() * fit));
             graphics.blit(texture.id(), x + (18 - width) / 2, artY + (18 - height) / 2, width, height,
                     0f, 0f, texture.width(), texture.height(), texture.width(), texture.height());
-        } else GraphicIcon.MUSIC.draw(graphics, x + 1, artY + 1, 1, 0xFFFFFFFF, preferences);
+        } else {
+            // Native rounded note; no bitmap/pixel-art placeholder or borrowed branded artwork.
+            RoundedCorners.draw(graphics, x + 9, artY + 2, 2, 12, 1, 0, 0xFFFFFFFF, 0xFFFFFFFF, false);
+            RoundedCorners.draw(graphics, x + 9, artY + 2, 7, 3, 1, 0, 0xFFFFFFFF, 0xFFFFFFFF, false);
+            RoundedCorners.draw(graphics, x + 4, artY + 11, 7, 5, 2.5f, 0, 0xFFFFFFFF, 0xFFFFFFFF, false);
+        }
 
-        int textRight = compact.right() - 8;
+        int textRight = detail ? surfaceRight - 12 : compact.right() - 9;
+        int indicatorX = textRight - MusicIsland.WAVEFORM_WIDTH;
         if (audio.isPresent() && session != null && session.status() == MusicSnapshot.PlaybackStatus.PLAYING) {
-            int waveX = textRight - MusicIsland.WAVEFORM_WIDTH;
             var movement = rhythm.sample(audio.get(), ui.nowMs(), still);
-            MusicIsland.drawWaveform(graphics, new Bounds(waveX, artY, MusicIsland.WAVEFORM_WIDTH, 18),
+            MusicIsland.drawWaveform(graphics, new Bounds(indicatorX, artY, MusicIsland.WAVEFORM_WIDTH, 18),
                     movement, ACCENT, preferences);
-            textRight = waveX - 4;
-        } else rhythm.reset();
+        } else {
+            rhythm.reset();
+            drawPlaybackIndicator(ui, session == null ? MusicSnapshot.PlaybackStatus.UNKNOWN : session.status(),
+                    indicatorX + 7, artY + 3);
+        }
+        // Compact leading/trailing presentation deliberately leaves the centre quiet.
+        // Track title, credit, timeline and lyrics belong to the expanded presentation.
+        if (!detail) return;
+        textRight = indicatorX - 6;
 
         var state = status(snapshot);
         var track = session == null ? null : session.track();
         int secondary = preferences.highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1;
         int step = font.lineHeight + 1;
-        boolean capsuleCompact = style.musicCapsule() && !expanded;
-        boolean showCredit = !capsuleCompact && track != null && compact.height() >= step * 3 + 8;
-        int lines = capsuleCompact || session == null ? 1 : showCredit ? 3 : 2;
-        int y = compact.y() + (compact.height() - lines * step + 1) / 2;
-        int textX = x + 22;
+        int y = surfaceTop + 10;
+        int textX = x + 25;
         if (session != null) {
             titleLabel.setText(title(session));
             titleLabel.render(graphics, font, textX, y, Math.max(0, textRight - textX), 0xFFFFFFFF,
                     false, ui.nowMs(), hovered, preferences);
             y += step;
-            if (showCredit) {
-                drawText(ui, font, credit(session), textX, y, textRight, secondary);
-                y += step;
-            }
-        }
-        if (!capsuleCompact || session == null) drawText(ui, font, state, textX, y, textRight, secondary);
-        if (style.musicCapsule() && session != null && session.durationMs().isPresent()) {
-            int left = compact.x() + 15, right = compact.right() - 15;
-            int progressY = compact.bottom() - 4;
-            double fraction = MusicIslandCapsuleState.progress(session.positionAt(System.nanoTime()), session.durationMs().getAsLong());
-            graphics.fill(left, progressY, right, progressY + 1, 0xFF415064);
-            graphics.fill(left, progressY, left + (int) Math.round((right - left) * fraction), progressY + 1,
-                    preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
-        }
+            if (track != null) drawText(ui, font, credit(session), textX, y, textRight, secondary);
+        } else drawText(ui, font, Component.translatable(TEXT + "unknown_title"), textX, y, textRight, secondary);
+        // Status remains textual in the accessible expanded surface, including buffering/unknown.
+        drawText(ui, font, state, surfaceLeft + 12, surfaceTop + 34, surfaceRight - 12, secondary);
 
         int height = Math.round(outline.rect().getH());
-        int lineY = compact.bottom() + 2;
-        int bottom = compact.y() + height - 6;
+        int lineY = surfaceTop + 47;
+        int bottom = surfaceTop + height - 7;
         if (bottom < lineY + step + 4 || track == null) return;
         int left = Math.round(outline.rect().getX()) + 10;
         int right = Math.round(outline.rect().getX() + outline.rect().getW()) - 10;
@@ -269,6 +276,7 @@ public final class LocalMusicIsland {
                 : lyricState != MusicService.LyricsState.AVAILABLE ? "lyrics_missing"
                 : position < 0 ? "lyrics_no_time" : "lyrics_waiting";
         drawText(ui, font, Component.translatable(TEXT + hint), left, lyricY, right, secondary);
+        } finally { graphics.disableScissor(); }
     }
 
     public void suspend() {
@@ -320,6 +328,29 @@ public final class LocalMusicIsland {
                 x += 8;
             }
         } finally { ui.graphics().disableScissor(); }
+    }
+
+    /** Static, truthful transport glyphs; no synthetic waveform when audio features are unavailable. */
+    private static void drawPlaybackIndicator(UiFrame ui, MusicSnapshot.PlaybackStatus status, int x, int y) {
+        int color = ui.preferences().highContrast() ? 0xFFFFFFFF : ACCENT;
+        var graphics = ui.graphics();
+        switch (status) {
+            case PAUSED -> {
+                RoundedCorners.draw(graphics, x + 1, y, 3, 12, 1.5f, 0, color, color, false);
+                RoundedCorners.draw(graphics, x + 8, y, 3, 12, 1.5f, 0, color, color, false);
+            }
+            case STOPPED -> RoundedCorners.draw(graphics, x + 1, y + 1, 10, 10, 2, 0, color, color, false);
+            case PLAYING -> { // Static equal-length bars indicate playing, not measured audio amplitude.
+                for (int i = 0; i < 3; i++)
+                    RoundedCorners.draw(graphics, x + i * 5, y + 2, 2, 8, 1, 0, color, color, false);
+            }
+            case BUFFERING -> {
+                for (int i = 0; i < 3; i++)
+                    RoundedCorners.draw(graphics, x + i * 5, y + 5, 2, 2, 1, 0, color, color, false);
+            }
+            case UNKNOWN -> RoundedCorners.draw(graphics, x + 1, y + 5, 10, 2, 1, 0,
+                    0xFFCBD5E1, 0xFFCBD5E1, false);
+        }
     }
 
     private static void drawText(UiFrame ui, Font font, Component text, int x, int y, int right, int color) {

@@ -41,7 +41,8 @@ public enum IslandShellStyle {
         return switch (this) {
             case CLASSIC -> new Shell(radius, 1, hovered ? 0xFF546478 : 0xFF344052,
                     hovered ? 0xF21A202B : 0xF0111620);
-            case PILL, MUSIC_CAPSULE -> new Shell(radius, 1, hovered ? 0xFF72DDD0 : 0xFF252C35, 0xFA080B10);
+            case PILL -> new Shell(radius, 1, hovered ? 0xFF72DDD0 : 0xFF252C35, 0xFA080B10);
+            case MUSIC_CAPSULE -> new Shell(radius, hovered ? 1 : 0, hovered ? 0xFF737373 : 0xFF000000, 0xFF000000);
             case MINIMAL -> new Shell(radius, 1, hovered ? 0xFF72DDD0 : 0xFF17222E, 0xFF17222E);
             case GLASS -> new Shell(radius, 1, hovered ? 0xFFD9F7FF : 0x889FBACB, 0xDA142B3A);
             case COMPACT -> new Shell(radius, 1, hovered ? 0xFFBFD2E6 : 0xFF4B596A, 0xFF121923);

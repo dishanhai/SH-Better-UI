@@ -10,12 +10,14 @@ public final class MusicOverlayLayout {
     public static Bounds panel(int viewportWidth, int viewportHeight, boolean island,
                                float scale, float x, float y) {
         return MusicHudLayout.anchored(viewportWidth, viewportHeight,
-                Math.round((island ? 220 : 230) * scale), Math.round(112 * scale), x, y);
+                island ? Math.max(168, Math.round(208 * scale)) : Math.round(230 * scale),
+                island ? Math.max(92, Math.round(92 * scale)) : Math.round(112 * scale), x, y);
     }
 
     public static Bounds compact(Bounds full, float scale) {
-        // LocalMusicIsland needs 29 GUI units for its compact content at every supported size.
-        return new Bounds(full.x(), full.y(), full.width(),
-                Math.min(full.height(), Math.max(29, Math.round(36 * scale))));
+        // Keep native-size artwork legible at small scales; expansion shares the same center.
+        int width = Math.min(full.width(), Math.max(94, Math.round(126 * scale)));
+        return new Bounds(full.x() + (full.width() - width) / 2, full.y(), width,
+                Math.min(full.height(), Math.max(28, Math.round(28 * scale))));
     }
 }
