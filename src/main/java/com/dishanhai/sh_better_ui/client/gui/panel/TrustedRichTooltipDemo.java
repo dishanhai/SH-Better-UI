@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.visual.RichTextExtensions;
+import com.dishanhai.sh_better_ui.client.visual.BoilerSchematicRenderer;
 import com.dishanhai.sh_better_ui.client.visual.RichMarkdownContent;
 import com.dishanhai.sh_better_ui.client.visual.RichTextComponents;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
@@ -18,6 +19,7 @@ import net.minecraft.network.chat.Component;
  * resource fetching or arbitrary registry lookup is granted to document text.
  */
 final class TrustedRichTooltipDemo {
+    private static final UiId BOILER = id("boiler_schematic");
     private static final UiId GRAPH = id("graph");
     private static final UiId BARS = id("bars");
     private static final UiId RULE = id("rule");
@@ -33,7 +35,9 @@ final class TrustedRichTooltipDemo {
         var doc = RichText.document(id("document"));
         doc.text("蒸汽锅炉 · 可信富提示示例", TITLE).paragraph(6)
                 .text("本页为演示数据，不代表游戏配方。", RichStyle.EMPTY).paragraph(6)
-                .add(item("boiler", "furnace", "熔炉图标")).text(" 设备：锅炉　")
+                .text("原创锅炉示意：进水 → 加热 → 蒸汽；非真实机器贴图。").paragraph(4)
+                .extension(BOILER, 1, 320, 104, 104, "原创静态锅炉示意：左侧进水，在容器底部受热，右上方输出蒸汽；小尺寸改为简化容器图标", "").paragraph(4)
+                .text("演示流体：")
                 .add(new RichObjectNode(id("water"), new RichObjectNode.Fluid(UiId.parse("minecraft:water")), 16, 16, 16, "水：160 L/t"))
                 .text(" 水：160 L/t").paragraph(8)
                 .extension(RULE, 1, 320, 1, 1, "分隔线", "").paragraph(6)
@@ -48,7 +52,7 @@ final class TrustedRichTooltipDemo {
                 .extension(BARS, 1, 320, 80, 80, "横向条形图：铜 40，铁 80，金 100 L/t", "")
                 .paragraph(8).extension(RULE, 1, 320, 1, 1, "分隔线", "").paragraph(6)
                 .text("物品与流体使用本地原生图标；图表由宿主显式注册。")
-                .paragraph(4).text("Markdown 表格见返回后的 Markdown 示例。滚轮或 Page Up / Page Down 滚动。");
+                .paragraph(4).text("Markdown 表格见返回后的 Markdown 示例。滚轮或 Page Up / Page Down 滚动。").paragraph(8);
         return RichMarkdownContent.builder(id("mixed"))
                 .markdown("# 可视化 × Markdown\n**同一份文档**里的文字、图标、图表与本机动画。\n> 示例数据，不代表真实配方。")
                 .node(new com.dishanhai.sh_better_ui.kernel.api.richtext.RichObjectNode(id("frames"),
@@ -69,6 +73,7 @@ final class TrustedRichTooltipDemo {
             var b = context.bounds();
             context.graphics().fill(b.x(), b.y(), b.x() + b.width(), b.y() + b.height(), 0xff62748b);
         });
+        registry.register(BOILER, 1, BoilerSchematicRenderer::render);
         registry.register(GRAPH, 1, TrustedRichTooltipDemo::graph);
         registry.register(BARS, 1, TrustedRichTooltipDemo::bars);
         return registry;

@@ -12,13 +12,14 @@ class TrustedRichTooltipDemoTest {
         var document = TrustedRichTooltipDemo.document();
         var objects = document.nodes().stream().filter(RichObjectNode.class::isInstance)
                 .map(RichObjectNode.class::cast).toList();
-        assertEquals(4, objects.stream().filter(node -> node.content() instanceof RichObjectNode.Item).count());
+        assertEquals(3, objects.stream().filter(node -> node.content() instanceof RichObjectNode.Item).count());
         assertEquals(1, objects.stream().filter(node -> node.content() instanceof RichObjectNode.Fluid).count());
         assertTrue(objects.stream().allMatch(node -> !node.altText().isBlank()));
         var extensions = document.nodes().stream().filter(RichExtensionNode.class::isInstance)
                 .map(RichExtensionNode.class::cast).toList();
-        assertEquals(4, extensions.size());
+        assertEquals(5, extensions.size());
         assertTrue(extensions.stream().allMatch(node -> node.payload().isEmpty() && !node.altText().isBlank()));
+        assertTrue(extensions.stream().anyMatch(node -> node.type().path().endsWith("boiler_schematic")));
         assertTrue(extensions.stream().anyMatch(node -> node.type().path().endsWith("graph")));
         assertTrue(extensions.stream().anyMatch(node -> node.type().path().endsWith("bars")));
         assertEquals(document.nodes().size(), document.nodes().stream().map(node -> node.id()).distinct().count());
