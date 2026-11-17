@@ -160,7 +160,7 @@ class OnlineMusicAccountViewTest {
 
     @Test void libraryGuestGoesToMatchingAuthorizationThenReturnsToItsGroup() throws Exception {
         var f=new Fixture();f.signedIn.clear();f.view.layout(new Host());call(f.view,"enterLibrary");
-        assertEquals("LIBRARY",read(f.view,"page").toString());assertEquals("library.login_required",read(f.view,"libraryState"));assertTrue(f.playlists.isEmpty());
+        assertEquals("LIBRARY",read(f.view,"page").toString());assertEquals("library.sign_in",read(f.view,"libraryState"));assertTrue(f.playlists.isEmpty());
         var groups=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl)read(f.view,"libraryGroups");
         ((java.util.function.IntConsumer)read(groups,"onChange")).accept(1);
         ((com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(f.view,"libraryLogin")).onPress();
