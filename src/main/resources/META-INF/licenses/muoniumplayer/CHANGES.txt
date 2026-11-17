@@ -51,3 +51,11 @@ Native island scheduling and About increment (2026-11):
   native shell variants and real MusicApi state projection.
 - About is an original SHBUI information page; no corresponding upstream page
   was found in the inspected reference revision. No MP identity/assets copied.
+
+Native page adaptation (2026-11):
+- Referenced MuoniumFavorites/FavoritesTree high-frequency settings and
+  MConfigHudScreen theme selection patterns. Implemented independent native
+  Favorites, loaded-mod metadata, Themes and Preferences pages using SHBUI
+  controls, registry, settings and loader APIs.
+- Favorites means local frequent settings, not an account's liked songs.
+  Optional OneConfig/MuoniumConfig implementation and assets are not bundled.

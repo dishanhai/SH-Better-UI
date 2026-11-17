@@ -95,6 +95,17 @@ public final class NativeMusicOverlay implements UIModule {
     }
     public static boolean available() { return active != null && active.context.scope().isOpen(); }
     public static void open(Screen parent) { if (available()) Minecraft.getInstance().setScreen(new SettingsScreen(active,parent)); }
+    /** Immutable current configuration, only while the scoped native module is active. */
+    public static java.util.Optional<MusicOverlaySettings> currentSettings() {
+        return available() ? java.util.Optional.of(active.settings()) : java.util.Optional.empty();
+    }
+    /** Applies an explicit UI edit against the latest value; does not silently save while unavailable. */
+    public static boolean updateSettings(java.util.function.UnaryOperator<MusicOverlaySettings> update) {
+        java.util.Objects.requireNonNull(update, "update");
+        if (!available()) return false;
+        active.save(java.util.Objects.requireNonNull(update.apply(active.settings()), "updated settings"));
+        return true;
+    }
     private static Component text(String key, Object... args) { return Component.translatable("sh_better_ui.music_overlay."+key,args); }
     private static final class SettingsScreen extends Screen {
         private final NativeMusicOverlay owner;
