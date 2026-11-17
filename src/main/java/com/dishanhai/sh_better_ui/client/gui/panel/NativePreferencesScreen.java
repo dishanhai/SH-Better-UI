@@ -62,11 +62,11 @@ public final class NativePreferencesScreen extends Screen {
         }
         contentWidth=panelW-40;contentLeft=panelX+20;bodyY=panelY+60;
         contentHeight=Math.max(ROW,Math.min(3*ROW,((panelH-104)/ROW)*ROW));
-        int visible=contentHeight/ROW;scroll.resize(contentHeight,3*ROW);
+        int visible=contentHeight/ROW;scroll.resize(contentHeight,4*ROW);
         for(int i=0;i<visible;i++){
             final int slot=i;
             preferenceRows.add(button(contentLeft+contentWidth-56,bodyY+i*ROW+9,46,Component.empty(),false,()->{
-                int row=firstRow+slot;if(row>=3)return;undo=draft;
+                int row=firstRow+slot;if(row>=4)return;if(row==3){minecraft.setScreen(new com.dishanhai.sh_better_ui.client.font.CustomFontScreen(this));return;}undo=draft;
                 draft=switch(row){
                     case 0->new DisplayPreferenceEdits(!draft.highContrast(),draft.reducedMotion(),draft.blur());
                     case 1->new DisplayPreferenceEdits(draft.highContrast(),!draft.reducedMotion(),draft.blur());
@@ -90,7 +90,8 @@ public final class NativePreferencesScreen extends Screen {
         boolean[] values={draft.highContrast(),draft.reducedMotion(),draft.blur()};
         String[] keys={"contrast","motion","blur"};
         for(int i=0;i<preferenceRows.size();i++){
-            int row=firstRow+i;var button=preferenceRows.get(i);button.visible=row<3;button.active=button.visible;
+            int row=firstRow+i;var button=preferenceRows.get(i);button.visible=row<4;button.active=button.visible;
+            if(row==3){button.setMessage(Component.translatable("sh_better_ui.custom_font.title"));button.displayText(Component.translatable("sh_better_ui.custom_font.open"));button.selected(false);button.setTooltip(null);continue;}
             if(button.visible){button.setMessage(toggle(keys[row],values[row]));button.displayText(MpTypography.text(Component.translatable(values[row]?"options.on":"options.off")));button.selected(values[row]);
                 button.setTooltip(net.minecraft.client.gui.components.Tooltip.create(toggle(keys[row],values[row])));}
         }
@@ -117,9 +118,9 @@ public final class NativePreferencesScreen extends Screen {
         var hint=label(stagedHost?"draft_hint":"preview_hint");
         g.drawString(font,net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(hint,panelW-40)),panelX+20,panelY+38,muted,false);
         if(width<260||height<200){super.render(g,mx,my,partial);return;}
-        String[] titles={"contrast","motion","blur"};String[] keys={"contrast_detail","motion_detail","blur_detail"};
+        String[] titles={"contrast","motion","blur","font"};String[] keys={"contrast_detail","motion_detail","blur_detail","font_detail"};
         for(int i=0;i<preferenceRows.size();i++){
-            int row=firstRow+i;if(row>=3)break;int y=bodyY+i*ROW;
+            int row=firstRow+i;if(row>=4)break;int y=bodyY+i*ROW;
             MpPageChrome.row(g,contentLeft,y,contentWidth,ROW-4,theme,prefs);
             g.drawString(font,label(titles[row]),contentLeft+12,y+8,ink,false);
             var lines=font.split(label(keys[row]),Math.max(12,contentWidth-92));

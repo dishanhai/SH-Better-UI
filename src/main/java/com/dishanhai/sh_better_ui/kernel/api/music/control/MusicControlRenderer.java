@@ -91,15 +91,23 @@ public final class MusicControlRenderer {
     private MusicControlRenderer(){}
     public static void seek(GuiGraphics g,Bounds b,double fraction,boolean engaged,boolean focused,
                             boolean enabled,int foreground,UiPreferences preferences){
+        seek(g,b,fraction,engaged?1f:0f,focused,enabled,foreground,preferences);
+    }
+    public static void seek(GuiGraphics g,Bounds b,double fraction,float engagement,boolean focused,
+                            boolean enabled,int foreground,UiPreferences preferences){
         if(b.width()<8||b.height()<1)return;
+        float engaged=Math.max(0,Math.min(1,engagement));
         float x=b.x()+4,w=b.width()-8,cy=b.y()+b.height()/2f;
         boolean contrast=preferences.highContrast();
         int ink=contrast?(foreground|0xff000000):foreground;
-        float thickness=engaged?3:2;
+        float thickness=2+engaged;
         RoundedCorners.draw(g,x,cy-thickness/2,w,thickness,thickness/2,0,0,alpha(ink,contrast?.5f:enabled?.24f:.12f));
         float fill=(float)(w*(Double.isFinite(fraction)?Math.max(0,Math.min(1,fraction)):0));
         if(fill>0)RoundedCorners.draw(g,x,cy-thickness/2,fill,thickness,thickness/2,0,0,alpha(ink,enabled?.8f:.3f));
-        if(engaged&&enabled)RoundedCorners.draw(g,x+fill-3.5f,cy-3.5f,7,7,3.5f,0,0,ink);
+        if(enabled&&engaged>0){
+            float radius=2+1.5f*engaged;
+            RoundedCorners.draw(g,x+fill-radius,cy-radius,radius*2,radius*2,radius,0,0,alpha(ink,engaged));
+        }
         if(focused)RoundedCorners.draw(g,b.x(),b.y()+2,b.width(),Math.max(1,b.height()-4),5,1,alpha(ink,.7f),0);
     }
     public static void transport(GuiGraphics g,Bounds b,MusicTransportControl.Glyph glyph,boolean hover,
