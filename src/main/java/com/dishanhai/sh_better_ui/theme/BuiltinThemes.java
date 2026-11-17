@@ -19,7 +19,7 @@ public final class BuiltinThemes {
     public static final String LIQUID_GLASS = "sh_better_ui:liquid_glass";
     public static final String HUD_GLASS = "sh_better_ui:hud_glass";
     public static final int DEFAULT_HUD_BLUR_RADIUS = 4;
-    static final Set<String> IDS = Set.of(DARK, LIGHT_ID, NETHER, END, LIQUID_GLASS, HUD_GLASS,
+    static final Set<String> IDS = Set.of(QqMusicThemes.AURORA, QqMusicThemes.VINYL, DARK, LIGHT_ID, NETHER, END, LIQUID_GLASS, HUD_GLASS,
             MuoniumThemes.VELVET_ROSE, MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK,
             MuoniumThemes.LIQUID_GLASS, MuoniumThemes.AURORA_FROST, MuoniumThemes.CRYSTAL,
             MuoniumThemes.OBSIDIAN_RED, MuoniumThemes.AURORA_TIDE, MuoniumThemes.SUNSET_EMBER, MuoniumThemes.SAGE_MIST, MuoniumThemes.PEARL_LIGHT, MuoniumThemes.XIANGYUN_QINGCHUAN, MuoniumThemes.CANGMING_YUYOU, MuoniumThemes.SHUANGWAN_XIUYAN, MuoniumThemes.MEIGUI_YUEBAI, MuoniumThemes.QINGLAN_YUNZHI);
@@ -44,7 +44,7 @@ public final class BuiltinThemes {
     }
 
     public static ThemeRegistry registry() {
-        return MuoniumThemes.registerInto(new ThemeRegistry()
+        return QqMusicThemes.registerInto(MuoniumThemes.registerInto(new ThemeRegistry()
                 .with(theme(DARK).build())
                 .with(theme(LIGHT_ID).parent(DARK).token(LIGHT, true)
                         .token(BACKGROUND, color(0xffe8eef5)).token(SURFACE, color(0xfff8fafc))
@@ -71,7 +71,7 @@ public final class BuiltinThemes {
                         .token(PRIMARY, color(0xffff9f87)).token(ACCENT, color(0xfffa846e)).build())
                 .with(theme(END).parent(DARK).token(BACKGROUND, color(0xff171329))
                         .token(SURFACE, color(0xff29243c)).token(SURFACE_ELEVATED, color(0xff3b3154))
-                        .token(PRIMARY, color(0xffd7baf8)).token(ACCENT, color(0xffc09df0)).build()));
+                        .token(PRIMARY, color(0xffd7baf8)).token(ACCENT, color(0xffc09df0)).build())));
     }
 
     private static Theme.Builder theme(String id) {
