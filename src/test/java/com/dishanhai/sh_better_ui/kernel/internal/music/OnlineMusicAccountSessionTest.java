@@ -116,6 +116,26 @@ class OnlineMusicAccountSessionTest {
             release.countDown(); assertTrue(old.isCancelled());
         } finally { release.countDown(); }
     }
+    @Test void guestLibraryReadsDoNotContactTheProvider() throws Exception {
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var source = new Source() {
+            @Override public OnlineMusicAccount account() { calls.incrementAndGet(); return new OnlineMusicAccount(id(), "42", "Guest"); }
+            @Override public List<OnlinePlaylist> playlists(int page, int limit) { calls.incrementAndGet(); return List.of(); }
+            @Override public List<OnlineTrack> liked(int page, int limit) { calls.incrementAndGet(); return List.of(); }
+        };
+        try (var session = new OnlinePlayerSession(List.of(source))) {
+            for (var request : List.of(session.account("test"), session.playlists("test", 1), session.liked("test", 1))) {
+                var denied = assertThrows(ExecutionException.class, () -> request.get(2, TimeUnit.SECONDS));
+                assertInstanceOf(OnlineMusicSource.LoginRequired.class, denied.getCause());
+            }
+            assertFalse(session.authenticated("test"));
+            assertEquals(0, calls.get());
+            session.credentials("test", "fixture");
+            assertTrue(session.playlists("test", 1).get(2, TimeUnit.SECONDS).isEmpty());
+            assertEquals(1, calls.get());
+        }
+    }
+
     @Test void serverExpiredCredentialsClearAccountAndSavedCopy() throws Exception {
         var store = new MusicCredentialStore(directory);
         var source = new Source() { @Override public OnlineMusicAccount account() throws Exception { throw new LoginRequired(); } };

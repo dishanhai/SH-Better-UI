@@ -776,7 +776,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         likeState = "";
         playlists = List.of(); libraryTracks = List.of(); libraryState = "library.loading";
         if(libraryProviders.isEmpty()){libraryState="view.unavailable";updateVisibility();return;}
-        if(!player.authenticated(librarySource)){libraryState="library.login_required";updateVisibility();return;}
+        if(!player.authenticated(librarySource)){libraryState=LibraryAccessFeedback.SIGN_IN;updateVisibility();return;}
         try{pendingPlaylists = player.playlists(librarySource, number);}catch(RuntimeException failure){libraryState=operationFailure(failure);}
         updateVisibility(); host.screen().setFocused(back);
     }
@@ -793,7 +793,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         likeState = "";
         libraryTracks = List.of(); libraryState = "library.loading";
         if(libraryProviders.isEmpty()){libraryState="view.unavailable";updateVisibility();return;}
-        if(!player.authenticated(librarySource)){libraryState="library.login_required";updateVisibility();return;}
+        if(!player.authenticated(librarySource)){libraryState=LibraryAccessFeedback.SIGN_IN;updateVisibility();return;}
         try{pendingLibrary = player.liked(librarySource, number);}catch(RuntimeException failure){libraryState=operationFailure(failure);}
         updateVisibility(); host.screen().setFocused(back);
     }
@@ -859,8 +859,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         libraryNext.active = ready && (libraryFirst + visibleRows < librarySize() || librarySize() == 20);
     }
     private static String operationFailure(Throwable failure) {
-        while (failure.getCause() != null) failure = failure.getCause();
-        return failure instanceof OnlineMusicSource.LoginRequired ? "library.login_required" : "library.failed";
+        return LibraryAccessFeedback.failure(failure);
     }
     private void pollOperations() {
         if (page == Page.SEARCH && suggestAfter != 0 && System.nanoTime() >= suggestAfter) {
@@ -1043,7 +1042,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(!libraryLogin.visible)text(ui, status, pager.x() + 30, pager.y() + 6, pager.width() - 60);
         if (librarySize() == 0||libraryLogin.visible) {
             OnlineMusicViewPaint.paragraph(ui,host.font(),label(libraryState),new Bounds(c.x()+8,c.y()+4,c.width()-16,Math.max(0,c.height()-(libraryLogin.visible?48:24))),UiTheme.current().text());
-            libraryLogin.setPreview(label("library.login_required").append("\n").append(sourceLabel(librarySource)));
+            libraryLogin.setPreview(label(LibraryAccessFeedback.signInHint(libraryState)).append("\n").append(sourceLabel(librarySource)));
         }
     }
     private void renderTransport(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
