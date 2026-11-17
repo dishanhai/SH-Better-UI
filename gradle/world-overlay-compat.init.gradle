@@ -1,0 +1,114 @@
+// Author: dishanhai
+// Builds a NeoForge 26 compatibility JAR by adding only the tested UUK world overlay API.
+gradle.projectsEvaluated {
+    def target = gradle.rootProject
+    if (target.name == null || !target.plugins.hasPlugin('java')) {
+        throw new GradleException('Run this init script against the SH-Better-UI NeoForge 26 project.')
+    }
+    def sourceRoot = target.projectDir.parentFile
+    def apiSource = new File(sourceRoot, 'src/kernel/java/com/dishanhai/sh_better_ui/kernel/api/render/WorldOverlayGeometry.java')
+    def testSource = new File(sourceRoot, 'src/kernelTest/java/com/dishanhai/sh_better_ui/kernel/api/render/WorldOverlayGeometryTest.java')
+    def apiClasses = target.layout.buildDirectory.dir('world-overlay-compat/classes')
+    def testClasses = target.layout.buildDirectory.dir('world-overlay-compat/test-classes')
+    def metadataFile = target.layout.buildDirectory.file('world-overlay-compat/metadata/sh_better_ui.world-overlay.properties')
+    def manifestFile = target.layout.buildDirectory.file('world-overlay-compat/metadata/baseline-manifest.mf')
+    def baseline = target.providers.gradleProperty('worldOverlayBaseline').map { target.file(it) }
+    def apiPath = 'com/dishanhai/sh_better_ui/kernel/api/render/WorldOverlayGeometry'
+    def auditPath = 'META-INF/sh_better_ui.world-overlay.properties'
+    def compiler = target.javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(21) }
+    def launcher = target.javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(21) }
+
+    def api = target.tasks.register('compileWorldOverlayApi', JavaCompile) {
+        source(apiSource)
+        classpath = target.files()
+        destinationDirectory = apiClasses
+        javaCompiler = compiler
+        options.release = 17
+        options.encoding = 'UTF-8'
+    }
+    def tests = target.tasks.register('compileWorldOverlayApiTest', JavaCompile) {
+        dependsOn(api)
+        source(testSource)
+        classpath = target.files(apiClasses)
+        destinationDirectory = testClasses
+        javaCompiler = compiler
+        options.release = 17
+        options.encoding = 'UTF-8'
+    }
+    def test = target.tasks.register('worldOverlayApiTest', JavaExec) {
+        dependsOn(tests)
+        classpath = target.files(apiClasses, testClasses)
+        mainClass = 'com.dishanhai.sh_better_ui.kernel.api.render.WorldOverlayGeometryTest'
+        javaLauncher = launcher
+    }
+    def validate = target.tasks.register('validateWorldOverlayBaseline') {
+        inputs.file(baseline)
+        outputs.files(metadataFile, manifestFile)
+        doLast {
+            if (!baseline.isPresent() || !baseline.get().isFile())
+                throw new GradleException('Set -PworldOverlayBaseline to an existing NeoForge 26.1.2 SH-Better-UI mod JAR.')
+            def input = baseline.get()
+            new java.util.zip.ZipFile(input).withCloseable { zip ->
+                def required = ['META-INF/neoforge.mods.toml', 'META-INF/MANIFEST.MF',
+                    'com/dishanhai/sh_better_ui/client/api/ControlsApi.class']
+                if (required.any { zip.getEntry(it) == null })
+                    throw new GradleException('Baseline is missing NeoForge mod metadata, manifest, or UUK controls.')
+                def entries = java.util.Collections.list(zip.entries())
+                if (entries.find { entry ->
+                    def name = entry.name.toUpperCase(java.util.Locale.ROOT)
+                    name.startsWith('META-INF/') && (name.endsWith('.SF') || name.endsWith('.RSA') ||
+                            name.endsWith('.DSA') || name.endsWith('.EC') || name.startsWith('META-INF/SIG-'))
+                }) throw new GradleException('Signed baseline JARs are not supported; no signatures were removed.')
+                def descriptor = zip.getInputStream(zip.getEntry('META-INF/neoforge.mods.toml')).getText('UTF-8')
+                if (!descriptor.contains('sh_better_ui') || !descriptor.contains('26.1.2'))
+                    throw new GradleException('Baseline is not an identified SH-Better-UI NeoForge 26.1.2 mod JAR.')
+                def manifest = manifestFile.get().asFile
+                manifest.parentFile.mkdirs()
+                manifest.bytes = zip.getInputStream(zip.getEntry('META-INF/MANIFEST.MF')).bytes
+            }
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            input.withInputStream { stream ->
+                byte[] buffer = new byte[8192]
+                int n
+                while ((n = stream.read(buffer)) != -1) digest.update(buffer, 0, n)
+            }
+            def meta = metadataFile.get().asFile
+            meta.parentFile.mkdirs()
+            meta.text = 'baseline.sha256=' + digest.digest().encodeHex().toString() + '\n' +
+                    'api=com.dishanhai.sh_better_ui.kernel.api.render.WorldOverlayGeometry\n'
+        }
+    }
+    target.tasks.register('worldOverlayCompatibilityJar', Jar) {
+        group = 'build'
+        description = 'Tests and adds the UUK world overlay API to a verified NeoForge 26.1.2 baseline.'
+        dependsOn(test, validate)
+        archiveFileName = "sh_better_ui-neoforge-26.1.2-${target.version}-world-overlay.jar"
+        destinationDirectory = target.layout.buildDirectory.dir('world-overlay-compat')
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+        manifest.from(manifestFile)
+        from({ target.zipTree(baseline.get()) }) {
+            exclude('META-INF/MANIFEST.MF', auditPath, apiPath + '.class', apiPath + '$*.class')
+        }
+        from(apiClasses) { include(apiPath + '.class', apiPath + '$*.class') }
+        from(metadataFile) { into('META-INF'); rename { 'sh_better_ui.world-overlay.properties' } }
+        doLast {
+            // Refuse an archive if packaging altered or dropped any non-API baseline file.
+            new java.util.zip.ZipFile(baseline.get()).withCloseable { oldZip ->
+                new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { newZip ->
+                    java.util.Collections.list(oldZip.entries()).findAll { !it.directory }.each { entry ->
+                        def name = entry.name
+                        if (name == auditPath || name == apiPath + '.class' ||
+                                (name.startsWith(apiPath + '$') && name.endsWith('.class'))) return
+                        def replacement = newZip.getEntry(name)
+                        if (replacement == null || !java.util.Arrays.equals(
+                                oldZip.getInputStream(entry).bytes, newZip.getInputStream(replacement).bytes))
+                            throw new GradleException('Compatibility JAR changed baseline entry: ' + name)
+                    }
+                    if (newZip.getEntry(apiPath + '.class') == null || newZip.getEntry(auditPath) == null)
+                        throw new GradleException('Compatibility JAR is missing the API or baseline audit metadata.')
+                }
+            }
+        }
+    }
+}
+
