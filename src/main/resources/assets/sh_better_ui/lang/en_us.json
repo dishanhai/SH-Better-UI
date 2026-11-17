@@ -2631,5 +2631,8 @@
   "sh_better_ui.custom_font.confirm_file": "File selected. Click Import to confirm use.",
   "sh_better_ui.native_preferences.font": "Custom font",
   "sh_better_ui.native_preferences.font_detail": "Import local TTF or get open fonts (applied separately).",
-  "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings."
+  "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings.",
+  "sh_better_ui.online_music.view.library": "Library",
+  "sh_better_ui.online_music.refresh.library": "Your library",
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source"
 }

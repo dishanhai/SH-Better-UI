@@ -8,15 +8,32 @@ import java.util.OptionalLong;
 /** Renderer-independent, immutable-input lyric timing and interaction state. No synthesized word timing. */
 public final class MusicLyricsModel {
     public static final int MAX_LINES=4096, MAX_LINE_CHARACTERS=4096;
-    public record Line(String text,long startMillis,long endMillis) {
+    public record Word(String text,long startMillis,long endMillis) {
+        public Word {Objects.requireNonNull(text);if(text.length()>MAX_LINE_CHARACTERS||startMillis<0||endMillis<startMillis)throw new IllegalArgumentException("Invalid lyric word");}
+    }
+    public record Line(String text,long startMillis,long endMillis,List<Word> words,String translation,String speaker) {
         public Line {
-            Objects.requireNonNull(text);
-            if(text.length()>MAX_LINE_CHARACTERS||startMillis< -1||endMillis< -1
+            Objects.requireNonNull(text);Objects.requireNonNull(translation);Objects.requireNonNull(speaker);
+            words=List.copyOf(words);
+            if(text.length()>MAX_LINE_CHARACTERS||translation.length()>MAX_LINE_CHARACTERS||speaker.length()>MAX_LINE_CHARACTERS||words.size()>MAX_LINE_CHARACTERS||startMillis< -1||endMillis< -1
                     ||(startMillis>=0&&endMillis>=0&&endMillis<startMillis))
                 throw new IllegalArgumentException("Invalid lyric line");
         }
+        public Line(String text,long startMillis,long endMillis,List<Word> words){this(text,startMillis,endMillis,words,"","");}
+        public Line(String text,long startMillis,long endMillis){this(text,startMillis,endMillis,List.of());}
         public Line(String text,long startMillis){this(text,startMillis,-1);}
         public static Line unsynchronized(String text){return new Line(text,-1,-1);}
+        /** A synthetic whole-line LRC token is not word timing. Mismatched/ambiguous tokens stay line-level. */
+        public boolean hasWordTiming() {
+            if(words.size()<2||startMillis<0)return false;
+            long previous=startMillis;var joined=new StringBuilder();
+            for(var word:words) {
+                if(word.text().isEmpty()||word.startMillis()<previous||word.endMillis()<=word.startMillis()
+                        ||(endMillis>=0&&word.endMillis()>endMillis))return false;
+                previous=word.endMillis();joined.append(word.text());if(joined.length()>text.length())return false;
+            }
+            return joined.toString().equals(text);
+        }
     }
     private List<Line> lines=List.of();
     private Object key;
@@ -27,7 +44,7 @@ public final class MusicLyricsModel {
         Objects.requireNonNull(lines);
         if(lines.size()>MAX_LINES)throw new IllegalArgumentException("Too many lyric lines");
         var copy=List.copyOf(lines);
-        long characters=0;for(var line:copy)characters+=line.text().length();
+        long characters=0;for(var line:copy)characters+=line.text().length()+line.translation().length()+line.speaker().length()+line.words().stream().mapToLong(w->w.text().length()).sum();
         if(characters>1_048_576)throw new IllegalArgumentException("Lyric document too large");
         if(Objects.equals(this.key,key)&&this.lines.equals(copy))return;
         this.key=key;this.lines=copy;focus=-1;browsing=false;position=-1;seekable=false;
@@ -38,12 +55,18 @@ public final class MusicLyricsModel {
     public List<Line> lines(){return lines;}
     public boolean synchronizedLyrics(){return synchronizedLyrics;}
     public void playback(long positionMillis,boolean seekable){position=Math.max(-1,positionMillis);this.seekable=seekable;}
+    public long positionMillis(){return position;}
     public int activeIndex(){
         if(!synchronizedLyrics)return -1;
         int low=0,high=lines.size()-1,result=-1;
         while(low<=high){int mid=(low+high)>>>1;if(lines.get(mid).startMillis()<=position){result=mid;low=mid+1;}else high=mid-1;}
-        if(result>=0&&lines.get(result).endMillis()>=0&&position>=lines.get(result).endMillis())return -1;
-        return result;
+        // Prefer the most recently started *still active* line when duet intervals overlap.
+        for(int index=result;index>=0;index--) {
+            var line=lines.get(index);long end=line.endMillis();
+            if(end<0)end=index+1<lines.size()?lines.get(index+1).startMillis():Long.MAX_VALUE;
+            if(position<end&&!line.text().isBlank())return index;
+        }
+        return -1;
     }
     public boolean browsing(){return browsing;}
     public void browse(){browsing=true;}
