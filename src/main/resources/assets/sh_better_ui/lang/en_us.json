@@ -2607,5 +2607,7 @@
   "sh_better_ui.music.lyrics.unsynchronized": "Untimed lyrics. Scroll to read; seeking is unavailable.",
   "sh_better_ui.online_music.stage.toggle_lyrics": "Show lyrics or artwork",
   "sh_better_ui.online_music.stage.now_playing": "Now Playing",
-  "sh_better_ui.online_music.stage.volume": "Volume: %s%%"
+  "sh_better_ui.online_music.stage.volume": "Volume: %s%%",
+  "sh_better_ui.theme.dynamic.qq_music_aurora": "QQ Music · Aurora",
+  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ Music · Vinyl"
 }

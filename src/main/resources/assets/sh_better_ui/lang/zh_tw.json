@@ -1740,5 +1740,7 @@
   "sh_better_ui.music.lyrics.unsynchronized": "無時間軸歌詞。可捲動閱讀，不支援歌詞跳轉。",
   "sh_better_ui.online_music.stage.toggle_lyrics": "切換歌詞與封面",
   "sh_better_ui.online_music.stage.now_playing": "正在播放",
-  "sh_better_ui.online_music.stage.volume": "音量：%s%%"
+  "sh_better_ui.online_music.stage.volume": "音量：%s%%",
+  "sh_better_ui.theme.dynamic.qq_music_aurora": "QQ 音樂 · 流光",
+  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ 音樂 · 黑膠"
 }
