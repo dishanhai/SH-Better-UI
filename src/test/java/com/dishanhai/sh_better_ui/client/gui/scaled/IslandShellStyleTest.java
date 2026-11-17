@@ -16,6 +16,14 @@ class IslandShellStyleTest {
         assertEquals(450, IslandShellStyle.MUSIC_CAPSULE.hoverDelayMs());
         assertEquals(0, IslandShellStyle.CLASSIC.hoverDelayMs());
     }
+    @Test void musicCapsuleIsBlackWithQuietCompactEdgesAndReadableContrast() {
+        var compact = IslandShellStyle.MUSIC_CAPSULE.shell(10,28,false,false);
+        assertEquals(14,compact.radius());
+        assertEquals(0,compact.border());
+        assertEquals(0xFF000000,compact.fill());
+        assertEquals(1,IslandShellStyle.MUSIC_CAPSULE.shell(10,28,true,false).border());
+        assertEquals(2,IslandShellStyle.MUSIC_CAPSULE.shell(10,28,false,true).border());
+    }
     @Test void tinyHostRadiiStayWithinSurface() {
         for (var s : IslandShellStyle.values()) {
             assertTrue(s.shell(10, 6, false, false).radius() <= 3);

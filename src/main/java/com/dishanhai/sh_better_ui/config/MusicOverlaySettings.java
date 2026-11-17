@@ -10,7 +10,7 @@ import java.util.function.UnaryOperator;
 public record MusicOverlaySettings(boolean hudEnabled, boolean islandEnabled, boolean expanded, float x, float y, float islandX, float islandY, float hudScale, float islandScale, boolean ambientEnabled, boolean taskNotices, String islandStyle) {
     public MusicOverlaySettings { if (islandStyle == null) islandStyle = "classic"; }
     public MusicOverlaySettings withIslandStyle(String style) { return new MusicOverlaySettings(hudEnabled,islandEnabled,expanded,x,y,islandX,islandY,hudScale,islandScale,ambientEnabled,taskNotices,style); }
-    public static final MusicOverlaySettings DEFAULT = new MusicOverlaySettings(false, false, false, .5f, .75f, .5f, .05f, 1f, 1f, false, false, "classic");
+    public static final MusicOverlaySettings DEFAULT = new MusicOverlaySettings(false, false, false, .5f, .75f, .5f, .05f, 1f, 1f, false, false, "music_capsule");
     public static final ConfigKey<MusicOverlaySettings> KEY = new ConfigKey<>(
             UiId.parse("sh_better_ui:music_overlay"), MusicOverlaySettings.class, DEFAULT,
             Set.of(ConfigLayer.USER_GLOBAL), ConfigKey.Mutability.RUNTIME, ConfigKey.Persistence.USER_GLOBAL,
