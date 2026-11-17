@@ -14,6 +14,15 @@ class MarkdownApiTest {
     private final MarkdownApi markdown = new MarkdownApi();
 
     @Test
+    void inlineLayoutDoesNotConsumeBlockMarkersOrUnequalCodeDelimiters() {
+        assertEquals("# heading", markdown.parseInline("# heading").getString());
+        assertEquals("- item", markdown.parseInline("- item").getString());
+        assertEquals("`one``", markdown.parseInline("`one``").getString());
+        assertEquals("``one```", markdown.parseInline("``one```").getString());
+        assertEquals("one", markdown.parseInline("``one``").getString());
+    }
+
+    @Test
     void rendersBlocksAndInlineStylesWithNativeComponents() {
         var result = markdown.parse("# 标题 #\r\n- **粗体 _嵌套_** 和 ~~删除~~\r\n"
                 + "> ***强调*** 和 `**原样**`\r\n```java\r\n**代码**\r\n```");
