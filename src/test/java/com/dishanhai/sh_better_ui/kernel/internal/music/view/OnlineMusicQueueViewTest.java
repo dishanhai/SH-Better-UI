@@ -13,14 +13,16 @@ class OnlineMusicQueueViewTest {
     private static class Fixture {
         OnlineTrack playing;
         List<String> providers=List.of("netease","qq");
-        int paused,closed;
+        int paused,closed,seeks;
+        OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
+            case "seek" -> {seeks++;yield null;}
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
             case "sources" -> providers;
             case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
-            case "snapshot" -> new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
+            case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
             default -> null;
         });
         final OnlineMusicViewImpl view = new OnlineMusicViewImpl(player);
@@ -135,6 +137,27 @@ class OnlineMusicQueueViewTest {
         assertTrue(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
         call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A),0);
         assertFalse(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
+    }
+
+    @Test void realSnapshotSynchronizationPreservesBrowseAndRejectsLateSeekAfterFailure() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var timeline=new LyricTimeline(List.of(new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("first","",0,1000,List.of(),""),new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("second","",1000,2000,List.of(),"")));
+        var lyrics=(MusicLyricsView)field(f.view,"stageLyrics");
+        for(var state:List.of(OnlineMusicPlayer.State.PLAYING,OnlineMusicPlayer.State.PAUSED)) {
+            f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,state,500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+            call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+            assertEquals(0,lyrics.model().activeIndex());assertEquals(500,lyrics.model().positionMillis());lyrics.model().browse();
+        }
+        assertTrue(lyrics.browsing());
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.PLAYING,1500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+        assertEquals(1,lyrics.model().activeIndex());assertTrue(lyrics.browsing());lyrics.follow();assertFalse(lyrics.browsing());
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.FAILED,1500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.AUDIO,false);
+        ((java.util.function.LongConsumer)field(lyrics,"seek")).accept(1000);assertEquals(0,f.seeks);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);assertEquals(-1,lyrics.model().activeIndex());
+        lyrics.model().browse();f.snapshotOverride=new OnlineMusicPlayer.Snapshot(B,OnlineMusicPlayer.State.PLAYING,500,2000,OnlineMusicPlayer.LyricsState.EMPTY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+        assertTrue(lyrics.model().lines().isEmpty());assertFalse(lyrics.browsing());assertEquals(-1,lyrics.model().activeIndex());
     }
 
     @Test void compactResultsQueueAndMiniExposeRealArtistMetadata() throws Exception {
