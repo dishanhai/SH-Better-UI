@@ -69,6 +69,17 @@ public final class SettingsApi {
         return richDocumentScreen(parent, net.minecraft.network.chat.Component.translatable("sh_better_ui.native.rich_document.title"), document);
     }
 
+    /** Local authoring entry. The initial document is caller-owned and no paths are written. */
+    public Screen richDocumentEditor(@Nullable Screen parent) {
+        var document = new com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument(java.util.List.of(
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.TextRun(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:editor/text"),
+                        net.minecraft.network.chat.Component.translatable("sh_better_ui.native.rich_document.example_text").getString(),
+                        com.dishanhai.sh_better_ui.kernel.api.richtext.RichStyle.EMPTY)));
+        return ShBetterUiApi.richDocuments().editor(parent,
+                net.minecraft.network.chat.Component.translatable("sh_better_ui.rich_text_editor.title"), document);
+    }
+
     public Screen markdownScreen(@Nullable Screen parent) {
         return new com.dishanhai.sh_better_ui.client.gui.panel.MarkdownExampleScreen(parent);
     }

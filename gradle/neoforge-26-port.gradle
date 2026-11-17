@@ -55,6 +55,7 @@ def sharedSources = [
         'client/api/preview/DeveloperPreviewProvider.java',
         'client/api/preview/PreviewRegistry.java',
         'kernel/api/config/ConfigPage.java',
+        'kernel/api/richtext/RichDocumentCodec.java',
         'config/ControlFeedbackSettings.java',
         'config/LiveSurfaceConfig.java',
         'config/TabScrollSettings.java',
@@ -82,6 +83,8 @@ def sharedSources = [
         'client/gui/panel/LatticeLoaderPreview.java',
         'client/gui/panel/PhotonKnotPreview.java',
         'client/gui/panel/ConfigPageDraft.java',
+        'client/gui/panel/RichTextEditorDocument.java',
+        'client/gui/panel/RichTextEditorProperties.java',
         'client/gui/panel/ConfigPageScreen.java',
         'client/gui/panel/FolderFloatPreview.java',
         'client/gui/panel/CardNavPreview.java',
@@ -238,6 +241,8 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
         include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
         include("${packagePath}/client/gui/panel/NativeRichDocumentScreenTest.java")
+        include("${packagePath}/client/gui/panel/NativeRichDocumentEditorTest.java")
+        include("${packagePath}/client/gui/panel/RichTextEditorDocumentTest.java")
         include("${packagePath}/kernel/internal/NativeMusicSettingsScreenTest.java")
         include("${packagePath}/kernel/internal/live/SurfaceTransitionTest.java")
         include("${packagePath}/client/api/NativeStateApiTest.java")
@@ -324,8 +329,11 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/InteractionApi.class",
                     "${packagePath}/client/api/SearchApi.class",
                     "${packagePath}/client/api/RichDocumentsApi.class",
+                    "${packagePath}/kernel/api/richtext/RichDocumentCodec.class",
                     "${packagePath}/client/visual/NativeRichDocumentView.class",
                     "${packagePath}/client/gui/panel/NativeRichDocumentScreen.class",
+                    "${packagePath}/client/gui/panel/NativeRichDocumentEditorScreen.class",
+                    "${packagePath}/client/gui/panel/RichTextEditorDocument.class",
                     "${packagePath}/client/gui/panel/NativeMusicSettingsScreen.class",
                     "${packagePath}/kernel/internal/NativeMusicActivity.class",
                     "${packagePath}/kernel/internal/NativeMusicArtwork.class",

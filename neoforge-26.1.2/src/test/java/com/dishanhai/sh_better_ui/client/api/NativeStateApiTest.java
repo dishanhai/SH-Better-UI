@@ -10,6 +10,23 @@ import static org.junit.jupiter.api.Assertions.*;
 /** Consumer-facing contracts, without booting a screen or relying on renderer compatibility. */
 class NativeStateApiTest {
     @Test
+    void richDocumentEditorKeepsCallerDataWithoutOpeningScreen() throws Exception {
+        try (var fixture = NativeTestClient.install()) {
+            var original = new com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument(List.of(
+                    new com.dishanhai.sh_better_ui.kernel.api.richtext.TextRun(
+                            com.dishanhai.sh_better_ui.kernel.api.UiId.parse("test:body"), "Caller content")));
+            var first = ShBetterUiApi.richDocuments().editor(null,
+                    net.minecraft.network.chat.Component.literal("Editor"), original);
+            var second = ShBetterUiApi.richDocuments().editor(null,
+                    net.minecraft.network.chat.Component.literal("Other editor"), original);
+            assertNotSame(first, second);
+            assertEquals(original, first.document());
+            assertEquals(original, second.document());
+            assertNotNull(ShBetterUiApi.settings().richDocumentEditor(null));
+        }
+    }
+
+    @Test
     void publicGroupsAreStableButMotionStateBelongsToEachView() {
         assertSame(ShBetterUiApi.motion(), ShBetterUiApi.motion());
         var stops = List.of(new UiKeyframeAnimation.Keyframe(0, 0),

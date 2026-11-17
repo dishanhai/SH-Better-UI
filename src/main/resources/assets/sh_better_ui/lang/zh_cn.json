@@ -2652,5 +2652,18 @@
   "sh_better_ui.native.music_settings.notices": "任务提示：%s",
   "sh_better_ui.native.music_settings.notice_hint": "任务提示需要启用音乐岛，并遵守全局通知设置。",
   "sh_better_ui.native.music_settings.player": "打开音乐播放器",
-  "sh_better_ui.native.music_settings.activity": "管理实时活动"
+  "sh_better_ui.native.music_settings.activity": "管理实时活动",
+  "sh_better_ui.rich_text_editor.native.tab.JSON": "JSON",
+  "sh_better_ui.rich_text_editor.native.export": "将已应用的文档导出为 JSON",
+  "sh_better_ui.rich_text_editor.native.import": "导入 JSON（可撤销）",
+  "sh_better_ui.rich_text_editor.native.copy": "复制导出的 JSON",
+  "sh_better_ui.rich_text_editor.native.paste": "粘贴剪贴板内容到 JSON 草稿",
+  "sh_better_ui.rich_text_editor.native.discardJson": "放弃 JSON 草稿",
+  "sh_better_ui.rich_text_editor.native.read_only": "此节点只读，导出时完整保留。预览可能显示替代文本，但不会将其写回文档。",
+  "sh_better_ui.rich_text_editor.native.discard_details": "属性和 JSON 草稿也会丢失。如需保留文档，请先导出并复制 JSON。",
+  "sh_better_ui.rich_text_editor.native.refresh": "刷新预览",
+  "sh_better_ui.rich_text_editor.native.hint": "预览显示已应用的更改。请导出并复制 JSON 以保留文档。",
+  "sh_better_ui.rich_text_editor.native.ready": "就绪。请导出并复制 JSON 以保留文档；不会写入文件。",
+  "sh_better_ui.rich_text_editor.native.error": "无法应用：%s",
+  "sh_better_ui.rich_text_editor.native.preview_error": "无法预览：%s"
 }

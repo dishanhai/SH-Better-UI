@@ -1785,5 +1785,18 @@
   "sh_better_ui.native.music_settings.notices": "工作提示：%s",
   "sh_better_ui.native.music_settings.notice_hint": "工作提示需啟用音樂島，並遵循全域通知設定。",
   "sh_better_ui.native.music_settings.player": "開啟音樂播放器",
-  "sh_better_ui.native.music_settings.activity": "管理即時活動"
+  "sh_better_ui.native.music_settings.activity": "管理即時活動",
+  "sh_better_ui.rich_text_editor.native.tab.JSON": "JSON",
+  "sh_better_ui.rich_text_editor.native.export": "將已套用的文件匯出為 JSON",
+  "sh_better_ui.rich_text_editor.native.import": "匯入 JSON（可復原）",
+  "sh_better_ui.rich_text_editor.native.copy": "複製匯出的 JSON",
+  "sh_better_ui.rich_text_editor.native.paste": "貼上剪貼簿內容至 JSON 草稿",
+  "sh_better_ui.rich_text_editor.native.discardJson": "捨棄 JSON 草稿",
+  "sh_better_ui.rich_text_editor.native.read_only": "此節點唯讀，匯出時完整保留。預覽可能顯示替代文字，但不會將其寫回文件。",
+  "sh_better_ui.rich_text_editor.native.discard_details": "屬性及 JSON 草稿也會遺失。如需保留文件，請先匯出並複製 JSON。",
+  "sh_better_ui.rich_text_editor.native.refresh": "重新整理預覽",
+  "sh_better_ui.rich_text_editor.native.hint": "預覽顯示已套用的變更。請匯出並複製 JSON 以保留文件。",
+  "sh_better_ui.rich_text_editor.native.ready": "就緒。請匯出並複製 JSON 以保留文件；不會寫入檔案。",
+  "sh_better_ui.rich_text_editor.native.error": "無法套用：%s",
+  "sh_better_ui.rich_text_editor.native.preview_error": "無法預覽：%s"
 }

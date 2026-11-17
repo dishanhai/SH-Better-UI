@@ -243,6 +243,8 @@ public final class ControlPanelScreen extends Screen {
                 refreshRows.add(() -> musicSettings.active = ShBetterUiApi.settings().musicActivityAvailable());
                 toolButton(Component.translatable("sh_better_ui.native.rich_document.title"), GraphicIcon.CODE,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().richDocumentExample(this)));
+                toolButton(Component.translatable("sh_better_ui.rich_text_editor.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().richDocumentEditor(this)));
                 toolButton(Component.translatable("sh_better_ui.native.markdown.title"), GraphicIcon.CODE,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().markdownScreen(this)));
             }
