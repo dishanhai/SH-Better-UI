@@ -81,6 +81,10 @@ public final class MarkdownExampleScreen extends Screen {
         setInitialFocus(back);
     }
 
+    // NeoForge 1.21 calls this inside super.render; our background is already drawn before the text.
+    // Keep the overload without @Override for Forge 1.20 compatibility.
+    public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {}
+
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         graphics.fill(0, 0, width, height, 0xee151b25);
         graphics.drawCenteredString(font, title, width / 2, 10, 0xffe7edf7);

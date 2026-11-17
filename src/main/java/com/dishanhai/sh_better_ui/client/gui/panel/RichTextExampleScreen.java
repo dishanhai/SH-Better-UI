@@ -22,6 +22,8 @@ import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument;
+import com.dishanhai.sh_better_ui.kernel.api.richtext.RichObjectNode;
+import com.dishanhai.sh_better_ui.kernel.api.richtext.RichExtensionNode;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.TextRun;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -49,6 +51,7 @@ public final class RichTextExampleScreen extends Screen {
     private final ModuleContext module;
     private final Screen parent;
     private final RichDocument imported;
+    private final boolean trustedDemo;
     private final GuiEventListener returnFocus;
     private ScopeHandle tree;
     private VisualLayoutBinding binding;
@@ -74,10 +77,19 @@ public final class RichTextExampleScreen extends Screen {
     }
 
     public RichTextExampleScreen(ModuleContext module, Screen parent, RichDocument imported) {
+        this(module, parent, imported, false);
+    }
+
+    public static RichTextExampleScreen trustedDemo(ModuleContext module, Screen parent) {
+        return new RichTextExampleScreen(module, parent, TrustedRichTooltipDemo.document(), true);
+    }
+
+    private RichTextExampleScreen(ModuleContext module, Screen parent, RichDocument imported, boolean trustedDemo) {
         super(label("title"));
         this.module = module;
         this.parent = parent;
         this.imported = imported;
+        this.trustedDemo = trustedDemo;
         returnFocus = parent == null ? null : parent.getFocused();
     }
 
@@ -88,6 +100,7 @@ public final class RichTextExampleScreen extends Screen {
             var layout = ShBetterUiApi.layout().create(viewport());
             content = layout.node("rich_text", AlignmentFrame.box(new Rect(0, 0, 0, 0)));
             view = RichTextView.attach(module, tree, content);
+            if (trustedDemo) view.bindExtensions(TrustedRichTooltipDemo.attach(tree));
             view.interaction().onButton(RichTextWorkbench.PRESS, () -> activations++);
             view.interaction().onSlider(RichTextWorkbench.LEVEL, value -> level = value);
             view.interaction().draggable(RichTextWorkbench.MOVABLE);
@@ -104,10 +117,14 @@ public final class RichTextExampleScreen extends Screen {
                 .build());
         if (imported != null) {
             inline = addWidget(new RichTextWorkbench.Viewport(this, view, this::scroll, this::scrollPage));
+            if (trustedDemo) inline.setMessage(RichTextComponents.toComponent(imported));
             setInitialFocus(back);
             return;
         }
         if (!advanced) {
+            if (width >= 210) addRenderableWidget(Button.builder(Component.literal("图表 / 图标"), button ->
+                    minecraft.setScreen(trustedDemo(module, this)))
+                    .bounds(6, 6, 88, 20).build());
             addRenderableWidget(Button.builder(Component.literal("Markdown"), button ->
                     minecraft.setScreen(new MarkdownExampleScreen(this)))
                     .bounds(Math.max(0, width - 94), 6, Math.min(88, width), 20).build());
@@ -244,12 +261,13 @@ public final class RichTextExampleScreen extends Screen {
     public void renderBackground(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {}
 
     @Override public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
-        backdrop.render(this, graphics, width, height, UiPreferences.configured());
+        if (trustedDemo) graphics.fill(0, 0, width, height, 0xff111923);
+        else backdrop.render(this, graphics, width, height, UiPreferences.configured());
         if (advanced && effectMode != 0) {
             graphics.fillGradient(0, ADVANCED_TOP, width, Math.max(ADVANCED_TOP, height - 46), 0xff23496a, 0xff392940);
         }
         var viewport = viewport();
-        if (font.width(title) <= width - 2 * MARGIN && viewport.height() >= font.lineHeight + MARGIN) {
+        if (font.width(title) <= width - ((!advanced && imported == null) ? 212 : 2 * MARGIN) && viewport.height() >= font.lineHeight + MARGIN) {
             graphics.drawCenteredString(font, title, width / 2, MARGIN, DarkModeTheme.textColor());
         }
         // LoadingOverlay renders its backdrop directly, outside the native Screen render event.
@@ -273,8 +291,10 @@ public final class RichTextExampleScreen extends Screen {
         if (!behindOverlay && view != null && advanced) {
             renderInlineTooltip(graphics, mouseX, mouseY);
         } else if (!behindOverlay && view != null) {
-            view.hitTest(mouseX, mouseY).filter(hit -> hit.node() instanceof ImageNode).ifPresent(hit -> {
-                var alt = ((ImageNode) hit.node()).altText();
+            view.hitTest(mouseX, mouseY).ifPresent(hit -> {
+                String alt = hit.node() instanceof ImageNode image ? image.altText()
+                        : hit.node() instanceof RichObjectNode object ? object.altText()
+                        : hit.node() instanceof RichExtensionNode extension ? extension.altText() : "";
                 if (!alt.isEmpty()) graphics.renderTooltip(font, Component.literal(alt), mouseX, mouseY);
             });
         }
