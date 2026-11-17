@@ -8,6 +8,86 @@ import net.minecraft.client.gui.GuiGraphics;
 
 /** Reusable immediate renderer, independent of widget, player, provider and global theme ownership. */
 public final class MusicControlRenderer {
+    /** Original outline vocabulary. These are geometry, never atlas sprites or font characters. */
+    public enum Icon { SEARCH, BACK, FAVORITE, USER, HOME, LIBRARY, HISTORY, SETTINGS, PLAYLIST, ADD, CLOSE, REMOVE, REFRESH }
+    /** Draws only the icon; its owner supplies hover/focus chrome and the full accessible label. */
+    public static void icon(GuiGraphics g, Bounds b, Icon icon, boolean pressed, boolean enabled,
+                            int foreground, UiPreferences preferences) {
+        if(icon==null||b.width()<1||b.height()<1)return;
+        float size=Math.min(20,Math.min(b.width(),b.height())*.72f);
+        if(pressed&&!preferences.reducedMotion())size*=.96f;
+        int ink=preferences.highContrast()?foreground|0xff000000:foreground;
+        if(!enabled)ink=alpha(ink,.35f);
+        float cx=b.x()+b.width()/2f,cy=b.y()+b.height()/2f;
+        g.pose().pushPose();
+        g.pose().translate(cx-size/2,cy-size/2,0);g.pose().scale(size/20,size/20,1);
+        float t=preferences.highContrast()?1.9f:1.5f;
+        switch(icon){
+            case SEARCH -> {ring(g,7.8f,7.8f,5.5f,t,ink);line(g,12,12,17.4f,17.4f,t,ink);}
+            case BACK -> {line(g,12.5f,3.5f,6,10,t,ink);line(g,6,10,12.5f,16.5f,t,ink);}
+            case CLOSE -> {line(g,4,4,16,16,t,ink);line(g,4,16,16,4,t,ink);}
+            case ADD -> {line(g,3,10,17,10,t,ink);line(g,10,3,10,17,t,ink);}
+            case REMOVE -> line(g,3,10,17,10,t,ink);
+            case USER -> {ring(g,10,6,3.3f,t,ink);curve(g,3,17,3,10.5f,17,10.5f,17,17,t,ink);}
+            case FAVORITE -> {
+                curve(g,10,17,6,14,2,11,2,6.5f,t,ink);
+                curve(g,2,6.5f,2,1.8f,7.3f,1.8f,10,6,t,ink);
+                curve(g,10,6,12.7f,1.8f,18,1.8f,18,6.5f,t,ink);
+                curve(g,18,6.5f,18,11,14,14,10,17,t,ink);
+            }
+            case HOME -> {
+                line(g,2,9,10,2,t,ink);line(g,10,2,18,9,t,ink);
+                line(g,4,8,4,17,t,ink);line(g,4,17,8,17,t,ink);line(g,8,17,8,12,t,ink);
+                line(g,8,12,12,12,t,ink);line(g,12,12,12,17,t,ink);line(g,12,17,16,17,t,ink);line(g,16,17,16,8,t,ink);
+            }
+            case LIBRARY -> {
+                RoundedCorners.draw(g,2.5f,3,4,14,1, t,ink,0);
+                RoundedCorners.draw(g,8.5f,3,4,14,1,t,ink,0);
+                line(g,15,3.5f,18,16.5f,t,ink);
+            }
+            case REFRESH -> {
+                // Open sweep and tangent arrowhead distinguish refresh from a clock/history symbol.
+                float previousX=15.5f,previousY=5.5f;
+                for(int i=1;i<=24;i++){
+                    double angle=Math.toRadians(-40-i*285f/24);
+                    float nextX=10+(float)Math.cos(angle)*7,nextY=10+(float)Math.sin(angle)*7;
+                    line(g,previousX,previousY,nextX,nextY,t,ink);previousX=nextX;previousY=nextY;
+                }
+                line(g,15.5f,5.5f,11.3f,5.1f,t,ink);
+                line(g,15.5f,5.5f,15.9f,1.4f,t,ink);
+            }
+            case HISTORY -> {ring(g,10,10,7.2f,t,ink);line(g,10,5.5f,10,10,t,ink);line(g,10,10,13.5f,12,t,ink);}
+            case SETTINGS -> {
+                for(int row=0;row<3;row++){
+                    float y=4+row*6,x=row==1?13:7;
+                    line(g,2,y,x-2,y,t,ink);line(g,x+2,y,18,y,t,ink);ring(g,x,y,2,t,ink);
+                }
+            }
+            case PLAYLIST -> {
+                for(int row=0;row<3;row++){float y=4+row*6;line(g,7,y,18,y,t,ink);ring(g,2.5f,y,.65f,t,ink);}
+            }
+        }
+        g.pose().popPose();
+    }
+    private static void ring(GuiGraphics g,float x,float y,float radius,float t,int ink){
+        RoundedCorners.draw(g,x-radius,y-radius,radius*2,radius*2,radius,t,ink,0);
+    }
+    /** SDF rounded capsules share the existing physical-pixel antialiasing, including rotated poses. */
+    private static void line(GuiGraphics g,float x,float y,float x2,float y2,float t,int ink){
+        float length=(float)Math.hypot(x2-x,y2-y);
+        g.pose().pushPose();g.pose().translate(x,y,0);
+        g.pose().mulPose(com.mojang.math.Axis.ZP.rotation((float)Math.atan2(y2-y,x2-x)));
+        RoundedCorners.draw(g,-t/2,-t/2,length+t,t,t/2,0,0,ink);g.pose().popPose();
+    }
+    private static void curve(GuiGraphics g,float x,float y,float a,float b,float c,float d,float endX,float endY,float t,int ink){
+        float previousX=x,previousY=y;
+        for(int i=1;i<=10;i++){
+            float u=i/10f,v=1-u;
+            float nextX=v*v*v*x+3*v*v*u*a+3*v*u*u*c+u*u*u*endX;
+            float nextY=v*v*v*y+3*v*v*u*b+3*v*u*u*d+u*u*u*endY;
+            line(g,previousX,previousY,nextX,nextY,t,ink);previousX=nextX;previousY=nextY;
+        }
+    }
     private MusicControlRenderer(){}
     public static void seek(GuiGraphics g,Bounds b,double fraction,boolean engaged,boolean focused,
                             boolean enabled,int foreground,UiPreferences preferences){

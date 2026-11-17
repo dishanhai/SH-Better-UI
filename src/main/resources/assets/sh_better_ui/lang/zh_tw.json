@@ -1742,5 +1742,8 @@
   "sh_better_ui.online_music.stage.now_playing": "正在播放",
   "sh_better_ui.online_music.stage.volume": "音量：%s%%",
   "sh_better_ui.theme.dynamic.qq_music_aurora": "QQ 音樂 · 流光",
-  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ 音樂 · 黑膠"
+  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ 音樂 · 黑膠",
+  "sh_better_ui.online_music.view.library": "音樂庫",
+  "sh_better_ui.online_music.refresh.library": "我的音樂庫",
+  "sh_better_ui.online_music.library.sign_in": "登入此音樂平台"
 }

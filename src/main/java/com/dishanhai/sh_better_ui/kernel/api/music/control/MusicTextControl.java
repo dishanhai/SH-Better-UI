@@ -21,6 +21,7 @@ public final class MusicTextControl extends AbstractWidget {
     private final Runnable action,feedback;
     private Component secondary=Component.empty();
     private MusicTransportControl.Glyph leading,trailing;
+    private MusicControlRenderer.Icon outline;
     private boolean selected,pointerPressed,iconOnly,secondaryPresent;
     private int pressedKey=-1;
     private Integer mainInk,secondaryInk;
@@ -37,9 +38,23 @@ public final class MusicTextControl extends AbstractWidget {
     public void setSecondary(Component value){secondary=Objects.requireNonNull(value);secondaryPresent=!value.equals(Component.empty());}
     public void setPreview(Component value){setTooltip(Tooltip.create(Objects.requireNonNull(value)));}
     /** Compatibility mapping only: glyphs are rendered by UUK vectors, never the legacy bitmap texture. */
-    public void setIcon(GraphicIcon icon){leading=map(icon);iconOnly=leading!=null;}
-    public void setLeadingIcon(GraphicIcon icon){leading=map(icon);iconOnly=false;}
-    public void setGlyphOnly(MusicTransportControl.Glyph glyph){leading=glyph;iconOnly=glyph!=null;}
+    public void setIcon(GraphicIcon icon){outline=outlineFor(icon);leading=map(icon);iconOnly=outline!=null||leading!=null;}
+    public void setLeadingIcon(GraphicIcon icon){outline=outlineFor(icon);leading=map(icon);iconOnly=false;}
+    public void setGlyphOnly(MusicTransportControl.Glyph glyph){outline=null;leading=glyph;iconOnly=glyph!=null;}
+    public void setLeadingIcon(MusicControlRenderer.Icon icon){outline=icon;leading=null;iconOnly=false;}
+    public void setGlyphOnly(MusicControlRenderer.Icon icon){outline=icon;leading=null;iconOnly=icon!=null;}
+    /** Unknown legacy assets retain the existing text fallback; no texture is rendered. */
+    public static MusicControlRenderer.Icon outlineFor(GraphicIcon icon){
+        if(icon==GraphicIcon.SEARCH||icon==GraphicIcon.WEB_SEARCH)return MusicControlRenderer.Icon.SEARCH;
+        if(icon==GraphicIcon.BACK)return MusicControlRenderer.Icon.BACK;
+        if(icon==GraphicIcon.FAVORITE)return MusicControlRenderer.Icon.FAVORITE;
+        if(icon==GraphicIcon.USER)return MusicControlRenderer.Icon.USER;
+        if(icon==GraphicIcon.CLOSE)return MusicControlRenderer.Icon.CLOSE;
+        if(icon==GraphicIcon.ADD||icon==GraphicIcon.NEW)return MusicControlRenderer.Icon.ADD;
+        if(icon==GraphicIcon.REMOVE)return MusicControlRenderer.Icon.REMOVE;
+        if(icon==GraphicIcon.QUEUE)return MusicControlRenderer.Icon.PLAYLIST;
+        return null;
+    }
     private static MusicTransportControl.Glyph map(GraphicIcon icon){
         if(icon==GraphicIcon.SEARCH)return MusicTransportControl.Glyph.SEARCH;
         if(icon==GraphicIcon.CLOSE)return MusicTransportControl.Glyph.CANCEL;
@@ -55,7 +70,7 @@ public final class MusicTextControl extends AbstractWidget {
         if(icon==GraphicIcon.QUEUE)return MusicTransportControl.Glyph.QUEUE;
         return null;
     }
-    public void setLeadingGlyph(MusicTransportControl.Glyph value){leading=value;iconOnly=false;}
+    public void setLeadingGlyph(MusicTransportControl.Glyph value){outline=null;leading=value;iconOnly=false;}
     public void setTrailingGlyph(MusicTransportControl.Glyph value){trailing=value;}
     public void setInk(int foreground,int secondary){mainInk=foreground;secondaryInk=secondary;}
     public void useThemeInk(){mainInk=null;secondaryInk=null;}
@@ -97,6 +112,7 @@ public final class MusicTextControl extends AbstractWidget {
         if(!active)cancelInteraction();
         var theme=UiTheme.current();var font=Minecraft.getInstance().font;
         int ink=mainInk==null?theme.text():mainInk;
+        int outlineInk=ink;
         int muted=secondaryInk==null?MpPageChrome.muted(theme,preferences):secondaryInk;
         if(!active){ink=alpha(ink,.4f);muted=alpha(muted,.4f);}
         boolean contrast=preferences.highContrast();
@@ -104,13 +120,19 @@ public final class MusicTextControl extends AbstractWidget {
         if(surface>0||isFocused()||contrast&&selected)
             RoundedCorners.draw(g,getX(),getY(),width,height,variant==Variant.ACTION?5:7,
                     isFocused()||contrast&&selected?1:0,ink,alpha(ink,surface));
+        if(iconOnly&&outline!=null){
+            MusicControlRenderer.icon(g,new Bounds(getX(),getY(),width,height),outline,isArmed(),active,outlineInk,preferences);
+            return;
+        }
         if(iconOnly&&leading!=null){
             MusicControlRenderer.transport(g,new Bounds(getX(),getY(),width,height),leading,false,false,false,true,ink,preferences);
             return;
         }
         int padding=variant==Variant.ACTION?6:10;
         int left=getX()+padding,right=getX()+width-padding;
-        if(leading!=null&&right-left>=48){glyph(g,leading,left,ink);left+=26;}
+        if(outline!=null&&right-left>=48){
+            MusicControlRenderer.icon(g,new Bounds(left,getY()+(height-22)/2,22,22),outline,isArmed(),active,outlineInk,preferences);left+=26;
+        }else if(leading!=null&&right-left>=48){glyph(g,leading,left,ink);left+=26;}
         if(trailing!=null&&right-left>=48){glyph(g,trailing,right-22,ink);right-=26;}
         boolean twoLines=secondaryVisible();
         int line=MpTypography.LINE_HEIGHT;

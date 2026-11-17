@@ -2609,5 +2609,8 @@
   "sh_better_ui.online_music.stage.now_playing": "Now Playing",
   "sh_better_ui.online_music.stage.volume": "Volume: %s%%",
   "sh_better_ui.theme.dynamic.qq_music_aurora": "QQ Music · Aurora",
-  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ Music · Vinyl"
+  "sh_better_ui.theme.dynamic.qq_music_vinyl": "QQ Music · Vinyl",
+  "sh_better_ui.online_music.view.library": "Library",
+  "sh_better_ui.online_music.refresh.library": "Your library",
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source"
 }
