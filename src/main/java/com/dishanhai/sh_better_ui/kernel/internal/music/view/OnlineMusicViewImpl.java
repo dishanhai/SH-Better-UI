@@ -562,7 +562,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stageControls.add(stageSeek);stageControls.add(stageVolume);
         stageLyrics=OnlineMusicScreen.addLyricsLayer(host,new MusicLyricsView(stage.lyrics(),label("lyrics.empty"),host.preferences(),position->{
             var now=player.snapshot();
-            if(Objects.equals(now.track(),stageLyricTrack)&&now.lyrics()==stageTimeline&&stageLyrics.contentKey()==stageLyricKey)
+            if(OnlineLyricPresentation.seekable(now)&&position>=0&&position<=now.durationMs()&&Objects.equals(now.track(),stageLyricTrack)&&now.lyrics()==stageTimeline&&stageLyrics.contentKey()==stageLyricKey)
                 player.seek(position);
         }),()->stage.lyrics());
         stageFollow=OnlineMusicScreen.addLyricsLayer(host,new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+Math.max(0,stage.lyrics().height()-20),Math.min(108,stage.lyrics().width()),20),label("view.follow_lyrics"),
@@ -1072,17 +1072,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         long position=stageSeek.isEditing()?stageSeek.previewPositionMs():current.positionMs();
         OnlineMusicViewPaint.line(ui,host.font(),MpTypography.text(time(position)),stage.seek().x(),stage.seek().bottom()+2,36,secondary);
         OnlineMusicViewPaint.line(ui,host.font(),MpTypography.text("−"+time(Math.max(0,current.durationMs()-position))),stage.seek().right()-40,stage.seek().bottom()+2,40,secondary);
-        if(!Objects.equals(stageLyricTrack,current.track())||stageTimeline!=current.lyrics()||stageLyricKey==null){
-            stageLyricTrack=current.track();stageTimeline=current.lyrics();stageLyricKey=new Object();
-            var lines=new ArrayList<MusicLyricsModel.Line>();
-            for(int i=0;i<stageTimeline.size();i++){var line=stageTimeline.line(i);lines.add(new MusicLyricsModel.Line(line.text(),line.startMs(),line.endMs()));}
-            stageLyrics.setLines(stageLyricKey,lines);
-        }
+        syncStageLyrics(current,windowActive);
         stageLyrics.setMessage(label("lyrics."+current.lyricsState().name().toLowerCase(Locale.ROOT)));
         stageLyrics.palette(ink,secondary,ui.preferences().highContrast()?UiTheme.current().background():0xff292229);
         stageLyrics.preferences(ui.preferences());
-        boolean timed=current.state()==OnlineMusicPlayer.State.PLAYING||current.state()==OnlineMusicPlayer.State.PAUSED||current.state()==OnlineMusicPlayer.State.ENDED;
-        stageLyrics.playback(timed?current.positionMs():-1,stagePlay.active&&current.durationMs()>0);
         stageLyrics.visible=stagePage==StagePage.LYRICS;stageLyrics.active=windowActive;stageLyrics.scale(stage.lyricScale());
         var lyricBounds=stage.lyrics();
         if(!OnlineMusicScreen.supportsLyricsStack(host)&&stageLyrics.browsing()&&lyricBounds.height()>=40)
@@ -1099,6 +1092,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(failed)OnlineMusicViewPaint.paragraph(ui,host.font(),label("failure."+current.failure().name().toLowerCase(Locale.ROOT)),stage.message(),ink);
         var selected=stagePage==StagePage.LYRICS?stage.mode():stagePage==StagePage.QUEUE?stage.queue():null;
         if(selected!=null)RoundedCorners.draw(ui.graphics(),selected.x()-3,selected.y()-3,selected.width()+6,selected.height()+6,8,0,0,0x22ffffff);
+    }
+    private void syncStageLyrics(OnlineMusicPlayer.Snapshot current,boolean windowActive) {
+        var timeline=current.lyricsState()==OnlineMusicPlayer.LyricsState.READY&&current.track()!=null
+                ?current.lyrics():com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline.empty();
+        if(!Objects.equals(stageLyricTrack,current.track())||stageTimeline!=timeline||stageLyricKey==null) {
+            stageLyricTrack=current.track();stageTimeline=timeline;stageLyricKey=new Object();
+            stageLyrics.setLines(stageLyricKey,OnlineLyricPresentation.lines(timeline));
+        }
+        stageLyrics.playback(OnlineLyricPresentation.position(current),windowActive&&OnlineLyricPresentation.seekable(current));
     }
     private Bounds lyricContent() {
         if (immersive) return stage.lyrics();

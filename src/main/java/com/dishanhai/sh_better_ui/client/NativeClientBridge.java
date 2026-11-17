@@ -107,6 +107,11 @@ public final class NativeClientBridge {
             client.tell(() -> ClientUiKernel.openVisualCompositionExample(client));
             return 1;
         }));
+        dispatcher.register(net.minecraft.commands.Commands.literal("shbetterlyricsdemo").executes(context -> {
+            var client = Minecraft.getInstance();
+            client.tell(() -> client.setScreen(new com.dishanhai.sh_better_ui.client.gui.panel.LyricsPlaybackDemoScreen(client.screen)));
+            return 1;
+        }));
         dispatcher.register(net.minecraft.commands.Commands.literal("shbetterrichtext").executes(context -> {
             var client = Minecraft.getInstance();
             client.tell(() -> ClientUiKernel.openRichTextExample(client));

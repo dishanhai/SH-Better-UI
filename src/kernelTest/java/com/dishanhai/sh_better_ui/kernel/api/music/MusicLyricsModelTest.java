@@ -28,6 +28,26 @@ class MusicLyricsModelTest {
         var m=timed();m.browse();m.focus(1);m.content("song",m.lines());assertTrue(m.browsing());
         m.content("new",List.of(new MusicLyricsModel.Line("new",300)));assertFalse(m.browsing());assertEquals(-1,m.focusedIndex());assertEquals("new",m.contentKey());assertTrue(m.seekTarget(1).isEmpty());
     }
+    @Test void realWordTimingIsNotInferredFromSingleWholeLineOrMalformedTokens() {
+        var wordA=new MusicLyricsModel.Word("Hello ",100,500);var wordB=new MusicLyricsModel.Word("world",500,900);
+        assertTrue(new MusicLyricsModel.Line("Hello world",100,1000,List.of(wordA,wordB)).hasWordTiming());
+        assertFalse(new MusicLyricsModel.Line("Hello world",100,1000,List.of(new MusicLyricsModel.Word("Hello world",100,1000))).hasWordTiming());
+        assertFalse(new MusicLyricsModel.Line("Hello, world",100,1000,List.of(wordA,wordB)).hasWordTiming());
+        assertFalse(new MusicLyricsModel.Line("ab",0,100,List.of(new MusicLyricsModel.Word("a",0,0),new MusicLyricsModel.Word("b",1,50))).hasWordTiming());
+        assertFalse(new MusicLyricsModel.Line("ab",0,100,List.of(new MusicLyricsModel.Word("a",0,70),new MusicLyricsModel.Word("b",50,100))).hasWordTiming());
+    }
+    @Test void shortOverlappingLineEndingFallsBackToEarlierStillSungLine() {
+        var m=new MusicLyricsModel();m.content("duet",List.of(new MusicLyricsModel.Line("long",0,4000),new MusicLyricsModel.Line("short",1000,2000)));
+        m.playback(1500,true);assertEquals(1,m.activeIndex());m.playback(2500,true);assertEquals(0,m.activeIndex());
+        m.playback(4000,true);assertEquals(-1,m.activeIndex());m.playback(500,true);assertEquals(0,m.activeIndex());
+        m.content("empty",List.of(new MusicLyricsModel.Line("",0,3000),new MusicLyricsModel.Line("zero",500,500)));m.playback(1000,true);assertEquals(-1,m.activeIndex());
+    }
+    @Test void playbackUsesSuppliedPositionAndDoesNotAdvanceDuringBrowseOrPause() {
+        var m=timed();m.playback(200,true);m.browse();assertEquals(200,m.positionMillis());
+        m.playback(200,true);assertEquals(0,m.activeIndex());assertTrue(m.browsing());
+        m.playback(1200,true);assertEquals(1,m.activeIndex());assertTrue(m.browsing());m.follow();assertEquals(1200,m.positionMillis());
+        m.playback(-1,false);assertEquals(-1,m.activeIndex());assertTrue(m.seekTarget(0).isEmpty());
+    }
     @Test void inputIsBoundedAndImmutable(){
         var m=new MusicLyricsModel();var list=new java.util.ArrayList<MusicLyricsModel.Line>();list.add(new MusicLyricsModel.Line("text",0));m.content(1,list);list.clear();assertEquals(1,m.lines().size());
         assertThrows(IllegalArgumentException.class,()->new MusicLyricsModel.Line("x",-2));
