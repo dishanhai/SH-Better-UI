@@ -25,7 +25,7 @@ public final class OnlineMusicScreen {
     }
 
     public static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
-        return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).view());
+        return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).backgroundView());
     }
 
     static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus,
@@ -54,7 +54,7 @@ public final class OnlineMusicScreen {
                 .onRemoved(screen -> owner.close()).build();
     }
 
-    /** A resize remount keeps its session; removal closes it once, re-entry creates a fresh session. */
+    /** A resize remount keeps its view; removal disposes it once. The default route borrows persistent playback. */
     static final class SessionOwner implements AutoCloseable {
         private final Supplier<OnlineMusicView> factory;
         private OnlineMusicView view;

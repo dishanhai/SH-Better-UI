@@ -13,6 +13,9 @@ public interface OnlineMusicService extends UIService {
     OnlineMusicPlayer open(List<OnlineMusicSource> sources);
     /** Complete, independently owned page; mount with the existing PreviewContext contract. */
     OnlineMusicView view();
+    /** User-facing view whose playback survives view removal until explicit stop or kernel shutdown.
+     * Implementations without background support retain the independent-view behavior. */
+    default OnlineMusicView backgroundView() { return view(); }
     /** Mount an existing/custom-source session. The resulting view takes ownership of that session. */
     OnlineMusicView view(OnlineMusicPlayer player);
 }
