@@ -4,6 +4,10 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiToggleButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.UiVersion;
 import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
@@ -37,7 +41,7 @@ import java.util.stream.Collectors;
 
 /** Native widgets and a scrollable layout for the currently supported page nodes. */
 final class NativePageScreen extends Screen {
-    static final Map<UiId, UiVersion> COMPONENTS = Set.of("column", "text", "button", "spacer").stream()
+    static final Map<UiId, UiVersion> COMPONENTS = Set.of("column", "row", "grid", "text", "button", "spacer", "toggle", "slider").stream()
             .map(UiBuiltinComponents::id).collect(Collectors.toUnmodifiableMap(id -> id, id -> UiBuiltinComponents.VERSION));
     private static final int INSET = 8;
     private static final int BODY_TOP = 24;
@@ -52,7 +56,8 @@ final class NativePageScreen extends Screen {
     private final Runnable presented;
     private final Runnable close;
     private final Runnable removed;
-    private final Map<String, UiButton> buttons = new HashMap<>();
+    private final Map<String, AbstractWidget> buttons = new HashMap<>();
+    private final Inputs inputs = new Inputs();
     private final List<Component> bodyNarration = new ArrayList<>();
     private AbstractContainerWidget scroll;
     private AbstractWidget back;
@@ -107,9 +112,11 @@ final class NativePageScreen extends Screen {
             removeWidget(scroll);
             scroll = null;
         }
+        buttons.values().forEach(widget -> { if (widget instanceof UiSlider slider) slider.cancelEdit(); });
         buttons.clear();
         bodyNarration.clear();
         var model = snapshot.get();
+        inputs.synchronize(root, model.data());
         revision = model.revision();
         int bodyHeight = height - BODY_TOP - FOOTER_HEIGHT;
         int bodyWidth = Math.min(CONTENT_WIDTH, width - 2 * INSET - SCROLLBAR_RESERVE);
@@ -152,6 +159,75 @@ final class NativePageScreen extends Screen {
                 box.addChild(column, settings -> settings.padding(padding).align(0, 0));
                 yield box;
             }
+            case "row", "grid" -> {
+                int padding = Math.min(number(node, "padding", 0), (width - 1) / 2);
+                int innerWidth = width - 2 * padding;
+                var children = node.children().stream().filter(child -> flag(child, "visible", data)).toList();
+                int requested = node.typeId().path().equals("row") ? Math.max(1, children.size()) : number(node, "columns", 2);
+                int columns = Math.min(requested, innerWidth);
+                int gap = boundedGap(innerWidth, columns, number(node, "gap", 4));
+                var rows = LinearLayout.vertical().spacing(number(node, "gap", 4));
+                for (int start = 0; start < children.size(); start += columns) {
+                    var row = LinearLayout.horizontal().spacing(gap);
+                    for (int cell = 0; cell < columns && start + cell < children.size(); cell++) {
+                        int cellWidth = cellWidth(innerWidth, columns, gap, cell);
+                        var element = layout(children.get(start + cell), data, cellWidth, enabled);
+                        var box = new FrameLayout(cellWidth, 0);
+                        if (element != null) box.addChild(element, settings -> settings.align(0, 0));
+                        row.addChild(box);
+                    }
+                    rows.addChild(row);
+                }
+                var box = new FrameLayout(width, Math.max(0, height));
+                box.addChild(rows, settings -> settings.padding(padding).align(0, 0));
+                yield box;
+            }
+            case "toggle" -> {
+                UiValue initial = inputs.value(node, "checked", data);
+                var toggle = new UiToggleButton[1];
+                toggle[0] = ShBetterUiApi.controls().toggle(new Bounds(0, 0, width, height < 0 ? 20 : height),
+                        initial instanceof UiValue.Bool checked && checked.value(), UiPreferences.configured(), UiStyle.DEFAULT,
+                        checked -> CommonComponents.optionStatus(text(node, "label", data), checked), checked -> {
+                            if (!acceptsInput()) return;
+                            inputs.edit(node, new UiValue.Bool(checked));
+                            toggle[0].setValue(checked);
+                            var narration = text(node, "narration", data);
+                            if (!narration.getString().isEmpty()) {
+                                toggle[0].button().setNarrationLabel(CommonComponents.optionStatus(narration, checked));
+                            }
+                            if (node.action().isPresent()) invoke(node);
+                        });
+                var button = toggle[0].button();
+                button.active = enabled;
+                var narration = text(node, "narration", data);
+                if (!narration.getString().isEmpty()) button.setNarrationLabel(CommonComponents.optionStatus(narration, toggle[0].value()));
+                tooltip(button, node, data);
+                buttons.put(node.id(), button);
+                yield button;
+            }
+            case "slider" -> {
+                int sliderHeight = height < 0 ? 20 : height;
+                if (width < 9 || sliderHeight < 16) yield new SpacerElement(width, sliderHeight);
+                UiValue initial = inputs.value(node, "value", data);
+                int percent = initial instanceof UiValue.Decimal decimal ? (int) Math.round(decimal.value() * 100) : 0;
+                var label = text(node, "narration", data);
+                if (label.getString().isEmpty()) label = text(node, "label", data);
+                final Component sliderLabel = label;
+                var edit = new SliderInput(inputs, node, data);
+                var slider = ShBetterUiApi.controls().slider(new Bounds(0, 0, width, sliderHeight),
+                        0, 100, 1, percent, UiPreferences.configured(),
+                        value -> Component.translatable("sh_better_ui.pages.slider_value", sliderLabel, value),
+                        value -> { if (acceptsInput()) edit.preview(value); });
+                slider.setOnCommit(value -> {
+                    if (!acceptsInput()) return;
+                    edit.commit(value);
+                    if (node.action().isPresent()) invoke(node);
+                }, value -> edit.cancel());
+                slider.active = enabled;
+                tooltip(slider, node, data);
+                buttons.put(node.id(), slider);
+                yield slider;
+            }
             case "spacer" -> new SpacerElement(width, height < 0 ? 6 : height);
             case "text" -> {
                 var text = text(node, "text", data);
@@ -177,9 +253,26 @@ final class NativePageScreen extends Screen {
         };
     }
 
-    private void invoke(UiNode node) {
+    Map<String, UiValue> localValues() {
+        synchronizeInputs(snapshot.get());
+        return inputs.snapshot();
+    }
+
+    void synchronizeInputs(PageService.Snapshot model) {
+        if (model.revision() != revision) {
+            buttons.values().forEach(widget -> { if (widget instanceof UiSlider slider) slider.cancelEdit(); });
+        }
+        inputs.synchronize(root, model.data());
+    }
+
+    private boolean acceptsInput() {
         var model = snapshot.get();
-        if (model.state() != PageService.State.ACTIVE || model.revision() != revision) return;
+        return model.state() == PageService.State.ACTIVE && model.revision() == revision
+                && NativePort.screen(Minecraft.getInstance()) == this;
+    }
+
+    private void invoke(UiNode node) {
+        if (!acceptsInput()) return;
         actionFailed = false;
         node.action().ifPresent(action);
         if (!actionFailed && snapshot.get().state() == PageService.State.ACTIVE) {
@@ -211,11 +304,94 @@ final class NativePageScreen extends Screen {
 
     @Override public boolean isPauseScreen() { return false; }
     @Override public void onClose() { close.run(); }
-    @Override public void removed() { removed.run(); }
+    @Override public void removed() {
+        buttons.values().forEach(widget -> { if (widget instanceof UiSlider slider) slider.cancelEdit(); });
+        removed.run();
+    }
 
     void restoreParent() {
         var client = Minecraft.getInstance();
         if (NativePort.screen(client) == this) NativePort.show(client, parent);
+    }
+
+    static int boundedGap(int width, int columns, int requested) {
+        return columns <= 1 ? 0 : Math.min(requested, (width - columns) / (columns - 1));
+    }
+
+    static int cellWidth(int width, int columns, int gap, int index) {
+        int available = width - (columns - 1) * gap;
+        return available / columns + (index < available % columns ? 1 : 0);
+    }
+
+    /** Preserve exact model values and draft absence across the integer widget's cancellation. */
+    static final class SliderInput {
+        private final Inputs inputs;
+        private final UiNode node;
+        private final Map<String, UiValue> data;
+        private boolean editing;
+        private UiValue beforeDraft;
+        private UiValue beforeValue;
+
+        SliderInput(Inputs inputs, UiNode node, Map<String, UiValue> data) {
+            this.inputs = inputs;
+            this.node = node;
+            this.data = data;
+        }
+
+        void preview(int percent) {
+            if (!editing) {
+                beforeValue = inputs.value(node, "value", data);
+                beforeDraft = inputs.drafts.get(node.id());
+                editing = true;
+            }
+            // Returning to the widget's starting tick is not a change to a higher-precision value.
+            if (beforeValue instanceof UiValue.Decimal value && Math.round(value.value() * 100) == percent) restore();
+            else inputs.edit(node, new UiValue.Decimal(percent / 100.0));
+        }
+
+        void commit(int percent) {
+            preview(percent);
+            editing = false;
+        }
+
+        void cancel() {
+            if (!editing) return;
+            restore();
+            editing = false;
+        }
+
+        private void restore() {
+            if (beforeDraft == null) inputs.drafts.remove(node.id());
+            else inputs.drafts.put(node.id(), beforeDraft);
+        }
+    }
+
+    /** Drafts are instance-local; an authoritative bound-field change supersedes its draft. */
+    static final class Inputs {
+        private final Map<String, UiValue> drafts = new HashMap<>();
+        private final Map<String, UiValue> authority = new HashMap<>();
+
+        void synchronize(UiNode node, Map<String, UiValue> data) {
+            switch (node.typeId().path()) {
+                case "toggle" -> value(node, "checked", data);
+                case "slider" -> value(node, "value", data);
+                default -> { }
+            }
+            node.children().forEach(child -> synchronize(child, data));
+        }
+
+        void edit(UiNode node, UiValue value) { drafts.put(node.id(), value); }
+
+        UiValue value(UiNode node, String property, Map<String, UiValue> data) {
+            var current = NativePageScreen.value(node, property, data);
+            if (node.bindings().containsKey(property) && current != null) {
+                var previous = authority.put(node.id(), current);
+                if (previous != null && !previous.equals(current)) drafts.remove(node.id());
+            }
+            return drafts.getOrDefault(node.id(), current);
+        }
+
+        Map<String, UiValue> snapshot() { return Map.copyOf(drafts); }
     }
 
     private static void tooltip(AbstractWidget widget, UiNode node, Map<String, UiValue> data) {

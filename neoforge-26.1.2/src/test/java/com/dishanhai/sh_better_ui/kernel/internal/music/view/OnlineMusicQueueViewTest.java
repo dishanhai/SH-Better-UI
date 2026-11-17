@@ -1,0 +1,292 @@
+// Author: dishanhai
+package com.dishanhai.sh_better_ui.kernel.internal.music.view;
+import com.dishanhai.sh_better_ui.kernel.api.music.*;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
+import com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.AfterEach;
+import com.dishanhai.sh_better_ui.client.api.NativeTestClient;
+import java.lang.reflect.*;
+import java.util.*;
+import static org.junit.jupiter.api.Assertions.*;
+class OnlineMusicQueueViewTest {
+    private NativeTestClient client;
+    @BeforeEach void installClient() throws Exception { client = NativeTestClient.install(); }
+    @AfterEach void restoreClient() throws Exception { if (client != null) client.close(); }
+
+    private static final OnlineTrack A = new OnlineTrack("qq", "1", "1", "Song", "Artist", "", 1000);
+    private static final OnlineTrack B = new OnlineTrack("qq", "2", "2", "Second", "Artist", "", 1000);
+    private static class Fixture {
+        OnlineTrack playing;
+        List<String> providers=List.of("netease","qq");
+        int paused,closed,seeks;
+        OnlineMusicPlayer.Snapshot snapshotOverride;
+        final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
+            case "seek" -> {seeks++;yield null;}
+            case "pause" -> { paused++;yield null; }
+            case "close" -> { closed++;yield null; }
+            case "sources" -> providers;
+            case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
+            case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
+            case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
+            default -> null;
+        });
+        final OnlineMusicViewImpl view = new OnlineMusicViewImpl(player);
+    }
+    private static Object field(Object owner,String name) throws Exception { var f=owner.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(owner); }
+    private static net.minecraft.client.gui.components.Tooltip tooltip(net.minecraft.client.gui.components.AbstractWidget widget) throws Exception {
+        var holderField = net.minecraft.client.gui.components.AbstractWidget.class.getDeclaredField("tooltip");
+        holderField.setAccessible(true);
+        return ((net.minecraft.client.gui.components.WidgetTooltipHolder) holderField.get(widget)).get();
+    }
+    private static void call(Object owner,String name,Class<?>[] types,Object... args) throws Exception { var m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);m.invoke(owner,args); }
+    private static void queuePage(OnlineMusicViewImpl view) throws Exception {
+        var f=view.getClass().getDeclaredField("page"); f.setAccessible(true);
+        Object page=Arrays.stream(f.getType().getEnumConstants()).filter(v->v.toString().equals("QUEUE")).findFirst().orElseThrow();
+        call(view,"show",new Class<?>[]{f.getType()},page);
+    }
+    private static class Host implements com.dishanhai.sh_better_ui.client.api.preview.PreviewContext {
+        int width = 800, height = 600;
+        final net.minecraft.client.gui.screens.Screen screen = new net.minecraft.client.gui.screens.Screen(net.minecraft.network.chat.Component.empty()) {};
+        final List<net.minecraft.client.gui.components.AbstractWidget> widgets = new ArrayList<>();
+        final net.minecraft.client.StringSplitter splitter = new net.minecraft.client.StringSplitter((codePoint, style) -> 5f);
+        final net.minecraft.client.gui.Font font = new net.minecraft.client.gui.Font(null) {
+            @Override public net.minecraft.client.StringSplitter getSplitter() { return Host.this.splitter; }
+            @Override public int width(String text) { return (int)Math.ceil(Host.this.splitter.stringWidth(text)); }
+            @Override public int width(net.minecraft.util.FormattedCharSequence text) { return (int)Math.ceil(Host.this.splitter.stringWidth(text)); }
+            @Override public int width(net.minecraft.network.chat.FormattedText text) { return (int)Math.ceil(Host.this.splitter.stringWidth(text)); }
+            @Override public List<net.minecraft.util.FormattedCharSequence> split(net.minecraft.network.chat.FormattedText text,int width) {
+                return Host.this.splitter.splitLines(text,width,net.minecraft.network.chat.Style.EMPTY).stream().map(net.minecraft.locale.Language.getInstance()::getVisualOrder).toList();
+            }
+        };
+        @Override public net.minecraft.client.gui.screens.Screen screen() { return screen; }
+        @Override public com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds viewport() { return new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(0,0,width,height); }
+        @Override public net.minecraft.client.gui.Font font() { return font; }
+        @Override public com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences preferences() { return com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT; }
+        @Override public boolean interactive() { return true; }
+        @Override public <T extends net.minecraft.client.gui.components.AbstractWidget> T add(T widget) { widgets.add(widget);return widget; }
+    }
+
+    @Test void primaryLyricsEntrancesUseStageAndRestoreTheirOrigin() throws Exception {
+        for (String entrance : List.of("navigation", "nowPlaying", "lyricsToggle")) {
+            for (String origin : List.of("SEARCH", "ACCOUNTS", "QUEUE")) {
+                var f = new Fixture(); f.view.layout(new Host());
+                var pageField = f.view.getClass().getDeclaredField("page"); pageField.setAccessible(true);
+                Object start = Arrays.stream(pageField.getType().getEnumConstants()).filter(v -> v.toString().equals(origin)).findFirst().orElseThrow();
+                call(f.view, "show", new Class<?>[]{pageField.getType()}, start);
+                if (entrance.equals("navigation")) {
+                    Object lyrics = Arrays.stream(pageField.getType().getEnumConstants()).filter(v -> v.toString().equals("LYRICS")).findFirst().orElseThrow();
+                    call(f.view, "navigate", new Class<?>[]{pageField.getType()}, lyrics);
+                } else if(entrance.equals("lyricsToggle")) ((Runnable)field(field(f.view,entrance),"action")).run();
+                else ((MusicTextControl)field(f.view, entrance)).onPress();
+                assertEquals(true, field(f.view, "immersive"), entrance);
+                assertEquals("LYRICS", field(f.view, "stagePage").toString());
+                assertFalse(f.view.permitsScreenClose());
+                assertEquals(origin, pageField.get(f.view).toString());
+                assertEquals(0, f.paused); assertEquals(0, f.closed);
+            }
+        }
+    }
+
+    @Test void hidingAndReturningCancelsNavigationAndTitlePresses() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var nav=(MusicTextControl)((List<?>)field(f.view,"navigation")).get(0);
+        var title=(MusicTextControl)field(f.view,"nowPlaying");
+        nav.setFocused(true);assertTrue(nav.keyPressed(32,0,0));
+        title.setFocused(true);assertTrue(title.keyPressed(32,0,0));
+        call(f.view,"enterImmersive",new Class<?>[0]);
+        assertFalse(nav.isArmed());assertFalse(title.isArmed());
+        assertFalse(f.view.permitsScreenClose());
+        assertFalse(nav.keyReleased(32,0,0));assertFalse(title.keyReleased(32,0,0));
+    }
+
+    @Test void providerSegmentsFollowRealProvidersAndCancelOldSearchWithoutChangingAccounts() throws Exception {
+        var f=new Fixture();f.providers=List.of("netease","qq","custom");var host=new Host();host.width=392;host.height=269;f.view.layout(host);
+        var selector=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl)field(f.view,"sourceSegments");
+        assertEquals(3,selector.choiceCount());
+        var pending=new java.util.concurrent.CompletableFuture<List<OnlineTrack>>();
+        var pendingField=f.view.getClass().getDeclaredField("pending");pendingField.setAccessible(true);pendingField.set(f.view,pending);
+        ((java.util.function.IntConsumer)field(selector,"onChange")).accept(1);
+        assertTrue(pending.isCancelled());assertEquals("qq",field(f.view,"source"));assertEquals("netease",field(f.view,"accountSource"));assertEquals(1,selector.selectedIndex());assertSame(selector,host.screen.getFocused());
+        selector.setFocused(true);assertTrue(selector.keyPressed(262,0,0));assertTrue(selector.isArmed());
+        call(f.view,"enterImmersive",new Class<?>[0]);assertFalse(selector.visible);assertFalse(selector.isArmed());
+    }
+    @Test void sameTitleReplacementCancelsAnArmedSearchRow() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);
+        results.set(f.view,List.of(A));call(f.view,"updateRows",new Class<?>[0]);
+        var row=(MusicTextControl)((List<?>)field(f.view,"resultRows")).get(0);row.setFocused(true);assertTrue(row.keyPressed(32,0,0));
+        var like=(MusicTextControl)((List<?>)field(f.view,"searchLikes")).get(0);like.active=true;like.setFocused(true);assertTrue(like.keyPressed(32,0,0));
+        var unlike=(MusicTextControl)((List<?>)field(f.view,"searchUnlikes")).get(0);unlike.active=true;unlike.setFocused(true);assertTrue(unlike.keyPressed(32,0,0));
+        results.set(f.view,List.of(new OnlineTrack("qq","other","other",A.title(),"Different Artist","",1000)));
+        call(f.view,"updateRows",new Class<?>[0]);assertFalse(row.isArmed());assertFalse(row.keyReleased(32,0,0));assertFalse(like.isArmed());assertFalse(unlike.isArmed());assertFalse(like.keyReleased(32,0,0));assertFalse(unlike.keyReleased(32,0,0));assertNull(f.playing);
+    }
+
+    @Test void initialSearchStatusDoesNotRepeatTheSameInstructionAsDetail() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var status=(com.dishanhai.sh_better_ui.kernel.api.music.status.MusicStatusView)field(f.view,"searchStatus");
+        assertEquals(net.minecraft.network.chat.Component.empty(),field(status,"detail"));
+        var narration=status.narration().getString();
+        assertEquals(narration.indexOf("search_hint"),narration.lastIndexOf("search_hint"));
+    }
+
+    @Test void successfulResultsClearBusyTooltipAndQueueEmptyHasFocusableNarration() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var state=f.view.getClass().getDeclaredField("searchState");state.setAccessible(true);state.set(f.view,"searching");
+        var pending=f.view.getClass().getDeclaredField("pending");pending.setAccessible(true);pending.set(f.view,new java.util.concurrent.CompletableFuture<>());
+        call(f.view,"updateRows",new Class<?>[0]);
+        var search=(MusicTextControl)field(f.view,"searchButton");
+        assertTrue(((net.minecraft.network.chat.Component)field(tooltip(search),"message")).getString().contains("searching"));
+        pending.set(f.view,null);var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);results.set(f.view,List.of(A));
+        call(f.view,"updateRows",new Class<?>[0]);
+        assertEquals("sh_better_ui.online_music.search",((net.minecraft.network.chat.Component)field(tooltip(search),"message")).getString());
+        queuePage(f.view);var nav=(MusicTextControl)((List<?>)field(f.view,"navigation")).get(3);
+        assertTrue(nav.visible);assertTrue(nav.active);
+        assertTrue(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A),0);
+        assertFalse(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
+    }
+
+    @Test void realSnapshotSynchronizationPreservesBrowseAndRejectsLateSeekAfterFailure() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var timeline=new LyricTimeline(List.of(new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("first","",0,1000,List.of(),""),new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("second","",1000,2000,List.of(),"")));
+        var lyrics=(MusicLyricsView)field(f.view,"stageLyrics");
+        for(var state:List.of(OnlineMusicPlayer.State.PLAYING,OnlineMusicPlayer.State.PAUSED)) {
+            f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,state,500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+            call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+            assertEquals(0,lyrics.model().activeIndex());assertEquals(500,lyrics.model().positionMillis());lyrics.model().browse();
+        }
+        assertTrue(lyrics.browsing());
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.PLAYING,1500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+        assertEquals(1,lyrics.model().activeIndex());assertTrue(lyrics.browsing());lyrics.follow();assertFalse(lyrics.browsing());
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.FAILED,1500,2000,OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.AUDIO,false);
+        ((java.util.function.LongConsumer)field(lyrics,"seek")).accept(1000);assertEquals(0,f.seeks);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);assertEquals(-1,lyrics.model().activeIndex());
+        lyrics.model().browse();f.snapshotOverride=new OnlineMusicPlayer.Snapshot(B,OnlineMusicPlayer.State.PLAYING,500,2000,OnlineMusicPlayer.LyricsState.EMPTY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
+        assertTrue(lyrics.model().lines().isEmpty());assertFalse(lyrics.browsing());assertEquals(-1,lyrics.model().activeIndex());
+    }
+
+    @Test void compactResultsQueueAndMiniExposeRealArtistMetadata() throws Exception {
+        var f=new Fixture();var host=new Host();host.width=393;host.height=270;f.view.layout(host);
+        var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);results.set(f.view,List.of(A,B));
+        call(f.view,"updateRows",new Class<?>[0]);
+        var row=(MusicTextControl)((List<?>)field(f.view,"resultRows")).get(0);
+        assertTrue(row.secondaryVisible());assertTrue(((net.minecraft.network.chat.Component)field(row,"secondary")).getString().contains(A.artist()));
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
+        call(f.view,"updateMiniMetadata",new Class<?>[]{OnlineMusicPlayer.Snapshot.class},f.player.snapshot());
+        var mini=(MusicTextControl)field(f.view,"nowPlaying");assertTrue(mini.secondaryVisible());
+        assertEquals(A.artist(),((net.minecraft.network.chat.Component)field(mini,"secondary")).getString());
+        queuePage(f.view);var queued=(MusicTextControl)((List<?>)field(f.view,"queueRows")).get(0);
+        assertTrue(queued.secondaryVisible());assertTrue(((net.minecraft.network.chat.Component)field(queued,"secondary")).getString().contains(A.artist()));
+    }
+
+    @Test void compactDockKeepsRealControlsWithinBoundsAndUsesPublicUukWidgets() throws Exception {
+        for(int[] size:new int[][]{{208,240},{393,270},{590,406},{960,540}}) {
+            var f=new Fixture();var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);
+            assertInstanceOf(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl.class,field(f.view,"seek"));
+            for(String name:List.of("playback","stop","lyricsToggle","miniQueue")) {
+                var w=assertInstanceOf(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.class,field(f.view,name));
+                assertTrue(w.visible);assertTrue(w.getX()>=0);assertTrue(w.getX()+w.getWidth()<=size[0]);
+                assertTrue(w.getY()>=0);assertTrue(w.getY()+w.getHeight()<=size[1]);
+            }
+            for(Object w:(List<?>)field(f.view,"navigation"))assertInstanceOf(MusicTextControl.class,w);
+            assertInstanceOf(MusicTextControl.class,field(f.view,"searchButton"));
+            ((Runnable)field(field(f.view,"miniQueue"),"action")).run();assertEquals("QUEUE",field(f.view,"page").toString());
+            assertEquals(0,f.paused);assertEquals(0,f.closed);
+        }
+    }
+
+    @Test void realQueueControlsPlayClearUndoAndReturnWithoutStopping() throws Exception {
+        var f=new Fixture(); f.view.layout(new Host());
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
+        assertEquals(A,f.playing); queuePage(f.view);
+        var next=(MusicTextControl)field(f.view,"queueNext"); assertTrue(next.visible);assertTrue(next.active);next.onPress();assertEquals(B,f.playing);
+        var clear=(MusicTextControl)field(f.view,"queueClear");clear.onPress();assertEquals(B,f.playing);
+        assertFalse(next.active);var undo=(MusicTextControl)field(f.view,"queueUndo");assertTrue(undo.active);undo.onPress();
+        assertEquals(2,((PlayerQueue)field(f.view,"queue")).tracks().size());assertEquals(B,f.playing);
+        ((MusicTextControl)field(f.view,"back")).onPress();assertFalse(next.visible);assertEquals(B,f.playing);
+    }
+    @Test void queueActionControlsStayDisjointAtSupportedWindowSizes() throws Exception {
+        for (int[] size: new int[][]{{208,240},{360,340},{520,264},{800,600}}) {
+            var f=new Fixture(); var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            var names=List.of("queuePrevious","queueNext","queueUndo","queueClear");
+            int right=-1;
+            for (String name:names) { var b=(MusicTextControl)field(f.view,name);assertTrue(b.getX()>=right,name);assertTrue(b.getWidth()>0);assertTrue(b.getX()+b.getWidth()<=size[0]);right=b.getX()+b.getWidth(); }
+        }
+    }
+    @Test void suspendingTheActualViewDisarmsAutoplayWithoutDroppingItsQueue() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
+        var queue=(PlayerQueue)field(f.view,"queue");queue.observe(f.player.snapshot());
+        f.view.suspend();
+        var end=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.ENDED,1000,1000,OnlineMusicPlayer.LyricsState.EMPTY,LyricTimeline.empty(),OnlineMusicPlayer.Failure.NONE,false);
+        queue.observe(end);assertEquals(A,f.playing);assertEquals(2,queue.tracks().size());assertEquals(0,queue.index());
+    }
+    @Test void immersiveEntryHidesNavigationAndReturnRestoresQueueWithoutPausing() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},java.util.Collections.nCopies(20,A),0);queuePage(f.view);
+        var offset=f.view.getClass().getDeclaredField("queueFirst");offset.setAccessible(true);offset.set(f.view,3);
+        call(f.view,"enterImmersive",new Class<?>[0]);
+        assertEquals(true,field(f.view,"immersive"));
+        assertTrue(((List<?>)field(f.view,"navigation")).stream().allMatch(w->!((net.minecraft.client.gui.components.AbstractWidget)w).visible));
+        assertFalse(((MusicTextControl)field(f.view,"nowPlaying")).visible);
+        assertTrue(((net.minecraft.client.gui.components.AbstractWidget)field(f.view,"stageBack")).visible);
+        assertEquals(0,f.paused);assertEquals(0,f.closed);
+        assertFalse(f.view.permitsScreenClose());assertEquals(false,field(f.view,"immersive"));
+        assertEquals("QUEUE",field(f.view,"page").toString());assertEquals(3,field(f.view,"queueFirst"));
+        assertTrue(f.view.permitsScreenClose());assertEquals(A,f.playing);
+    }
+    @Test void immersiveResizeKeepsModeAndReturnsToTheSamePage() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());queuePage(f.view);call(f.view,"enterImmersive",new Class<?>[0]);
+        var compact=new Host();compact.width=208;compact.height=240;f.view.layout(compact);
+        assertEquals(true,field(f.view,"immersive"));
+        assertTrue(((net.minecraft.client.gui.components.AbstractWidget)field(f.view,"stageBack")).visible);
+        assertFalse(f.view.permitsScreenClose());assertEquals("QUEUE",field(f.view,"page").toString());
+        assertEquals(0,f.paused);assertEquals(0,f.closed);
+    }
+    @Test void immersiveLyricWheelReturnsFocusToVisibleStageControl() throws Exception {
+        var f=new Fixture();var host=new Host();f.view.layout(host);call(f.view,"enterImmersive",new Class<?>[0]);
+        var rows=(java.util.List<?>)field(f.view,"lyricRows");
+        var scroll=(java.util.function.IntConsumer)field(rows.get(0),"scroll");scroll.accept(1);
+        var target=(net.minecraft.client.gui.components.AbstractWidget)field(f.view,"stageBack");
+        assertTrue(target.visible);assertSame(target,host.screen.getFocused());
+        assertFalse(((MusicTextControl)field(f.view,"back")).visible);
+    }
+    @Test void windowLossCancelsMusicGesturesWithoutPausingTheSession() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());call(f.view,"enterImmersive",new Class<?>[0]);
+        var seek=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl)field(f.view,"stageSeek");
+        seek.sync("qq:1",0,1000,true);assertTrue(seek.mouseClicked(seek.getX()+10,seek.getY()+4,0));assertTrue(seek.isEditing());
+        var play=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl)field(f.view,"stagePlay");
+        play.setFocused(true);assertTrue(play.keyPressed(32,0,0));
+        call(f.view,"cancelStageInteractions",new Class<?>[0]);
+        assertFalse(seek.isEditing());assertFalse(play.keyReleased(32,0,0));assertEquals(0,f.paused);assertEquals(0,f.closed);
+    }
+    @Test void artworkAndLyricModesShareControlsAndDoNotReplacePlayback() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
+        call(f.view,"enterImmersive",new Class<?>[0]);
+        Object seek=field(f.view,"stageSeek");Object play=field(f.view,"stagePlay");
+        var mode=f.view.getClass().getDeclaredField("stagePage");mode.setAccessible(true);
+        Object artwork=Arrays.stream(mode.getType().getEnumConstants()).filter(v->v.toString().equals("ARTWORK")).findFirst().orElseThrow();
+        call(f.view,"setStagePage",new Class<?>[]{mode.getType()},artwork);
+        assertSame(seek,field(f.view,"stageSeek"));assertSame(play,field(f.view,"stagePlay"));assertEquals(A,f.playing);assertEquals(0,f.paused);assertEquals(0,f.closed);
+    }
+    @Test void tinyResizeDoesNotBuildInvalidStageOrDestroyPlayer() throws Exception {
+        for(int width:new int[]{0,1,23}) {
+            var f=new Fixture();f.view.layout(new Host());
+            call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
+            call(f.view,"enterImmersive",new Class<?>[0]);
+            var tiny=new Host();tiny.width=width;tiny.height=1;
+            assertDoesNotThrow(()->f.view.layout(tiny));assertNull(field(f.view,"stage"));
+            assertEquals(A,f.playing);assertEquals(0,f.paused);assertEquals(0,f.closed);
+            f.view.layout(new Host());assertEquals(true,field(f.view,"immersive"));assertNotNull(field(f.view,"stage"));
+        }
+    }
+    @Test void resizePreservesQueueSelectionWithoutReplaying() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),1);queuePage(f.view);
+        var host=new Host();host.width=360;host.height=340;f.view.layout(host);
+        var queue=(PlayerQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
+        assertTrue(((MusicTextControl)field(f.view,"queuePrevious")).visible);
+    }
+}
