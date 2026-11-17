@@ -764,7 +764,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void enterLibrary() {
         show(Page.LIBRARY);
-        if(library==Library.NONE||libraryState.equals("library.login_required")||!player.authenticated(librarySource)) {
+        if(library==Library.NONE||libraryState.equals("library.login_required")||libraryState.equals(LibraryAccessFeedback.SIGN_IN)||!player.authenticated(librarySource)) {
             if(library==Library.TRACKS&&selectedPlaylist!=null)loadPlaylist(selectedPlaylist,libraryPage);else openLibraryGroup(libraryGroup);
         }
     }

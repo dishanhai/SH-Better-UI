@@ -26,6 +26,15 @@ public final class SettingsApi {
 
     public void openControlPanel() { ControlPanelScreen.open(Minecraft.getInstance()); }
 
+    /** User-facing player route; does not enter the developer gallery. */
+    public UiScreen onlineMusicScreen(@Nullable Screen parent) {
+        return onlineMusicScreen(parent, returnFocus(parent));
+    }
+
+    public UiScreen onlineMusicScreen(@Nullable Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
+        return com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen.create(parent, returnFocus);
+    }
+
     public DeveloperPanelScreen developerPanel(@Nullable Screen parent) { return new DeveloperPanelScreen(parent); }
 
     public DeveloperPanelScreen developerPanel(@Nullable Screen parent, UiPreferences preferences) {

@@ -1,9 +1,9 @@
 // Author: dishanhai. Original borderless lyric presentation inspired by MuoniumPlayer.
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
-import com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -15,7 +15,9 @@ import java.util.function.IntConsumer;
 final class OnlineLyricButton extends Button {
     private final UiPreferences preferences;
     private final IntConsumer scroll;
-    private boolean selected;
+    private boolean selected, stage;
+    private float stageScale = 1f;
+    void setStage(boolean stage, float scale) { this.stage=stage; this.stageScale=Math.max(1f,Math.min(2f,scale)); }
     private boolean pointerFocus, pointerFocusPending;
     private float distance;
     OnlineLyricButton(int x, int y, int width, int height, Runnable action, UiPreferences preferences, IntConsumer scroll) {
@@ -42,20 +44,31 @@ final class OnlineLyricButton extends Button {
     }
     @Override protected void extractContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         var theme = UiTheme.current(); var font = Minecraft.getInstance().font;
-        int x = getX() + 12, y = getY() + (getHeight() - font.lineHeight) / 2;
-        var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background(), distance, preferences.highContrast());
+        // MP-like focus hierarchy without per-glyph blur or duplicate glow draw calls.
+        // Reserve scaled width before truncation so a focused line never bleeds into the scrollbar.
+        float scale = lyricScale(selected, distance, preferences.highContrast()) * (stage ? stageScale : 1f);
+        int x = getX() + 12, y = getY() + Math.round((getHeight() - font.lineHeight * scale) / 2f);
+        var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background() | 0xff000000, distance, preferences.highContrast());
         int color = selected ? paint.active() : paint.text();
         if (isHoveredOrFocused()) {
             graphics.fill(getX(), getY(), getX() + 2, getY() + getHeight(), theme.accent());
-            if (isFocused()) {
-                graphics.fill(getX(), getY(), getX() + getWidth(), getY() + 1, theme.accent());
-                graphics.fill(getX(), getY() + getHeight() - 1, getX() + getWidth(), getY() + getHeight(), theme.accent());
-            }
+            if (isFocused()) graphics.outline(getX(), getY(), getWidth(), getHeight(), theme.accent());
         }
-        var text = font.substrByWidth(getMessage(), Math.max(1, getWidth() - 24));
+        var text = font.substrByWidth(MpTypography.text(getMessage()), Math.max(1, (int) ((getWidth() - 24) / scale)));
         if (paint.protection() != 0) graphics.fill(x - 3, y - 2,
-                x + Math.min(getWidth() - 24, font.width(text)) + 3, y + font.lineHeight + 2, paint.protection());
-        graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(text), x, y, color, paint.shadow());
-        if (selected) graphics.fill(getX() + 3, y + 3, getX() + 6, y + 6, theme.accent());
+                x + Math.min(getWidth() - 24, Math.round(font.width(text) * scale)) + 3, y + Math.round(font.lineHeight * scale) + 2, paint.protection());
+        graphics.pose().pushMatrix();
+        try {
+            graphics.pose().translate(x, y);
+            graphics.pose().scale(scale, scale);
+            graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(text), 0, 0, color, paint.shadow());
+        } finally { graphics.pose().popMatrix(); }
+        if (selected && !stage) graphics.fill(getX() + 3, y + 3, getX() + 6, y + 6, theme.accent());
+    }
+    static float lyricScale(boolean selected, float distance, boolean highContrast) {
+        if (highContrast) return 1f;
+        if (selected) return 1.12f;
+        float safe = Float.isFinite(distance) ? Math.abs(distance) : 4f;
+        return 1f - Math.min(3f, safe) * .025f;
     }
 }

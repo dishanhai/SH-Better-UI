@@ -6,6 +6,9 @@ import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
 
 /** Entry point for the native GUI features available on NeoForge 26. */
 public final class ShBetterUiApi {
+    private static final MotionApi MOTION = new MotionApi();
+    private static final InteractionApi INTERACTIONS = new InteractionApi();
+    private static final SearchApi SEARCH = new SearchApi();
     private static final ControlsApi CONTROLS = new ControlsApi();
     private static final SettingsApi SETTINGS = new SettingsApi();
     private static final BlurApi BLUR = new BlurApi();
@@ -16,6 +19,12 @@ public final class ShBetterUiApi {
     public static ControlsApi controls() {
         return CONTROLS;
     }
+
+    public static MotionApi motion() { return MOTION; }
+
+    public static InteractionApi interactions() { return INTERACTIONS; }
+
+    public static SearchApi search() { return SEARCH; }
 
     public static SettingsApi settings() { return SETTINGS; }
 

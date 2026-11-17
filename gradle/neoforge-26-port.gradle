@@ -45,6 +45,8 @@ def sharedSources = [
         'config/TabScrollSettings.java',
         'config/ThemeOverrides.java',
         'config/ThemeSettings.java',
+        'config/ThemePaletteArchive.java',
+        'config/DynamicThemeSettings.java',
         'client/gui/display/GraphicDisplayLayout.java',
         'client/gui/display/ElectricLogoProfile.java',
         'client/gui/display/GraphicIconMotion.java',
@@ -95,6 +97,9 @@ def sharedSources = [
         'client/gui/scaled/LightRaysProfile.java',
         'client/gui/scaled/PatternWavesProfile.java',
         'client/gui/scaled/PointerDrag.java',
+        'client/gui/scaled/PausableCountdown.java',
+        'client/gui/scaled/ScrollPageTurn.java',
+        'client/gui/scaled/ViewportTransform.java',
         'client/gui/scaled/SwipeGesture.java',
         'client/gui/scaled/UiSwipeRow.java',
         'client/gui/scaled/PopupMotion.java',
@@ -155,11 +160,9 @@ def sharedSources = [
 sourceSets.main.java {
     srcDir(sharedJava)
     exclude { entry ->
+        // Native 26.x replacements must win over shared legacy renderer classes.
         if (!entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
-                (entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicViewPaint.java".toString() ||
-                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineArtworkTexture.java".toString() ||
-                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineLyricButton.java".toString() ||
-                 entry.path == "${packagePath}/kernel/internal/music/view/OnlineMusicScrollRegion.java".toString())) return true
+                new File(file('../neoforge-26.1.2/src/main/java'), entry.path).isFile()) return true
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
                 !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
@@ -185,7 +188,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/CardNavInputTest.java")
         include("${packagePath}/client/gui/scaled/CardNavTestFont.java")
         exclude { entry -> entry.file.toPath().startsWith(file('../src/test/java').toPath()) &&
-                entry.path == "${packagePath}/client/gui/scaled/CardNavTestFont.java" }
+                new File(file('../neoforge-26.1.2/src/test/java'), entry.path).isFile() }
         include("${packagePath}/client/gui/scaled/CenteredMenuMotionTest.java")
         include("${packagePath}/client/gui/scaled/SpringTableTest.java")
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
@@ -201,6 +204,11 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
         include("${packagePath}/kernel/internal/music/**")
+        include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
+        include("${packagePath}/client/api/NativeStateApiTest.java")
+        include("${packagePath}/client/api/UiScreenCloseTest.java")
+        include("${packagePath}/client/api/NativeTestClient.java")
+        include("${packagePath}/kernel/api/music/**")
     }
     compileClasspath += sourceSets.main.compileClasspath
     runtimeClasspath += sourceSets.main.runtimeClasspath
@@ -245,9 +253,12 @@ processResources {
         include('cover.png', 'assets/sh_better_ui/lang/**', 'assets/sh_better_ui/textures/gui/display*/**',
                 'assets/sh_better_ui/font/hud_shortcut_keycaps.json', 'assets/sh_better_ui/textures/font/hud_shortcut_keycaps.png',
                 'assets/sh_better_ui/font/inline_items.json',
+                'assets/sh_better_ui/font/mp_ui.json', 'assets/sh_better_ui/font/mp_ui_semibold.json',
+                'assets/sh_better_ui/font/sh_sans_ui.ttf', 'assets/sh_better_ui/font/sh_sans_ui_semibold.ttf',
                 'assets/sh_better_ui/textures/gui/rich/**',
+                'assets/sh_better_ui/music/apple-login/**',
                 'assets/sh_better_ui/shaders/include/rich_icon_effects.glsl',
-                'META-INF/third-party/**')
+                'META-INF/third-party/**', 'META-INF/licenses/**')
     }
     def metadata = [mod_version: version, mod_id: modId, mod_name: modName, minecraft_version: minecraft_version,
                     neo_version: neo_version, kff_version: kff_version]
@@ -272,6 +283,21 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/SettingsApi.class",
                     "${packagePath}/client/api/UiClientApi.class",
                     "${packagePath}/client/api/UiFrame.class",
+                    "${packagePath}/client/api/MotionApi.class",
+                    "${packagePath}/client/api/InteractionApi.class",
+                    "${packagePath}/client/api/SearchApi.class",
+                    "${packagePath}/kernel/api/music/MusicLyricsView.class",
+                    "${packagePath}/kernel/api/music/control/MusicSeekControl.class",
+                    "${packagePath}/kernel/internal/music/view/OnlineMusicScreen.class",
+                    "${packagePath}/client/gui/scaled/MusicArtworkStageRender.class",
+                    'assets/sh_better_ui/music/apple-login/index.html',
+                    'assets/sh_better_ui/music/apple-login/login.mjs',
+                    'assets/sh_better_ui/music/apple-login/auth-flow.mjs',
+                    'assets/sh_better_ui/font/mp_ui.json',
+                    'assets/sh_better_ui/font/mp_ui_semibold.json',
+                    'assets/sh_better_ui/font/sh_sans_ui.ttf',
+                    'assets/sh_better_ui/font/sh_sans_ui_semibold.ttf',
+
                     "${packagePath}/client/api/preview/DeveloperPreviewProvider.class",
                     "${packagePath}/client/api/preview/PreviewRegistry.class",
                     "${packagePath}/client/api/preview/PreviewSpec.class",
