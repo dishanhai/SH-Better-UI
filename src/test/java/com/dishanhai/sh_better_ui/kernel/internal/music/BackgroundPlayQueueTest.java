@@ -210,4 +210,84 @@ class BackgroundPlayQueueTest {
             assertEquals(State.IDLE, rig.player.snapshot().state());
         } finally { release.countDown(); }
     }
+    @Test void repeatOneContinuesWithoutUiAndExplicitNextSkips() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.mode(OnlineMusicQueue.Mode.REPEAT_ONE);
+            queue.replace(List.of(A,B), 0); rig.output(0).state = State.ENDED;
+            rig.output(1); assertEquals(A, rig.player.snapshot().track());
+            queue.next(); rig.output(2); assertEquals(B, rig.player.snapshot().track());
+            rig.output(2).state = State.ENDED; rig.output(3);
+            assertEquals(B, rig.player.snapshot().track());
+        }
+    }
+    @Test void repeatAllWrapsAndSwitchingToSequentialAtEndStops() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.mode(OnlineMusicQueue.Mode.REPEAT_ALL);
+            queue.replace(List.of(A,B), 1); rig.output(0).state = State.ENDED;
+            rig.output(1); assertEquals(A, rig.player.snapshot().track());
+            queue.next(); rig.output(2); queue.mode(OnlineMusicQueue.Mode.SEQUENTIAL);
+            rig.output(2).state = State.ENDED; noAdvance(rig, 3);
+        }
+    }
+    @Test void modeChangeCannotReattachStoppedOrRemovedThenRestoredQueue() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B), 0); rig.output(0);
+            rig.player.stop(); queue.mode(OnlineMusicQueue.Mode.REPEAT_ONE); noAdvance(rig, 1);
+            queue.select(0); var output = rig.output(1);
+            queue.remove(0); queue.undo(); queue.mode(OnlineMusicQueue.Mode.REPEAT_ALL);
+            output.state = State.ENDED; noAdvance(rig, 2);
+        }
+    }
+    @Test void changingModeWhilePausedDoesNotResumeAndShuffleRunsInBackground() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B,C), 0); rig.output(0);
+            rig.player.pause(); queue.mode(OnlineMusicQueue.Mode.SHUFFLE); noAdvance(rig, 1);
+            assertEquals(State.PAUSED, rig.player.snapshot().state()); rig.player.resume();
+            rig.output(0).state = State.ENDED; rig.output(1).state = State.ENDED; rig.output(2);
+            assertEquals(3, new java.util.HashSet<>(rig.source.resolved).size());
+        }
+    }
+    @Test void replayAfterNaturalEndCanEnableRepeatWithoutReattachingStoppedQueue() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A), 0);
+            rig.output(0).state = State.ENDED; noAdvance(rig, 1);
+            queue.mode(OnlineMusicQueue.Mode.REPEAT_ONE); noAdvance(rig, 1);
+            rig.player.resume(); rig.output(1).state = State.ENDED; rig.output(2);
+            assertEquals(A, rig.player.snapshot().track());
+        }
+    }
+    @Test void undoUnplayedRemovalRestoresShufflePreviousNavigation() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.mode(OnlineMusicQueue.Mode.SHUFFLE);
+            queue.replace(List.of(A,B,C), 0); rig.output(0); queue.next(); rig.output(1);
+            int current = queue.snapshot().index(); int unplayed = current == 1 ? 2 : 1;
+            queue.remove(unplayed); queue.undo();
+            assertTrue(queue.snapshot().canPrevious()); queue.previous(); rig.output(2);
+            assertEquals(A, rig.player.snapshot().track());
+        }
+    }
+    @Test void repeatDoesNotRetryOutputFailureAndStopStillCancelsIt() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.mode(OnlineMusicQueue.Mode.REPEAT_ONE);
+            queue.replace(List.of(A), 0); rig.output(0).state = State.FAILED; noAdvance(rig, 1);
+            assertEquals(State.FAILED, rig.player.snapshot().state());
+            queue.select(0); var output = rig.output(1); rig.player.stop(); output.state = State.ENDED;
+            noAdvance(rig, 2);
+        }
+    }
+    @Test void seekAfterNaturalEndRearmsRepeatWatcher() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A), 0);
+            rig.output(0).state = State.ENDED; noAdvance(rig, 1);
+            queue.mode(OnlineMusicQueue.Mode.REPEAT_ONE); rig.player.seek(0);
+            rig.output(1).state = State.ENDED; rig.output(2);
+        }
+    }
+    @Test void undoPreservesSelectedPositionAmongDuplicateTracks() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,A,B), 1); rig.output(0);
+            queue.remove(2); queue.undo(); assertEquals(1, queue.snapshot().index());
+            queue.next(); rig.output(1); assertEquals(B, rig.player.snapshot().track());
+        }
+    }
 }
