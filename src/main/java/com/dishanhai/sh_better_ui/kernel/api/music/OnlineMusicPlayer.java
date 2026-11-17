@@ -41,6 +41,8 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     }
     /** Whether this session has received credentials; the platform can still expire/revoke them. */
     boolean authenticated(String source);
+    /** Optional persistent queue; null keeps legacy third-party players on a view-local queue. */
+    default OnlineMusicQueue queue() { return null; }
     void play(OnlineTrack track);
     void pause();
     void resume();

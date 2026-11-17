@@ -30,6 +30,12 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private final ScheduledThreadPoolExecutor loginWorker = new ScheduledThreadPoolExecutor(1, task -> {
         var thread = new Thread(task, "shb-music-login"); thread.setDaemon(true); return thread;
     });
+    private final ScheduledThreadPoolExecutor queueWorker = new ScheduledThreadPoolExecutor(1, task -> {
+        var thread = new Thread(task, "shb-music-queue"); thread.setDaemon(true); return thread;
+    });
+    private final PlayerQueue queue = new PlayerQueue();
+    private ScheduledFuture<?> queueTask;
+    private long queueWatch;
     private QrLoginSession login;
     private String loginSource;
     private PlaybackOutput output;
@@ -55,6 +61,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         this.outputs = outputs; this.download = download;
         this.credentialStore = store;
         loginWorker.setRemoveOnCancelPolicy(true);
+        queueWorker.setRemoveOnCancelPolicy(true);
         for (var provider : providers) {
             if (sources.putIfAbsent(provider.id(), provider) != null) throw new IllegalArgumentException("Duplicate music source");
         }
@@ -275,11 +282,18 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         });
         return result;
     }
-    @Override public synchronized void play(OnlineTrack next) {
-        requireOpen();
-        var provider = source(next.source()).requestSnapshot();
+    @Override public OnlineMusicQueue queue() { return queue; }
+
+    private void validateTrack(OnlineTrack next) {
+        Objects.requireNonNull(next); source(next.source());
         if (!next.id().matches("[A-Za-z0-9]{1,40}") || !next.mediaId().matches("[A-Za-z0-9]{1,40}"))
             throw new IllegalArgumentException("Invalid platform track identifier");
+    }
+
+    @Override public synchronized void play(OnlineTrack next) {
+        requireOpen();
+        validateTrack(next);
+        var provider = source(next.source()).requestSnapshot();
         reset();
         track = next; duration = next.durationMs(); state = State.LOADING; playRequested = true;
         lyricsState = LyricsState.LOADING;
@@ -372,6 +386,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         reset(); state = State.IDLE; track = null;
     }
     private void reset() {
+        cancelQueueProgress();
         generation++;
         if (audioTask != null) audioTask.cancel(true);
         if (lyricTask != null) lyricTask.cancel(true);
@@ -379,6 +394,90 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         output = null; audio = null; duration = offset = 0; preview = false;
         failure = Failure.NONE; lyricsState = LyricsState.EMPTY; lyrics = LyricTimeline.empty(); feed.clear();
     }
+    private void cancelQueueProgress() {
+        queueWatch++;
+        if (queueTask != null) queueTask.cancel(false);
+        queueTask = null;
+    }
+    /** Watches the current output, not UI frames. All transitions share the session lock. */
+    private synchronized void advanceQueue(long request, long watch) {
+        if (queueWatch != watch || generation != request || state == State.CLOSED) return;
+        if (state == State.FAILED) { cancelQueueProgress(); return; }
+        if (!playRequested || output == null) return;
+        State current = output.state();
+        if (current == State.FAILED) { cancelQueueProgress(); return; }
+        if (current != State.ENDED) return;
+        cancelQueueProgress();
+        if (queue.index >= 0 && queue.index + 1 < queue.tracks.size()) queue.select(queue.index + 1);
+    }
+
+    private final class PlayerQueue implements OnlineMusicQueue {
+        private List<OnlineTrack> tracks = List.of(), undoTracks;
+        private int index = -1, undoIndex;
+        @Override public Snapshot snapshot() {
+            synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null); }
+        }
+        @Override public void replace(List<OnlineTrack> next, int selected) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                if (selected < 0 || selected >= next.size()) return;
+                var copy = List.copyOf(next);
+                for (var song : copy) validateTrack(song);
+                // Start before committing the collection so a rejected selection preserves it.
+                play(copy.get(selected));
+                tracks = copy; index = selected; undoTracks = null;
+                watch();
+            }
+        }
+        @Override public void select(int selected) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                if (selected < 0 || selected >= tracks.size()) return;
+                play(tracks.get(selected)); index = selected; watch();
+            }
+        }
+        private void watch() {
+            if (index + 1 < tracks.size()) {
+                long request = generation, watch = queueWatch;
+                queueTask = queueWorker.scheduleWithFixedDelay(() -> advanceQueue(request, watch), 50, 50, TimeUnit.MILLISECONDS);
+            }
+        }
+        @Override public void next() {
+            synchronized (OnlinePlayerSession.this) { requireOpen(); if (index >= 0) select(index + 1); }
+        }
+        @Override public void previous() {
+            synchronized (OnlinePlayerSession.this) { requireOpen(); if (index > 0) select(index - 1); }
+        }
+        private void remember() { undoTracks = tracks; undoIndex = index; }
+        @Override public void remove(int selected) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                if (selected < 0 || selected >= tracks.size()) return;
+                remember(); var copy = new ArrayList<>(tracks); copy.remove(selected); tracks = List.copyOf(copy);
+                if (selected == index) { index = -1; cancelQueueProgress(); }
+                else if (selected < index) index--;
+            }
+        }
+        @Override public void clear() {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen(); if (tracks.isEmpty()) return;
+                remember(); tracks = List.of(); index = -1; cancelQueueProgress();
+            }
+        }
+        @Override public void undo() {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen(); if (undoTracks == null) return;
+                boolean advancing = queueTask != null;
+                var selected = index >= 0 ? tracks.get(index) : null;
+                tracks = undoTracks; index = selected == null ? undoIndex : tracks.indexOf(selected);
+                undoTracks = null;
+                cancelQueueProgress();
+                // Keep an attached queue running; restoring a detached one never restarts it.
+                if (advancing) watch();
+            }
+        }
+    }
+
     private OnlineMusicSource source(String id) {
         var provider = sources.get(id);
         if (provider == null) throw new IllegalArgumentException("Unknown music source");
@@ -395,6 +494,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             obsolete = List.copyOf(searches.keySet()); searches.clear();
             workers.shutdownNow();
             loginWorker.shutdownNow();
+            queueWorker.shutdownNow();
+            queue.tracks = List.of(); queue.undoTracks = null; queue.index = -1;
             for (var provider : sources.values()) {
                 try { provider.credentials(""); } catch (UnsupportedOperationException ignored) { }
             }
