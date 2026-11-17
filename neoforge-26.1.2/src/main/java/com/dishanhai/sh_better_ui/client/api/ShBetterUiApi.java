@@ -15,6 +15,12 @@ public final class ShBetterUiApi {
     private static final BlurApi BLUR = new BlurApi();
     private static final UiClientApi CLIENT = new UiClientApi();
 
+    private static final MarkdownApi MARKDOWN = new MarkdownApi();
+    private static final LinkApi LINKS = new LinkApi();
+
+    public static MarkdownApi markdown() { return MARKDOWN; }
+    public static LinkApi links() { return LINKS; }
+
     private ShBetterUiApi() {}
 
     public static ControlsApi controls() {

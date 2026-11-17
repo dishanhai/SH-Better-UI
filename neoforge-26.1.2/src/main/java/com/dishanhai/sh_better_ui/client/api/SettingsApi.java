@@ -35,6 +35,24 @@ public final class SettingsApi {
         return com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen.create(parent, returnFocus);
     }
 
+    public boolean activitiesAvailable() {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.activitiesAvailable();
+    }
+
+    /** Opens controls for current real publications; never creates a demonstration activity. */
+    public Screen activityScreen(@Nullable Screen parent) {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.activityScreen(parent);
+    }
+
+    public Screen markdownScreen(@Nullable Screen parent) {
+        return new com.dishanhai.sh_better_ui.client.gui.panel.MarkdownExampleScreen(parent);
+    }
+
+    /** Creates a document viewer for consumer-provided Markdown, without opening it. */
+    public Screen markdownScreen(@Nullable Screen parent, String source) {
+        return new com.dishanhai.sh_better_ui.client.gui.panel.MarkdownExampleScreen(parent, source);
+    }
+
     public DeveloperPanelScreen developerPanel(@Nullable Screen parent) { return new DeveloperPanelScreen(parent); }
 
     public DeveloperPanelScreen developerPanel(@Nullable Screen parent, UiPreferences preferences) {

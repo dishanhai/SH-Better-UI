@@ -231,6 +231,14 @@ public final class ControlPanelScreen extends Screen {
                             : label("shortcut.binding", mapping.getTranslatedKeyMessage()));
                 });
                 toolButton(label("developer.title"), GraphicIcon.CODE, this::openDeveloperPanel);
+                var activities = toolButton(Component.translatable("sh_better_ui.live.open_details"), GraphicIcon.INFO,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().activityScreen(this)));
+                activities.active = ShBetterUiApi.settings().activitiesAvailable();
+                refreshRows.add(() -> activities.active = ShBetterUiApi.settings().activitiesAvailable());
+                toolButton(Component.translatable("sh_better_ui.online_music.view.brand"), GraphicIcon.MUSIC,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().onlineMusicScreen(this)));
+                toolButton(Component.translatable("sh_better_ui.native.markdown.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().markdownScreen(this)));
             }
             case OVERVIEW -> {
                 var snapshot = PanelOverview.capture(minecraft);

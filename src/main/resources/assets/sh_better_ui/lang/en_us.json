@@ -2636,5 +2636,10 @@
   "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings.",
   "sh_better_ui.online_music.view.library": "Library",
   "sh_better_ui.online_music.refresh.library": "Your library",
-  "sh_better_ui.online_music.library.sign_in": "Sign in to this source"
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source",
+  "sh_better_ui.native.markdown.title": "Markdown document",
+  "sh_better_ui.native.markdown.next_link": "Next link",
+  "sh_better_ui.native.markdown.copy": "Copy Markdown",
+  "sh_better_ui.live.dismiss": "Hide activity",
+  "sh_better_ui.live.open_details": "Open live activities"
 }
