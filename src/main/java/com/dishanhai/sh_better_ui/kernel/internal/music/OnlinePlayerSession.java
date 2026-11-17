@@ -446,6 +446,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 order.reset(tracks.size(), selected); playIndex(selected);
             }
         }
+        @Override public boolean supportsModes() { return true; }
         @Override public Mode mode() { synchronized (OnlinePlayerSession.this) { return order.mode(); } }
         @Override public void mode(Mode mode) {
             synchronized (OnlinePlayerSession.this) {
