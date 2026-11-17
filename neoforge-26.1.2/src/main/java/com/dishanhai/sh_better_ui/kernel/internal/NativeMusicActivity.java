@@ -32,6 +32,8 @@ public final class NativeMusicActivity implements UIModule {
     private ActivityService activities;
     private NotificationService notifications;
     private OnlineMusicService online;
+    private LiveSurfaceService liveSurfaces;
+    private LiveSurfaceService.Reservation hudReservation;
     private ActivityService.Handle handle;
     private ActivityService.Content published;
     private String identity;
@@ -75,6 +77,7 @@ public final class NativeMusicActivity implements UIModule {
         activities = context.engine().require(ActivityService.KEY);
         notifications = context.engine().require(NotificationService.KEY);
         online = context.engine().find(OnlineMusicService.KEY).orElse(null);
+        liveSurfaces = context.engine().find(LiveSurfaceService.KEY).orElse(null);
         var configs = context.engine().configs();
         configs.define(MusicOverlaySettings.KEY);
         if (persistent) {
@@ -94,7 +97,19 @@ public final class NativeMusicActivity implements UIModule {
         var configs = context.engine().configs();
         configs.beginTransaction().set(configs.userGlobal(), MusicOverlaySettings.KEY, value).commit();
     }
-    @Override public void stop(ModuleContext ignored) { clear(); context = null; }
+    /** Reservation is independent of the island publication and follows the actual HUD bounds. */
+    boolean hudBounds(com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds bounds) {
+        if (bounds == null || !available() || liveSurfaces == null) {
+            if (hudReservation != null) hudReservation.close(); hudReservation = null; return false;
+        }
+        var rect = new SurfacePlacement.Rect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        if (hudReservation == null) {
+            if (liveSurfaces instanceof LiveSurfaceRuntime runtime && runtime.occupied().size() >= 128) return false;
+            hudReservation = liveSurfaces.reserve(context, context.scope(), UiId.parse("sh_better_ui:music/hud"), rect);
+        } else hudReservation.update(rect);
+        return true;
+    }
+    @Override public void stop(ModuleContext ignored) { hudBounds(null); clear(); context = null; }
 
     /** UI-thread MEASURE, before LiveSurfaceRuntime.advance. No network or playback commands. */
     public void advance() {

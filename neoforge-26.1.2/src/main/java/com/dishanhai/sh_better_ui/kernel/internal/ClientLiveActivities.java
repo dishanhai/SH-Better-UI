@@ -75,8 +75,17 @@ public final class ClientLiveActivities implements AutoCloseable {
 
     public void invalidateArtwork() { artwork.invalidate(); }
 
+    NativeMusicArtwork artwork() { return artwork; }
+    /** Single upload/release point before extracting either the music card or island. */
+    void prepareArtwork(com.dishanhai.sh_better_ui.client.music.MusicService.Frame frame, boolean hudVisible, boolean sceneVisible) {
+        var cover = frame.snapshot().session() == null ? null : frame.snapshot().session().artwork();
+        var icon = NativeMusicArtwork.icon(cover);
+        var primary = runtime.plan().primary();
+        boolean islandNeeds = primary != null && icon != null && icon.equals(primary.content().icon()) && runtime.policy().enabled();
+        artwork.beginFrame(sceneVisible && (hudVisible || islandNeeds) ? cover : null);
+    }
+
     private void suspend() {
-        artwork.invalidate();
         motion.suspend(host.nowNanos() / 1_000_000L);
         runtime.present(new LiveSurfaceService.View(runtime.plan(), SurfacePresentation.SUSPENDED,
                 SurfacePresentation.SUSPENDED, SurfaceGeometry.HIDDEN, SurfaceGeometry.HIDDEN, false));
@@ -108,13 +117,7 @@ public final class ClientLiveActivities implements AutoCloseable {
         var area = frame.animated();
         runtime.present(new LiveSurfaceService.View(plan, frame.target().presentation(), frame.current().presentation(),
                 area, SurfaceGeometry.HIDDEN, false, frame.running()));
-        if (!area.visible()) { artwork.invalidate(); return; }
-        var musicFrame = com.dishanhai.sh_better_ui.client.music.ClientMusic.frame();
-        var cover = musicFrame.snapshot().session() == null ? null : musicFrame.snapshot().session().artwork();
-        var coverIcon = NativeMusicArtwork.icon(cover);
-        boolean needsCover = coverIcon != null && frame.contentMix().stream().anyMatch(layer ->
-                layer.content() != null && coverIcon.equals(layer.content().icon()));
-        artwork.beginFrame(needsCover ? cover : null);
+        if (!area.visible()) return;
         var shellContent = target.content() != null ? target.content()
                 : frame.contentMix().stream().map(SurfaceTransition.Layer::content).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         if (shellContent != null) paintShell(graphics, area, fade(palette(shellContent), area.opacity()));
