@@ -25,9 +25,16 @@ public final class LocalMusicIsland {
     private final MusicApi music;
     private final InterruptibleAnimation expansion = new InterruptibleAnimation(Spring.FLUID_MORPH);
     private final MusicRhythm rhythm = new MusicRhythm();
+    private final com.dishanhai.sh_better_ui.client.gui.text.UiMarqueeLabel titleLabel =
+            new com.dishanhai.sh_better_ui.client.gui.text.UiMarqueeLabel();
     private final FloatingLyricRenderer lyrics;
     private MusicService.Frame current;
     private boolean expanded;
+    private final DynamicIslandState lifecycle = new DynamicIslandState();
+    private final IslandNoticeQueue notices = new IslandNoticeQueue();
+    private IslandNoticeQueue.Notice activeNotice;
+    private final IslandAmbientState ambient = new IslandAmbientState();
+    private boolean ambientShown;
 
     public LocalMusicIsland(MusicApi music) {
         this.music = music;
@@ -37,7 +44,53 @@ public final class LocalMusicIsland {
 
     public boolean expanded() { return expanded; }
 
+    /** Pin expansion; explicit collapse also dismisses a track notification. */
     public void setExpanded(boolean expanded, long nowMs, boolean reducedMotion) {
+        if (expanded) lifecycle.setPinned(true);
+        else { lifecycle.dismiss(); notices.clear(); activeNotice = null; }
+        animateExpansion(expanded, nowMs, reducedMotion);
+    }
+
+    public void setScene(boolean inWorld, boolean playerListVisible, boolean hudHidden, boolean playerUiOpen) {
+        lifecycle.setScene(inWorld, playerListVisible, hudHidden, playerUiOpen);
+    }
+
+    /** Hosts may use the same hit region for pointer and keyboard focus. */
+    public void setHovered(boolean hovered, long nowMs) { lifecycle.setHovered(hovered, nowMs); }
+
+    public void setAmbient(IslandAmbientState.Settings settings) { ambient.configure(settings); }
+    public void updateAmbient(int fps, int pingMillis, int hour, int minute, long nowMs) {
+        ambient.update(fps, pingMillis, hour, minute, nowMs);
+    }
+
+    public void notify(IslandNoticeQueue.Notice notice) { notices.offer(notice); }
+
+    public boolean visible(long nowMs) {
+        observeMusic(nowMs);
+        sampleNotice(nowMs);
+        return lifecycle.visible(nowMs);
+    }
+    public boolean notificationActive(long nowMs) {
+        observeMusic(nowMs);
+        sampleNotice(nowMs);
+        return lifecycle.notificationActive(nowMs);
+    }
+
+    private void observeMusic(long nowMs) {
+        current = music.getFrame();
+        var snapshot = current.snapshot();
+        var session = snapshot.session();
+        var track = session == null ? null : session.track();
+        lifecycle.observeTrack(track == null ? null
+                : snapshot.providerId() + "\u0000" + session.id() + "\u0000" + track.key(), nowMs);
+    }
+
+    private void sampleNotice(long nowMs) {
+        activeNotice = notices.sample(nowMs).orElse(null);
+        lifecycle.setNoticeActive(activeNotice != null);
+    }
+
+    private void animateExpansion(boolean expanded, long nowMs, boolean reducedMotion) {
         if (this.expanded == expanded) return;
         this.expanded = expanded;
         float target = expanded ? 1 : 0;
@@ -47,6 +100,9 @@ public final class LocalMusicIsland {
     }
 
     public Component narration() {
+        if (activeNotice != null) return Component.literal(activeNotice.title() + "\n" + activeNotice.detail());
+        if (ambientShown) return Component.literal(ambient.chips().stream()
+                .map(chip -> chip.value() + " " + chip.unit()).collect(java.util.stream.Collectors.joining(", ")));
         var snapshot = current.snapshot();
         var session = snapshot.session();
         var action = Component.translatable(TEXT + (expanded ? "collapse" : "expand"));
@@ -63,14 +119,41 @@ public final class LocalMusicIsland {
     /** The host may supply its own authorized output capture for this view. */
     public void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio) {
         if (compact.width() < 94 || compact.height() < 29) return;
-        current = music.getFrame();
+        observeMusic(ui.nowMs());
         var snapshot = current.snapshot();
         var session = snapshot.session();
         var preferences = ui.preferences();
         boolean still = preferences.reducedMotion() || preferences.highContrast();
+        var observedTrack = session == null ? null : session.track();
+        sampleNotice(ui.nowMs());
+        animateExpansion(lifecycle.expanded(ui.nowMs()), ui.nowMs(), still);
+        if (!lifecycle.visible(ui.nowMs())) { rhythm.reset(); return; }
         var outline = MusicIsland.outline(compact, full, expansion.sample(ui.nowMs(), still));
         var graphics = ui.graphics();
         MusicIsland.drawShell(graphics, outline, preferences, hovered);
+        ambientShown = false;
+        if (activeNotice != null) {
+            int left = Math.round(outline.rect().getX()) + 10;
+            int right = Math.round(outline.rect().getX() + outline.rect().getW()) - 10;
+            int top = Math.round(outline.rect().getY()) + 7;
+            drawText(ui, font, Component.literal(activeNotice.title()), left, top, right, 0xFFFFFFFF);
+            drawText(ui, font, Component.literal(activeNotice.detail()), left, top + font.lineHeight + 2,
+                    right, preferences.highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1);
+            int barY = top + 2 * font.lineHeight + 5;
+            if (activeNotice.progress() >= 0 && barY + 2 < outline.rect().getY() + outline.rect().getH() - 5) {
+                graphics.fill(left, barY, right, barY + 2, 0xFF415064);
+                graphics.fill(left, barY, left + (int) Math.round((right-left)*activeNotice.progress()),
+                        barY + 2, preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
+            }
+            return;
+        }
+
+        if (!expanded && !lifecycle.notificationActive(ui.nowMs())
+                && ambient.page(ui.nowMs(), observedTrack != null, preferences.reducedMotion()) == IslandAmbientState.Page.STATUS) {
+            ambientShown = true;
+            drawAmbient(ui, font, compact);
+            return;
+        }
 
         int x = compact.x() + 7;
         int artY = compact.y() + (compact.height() - 18) / 2;
@@ -102,7 +185,9 @@ public final class LocalMusicIsland {
         int y = compact.y() + (compact.height() - lines * step + 1) / 2;
         int textX = x + 22;
         if (session != null) {
-            drawText(ui, font, title(session), textX, y, textRight, 0xFFFFFFFF);
+            titleLabel.setText(title(session));
+            titleLabel.render(graphics, font, textX, y, Math.max(0, textRight - textX), 0xFFFFFFFF,
+                    false, ui.nowMs(), hovered, preferences);
             y += step;
             if (showCredit) {
                 drawText(ui, font, credit(session), textX, y, textRight, secondary);
@@ -146,7 +231,55 @@ public final class LocalMusicIsland {
         drawText(ui, font, Component.translatable(TEXT + hint), left, lyricY, right, secondary);
     }
 
-    public void suspend() { rhythm.reset(); }
+    public void suspend() {
+        rhythm.reset();
+        titleLabel.reset();
+        lifecycle.suspend();
+        notices.clear();
+        activeNotice = null;
+        ambient.reset();
+        ambientShown = false;
+        expanded = false;
+        expansion.snapTo(0);
+    }
+
+    private void drawAmbient(UiFrame ui, Font font, Bounds bounds) {
+        var chips = ambient.chips();
+        if (chips.isEmpty()) return;
+        int available = Math.max(0, bounds.width() - 16);
+        // Width follows templates, not live values: FPS jitter never changes the island geometry.
+        int total = 0;
+        for (var chip : chips) total += font.width(chip.widthTemplate())
+                + (chip.unit().isEmpty() ? 0 : font.width(chip.unit()) + 3) + 8;
+        if (total - 8 > available) {
+            // Compact/narrow hosts show one complete chip, rather than cropping the last reading.
+            int index = ui.preferences().reducedMotion() ? 0 : (int) Math.floorMod(ui.nowMs() / 5000, chips.size());
+            chips = java.util.List.of(chips.get(index));
+            var only = chips.get(0);
+            total = font.width(only.widthTemplate()) + (only.unit().isEmpty() ? 0 : font.width(only.unit())+3)+8;
+        }
+        int x = bounds.x() + 8 + Math.max(0, (available - total + 8) / 2);
+        int y = bounds.y() + (bounds.height() - font.lineHeight) / 2;
+        ui.graphics().enableScissor(bounds.x()+8, bounds.y(), bounds.right()-8, bounds.bottom());
+        try {
+            for (var chip : chips) {
+                int width = font.width(chip.widthTemplate());
+                int color = ui.preferences().highContrast() ? 0xFFFFFFFF : switch (chip.health()) {
+                    case GOOD -> 0xFF9DE3C1;
+                    case WARN -> 0xFFFFDB91;
+                    case BAD -> 0xFFFFB1B1;
+                    case NEUTRAL -> 0xFFFFFFFF;
+                };
+                ui.graphics().drawString(font, chip.value(), x + Math.max(0,(width-font.width(chip.value()))/2), y, color, false);
+                x += width;
+                if (!chip.unit().isEmpty()) {
+                    ui.graphics().drawString(font, chip.unit(), x+3, y, 0xFFFFFFFF, false);
+                    x += font.width(chip.unit())+3;
+                }
+                x += 8;
+            }
+        } finally { ui.graphics().disableScissor(); }
+    }
 
     private static void drawText(UiFrame ui, Font font, Component text, int x, int y, int right, int color) {
         String value = text.getString();

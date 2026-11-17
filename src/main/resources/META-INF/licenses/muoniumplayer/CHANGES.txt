@@ -35,3 +35,12 @@ Control-center adaptation (2026-11):
 - Optional Muonium compatibility controls require the separately installed
   MuoniumPlayer mod and invoke its public settings API; they do not ship its
   music/HUD/DSP/model backends or assets.
+
+Native HUD and island interaction adaptation (2026-11):
+- Referenced muonium-common HUD/island presentation and 1.21.1 HudConfig as
+  feature references. Added independent SHBUI MusicApi rendering and scoped UUK
+  hosting, normalized position/size editing, ambient status rotation, bounded
+  notices, and a native-font marquee model.
+- No upstream Skija renderer, downloaded native library, font, music backend,
+  branded artwork, or compiled MuoniumPlayer artifact is included by this work.
+- This increment does not claim complete HUD, island, or UI-library parity.

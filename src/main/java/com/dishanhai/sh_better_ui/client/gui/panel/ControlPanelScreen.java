@@ -348,7 +348,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             };
             case DEVELOPER -> 120;
             case THEMES -> 230;
-            case MUSIC -> 82;
+            case MUSIC -> 114;
             case MUONIUM -> 132;
             case OVERVIEW -> 0;
             case LINKS -> 16 + FeedbackLink.values().length * (BUTTON_HEIGHT + GAP);
@@ -375,6 +375,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             musicOpen = row(button(x, 28, contentWidth, label("music.open"), GraphicIcon.NEXT, false,
                     () -> minecraft.setScreen(ShBetterUiApi.settings().onlineMusicScreen(this, () -> musicOpen))));
             musicOpen.active = ShBetterUiApi.settings().onlineMusicAvailable();
+            var overlay = row(button(x, 60, contentWidth, Component.translatable("sh_better_ui.music_overlay.title"), GraphicIcon.NEXT, false,
+                    () -> com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay.open(this)));
+            overlay.active = com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay.available();
         } else if (selectedArea == Area.DEVELOPER) addDeveloperControls(x);
         else if (selectedArea == Area.OVERVIEW) refreshOverview(PageTransition.nowMs());
         else if (selectedArea == Area.LINKS) addFeedbackLinks(x);
