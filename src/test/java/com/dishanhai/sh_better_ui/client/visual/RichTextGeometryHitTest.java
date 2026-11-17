@@ -7,6 +7,12 @@ import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Local;
 import com.dishanhai.sh_better_ui.kernel.api.geometry.Geometry2.Point;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichLayoutSnapshot.Rect;
 import org.junit.jupiter.api.Test;
+import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
+import net.minecraft.network.chat.Style;
+import net.minecraft.network.chat.ClickEvent;
+import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.util.FormattedCharSequence;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -58,4 +64,47 @@ class RichTextGeometryHitTest {
         assertFalse(RichTextView.canJoin(first, new Rect(11, 13, 5, 9), 9f));
         assertFalse(RichTextView.canJoin(first, new Rect(11, 4, 0, 9), 9f));
     }
+    @Test
+    void literalMarkdownCanBatchWithoutRemovingItsTrustBoundary() {
+        var style = UiRichText.literalStyle(Style.EMPTY.withBold(true).withColor(0xffccaa));
+        assertTrue(RichTextView.canJoinStyle(Style.EMPTY));
+        assertTrue(RichTextView.canJoinStyle(style));
+        assertTrue(UiRichText.isLiteral(style));
+        String text = "<rich:item=minecraft:diamond> §c literal";
+        var source = Component.literal(text).setStyle(style);
+        var prepared = UiRichText.prepare(source);
+        assertEquals(text, prepared.getString());
+        prepared.visit((nativeStyle, value) -> {
+            if (!value.isEmpty()) assertTrue(UiRichText.isLiteral(nativeStyle));
+            return java.util.Optional.empty();
+        }, Style.EMPTY);
+    }
+
+    @Test
+    void batchingStillRejectsInteractiveMetadataAndSpecialRendering() {
+        var literal = UiRichText.literalStyle(Style.EMPTY);
+        assertFalse(RichTextView.canJoinStyle(Style.EMPTY.withInsertion("user insertion")));
+        assertFalse(RichTextView.canJoinStyle(literal.withClickEvent(
+                new ClickEvent(ClickEvent.Action.OPEN_URL, "https://example.com"))));
+        assertFalse(RichTextView.canJoinStyle(literal.withFont(ResourceLocation.tryParse("test:font"))));
+        assertFalse(RichTextView.canJoinStyle(literal.withUnderlined(true)));
+        assertFalse(RichTextView.canJoinStyle(literal.withStrikethrough(true)));
+        assertFalse(RichTextView.canJoinStyle(literal.withObfuscated(true)));
+    }
+
+    @Test
+    void adjacentLiteralSequencesCannotReconstructAnExecutableInlineTag() {
+        var literal = UiRichText.literalStyle(Style.EMPTY);
+        var first = FormattedCharSequence.forward("<rich:item=", literal);
+        var second = FormattedCharSequence.forward("minecraft:diamond>", literal);
+        FormattedCharSequence joined = sink -> first.accept(sink) && second.accept(sink);
+        var result = new StringBuilder();
+        UiRichText.prepare(joined).accept((index, style, codePoint) -> {
+            assertTrue(UiRichText.isLiteral(style));
+            result.appendCodePoint(codePoint);
+            return true;
+        });
+        assertEquals("<rich:item=minecraft:diamond>", result.toString());
+    }
+
 }

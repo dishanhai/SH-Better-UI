@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Anchor;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Transform;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentLayout.Node;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
 import com.dishanhai.sh_better_ui.kernel.api.RenderService;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
@@ -550,8 +551,7 @@ public final class RichTextView implements Subscription {
         var first = fragments.get(start);
         var run = (TextRun) first.node();
         var style = metrics.style(run);
-        if (!style.getFont().equals(Style.DEFAULT_FONT) || style.getClickEvent() != null || style.getHoverEvent() != null
-                || style.getInsertion() != null || style.isUnderlined() || style.isStrikethrough() || style.isObfuscated()) {
+        if (!canJoinStyle(style)) {
             return start;
         }
         int end = start;
@@ -577,6 +577,14 @@ public final class RichTextView implements Subscription {
         };
         boolean hovered = hover != null && group.contains(hover);
         return readable.draw(first, bounds, joined, originalColor(style, color), hovered) ? end : start;
+    }
+
+    /** Internal literal markers prohibit reparsing, not batching. Never strip them from the sequence. */
+    static boolean canJoinStyle(Style style) {
+        return style.getFont().equals(Style.DEFAULT_FONT) && style.getClickEvent() == null
+                && style.getHoverEvent() == null
+                && (style.getInsertion() == null || UiRichText.isLiteral(style))
+                && !style.isUnderlined() && !style.isStrikethrough() && !style.isObfuscated();
     }
 
     static boolean canJoin(Rect first, Rect second, float advance) {
