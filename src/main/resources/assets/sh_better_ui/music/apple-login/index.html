@@ -1,0 +1,14 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>SHBUI · Apple Music 授权</title>
+<style>
+:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{margin:0;background:#16161a;color:#f5f5f7}main{max-width:620px;margin:10vh auto;padding:32px}h1{font-size:32px;letter-spacing:-.04em}p{line-height:1.7;color:#b9b9c2}button{font:inherit;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:#fc3c5b;color:white;margin:8px 8px 8px 0}button.secondary{background:#303039}button:disabled{opacity:.45;cursor:default}button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:4px}#status{min-height:3em;color:#fff}a{color:#ff8195}.note{font-size:14px}#cancel{display:none}
+</style></head><body><main>
+<h1>连接你的 Apple Music</h1>
+<p>点击后将在 Apple 官方授权窗口登录你自己的账户。SHBUI 不收集 Apple 密码或验证码。</p>
+<p id="status" role="status" aria-live="polite">正在准备官方 MusicKit…</p>
+<button id="connect" disabled>使用 Apple Music 登录</button><button class="secondary" id="cancel">取消本次授权</button><button class="secondary" id="disconnect" disabled>断开 Apple Music</button>
+<p class="note">这一步只授权 MusicKit 浏览器会话，不代表游戏内完整播放已可用。Apple Music 订阅、地区和播放宿主仍需单独验证。</p>
+<p class="note">模组不会收到或保存 Music User Token；Apple 的 MusicKit 和浏览器管理登录状态。若不希望保留授权，请先点“断开 Apple Music”，再关闭此页。关闭游戏连接不会自动撤销 Apple 授权。</p>
+<a href="https://support.apple.com/apple-music" target="_blank" rel="noopener noreferrer">Apple Music 帮助</a>
+</main><script type="module" src="/login.mjs"></script></body></html>

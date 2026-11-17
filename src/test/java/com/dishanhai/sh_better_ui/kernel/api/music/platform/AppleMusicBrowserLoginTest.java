@@ -1,0 +1,68 @@
+// Author: dishanhai
+package com.dishanhai.sh_better_ui.kernel.api.music.platform;
+
+import org.junit.jupiter.api.Test;
+import java.net.*;
+import java.net.http.*;
+import java.time.Duration;
+import static org.junit.jupiter.api.Assertions.*;
+
+class AppleMusicBrowserLoginTest {
+    private final HttpClient client = HttpClient.newBuilder().followRedirects(HttpClient.Redirect.NEVER).build();
+    private static URI endpoint(AppleMusicBrowserLogin login, String path) { return login.browserUri().resolve(path); }
+    private HttpResponse<String> get(AppleMusicBrowserLogin login, String path, boolean session) throws Exception {
+        var builder=HttpRequest.newBuilder(endpoint(login,path)).timeout(Duration.ofSeconds(3));
+        if(session) builder.header("X-SHBUI-Session",login.browserUri().getFragment());
+        return client.send(builder.GET().build(),HttpResponse.BodyHandlers.ofString());
+    }
+    private HttpResponse<String> post(AppleMusicBrowserLogin login,String origin,String body) throws Exception {
+        return client.send(HttpRequest.newBuilder(endpoint(login,"/state")).timeout(Duration.ofSeconds(3))
+                .header("X-SHBUI-Session",login.browserUri().getFragment()).header("Origin",origin)
+                .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+    }
+    private String origin(AppleMusicBrowserLogin login) { return "http://"+login.browserUri().getAuthority(); }
+    @Test void servesLocalPageWithoutSecretsAndGatesConfiguration() throws Exception {
+        try(var login=new AppleMusicBrowserLogin("header.payload.signature")) {
+            assertEquals("127.0.0.1",login.browserUri().getHost());
+            var page=get(login,"/",false);
+            assertEquals(200,page.statusCode());assertFalse(page.body().contains("header.payload.signature"));
+            assertEquals("no-store",page.headers().firstValue("Cache-Control").orElseThrow());
+            assertEquals(403,get(login,"/config",false).statusCode());
+            assertEquals(200,get(login,"/config",true).statusCode());
+            assertEquals(403,get(login,"/status",false).statusCode());
+            assertEquals("{}",get(login,"/status",true).body());
+            assertEquals(404,get(login,"/missing",false).statusCode());
+            assertEquals(400,get(login,"/config?token=bad",true).statusCode());
+        }
+    }
+    @Test void acceptsOnlyAuthenticatedSameOriginStateAndNoCredentialPayloads() throws Exception {
+        try(var login=new AppleMusicBrowserLogin("header.payload.signature")) {
+            assertEquals(403,post(login,"https://evil.invalid","{\"state\":\"AUTHORIZED\"}").statusCode());
+            assertEquals(AppleMusicBrowserLogin.State.WAITING,login.state());
+            assertEquals(200,post(login,origin(login),"{\"state\":\"AUTHORIZING\"}").statusCode());
+            assertEquals(200,post(login,origin(login),"{\"state\":\"AUTHORIZED\"}").statusCode());
+            assertEquals(AppleMusicBrowserLogin.State.AUTHORIZED,login.state());
+            assertEquals(400,post(login,origin(login),"{\"state\":\"AUTHORIZED\",\"token\":\"secret\"}").statusCode());
+            assertEquals(400,post(login,origin(login),"{\"state\":\"CLOSED\"}").statusCode());
+            assertEquals(413,post(login,origin(login),"x".repeat(257)).statusCode());
+        }
+    }
+    @Test void closeAndExpiryAreTerminalAndDoNotClaimBrowserSignout() throws Exception {
+        var login=new AppleMusicBrowserLogin("header.payload.signature");login.close();login.close();
+        assertEquals(AppleMusicBrowserLogin.State.CLOSED,login.state());
+        try(var expiring=new AppleMusicBrowserLogin("header.payload.signature",Duration.ofMillis(50))) {
+            long end=System.nanoTime()+Duration.ofSeconds(3).toNanos();
+            while(expiring.state()!=AppleMusicBrowserLogin.State.EXPIRED && System.nanoTime()<end) Thread.sleep(10);
+            assertEquals(AppleMusicBrowserLogin.State.EXPIRED,expiring.state());
+        }
+    }
+    @Test void occupiedConfiguredOriginFailsInsteadOfChangingPort() throws Exception {
+        try(var first=new AppleMusicBrowserLogin("header.payload.signature")) {
+            assertThrows(java.io.IOException.class,()->new AppleMusicBrowserLogin("header.payload.signature",first.browserUri().getPort()));
+        }
+    }
+    @Test void rejectsBadDeveloperTokensBeforeOpeningServer() {
+        assertThrows(IllegalArgumentException.class,()->new AppleMusicBrowserLogin(""));
+        assertThrows(IllegalArgumentException.class,()->new AppleMusicBrowserLogin("header.payload.signature\r\nCookie: bad"));
+    }
+}
