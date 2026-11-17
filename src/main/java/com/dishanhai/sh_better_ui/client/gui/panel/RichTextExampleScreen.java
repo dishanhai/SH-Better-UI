@@ -107,6 +107,11 @@ public final class RichTextExampleScreen extends Screen {
             setInitialFocus(back);
             return;
         }
+        if (!advanced) {
+            addRenderableWidget(Button.builder(Component.literal("Markdown"), button ->
+                    minecraft.setScreen(new MarkdownExampleScreen(this)))
+                    .bounds(Math.max(0, width - 94), 6, Math.min(88, width), 20).build());
+        }
         int switchWidth = Math.min(128, Math.max(0, width - 2 * MARGIN - (advanced ? 0 : buttonWidth + 6)));
         addRenderableWidget(Button.builder(label(advanced ? "simple" : "advanced"), button -> {
             advanced = !advanced;

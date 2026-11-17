@@ -24,7 +24,7 @@ public final class MarkdownApi {
     private static final Pattern ESCAPE = Pattern.compile("\\\\(" + PUNCTUATION + ")");
     private static final Pattern INLINE = Pattern.compile(
             "(?<escape>\\\\" + PUNCTUATION + ")"
-                    + "|(?<!`)(?<ticks>`++)(?<code>.+?)\\k<ticks>(?!`)"
+                    + "|(?<!`)(?<ticks>`++)(?<code>.+?)(?<!`)\\k<ticks>(?!`)"
                     + "|(?<image>!)?\\[(?<label>[^\\[\\]]++)\\]\\((?<url>" + DESTINATION + ")\\)"
                     + "|<(?<autolink>(?i:https?)://[^\\s<>]++)>"
                     + "|(?<html></?[A-Za-z][^<>]*+>)"
@@ -62,6 +62,20 @@ public final class MarkdownApi {
             else append(result, line, CODE);
         }
         return result;
+    }
+
+    /** Inline-only parsing for table cells and block layout. Does not consume list/heading markers. */
+    public MutableComponent parseInline(String source) {
+        Objects.requireNonNull(source, "source");
+        if (source.length() > MAX_LENGTH) throw new IllegalArgumentException("Markdown input is too large");
+        var result = Component.empty();
+        appendInline(result, source, Style.EMPTY, 0, true);
+        return result;
+    }
+
+    /** Structural layout model for MarkdownView; no game state or network access. */
+    public com.dishanhai.sh_better_ui.kernel.api.richtext.RichMarkdown.Document document(String source) {
+        return com.dishanhai.sh_better_ui.kernel.api.richtext.RichMarkdown.parse(source);
     }
 
     private static void appendLine(MutableComponent result, String line) {
