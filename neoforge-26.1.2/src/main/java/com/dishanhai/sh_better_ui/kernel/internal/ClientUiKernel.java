@@ -54,6 +54,7 @@ public final class ClientUiKernel {
     private static ClientHud hud;
     private static ClientDockWindows dock;
     private static ClientLiveActivities liveActivities;
+    private static NativeMusicActivity musicActivity;
     private static boolean frameOpen;
 
     private ClientUiKernel() {}
@@ -73,11 +74,17 @@ public final class ClientUiKernel {
         var clientHud = new ClientHud(kernel, readbacks);
         var clientDock = new ClientDockWindows(kernel, clientScreens);
         var clientActivities = new ClientLiveActivities(kernel, liveSettings);
+        var nativeMusic = new NativeMusicActivity(true, () -> clientActivities.runtime().policy().notifications(),
+                () -> clientActivities.runtime().diagnostics().activities() < clientActivities.runtime().policy().maxActivities(),
+                () -> clientActivities.runtime().diagnostics().notifications() < clientActivities.runtime().policy().maxNotifications(),
+                () -> NativePort.show(minecraft, com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.settings()
+                        .onlineMusicScreen(NativePort.screen(minecraft))));
         var materialCatalog = new ClientMaterialCatalog(kernel, PLATFORM, asset -> {
             var id = Identifier.tryParse(asset);
             return id != null && minecraft.getResourceManager().getResource(id).isPresent();
         });
         var candidates = new ArrayList<>(NativeModuleSources.discover(modSources()));
+        candidates.add(nativeMusic.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIPlatform.KEY, clientScreens));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
@@ -109,6 +116,7 @@ public final class ClientUiKernel {
         hud = clientHud;
         dock = clientDock;
         liveActivities = clientActivities;
+        musicActivity = nativeMusic;
         screens.sync(minecraft);
         com.dishanhai.sh_better_ui.client.music.ClientMusic.start(config);
     }
@@ -135,7 +143,10 @@ public final class ClientUiKernel {
             dock.sync(NativePort.screen(client), client.isWindowActive() && !NativePort.hasOverlay(client));
         }
         host.beginNativeFrame(() -> {}, phase -> {
-            if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.MEASURE && liveActivities != null) liveActivities.advance();
+            if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.MEASURE) {
+                if (musicActivity != null) musicActivity.advance();
+                if (liveActivities != null) liveActivities.advance();
+            }
         });
         frameOpen = true;
         samples.begin();
@@ -199,6 +210,13 @@ public final class ClientUiKernel {
             hud.draw(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false), client.level);
             if (liveActivities != null) liveActivities.drawHud(event.getGuiGraphics());
         }
+    }
+
+    public static boolean musicActivityAvailable() { return musicActivity != null && musicActivity.available(); }
+
+    public static Screen musicSettingsScreen(Screen parent) {
+        if (!musicActivityAvailable()) throw new IllegalStateException("Native music activity is unavailable");
+        return new com.dishanhai.sh_better_ui.client.gui.panel.NativeMusicSettingsScreen(parent, musicActivity);
     }
 
     public static boolean activitiesAvailable() { return host != null && liveActivities != null; }
@@ -279,6 +297,7 @@ public final class ClientUiKernel {
         var kernel = host;
         if (liveActivities != null) liveActivities.close();
         liveActivities = null;
+        musicActivity = null;
         if (dock != null) dock.closeAll();
         dock = null;
         host = null;

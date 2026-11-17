@@ -44,6 +44,31 @@ public final class SettingsApi {
         return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.activityScreen(parent);
     }
 
+    public boolean musicActivityAvailable() { return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.musicActivityAvailable(); }
+
+    public Screen musicSettingsScreen(@Nullable Screen parent) {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.musicSettingsScreen(parent);
+    }
+
+    public Screen richDocumentScreen(@Nullable Screen parent, net.minecraft.network.chat.Component title,
+            com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument document) {
+        return ShBetterUiApi.richDocuments().screen(parent, title, document);
+    }
+
+    public Screen richDocumentExample(@Nullable Screen parent) {
+        var prefix = "sh_better_ui:rich_example/";
+        var document = new com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument(java.util.List.of(
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.LocalizedText(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "text"),
+                        "sh_better_ui.native.rich_document.example_text", "Resource image and styled text: ", java.util.List.of(),
+                        com.dishanhai.sh_better_ui.kernel.api.richtext.RichStyle.EMPTY),
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "image"),
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:textures/gui/rich/material-shop.png"),
+                        64, 64, "Material icon")));
+        return richDocumentScreen(parent, net.minecraft.network.chat.Component.translatable("sh_better_ui.native.rich_document.title"), document);
+    }
+
     public Screen markdownScreen(@Nullable Screen parent) {
         return new com.dishanhai.sh_better_ui.client.gui.panel.MarkdownExampleScreen(parent);
     }
