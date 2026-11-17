@@ -198,7 +198,7 @@ public final class ControlPanelScreen extends Screen {
                         label("theme.mode"), modes, THEMES.indexOf(draft.theme().mode()), preferences,
                         index -> edit(draft.withTheme(draft.theme().withMode(THEMES.get(index)))));
                 refreshRows.add(() -> segment.select(THEMES.indexOf(draft.theme().mode())));
-                rows.add(segment);
+                rows.add(addRenderableWidget(segment));
                 toolButton(NativeAppearanceScreen.label("title"),GraphicIcon.CUSTOM_THEME,()->
                         ControlPanelPlatform.show(minecraft,new NativeAppearanceScreen(this,draft.theme(),this::appearanceApplied)));
             }

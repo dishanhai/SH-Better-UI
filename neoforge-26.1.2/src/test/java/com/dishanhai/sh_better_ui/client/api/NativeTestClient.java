@@ -32,6 +32,13 @@ public final class NativeTestClient implements AutoCloseable {
         unsafeField.setAccessible(true);
         var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
         client = (Minecraft) unsafe.allocateInstance(Minecraft.class);
+        var options = (net.minecraft.client.Options) unsafe.allocateInstance(net.minecraft.client.Options.class);
+        var highContrast = net.minecraft.client.Options.class.getDeclaredField("highContrast");
+        highContrast.setAccessible(true);
+        highContrast.set(options, net.minecraft.client.OptionInstance.createBoolean("options.highContrast", false));
+        var optionsField = Minecraft.class.getDeclaredField("options");
+        optionsField.setAccessible(true);
+        optionsField.set(client, options);
         var font = Minecraft.class.getDeclaredField("font");
         font.setAccessible(true);
         font.set(client, font());

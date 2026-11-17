@@ -76,6 +76,38 @@ class NativeAppearanceScreenTest {
             assertNotEquals(field(parent,"saved"),field(parent,"draft"));
         }
     }
+    @Test void parentAppearanceModeIsRegisteredForRenderingInputAndNarration() throws Exception {
+        ControlPanelSettings.load(directory);
+        try (var client = NativeTestClient.install()) {
+            var screen = new ControlPanelScreen(null);
+            client.client().screen = screen;
+            screen.width = 500;
+            screen.height = 300;
+            screen.init();
+            var selectTab = ControlPanelScreen.class.getDeclaredMethod("selectTab", int.class);
+            selectTab.setAccessible(true);
+            selectTab.invoke(screen, 2);
+            var segment = screen.children().stream()
+                    .filter(com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment.class::isInstance)
+                    .map(com.dishanhai.sh_better_ui.client.gui.scaled.UiRubberSegment.class::cast)
+                    .findFirst().orElseThrow();
+            for (String registry : new String[]{"renderables", "narratables"}) {
+                var list = net.minecraft.client.gui.screens.Screen.class.getDeclaredField(registry);
+                list.setAccessible(true);
+                assertTrue(((java.util.List<?>) list.get(screen)).contains(segment), registry);
+            }
+            assertTrue(segment.visible);
+            screen.setFocused(segment);
+            assertTrue(screen.keyPressed(new KeyEvent(262, 0, 0)));
+            assertEquals(ThemeSettings.Mode.LIGHT, ((ControlPanelSettings) field(screen, "draft")).theme().mode());
+            assertEquals(ThemeSettings.Mode.DARK, ControlPanelSettings.current().theme().mode());
+            selectTab.invoke(screen, 1);
+            assertFalse(screen.children().contains(segment));
+            var renderables = net.minecraft.client.gui.screens.Screen.class.getDeclaredField("renderables");
+            renderables.setAccessible(true);
+            assertFalse(((java.util.List<?>) renderables.get(screen)).contains(segment));
+        }
+    }
     private static void press(Object screen,String key)throws Exception{((Button)controls(screen).get(key)).onPress(new KeyEvent(257,0,0));}
     @SuppressWarnings("unchecked") private static Map<String,AbstractWidget> controls(Object screen)throws Exception{return (Map<String,AbstractWidget>)field(screen,"controls");}
     private static Object field(Object target,String name)throws Exception{var f=target.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(target);}
