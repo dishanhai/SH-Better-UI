@@ -33,6 +33,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private QrLoginSession login;
     private String loginSource;
     private PlaybackOutput output;
+    private float volume = 1f;
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
     private byte[] audio;
@@ -304,7 +305,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 if (generation != request || state == State.CLOSED) return;
                 audio = bytes; offset = Math.max(0, stream.offsetMs());
                 duration = Math.max(0, stream.durationMs()); preview = stream.preview();
-                output = outputs.get(); output.start(audio, 0, playRequested);
+                output = outputs.get(); output.volume(volume); output.start(audio, 0, playRequested);
             }
             return;
         } catch (OnlineMusicSource.LoginRequired ignored) { problem = Failure.LOGIN_REQUIRED; }
@@ -312,6 +313,13 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         synchronized (this) {
             if (generation == request && state != State.CLOSED) { failure = problem; state = State.FAILED; }
         }
+    }
+    @Override public boolean supportsVolume() { return true; }
+    @Override public synchronized float volume() { return volume; }
+    @Override public synchronized void volume(float value) {
+        requireOpen();
+        volume = PcmGain.normalize(value);
+        if (output != null) output.volume(volume);
     }
     @Override public synchronized void pause() { playRequested = false; if (output != null) output.pause(); }
     @Override public synchronized void resume() {
@@ -326,6 +334,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         long target = Math.max(0, duration > 0 ? Math.min(duration, positionMs) : positionMs);
         output.close();
         output = outputs.get();
+        output.volume(volume);
         output.start(audio, target, playing);
         feed.clear();
     }

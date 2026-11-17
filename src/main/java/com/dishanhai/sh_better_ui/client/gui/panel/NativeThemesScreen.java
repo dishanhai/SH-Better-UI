@@ -19,7 +19,8 @@ public final class NativeThemesScreen extends Screen {
     private final NativeThemeDraft draft;
     private final boolean stagedHost;
     private MpThemeBrowser browser;
-    private UiButton previous, next, apply;
+    private MpFlatButton previous, next, apply, undo;
+    private int panelX,panelY,panelW,panelH;
     private Component status;
     private Bounds cards;
     private int retainedPage;
@@ -35,29 +36,38 @@ public final class NativeThemesScreen extends Screen {
         draft=new NativeThemeDraft(initial);
         if(stagedHost)status=text("staged_hint");
     }
-    private static Component text(String key,Object... args) { return Component.translatable("sh_better_ui.native_themes."+key,args); }
-    private static Component common(String key) { return Component.translatable("sh_better_ui.panel."+key); }
+    private static Component text(String key,Object... args) { return MpTypography.text(Component.translatable("sh_better_ui.native_themes."+key,args)); }
+    private static Component common(String key) { return MpTypography.text(Component.translatable("sh_better_ui.panel."+key)); }
     @Override protected void init() {
         if(browser!=null) {retainedPage=browser.pageIndex();browser.close();}
         browser=new MpThemeBrowser(MinecraftThemes.manager(),
                 this::effectiveTheme,
                 theme -> {draft.stage(theme);status=common("theme.staged");refreshActions();}, MinecraftThemes::isConfiguredPalette);
-        int left=Math.max(8,(width-600)/2), w=Math.max(1,width-left*2);
-        fits=w>=MpThemeBrowser.CARD_WIDTH && height>=226;
-        cards=new Bounds(left,30,w,Math.max(0,height-128));
+        panelW=Math.min(620,Math.max(200,width-40));panelH=Math.min(330,Math.max(180,height-40));
+        panelX=(width-panelW)/2;panelY=(height-panelH)/2;
+        int left=panelX+20,w=panelW-40;
+        fits=w>=MpThemeBrowser.CARD_WIDTH && panelH>=MpThemeBrowser.CARD_HEIGHT+142;
+        cards=new Bounds(left,panelY+56,w,Math.max(0,panelH-142));
+        previous=next=null;
         if(fits) {
-            // Establish page capacity before restoring the retained page after resize/editor return.
             browser.layout(cards,UiPreferences.fromSettings(draft.current())); browser.page(retainedPage);
             for(var widget:browser.layout(cards,UiPreferences.fromSettings(draft.current()))) addRenderableWidget(widget);
-            int third=(w-8)/3;
-            button(left,height-94,third,text("colors"),()->edit(AppearanceService.ThemeSection.COLORS));
-            button(left+third+4,height-94,third,text("backgrounds"),()->edit(AppearanceService.ThemeSection.BACKGROUNDS));
-            button(left+2*(third+4),height-94,w-2*(third+4),text("effects"),()->edit(AppearanceService.ThemeSection.EFFECTS));
-            previous=button(left,height-68,(w-4)/2,text("previous"),()->page(-1));
-            next=button(left+(w-4)/2+4,height-68,w-(w-4)/2-4,text("next"),()->page(1));
+            int item=Math.min(80,(w-62)/3);
+            int toolsY=panelY+panelH-78;
+            button(left,toolsY,item,text("colors"),()->edit(AppearanceService.ThemeSection.COLORS));
+            button(left+item+6,toolsY,item,text("backgrounds"),()->edit(AppearanceService.ThemeSection.BACKGROUNDS));
+            button(left+2*(item+6),toolsY,item,text("effects"),()->edit(AppearanceService.ThemeSection.EFFECTS));
+            previous=button(left+w-50,toolsY,22,text("previous"),()->page(-1));
+            previous.displayText(Component.literal("‹"));
+            previous.setTooltip(net.minecraft.client.gui.components.Tooltip.create(text("previous")));
+            next=button(left+w-22,toolsY,22,text("next"),()->page(1));
+            next.displayText(Component.literal("›"));
+            next.setTooltip(net.minecraft.client.gui.components.Tooltip.create(text("next")));
         }
-        apply=button(left,height-26,(w-4)/2,common("apply"),this::apply);
-        button(left+(w-4)/2+4,height-26,w-(w-4)/2-4,Component.translatable("gui.cancel"),this::onClose);
+        int footer=panelY+panelH-34,action=Math.min(72,(w-12)/3);
+        undo=button(left,footer,action,text("undo"),()->{if(draft.undo()){status=text("undone");rebuildWidgets();}});
+        button(left+w-2*action-6,footer,action,Component.translatable("gui.cancel"),this::onClose);
+        apply=button(left+w-action,footer,action,common("apply"),this::apply);
         refreshActions();
     }
     private com.dishanhai.sh_better_ui.config.ThemeSettings effectiveTheme() {
@@ -69,11 +79,13 @@ public final class NativeThemesScreen extends Screen {
             return draft.current().theme();
         }
     }
-    private UiButton button(int x,int y,int w,Component label,Runnable action) {
-        return addRenderableWidget(new UiButton(x,y,w,20,label,b->action.run()));
+    private MpFlatButton button(int x,int y,int w,Component label,Runnable action) {
+        var button=addRenderableWidget(new MpFlatButton(x,y,w,22,label,b->action.run(),UiPreferences.fromSettings(draft.current()),label.equals(common("apply"))));
+        button.setTooltip(net.minecraft.client.gui.components.Tooltip.create(label));return button;
     }
     private void refreshActions() {
-        if(apply!=null) apply.active=fits&&draft.dirty();
+        if(apply!=null) apply.active=draft.dirty();
+        if(undo!=null) undo.active=draft.canUndo();
         if(previous!=null)previous.active=browser.pageIndex()>0;
         if(next!=null)next.active=browser.pageIndex()+1<browser.pageCount();
     }
@@ -112,15 +124,23 @@ public final class NativeThemesScreen extends Screen {
         var settings=draft.current();
         var palette=MinecraftThemes.previewPalette(settings,UiTheme.resolve(settings.theme()));
         ThemeEffects.preview(settings,()->UiTheme.preview(palette,()->{
-            g.fill(0,0,width,height,palette.background()|0xFF000000);
-            g.drawCenteredString(font,title,width/2,10,palette.text());
-            if(!fits)g.drawCenteredString(font,Component.translatable("sh_better_ui.picker.too_small"),width/2,40,palette.text());
-            super.render(g,x,y,partial);
+            var prefs=UiPreferences.fromSettings(settings);
+            int ink=MpPageChrome.foreground(palette,prefs),muted=MpPageChrome.muted(palette,prefs);
+            MpPageChrome.window(g,width,height,panelX,panelY,panelW,panelH,palette,prefs);
+            MpPageChrome.heading(g,font,title,panelX+20,panelY+17,ink);
             Component message=status!=null?status:browser.error()!=null?browser.error():text("page",browser.pageIndex()+1,browser.pageCount());
-            g.drawCenteredString(font,message,width/2,height-42,palette.text());
+            g.drawString(font,net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MpTypography.text(message),panelW-40)),panelX+20,panelY+38,muted,false);
+            if(!fits)g.drawString(font,MpTypography.text(Component.translatable("sh_better_ui.picker.too_small")),panelX+20,panelY+64,ink,false);
+            g.fill(panelX+20,panelY+panelH-43,panelX+panelW-20,panelY+panelH-42,palette.light()?0x10000000:0x14ffffff);
+            super.render(g,x,y,partial);
         }));
     }
     @Override public void removed() { if(browser!=null){retainedPage=browser.pageIndex();browser.close();browser=null;} }
-    @Override public void onClose() {draft.cancel();minecraft.setScreen(parent);}
+    @Override public void onClose() {
+        if (!draft.dirty()) {draft.cancel();minecraft.setScreen(parent);return;}
+        minecraft.setScreen(new net.minecraft.client.gui.screens.ConfirmScreen(discard->{
+            if(discard){draft.cancel();minecraft.setScreen(parent);}else minecraft.setScreen(this);
+        },text("discard"),text("discard_detail")));
+    }
     @Override public boolean isPauseScreen() {return false;}
 }

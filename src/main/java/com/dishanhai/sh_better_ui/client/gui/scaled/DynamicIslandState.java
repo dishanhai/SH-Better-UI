@@ -14,7 +14,7 @@ public final class DynamicIslandState {
     private boolean pinned, hovered, initialized, noticeActive;
     private boolean surfaceAllowed = true, ambientAllowed = true;
     private String track;
-    private long notificationUntil, hoverUntil, lastTime = Long.MIN_VALUE;
+    private long notificationUntil, hoverUntil, hoverStarted, hoverDelayMs, lastTime = Long.MIN_VALUE;
 
     /** Player-list and hidden HUD always win, including over a pending notification. */
     public void setScene(boolean inWorld, boolean playerListVisible, boolean hudHidden, boolean playerUiOpen) {
@@ -25,9 +25,13 @@ public final class DynamicIslandState {
     public void setPinned(boolean value) { pinned = value; }
     public boolean pinned() { return pinned; }
 
+    public void setHoverDelayMs(long delayMs) { hoverDelayMs = Math.max(0, Math.min(1000, delayMs)); }
+
     public void setHovered(boolean value, long nowMs) {
         clock(nowMs);
-        if (hovered && !value) hoverUntil = deadline(nowMs, HOVER_GRACE_MS);
+        if (!hovered && value) hoverStarted = nowMs;
+        if (hovered && !value && nowMs >= deadline(hoverStarted, hoverDelayMs))
+            hoverUntil = deadline(nowMs, HOVER_GRACE_MS);
         hovered = value;
     }
 
@@ -55,7 +59,8 @@ public final class DynamicIslandState {
 
     public boolean expanded(long nowMs) {
         clock(nowMs);
-        return visible(nowMs) && (pinned || hovered || nowMs < hoverUntil || notificationActive(nowMs));
+        return visible(nowMs) && (pinned || (hovered && nowMs >= deadline(hoverStarted, hoverDelayMs))
+                || nowMs < hoverUntil || notificationActive(nowMs));
     }
 
     /** Explicit close suppresses transient reasons too, until a new hover/track event. */
@@ -75,6 +80,7 @@ public final class DynamicIslandState {
     private void clock(long nowMs) {
         if (lastTime != Long.MIN_VALUE && nowMs < lastTime) {
             hoverUntil = notificationUntil = 0;
+            if (hovered) hoverStarted = nowMs;
         }
         lastTime = nowMs;
     }

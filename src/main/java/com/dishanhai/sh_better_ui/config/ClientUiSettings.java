@@ -11,7 +11,7 @@ import java.util.concurrent.atomic.AtomicReference;
 /** 山海：两个加载器共用的客户端界面设置快照。 */
 public record ClientUiSettings(GlassBackdropSettings backdrop, boolean highContrast, boolean reducedMotion,
                                boolean widgetBackdropBlur, ControlFeedbackSettings feedback, TabScrollSettings tabs,
-                               ThemeSettings theme, DynamicThemeSettings dynamicTheme, Settings spatial) {
+                               ThemeSettings theme, DynamicThemeSettings dynamicTheme, Settings spatial, ControlPanelLayout controlPanelLayout) {
     public static final ClientUiSettings DEFAULT = new ClientUiSettings(GlassBackdropSettings.DEFAULT, false, false, true,
             ControlFeedbackSettings.DEFAULT, TabScrollSettings.DEFAULT);
     private static final AtomicReference<ClientUiSettings> LEGACY = new AtomicReference<>();
@@ -23,6 +23,15 @@ public record ClientUiSettings(GlassBackdropSettings backdrop, boolean highContr
         Objects.requireNonNull(theme);
         Objects.requireNonNull(dynamicTheme);
         Objects.requireNonNull(spatial);
+        controlPanelLayout = Objects.requireNonNullElse(controlPanelLayout, ControlPanelLayout.SIDEBAR);
+    }
+
+    /** Source compatibility and migration: absent layout retains the existing sidebar behavior. */
+    public ClientUiSettings(GlassBackdropSettings backdrop, boolean highContrast, boolean reducedMotion,
+                            boolean widgetBackdropBlur, ControlFeedbackSettings feedback, TabScrollSettings tabs,
+                            ThemeSettings theme, DynamicThemeSettings dynamicTheme, Settings spatial) {
+        this(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme, dynamicTheme, spatial,
+                ControlPanelLayout.SIDEBAR);
     }
 
     public ClientUiSettings(GlassBackdropSettings backdrop, boolean highContrast, boolean reducedMotion,
@@ -86,36 +95,41 @@ public record ClientUiSettings(GlassBackdropSettings backdrop, boolean highContr
 
     public ClientUiSettings withBackdrop(GlassBackdropSettings settings) {
         return new ClientUiSettings(settings, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme,
-                dynamicTheme, spatial);
+                dynamicTheme, spatial, controlPanelLayout);
     }
 
     public ClientUiSettings withDisplay(boolean highContrast, boolean reducedMotion, boolean widgetBackdropBlur) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme,
-                dynamicTheme, spatial);
+                dynamicTheme, spatial, controlPanelLayout);
     }
 
     public ClientUiSettings withFeedback(ControlFeedbackSettings settings) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, settings, tabs, theme,
-                dynamicTheme, spatial);
+                dynamicTheme, spatial, controlPanelLayout);
     }
 
     public ClientUiSettings withTabs(TabScrollSettings settings) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, settings, theme,
-                dynamicTheme, spatial);
+                dynamicTheme, spatial, controlPanelLayout);
     }
 
     public ClientUiSettings withTheme(ThemeSettings settings) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, settings,
-                dynamicTheme, spatial);
+                dynamicTheme, spatial, controlPanelLayout);
     }
 
     public ClientUiSettings withDynamicTheme(DynamicThemeSettings settings) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme,
-                settings, spatial);
+                settings, spatial, controlPanelLayout);
+    }
+
+    public ClientUiSettings withControlPanelLayout(ControlPanelLayout layout) {
+        return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme,
+                dynamicTheme, spatial, Objects.requireNonNull(layout));
     }
 
     public ClientUiSettings withSpatial(Settings settings) {
         return new ClientUiSettings(backdrop, highContrast, reducedMotion, widgetBackdropBlur, feedback, tabs, theme,
-                dynamicTheme, settings);
+                dynamicTheme, settings, controlPanelLayout);
     }
 }

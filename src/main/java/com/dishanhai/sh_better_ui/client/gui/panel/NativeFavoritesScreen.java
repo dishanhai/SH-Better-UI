@@ -2,8 +2,11 @@
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.favorites.FavoriteSettingsStore;
-import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpFlatButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpPageChrome;
 import com.dishanhai.sh_better_ui.config.MusicOverlaySettings;
 import com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay;
 import net.minecraft.client.Minecraft;
@@ -19,6 +22,7 @@ public final class NativeFavoritesScreen extends Screen {
     private final FavoriteSettingsStore store;
     private boolean manage, loaded;
     private int offset, capacity = 1;
+    private int windowX, windowY, windowWidth, windowHeight, left, span, bodyTop;
     private Component status;
     private Runnable undo;
     private String focusId = "";
@@ -34,43 +38,50 @@ public final class NativeFavoritesScreen extends Screen {
     @Override protected void init() {
         if(!loaded) { loaded=true; try { store.load(); } catch(Exception e) { status=text("load_failed"); } }
         controls.clear();
-        if(width<220 || height<185) {
-            button("back",8,Math.max(30,height-26),Math.max(1,width-16),Component.translatable("gui.back"),this::onClose);
+        if(width<300 || height<220) {
+            button("back",Math.min(8,width/4),Math.max(0,height-24),Math.max(1,width-2*Math.min(8,width/4)),Component.translatable("gui.back"),this::onClose);
             return;
         }
-        int left=Math.max(8,(width-430)/2), w=Math.max(1,width-2*left);
-        capacity=Math.max(1,(height-142)/34);
+        windowWidth=Math.min(500,width-32);windowHeight=Math.min(320,height-32);
+        windowX=(width-windowWidth)/2;windowY=(height-windowHeight)/2;
+        left=windowX+18;span=windowWidth-36;int w=span;bodyTop=windowY+78;
+        capacity=visibleRows(windowHeight);
         offset=Math.max(0,Math.min(offset,Math.max(0,rows().size()-capacity)));
-        button("manage",left,42,w, text(manage?"show_pinned":"manage"),()->{manage=!manage;offset=0;refresh("manage");});
+        button("manage",left+w-126,windowY+44,126, text(manage?"show_pinned":"manage"),()->{manage=!manage;offset=0;refresh("manage");});
         var settings=NativeMusicOverlay.currentSettings();
         for(int i=offset;i<Math.min(rows().size(),offset+capacity);i++) {
-            String id=rows().get(i); int y=70+(i-offset)*34;
+            String id=rows().get(i); int y=bodyTop+(i-offset)*36+6;
             if(id.equals("scale") && settings.isPresent() && w>100) {
                 var slider=new com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider(
-                        new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(left,y,w-80,20),
+                        new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(left+Math.max(80,w/3),y,w-Math.max(80,w/3)-72,22),
                         50,200,5,Math.round(settings.get().islandScale()*100),
                         com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.configured(),
-                        value->text("value",text("scale"),value+"%"), value->{});
+                        value->MpTypography.text(text("value",text("scale"),value+"%")), value->{});
                 slider.setOnCommit(value->saveScale(value/100f),value->{});
                 addRenderableWidget(slider);controls.put(id,slider);
             } else {
-                var edit=button(id,left,y,Math.max(1,w-80),label(id,settings.orElse(null)),()->edit(id));
+                var edit=button(id,left+w-154,y,84,label(id,settings.orElse(null)),()->edit(id));
                 edit.active=settings.isPresent();
+                if(settings.isPresent()) {
+                    var value=settings.get();
+                    edit.displayText(onOff(switch(id){case "hud"->value.hudEnabled();case "island"->value.islandEnabled();case "ambient"->value.ambientEnabled();default->value.taskNotices();}));
+                }
             }
             boolean pinned=store.ids().contains(id);
-            button("pin:"+id,left+w-76,y,76,text(pinned?"remove":"add"),()->pin(id));
+            button("pin:"+id,left+w-64,y,64,text(pinned?"remove":"add"),()->pin(id));
         }
-        int bottom=height-62;
-        var up=button("up",left,bottom,Math.max(1,(w-8)/3),text("previous"),()->move(-capacity)); up.active=offset>0;
-        var down=button("down",left+(w+4)/3,bottom,Math.max(1,(w-8)/3),text("next"),()->move(capacity)); down.active=offset+capacity<rows().size();
-        var revert=button("undo",left+2*(w+4)/3,bottom,Math.max(1,(w-8)/3),text("undo"),()->{
+        int bottom=windowY+windowHeight-34;
+        var up=button("up",left,bottom,36,text("previous"),()->move(-capacity)); up.active=offset>0;up.displayText(Component.literal("‹"));
+        var down=button("down",left+40,bottom,36,text("next"),()->move(capacity)); down.active=offset+capacity<rows().size();down.displayText(Component.literal("›"));
+        var revert=button("undo",left+80,bottom,60,text("undo"),()->{
             if(undo!=null) { Runnable action=undo; action.run(); }
         }); revert.active=undo!=null;
-        button("back",left,height-26,w,Component.translatable("gui.back"),this::onClose);
+        button("back",left+w-72,bottom,72,Component.translatable("gui.back"),this::onClose);
         if(controls.containsKey(focusId)&&controls.get(focusId).active) setFocused(controls.get(focusId));
     }
-    private UiButton button(String id,int x,int y,int w,Component label,Runnable action) {
-        var button=addRenderableWidget(new UiButton(x,y,w,20,label,b->{try{action.run();}catch(Exception e){status=text("save_failed");}}));
+    static int visibleRows(int windowHeight) { return Math.max(1,(windowHeight-128)/36); }
+    private MpFlatButton button(String id,int x,int y,int w,Component label,Runnable action) {
+        var button=addRenderableWidget(new MpFlatButton(x,y,w,Math.max(1,Math.min(22,height)),label,b->{try{action.run();}catch(Exception e){status=text("save_failed");}},UiPreferences.configured(),false));
         controls.put(id,button); return button;
     }
     private Component label(String id,MusicOverlaySettings s) {
@@ -124,7 +135,7 @@ public final class NativeFavoritesScreen extends Screen {
     private void refresh(String focus) { focusId=focus;rebuildWidgets(); if(getFocused()==null)setFocused(controls.get("manage")); }
     private void move(int amount) { offset=Math.max(0,Math.min(offset+amount,Math.max(0,rows().size()-capacity)));refresh(amount<0?"up":"down"); }
     public boolean mouseScrolled(double x,double y,double delta) {
-        if(y<70||y>=height-66||delta==0)return false; move(delta>0?-1:1);return true;
+        if(x<left||x>=left+span||y<bodyTop||y>=bodyTop+capacity*36||delta==0)return false; move(delta>0?-1:1);return true;
     }
     public boolean mouseScrolled(double x,double y,double horizontal,double vertical) {return mouseScrolled(x,y,vertical);}
     @Override public boolean keyPressed(int key,int scan,int mods) {
@@ -132,15 +143,31 @@ public final class NativeFavoritesScreen extends Screen {
     }
     public void renderBackground(GuiGraphics g,int x,int y,float partial) {}
     @Override public void render(GuiGraphics g,int x,int y,float partial) {
-        var theme=UiTheme.current(); g.fill(0,0,width,height,theme.background());
-        g.drawCenteredString(font,title,width/2,10,theme.text());
-        g.drawCenteredString(font,text("scope"),width/2,25,theme.text());
-        if(width<220 || height<185) g.drawCenteredString(font,text("small"),width/2,66,theme.text());
-        else if(rows().isEmpty())g.drawCenteredString(font,text("empty"),width/2,76,theme.text());
+        var theme=UiTheme.current();var preferences=UiPreferences.configured();
+        if(width<300 || height<220) {
+            MpPageChrome.backdrop(g,width,height,theme,preferences);
+            if(height>40) g.drawString(font,fit(MpTypography.text(text("small")),width-16),8,8,theme.text(),false);
+        } else {
+            MpPageChrome.window(g,width,height,windowX,windowY,windowWidth,windowHeight,theme,preferences);
+            MpPageChrome.heading(g,font,title,left,windowY+17,MpPageChrome.foreground(theme,preferences));
+            var scope=fit(MpTypography.text(text("scope")),Math.max(1,span-138));
+            g.drawString(font,scope,left,windowY+49,MpPageChrome.muted(theme,preferences),false);
+            for(int i=offset;i<Math.min(rows().size(),offset+capacity);i++) {
+                int rowY=bodyTop+(i-offset)*36;
+                MpPageChrome.row(g,left-4,rowY,span+8,34,theme,preferences);
+                var name=fit(MpTypography.text(text(rows().get(i))),Math.max(1,span-166));
+                g.drawString(font,name,left+7,rowY+11,MpPageChrome.foreground(theme,preferences),false);
+            }
+            if(rows().isEmpty()) MpTypography.draw(g,font,text("empty"),left,bodyTop+12,theme.text());
+            if(status!=null) g.drawString(font,fit(MpTypography.text(status),span),left,windowY+windowHeight-50,MpPageChrome.muted(theme,preferences),false);
+        }
         super.render(g,x,y,partial);
-        if(status!=null)g.drawCenteredString(font,status,width/2,height-38,theme.text());
     }
     @Override public Component getNarrationMessage(){return title.copy().append(". ").append(text("scope")).append(status==null?Component.empty():status);}
     @Override public void onClose(){minecraft.setScreen(parent);}
     @Override public boolean isPauseScreen(){return false;}
+    private net.minecraft.util.FormattedCharSequence fit(Component value, int available) {
+        return net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(value, Math.max(0, available)));
+    }
+
 }

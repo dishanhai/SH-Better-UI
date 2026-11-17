@@ -153,6 +153,8 @@ public final class UiScreen extends Screen {
 
     @Override
     public void setFocused(GuiEventListener listener) {
+        // Native Screen otherwise toggles the same widget false/true, cancelling a freshly armed release action.
+        if (getFocused() == listener) return;
         super.setFocused(listener);
         if (focusChanged != null) focusChanged.accept(listener);
     }
@@ -477,6 +479,16 @@ public final class UiScreen extends Screen {
 
     @Override
     public boolean keyPressed(int key, int scanCode, int modifiers) {
+        // Cancel focused music edits/browsing before vanilla Screen interprets Escape as close.
+        var focusedMusic = getFocused();
+        if (key == GLFW.GLFW_KEY_ESCAPE && (focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl
+                || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl
+                || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl
+                || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView)
+                && focusedMusic.keyPressed(key, scanCode, modifiers)) {
+            setDragging(false);
+            return true;
+        }
         if (key == GLFW.GLFW_KEY_ESCAPE && getFocused() instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots && slots.cancelDrag()) {
             setDragging(false);
             return true;

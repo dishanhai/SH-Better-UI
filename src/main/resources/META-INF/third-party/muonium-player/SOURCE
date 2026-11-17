@@ -30,3 +30,11 @@ Additional modifications (2026-11-16): music-scoped QQ cookie aliases, strict RP
 status handling, deterministic NetEase playlist pagination, account-library entry
 points, retry and stale-request isolation, and confirmed/unknown favorite feedback.
 No additional upstream source or third-party assets are bundled by these changes.
+
+Additional modifications (2026-11-17): native session queue inspired by PlayQueuePanel;
+all sixteen upstream theme palettes with contrast adjustments for native controls;
+shared native page chrome and preference/theme draft history; additional native island
+styles and delayed music-capsule hover; spring-following lyric focus and optional
+bounded cover-derived fluid background color transitions. These are native adaptations,
+not bundled Skija renderers or a complete upstream business/backend distribution.
+No additional upstream fonts, branded artwork, or third-party assets are bundled.

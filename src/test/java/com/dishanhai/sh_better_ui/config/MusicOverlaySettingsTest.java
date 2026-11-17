@@ -17,6 +17,13 @@ class MusicOverlaySettingsTest {
   old.add("islandStyle",com.google.gson.JsonNull.INSTANCE);
   assertEquals(restored,gson.fromJson(old,MusicOverlaySettings.class));
  }
+ @Test void everyNativeIslandStylePersistsWithoutOrdinalMigration(){
+  var gson=new Gson();
+  for(var style:com.dishanhai.sh_better_ui.client.gui.scaled.IslandShellStyle.values()){
+   var value=MusicOverlaySettings.DEFAULT.withIslandStyle(style.id());
+   assertEquals(value,MusicOverlaySettings.KEY.validate(gson.fromJson(gson.toJson(value),MusicOverlaySettings.class)));
+  }
+ }
  @Test void stableStyleIdsRoundTripAndRejectUnknown(){
   var gson=new Gson();var value=MusicOverlaySettings.DEFAULT.withIslandStyle("minimal").withTaskNotices(true);
   assertEquals(value,MusicOverlaySettings.KEY.validate(gson.fromJson(gson.toJson(value),MusicOverlaySettings.class)));

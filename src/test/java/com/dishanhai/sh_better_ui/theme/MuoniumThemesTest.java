@@ -9,7 +9,14 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class MuoniumThemesTest {
     private static final List<String> IDS = List.of(MuoniumThemes.VELVET_ROSE,
-            MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK);
+            MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK,
+            MuoniumThemes.OBSIDIAN_RED, MuoniumThemes.AURORA_TIDE, MuoniumThemes.SUNSET_EMBER,
+            MuoniumThemes.SAGE_MIST, MuoniumThemes.PEARL_LIGHT, MuoniumThemes.XIANGYUN_QINGCHUAN,
+            MuoniumThemes.CANGMING_YUYOU, MuoniumThemes.SHUANGWAN_XIUYAN, MuoniumThemes.MEIGUI_YUEBAI,
+            MuoniumThemes.QINGLAN_YUNZHI);
+    private static final java.util.Set<String> LIGHT_IDS = java.util.Set.of(MuoniumThemes.PORCELAIN_INK,
+            MuoniumThemes.PEARL_LIGHT, MuoniumThemes.XIANGYUN_QINGCHUAN, MuoniumThemes.CANGMING_YUYOU,
+            MuoniumThemes.SHUANGWAN_XIUYAN, MuoniumThemes.MEIGUI_YUEBAI, MuoniumThemes.QINGLAN_YUNZHI);
 
     @Test void presetsAreRegisteredSelectableAndSurviveReload() {
         try (var manager = new ThemeManager()) {
@@ -19,7 +26,7 @@ class MuoniumThemesTest {
                 assertTrue(manager.registry().find(id).isPresent());
                 manager.preferences(manager.preferences().withReducedMotion(true).withFixedTheme(id));
                 assertFalse(manager.showingEnvironmentDefault());
-                assertEquals(id.equals(MuoniumThemes.PORCELAIN_INK), manager.snapshot().resolve(ThemeTokens.LIGHT));
+                assertEquals(LIGHT_IDS.contains(id), manager.snapshot().resolve(ThemeTokens.LIGHT));
                 assertEquals(0f, manager.snapshot().resolve(ThemeTokens.BLUR));
                 assertFalse(manager.snapshot().resolve(ThemeTokens.LIQUID_GLASS));
             }

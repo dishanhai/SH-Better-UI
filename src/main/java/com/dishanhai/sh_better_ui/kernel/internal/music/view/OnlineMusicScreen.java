@@ -32,16 +32,23 @@ public final class OnlineMusicScreen {
                            Supplier<OnlineMusicView> factory) {
         var owner = new SessionOwner(factory);
         return ShBetterUiApi.screen("sh_better_ui.online_music.view.brand")
-                .parent(parent).returnFocus(Objects.requireNonNull(returnFocus)).themeBackground()
+                .backButton(false).parent(parent).returnFocus(Objects.requireNonNull(returnFocus)).themeBackground()
                 .onInit(screen -> {
-                    try { owner.mount(new Context(screen, owner)); }
+                    try {
+                        var exit = screen.add(new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl(
+                                new Bounds(8, 6, 24, 24), Component.translatable("gui.back"),
+                                com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.Glyph.BACK,
+                                screen.context().preferences(), screen::onClose));
+                        owner.mount(new Context(screen, owner, exit));
+                        screen.onCloseRequest(() -> !(owner.view instanceof OnlineMusicViewImpl nativeView) || nativeView.permitsScreenClose());
+                    }
                     catch (ServiceUnavailable failure) { owner.close(); }
                 })
                 .onRender((screen, frame) -> {
                     if (owner.view != null) owner.view.render(frame);
                     else frame.graphics().drawString(Minecraft.getInstance().font,
                             Component.translatable("sh_better_ui.online_music.view.unavailable"),
-                            frame.viewport().x() + 8, frame.viewport().y() + 12, UiTheme.current().text(), false);
+                            frame.viewport().x() + 8, frame.viewport().y() + 40, UiTheme.current().text(), false);
                 })
                 .onForeground((screen, frame) -> { if (owner.overlays != null) owner.overlays.render(frame.graphics(), frame.mouse() == null ? -1 : (int)frame.mouse().x(), frame.mouse() == null ? -1 : (int)frame.mouse().y(), frame.partialTick()); })
                 .onRemoved(screen -> owner.close()).build();
@@ -72,10 +79,28 @@ public final class OnlineMusicScreen {
         ServiceUnavailable(RuntimeException cause) { super(cause); }
     }
 
+    /** The dedicated player owns its chrome; there is no native header over the artwork stage. */
+    static GuiEventListener shellBack(PreviewContext context) {
+        return null;
+    }
+    static com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl exitControl(PreviewContext context) {
+        return context instanceof Context nativeContext ? nativeContext.exit : null;
+    }
+    static boolean supportsLyricsStack(PreviewContext context) { return context instanceof Context; }
+    static <T extends AbstractWidget> T addLyricsLayer(PreviewContext context,T widget,Supplier<Bounds> clip) {
+        return context instanceof Context nativeContext ? addLyricsLayer(nativeContext.screen,widget,clip) : context.add(widget);
+    }
+    static <T extends AbstractWidget> T addLyricsLayer(UiScreen screen,T widget,Supplier<Bounds> clip) {
+        return screen.addClipped(widget,clip,"online-music-lyrics");
+    }
     private static final class Context implements PreviewContext {
         private final UiScreen screen;
         private final SessionOwner owner;
-        Context(UiScreen screen, SessionOwner owner) { this.screen = screen; this.owner = owner; }
+        private final com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl exit;
+        Context(UiScreen screen, SessionOwner owner, com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl exit) {
+            this.screen = screen; this.owner = owner;
+            this.exit = exit;
+        }
         @Override public Screen screen() { return screen; }
         @Override public Bounds viewport() { return screen.viewport(); }
         @Override public Bounds toolbar() { return new Bounds(0, 0, screen.width, screen.viewport().y()); }

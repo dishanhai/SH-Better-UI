@@ -21,7 +21,8 @@ class OnlinePlayerSessionTest {
         @Override public LyricTimeline lyrics(OnlineTrack track) throws Exception { return LrcParser.parse("[00:00]" + track.id(), null, 10000); }
     }
     private static class Output implements PlaybackOutput {
-        State state; long position; boolean closed;
+        State state; long position; boolean closed; float gain=1f;
+        @Override public void volume(float value) { gain=value; }
         @Override public void start(byte[] bytes, long position, boolean playing) { this.position = position; state = playing ? State.PLAYING : State.PAUSED; }
         @Override public void pause() { state = State.PAUSED; }
         @Override public void resume() { state = State.PLAYING; }
@@ -33,6 +34,21 @@ class OnlinePlayerSessionTest {
         long deadline = System.nanoTime() + TimeUnit.SECONDS.toNanos(3);
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(5);
         assertTrue(condition.getAsBoolean(), "asynchronous state did not settle");
+    }
+    @Test void softwareVolumeIsSessionLocalAndRetainedAcrossOutputReplacement() throws Exception {
+        var last=new AtomicReference<Output>();
+        var session=new OnlinePlayerSession(List.of(new Source()),()->{var output=new Output();last.set(output);return output;},uri->new byte[]{1});
+        try {
+            assertTrue(session.supportsVolume());session.volume(.25f);
+            session.play(track("a"));await(()->session.snapshot().state()==State.PLAYING);
+            assertEquals(.25f,last.get().gain);session.volume(.75f);assertEquals(.75f,last.get().gain);
+            var previous=last.get();session.seek(2000);assertNotSame(previous,last.get());assertEquals(.75f,last.get().gain);
+            session.stop();assertEquals(.75f,session.volume());
+            session.play(track("b"));await(()->session.snapshot().state()==State.PLAYING);assertEquals(.75f,last.get().gain);
+            assertThrows(IllegalArgumentException.class,()->session.volume(Float.NaN));assertEquals(.75f,session.volume());
+            session.volume(-10);assertEquals(0f,last.get().gain);session.volume(10);assertEquals(1f,last.get().gain);
+        } finally {session.close();}
+        assertThrows(IllegalStateException.class,()->session.volume(.5f));
     }
     @Test void pauseSeekStopAndCloseReleaseOwnedOutputs() throws Exception {
         var last = new AtomicReference<Output>();

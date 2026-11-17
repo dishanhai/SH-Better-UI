@@ -5,6 +5,22 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LocalMusicIslandNoticeTest {
+    @Test void capsuleWithoutMediaDoesNotInventPlaybackButNoticesAndEditorStillWork() {
+        var island = ShBetterUiApi.music().island();
+        island.setStyle("music_capsule");
+        island.setScene(true, false, false, false);
+        assertFalse(island.visible(0));
+        island.setExpanded(true, 1, true);
+        assertTrue(island.visible(1));
+        island.setExpanded(false, 2, true);
+        assertFalse(island.visible(2));
+        island.notify(new IslandNoticeQueue.Notice("message", "Notice", "Real event", -1, 1000));
+        assertTrue(island.visible(3));
+        island.setScene(true, false, true, false);
+        assertFalse(island.visible(4));
+        island.suspend();
+    }
+
     @Test void noticeCanRevealHiddenAmbientBeforeAnyRender() {
         var island = ShBetterUiApi.music().island();
         island.setScene(true, false, false, true);

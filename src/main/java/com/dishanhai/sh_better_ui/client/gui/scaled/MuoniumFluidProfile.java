@@ -4,9 +4,15 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 /** Editable native fluid material. ARGB alpha is retained even when RGB follows the active theme. */
 public record MuoniumFluidProfile(float speed, float scale, float intensity, float opacity,
                                   int primaryColor, int secondaryColor, int backgroundColor,
-                                  boolean followTheme) {
+                                  boolean followTheme, boolean followArtwork) {
     public static final MuoniumFluidProfile DEFAULT = new MuoniumFluidProfile(
-            .28f, 1f, .8f, .8f, 0xB064A8FF, 0x907B9CFF, 0x40182331, true);
+            .28f, 1f, .8f, .8f, 0xB064A8FF, 0x907B9CFF, 0x40182331, true, false);
+
+    /** Source compatibility for existing consumers; artwork following is deliberately opt-in. */
+    public MuoniumFluidProfile(float speed, float scale, float intensity, float opacity,
+                               int primaryColor, int secondaryColor, int backgroundColor, boolean followTheme) {
+        this(speed, scale, intensity, opacity, primaryColor, secondaryColor, backgroundColor, followTheme, false);
+    }
 
     public MuoniumFluidProfile {
         var normalized = new AmbientBackdropProfile(speed, scale, intensity, opacity,

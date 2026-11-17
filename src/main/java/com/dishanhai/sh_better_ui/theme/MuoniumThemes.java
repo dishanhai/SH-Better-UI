@@ -22,10 +22,32 @@ public final class MuoniumThemes {
     public static final String AURORA_FROST = "sh_better_ui:muonium_aurora_frost";
     public static final String CRYSTAL = "sh_better_ui:muonium_crystal";
 
+    public static final String OBSIDIAN_RED = "sh_better_ui:muonium_obsidian_red";
+    public static final String AURORA_TIDE = "sh_better_ui:muonium_aurora_tide";
+    public static final String SUNSET_EMBER = "sh_better_ui:muonium_sunset_ember";
+    public static final String SAGE_MIST = "sh_better_ui:muonium_sage_mist";
+    public static final String PEARL_LIGHT = "sh_better_ui:muonium_pearl_light";
+    public static final String XIANGYUN_QINGCHUAN = "sh_better_ui:muonium_xiangyun_qingchuan";
+    public static final String CANGMING_YUYOU = "sh_better_ui:muonium_cangming_yuyou";
+    public static final String SHUANGWAN_XIUYAN = "sh_better_ui:muonium_shuangwan_xiuyan";
+    public static final String MEIGUI_YUEBAI = "sh_better_ui:muonium_meigui_yuebai";
+    public static final String QINGLAN_YUNZHI = "sh_better_ui:muonium_qinglan_yunzhi";
+
     private MuoniumThemes() {}
 
     static ThemeRegistry registerInto(ThemeRegistry registry) {
-        return registry.with(palette(VELVET_ROSE, false, 0x211821, 0x30212C, 0x493342,
+        return registry
+                .with(palette(OBSIDIAN_RED, false, 0x1E1E1E, 0x252525, 0x383838, 0xFFFFFF, 0xA1A1A1, 0xD60017, 0xF04455, 0x292727, 0x454545))
+                .with(palette(AURORA_TIDE, false, 0x0D1720, 0x142631, 0x203D4A, 0xEFFBFF, 0x91AAB5, 0x54D6C1, 0x7DE8D6, 0x10212B, 0x2B5160))
+                .with(palette(SUNSET_EMBER, false, 0x20151B, 0x2B1D25, 0x4B2D35, 0xFFF7F0, 0xCDB3A5, 0xF59A62, 0xFFC078, 0x352128, 0x70424A))
+                .with(palette(SAGE_MIST, false, 0x121C1B, 0x1C2B29, 0x304742, 0xF1FAF5, 0xA8BDB4, 0x72C9A2, 0x9BE1BF, 0x203632, 0x4C7267))
+                .with(palette(PEARL_LIGHT, true, 0xEEF2F6, 0xF9FBFD, 0xDCE5EF, 0x202832, 0x596677, 0x5E83C6, 0x7092CF, 0xE7EDF4, 0xB8C8D9))
+                .with(palette(XIANGYUN_QINGCHUAN, true, 0xF7ECC0, 0xFDF7E2, 0xF0DFA8, 0x3A3320, 0x6C6345, 0x2E7CA8, 0x6096B0, 0xF3E7BF, 0xDCC580))
+                .with(palette(CANGMING_YUYOU, true, 0xFAF2E0, 0xFFFBF1, 0xF0E4CB, 0x16283C, 0x5C6875, 0x0E61AC, 0x1D7ACE, 0xF5EBD5, 0xDCCFB4))
+                .with(palette(SHUANGWAN_XIUYAN, true, 0xFCF9E8, 0xFFFEF6, 0xF1EDD8, 0x1E2A2B, 0x626D6E, 0x00808C, 0x00A3B1, 0xF7F2DE, 0xDCD8C0))
+                .with(palette(MEIGUI_YUEBAI, true, 0xE8F0F2, 0xF6FAFB, 0xDCE7EA, 0x262E31, 0x5C696D, 0xB44E60, 0xD27484, 0xE1EBEE, 0xC3D3D7))
+                .with(palette(QINGLAN_YUNZHI, true, 0xFBF1D7, 0xFFFAEA, 0xF0E4C4, 0x232A1D, 0x5F6953, 0x4E7C36, 0x699E4B, 0xF6ECD0, 0xDCD0AE))
+                .with(palette(VELVET_ROSE, false, 0x211821, 0x30212C, 0x493342,
                         0xFFF7FB, 0xC2AAB7, 0xE48AAB, 0xF4A9C4, 0x2A1D27, 0x604252))
                 .with(palette(MIDNIGHT_GRAPHITE, false, 0x111419, 0x1B2028, 0x323B49,
                         0xF5F7FA, 0xA3ACBA, 0x8FA8C7, 0xB4C8E5, 0x202731, 0x4C5869))
@@ -51,7 +73,7 @@ public final class MuoniumThemes {
                 .token(TEXT_DISABLED, color(secondary)).token(BORDER, color(border))
                 .token(BORDER_FOCUSED, color(focus)).token(PRIMARY, color(accent))
                 .token(ACCENT, color(accent)).token(SECONDARY, color(focus))
-                .token(ON_PRIMARY, color(light ? 0xFFFFFF : background))
+                .token(ON_PRIMARY, color(onAccent(accent)))
                 .token(HOVER, ColorValue.argb(0x18000000 | accent))
                 .token(PRESSED, ColorValue.argb(0x30000000 | accent))
                 .token(SELECTED, ColorValue.argb(0x38000000 | accent))
@@ -87,6 +109,17 @@ public final class MuoniumThemes {
                 .token(HOVER, ColorValue.argb(0x18000000 | accent))
                 .token(PRESSED, ColorValue.argb(0x30000000 | accent))
                 .token(SELECTED, ColorValue.argb(0x38000000 | accent)).build();
+    }
+
+    /** Prefer the black/white foreground with the greater WCAG contrast, including pastel accents. */
+    private static int onAccent(int rgb) {
+        double luminance = .2126 * linear(rgb >>> 16 & 255) + .7152 * linear(rgb >>> 8 & 255)
+                + .0722 * linear(rgb & 255);
+        return luminance > .179 ? 0x000000 : 0xFFFFFF;
+    }
+    private static double linear(int channel) {
+        double c = channel / 255d;
+        return c <= .04045 ? c / 12.92 : Math.pow((c + .055) / 1.055, 2.4);
     }
 
     private static ColorValue color(int rgb) { return ColorValue.argb(0xff000000 | rgb); }

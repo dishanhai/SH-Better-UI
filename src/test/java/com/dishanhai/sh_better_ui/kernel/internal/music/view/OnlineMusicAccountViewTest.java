@@ -21,6 +21,7 @@ class OnlineMusicAccountViewTest {
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch (method.getName()) {
             case "authenticated" -> signedIn.contains((String)args[0]);
             case "supportsLikes" -> true;
+            case "supportsVolume" -> false;
             case "account" -> accounts.computeIfAbsent((String)args[0], key -> new Uncancellable<>());
             case "like" -> likes;
             case "remembersCredentials" -> saved.getOrDefault((String)args[0],false);
@@ -115,15 +116,15 @@ class OnlineMusicAccountViewTest {
         var pageField=f.view.getClass().getDeclaredField("page");pageField.setAccessible(true);
         var page=Arrays.stream(pageField.getType().getEnumConstants()).filter(v->v.toString().equals("ACCOUNTS")).findFirst().orElseThrow();
         call(f.view,"show",new Class<?>[]{pageField.getType()},page);
-        var quick=(Map<String,List<com.dishanhai.sh_better_ui.client.gui.scaled.UiButton>>)read(f.view,"accountLibraries");
+        var quick=(Map<String,List<com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl>>)read(f.view,"accountLibraries");
         assertTrue(quick.get("qq").get(0).visible);assertTrue(quick.get("qq").get(0).active);
         assertFalse(quick.get("netease").get(0).active);
-        var cards=(Map<String,com.dishanhai.sh_better_ui.client.gui.scaled.UiButton>)read(f.view,"accounts");
+        var cards=(Map<String,com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl>)read(f.view,"accounts");
         cards.get("qq").onPress();
-        var remember=(com.dishanhai.sh_better_ui.client.gui.scaled.UiButton)read(f.view,"remember");
+        var remember=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(f.view,"remember");
         assertTrue(remember.visible);remember.onPress();assertEquals(true,f.saved.get("qq"));
-        assertTrue(((com.dishanhai.sh_better_ui.client.gui.scaled.UiButton)read(f.view,"openLiked")).visible);
-        ((com.dishanhai.sh_better_ui.client.gui.scaled.UiButton)read(f.view,"back")).onPress();
+        assertTrue(((com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(f.view,"openLiked")).visible);
+        ((com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(f.view,"back")).onPress();
         f.accounts.get("qq").completeExceptionally(new RuntimeException("late"));call(f.view,"pollOperations");
         assertEquals(false,read(f.view,"accountDetail"));assertEquals("",read(f.view,"accountState"));
     }

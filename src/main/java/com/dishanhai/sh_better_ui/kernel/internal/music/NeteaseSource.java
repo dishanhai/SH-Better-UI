@@ -151,9 +151,59 @@ final class NeteaseSource implements OnlineMusicSource {
         return data;
     }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
+        checkPage(page, limit);
+        checkInterrupted();
+        String session = cookie;
         var data = call("/weapi/cloudsearch/get/web", Map.of("s", query, "type", "1", "limit", "" + limit,
-                "offset", "" + ((page - 1) * limit), "total", "true"));
-        return parseSearch(data, limit);
+                "offset", "" + ((page - 1L) * limit), "total", "true"), session);
+        return completeSearchArtwork(parseSearch(data, limit), session);
+    }
+
+    /** Public search omits album.picUrl. Enrich only this page, once, without touching playback access. */
+    private List<OnlineTrack> completeSearchArtwork(List<OnlineTrack> tracks, String session) throws IOException {
+        checkInterrupted();
+        var ids = new LinkedHashSet<String>();
+        for (var track : tracks) if (track.artworkUrl().isBlank()) ids.add(track.id());
+        if (ids.isEmpty()) return tracks;
+        try {
+            // Public metadata endpoint verified to return songs[].album.picUrl, not audio URLs.
+            var data = http.json("https://music.163.com/api/song/detail/?" + MusicHttp.form(Map.of(
+                            "ids", "[" + String.join(",", ids) + "]", "id", ids.iterator().next())),
+                    null, null, "https://music.163.com/", "os=pc; appver=8.9.70; " + session);
+            checkInterrupted();
+            if (number(data, "code") != 200) return tracks;
+            var covers = new HashMap<String, String>();
+            for (var item : array(data, "songs")) {
+                if (!item.isJsonObject()) continue;
+                var song = item.getAsJsonObject();
+                String id = text(song, "id");
+                if (!ids.contains(id) || covers.containsKey(id)) continue;
+                var album = song.has("al") ? object(song, "al") : object(song, "album");
+                String cover = text(album, "picUrl");
+                if (cover.isBlank()) continue;
+                try { covers.put(id, artworkUrl(OnlineArtwork.validated(cover).toString())); }
+                catch (IOException invalidCover) { /* Keep the search record; do not invent a URL. */ }
+            }
+            var completed = new ArrayList<OnlineTrack>(tracks.size());
+            for (var track : tracks) {
+                String cover = track.artworkUrl().isBlank() ? covers.get(track.id()) : null;
+                completed.add(cover == null ? track : new OnlineTrack(track.source(), track.id(), track.mediaId(),
+                        track.title(), track.artist(), track.album(), track.durationMs(), cover));
+            }
+            return List.copyOf(completed);
+        } catch (java.util.concurrent.CancellationException cancelled) {
+            throw cancelled;
+        } catch (java.io.InterruptedIOException interrupted) {
+            checkInterrupted();
+            if (!(interrupted instanceof java.net.SocketTimeoutException)) throw interrupted;
+            return tracks; // Optional metadata timeout must not discard a successful search.
+        } catch (IOException | RuntimeException unavailable) {
+            checkInterrupted();
+            return tracks;
+        }
+    }
+    private static void checkInterrupted() throws java.io.InterruptedIOException {
+        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("NetEase request cancelled");
     }
     private static String artworkUrl(String url) {
         // Provider thumbnail sizing avoids downloading a multi-megapixel album original.
@@ -194,6 +244,9 @@ final class NeteaseSource implements OnlineMusicSource {
                 text(object(data, "yrc"), "lyric"), track.durationMs());
     }
     private JsonObject call(String path, Map<String, String> parameters) throws Exception {
+        return call(path, parameters, cookie);
+    }
+    private JsonObject call(String path, Map<String, String> parameters, String session) throws Exception {
         var publicParameters = new LinkedHashMap<>(parameters);
         String publicPath = path.replace("/weapi/", "/api/")
                 .replace("/cloudsearch/get/web", "/search/get/web")
@@ -201,12 +254,12 @@ final class NeteaseSource implements OnlineMusicSource {
         if (path.contains("/player/url")) publicParameters.put("br", "128000");
         publicParameters.put("os", "pc");
         var publicResult = http.json("https://music.163.com" + publicPath + "?" + MusicHttp.form(publicParameters),
-                null, null, "https://music.163.com/", "os=pc; appver=8.9.70; " + cookie);
+                null, null, "https://music.163.com/", "os=pc; appver=8.9.70; " + session);
         if (number(publicResult, "code") == 200) return publicResult;
         var encrypted = MuWeapi.weapi(new Gson().toJson(parameters));
         var json = http.json("https://music.163.com" + path,
                 MusicHttp.form(Map.of("params", encrypted.getParams(), "encSecKey", encrypted.getEncSecKey())),
-                "application/x-www-form-urlencoded", "https://music.163.com/", "os=pc; appver=8.9.70; " + cookie);
+                "application/x-www-form-urlencoded", "https://music.163.com/", "os=pc; appver=8.9.70; " + session);
         if (number(json, "code") == 301 || number(json, "code") == 401) throw new LoginRequired();
         if (number(json, "code") != 200) throw new IOException("NetEase rejected request");
         return json;

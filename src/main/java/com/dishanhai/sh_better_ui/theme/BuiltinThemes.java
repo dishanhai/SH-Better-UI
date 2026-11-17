@@ -21,7 +21,8 @@ public final class BuiltinThemes {
     public static final int DEFAULT_HUD_BLUR_RADIUS = 4;
     static final Set<String> IDS = Set.of(DARK, LIGHT_ID, NETHER, END, LIQUID_GLASS, HUD_GLASS,
             MuoniumThemes.VELVET_ROSE, MuoniumThemes.MIDNIGHT_GRAPHITE, MuoniumThemes.PORCELAIN_INK,
-            MuoniumThemes.LIQUID_GLASS, MuoniumThemes.AURORA_FROST, MuoniumThemes.CRYSTAL);
+            MuoniumThemes.LIQUID_GLASS, MuoniumThemes.AURORA_FROST, MuoniumThemes.CRYSTAL,
+            MuoniumThemes.OBSIDIAN_RED, MuoniumThemes.AURORA_TIDE, MuoniumThemes.SUNSET_EMBER, MuoniumThemes.SAGE_MIST, MuoniumThemes.PEARL_LIGHT, MuoniumThemes.XIANGYUN_QINGCHUAN, MuoniumThemes.CANGMING_YUYOU, MuoniumThemes.SHUANGWAN_XIUYAN, MuoniumThemes.MEIGUI_YUEBAI, MuoniumThemes.QINGLAN_YUNZHI);
 
     private BuiltinThemes() {}
 

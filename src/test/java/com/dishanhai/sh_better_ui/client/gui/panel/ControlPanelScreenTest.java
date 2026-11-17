@@ -28,6 +28,42 @@ import static org.junit.jupiter.api.Assertions.*;
 /** 山海：主控面板切页时移除前一页的输入控件，并保留草稿。 */
 class ControlPanelScreenTest {
     @Test
+    void classicLayoutIsDraftedAndRetainsSearchKeyboardAccessAndSmallScreenFallback() throws Exception {
+        var previous=ClientUiSettings.current();
+        try {
+            ClientUiSettings.update(ClientUiSettings.DEFAULT);
+            var persisted=new AtomicReference<ClientUiSettings>();
+            var allowSave=new java.util.concurrent.atomic.AtomicBoolean(false);
+            var mapping=new KeyMapping("key.sh_better_ui.control_panel.layout.test",InputConstants.Type.MOUSE,
+                    GLFW.GLFW_MOUSE_BUTTON_4,"key.categories.sh_better_ui");
+            var screen=new ControlPanelScreen(null,mapping,value->{if(!allowSave.get())return false;persisted.set(value);return true;});
+            screen.width=620;screen.height=380;initialize(screen);finishEntrance(screen);
+            var rail=ControlPanelScreen.class.getDeclaredField("sidebar");rail.setAccessible(true);
+            var searchField=ControlPanelScreen.class.getDeclaredField("search");searchField.setAccessible(true);
+            var flush=ControlPanelScreen.class.getDeclaredMethod("applyRequestedSection");flush.setAccessible(true);
+            assertNotNull(rail.get(screen));switchTab(screen,"display");
+            button(screen,"layout").onPress();flush.invoke(screen);finishEntrance(screen);
+            assertNull(rail.get(screen));
+            assertFalse(((net.minecraft.client.gui.components.EditBox)searchField.get(screen)).visible);
+            assertEquals(com.dishanhai.sh_better_ui.config.ControlPanelLayout.SIDEBAR,ClientUiSettings.current().controlPanelLayout());
+            assertTrue(screen.keyPressed(GLFW.GLFW_KEY_F,0,GLFW.GLFW_MOD_CONTROL));
+            assertTrue(((net.minecraft.client.gui.components.EditBox)searchField.get(screen)).visible);
+            assertTrue(screen.keyPressed(GLFW.GLFW_KEY_ESCAPE,0,0));
+            assertFalse(((net.minecraft.client.gui.components.EditBox)searchField.get(screen)).visible);
+            assertTrue(button(screen,"apply").active);
+            button(screen,"apply").onPress();assertNull(persisted.get());assertTrue(button(screen,"apply").active);
+            // Reopening before Apply reads the unchanged persisted/default layout, not the discarded draft.
+            var reopened=compactScreen();assertEquals(com.dishanhai.sh_better_ui.config.ControlPanelLayout.SIDEBAR,ClientUiSettings.current().controlPanelLayout());
+            allowSave.set(true);button(screen,"apply").onPress();
+            assertEquals(com.dishanhai.sh_better_ui.config.ControlPanelLayout.CLASSIC,persisted.get().controlPanelLayout());
+            screen.width=320;screen.height=210;
+            var clear=Screen.class.getDeclaredMethod("clearWidgets");clear.setAccessible(true);clear.invoke(screen);initialize(screen);
+            assertNull(rail.get(screen));assertFalse(button(screen,"apply").active);
+            switchTab(screen,"feedback");assertNotNull(findButton(screen,"hover_animation"));
+        } finally {ClientUiSettings.update(previous);}
+    }
+
+    @Test
     void browserSeedsEffectiveLegacyDynamicThemeWithoutChangingSavedDraft() {
         var base = ClientUiSettings.DEFAULT.withDynamicTheme(
                 new com.dishanhai.sh_better_ui.config.DynamicThemeSettings("test:active", 100, false));

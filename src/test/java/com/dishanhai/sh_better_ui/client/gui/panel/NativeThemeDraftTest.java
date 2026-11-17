@@ -7,6 +7,22 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class NativeThemeDraftTest {
+    @Test void undoIsBoundedAndNoOpStagesDoNotConsumeHistory() {
+        var draft=new NativeThemeDraft(ClientUiSettings.DEFAULT);
+        draft.stage(draft.current().theme());
+        assertFalse(draft.canUndo());
+        for(int i=0;i<20;i++) draft.stage(draft.current().theme().withRegisteredTheme("example:theme_"+i));
+        for(int i=0;i<16;i++) assertTrue(draft.undo());
+        assertFalse(draft.undo());
+        draft.cancel();assertFalse(draft.dirty());assertFalse(draft.canUndo());
+    }
+    @Test void failedSavePreservesUndoButSuccessfulSaveClearsIt() {
+        var draft=new NativeThemeDraft(ClientUiSettings.DEFAULT);
+        draft.stage(draft.current().theme().withRegisteredTheme("sh_better_ui:light"));
+        assertFalse(draft.apply(value->false));assertTrue(draft.canUndo());
+        assertTrue(draft.apply(value->true));assertFalse(draft.canUndo());
+    }
+
     @Test void selectionRemainsIsolatedAndCancelRestoresBaseline() {
         var initial=ClientUiSettings.DEFAULT;
         var draft=new NativeThemeDraft(initial);

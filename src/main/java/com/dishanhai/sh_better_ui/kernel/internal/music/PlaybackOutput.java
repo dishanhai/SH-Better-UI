@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.State;
 /** Device boundary for deterministic session tests. Position is measured from audible PCM frames. */
 interface PlaybackOutput extends AutoCloseable {
     void start(byte[] mp3, long positionMs, boolean playing);
+    default void volume(float value) {}
     void pause();
     void resume();
     State state();
