@@ -63,6 +63,13 @@ public final class NativeTestClient implements AutoCloseable {
         var splitter = new StringSplitter((codePoint, style) -> 5f);
         return new Font(null) {
             @Override public StringSplitter getSplitter() { return splitter; }
+            @Override public String plainSubstrByWidth(String text, int width) {
+                return splitter.plainHeadByWidth(text, width, Style.EMPTY);
+            }
+            @Override public String plainSubstrByWidth(String text, int width, boolean backwards) {
+                return backwards ? splitter.plainTailByWidth(text, width, Style.EMPTY)
+                        : splitter.plainHeadByWidth(text, width, Style.EMPTY);
+            }
             @Override public int width(String text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedCharSequence text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedText text) { return (int) Math.ceil(splitter.stringWidth(text)); }

@@ -80,6 +80,10 @@ public final class SettingsApi {
                 net.minecraft.network.chat.Component.translatable("sh_better_ui.rich_text_editor.title"), document);
     }
 
+    public Screen appearanceScreen(@Nullable Screen parent) {
+        return new com.dishanhai.sh_better_ui.client.gui.panel.NativeAppearanceScreen(parent);
+    }
+
     public Screen markdownScreen(@Nullable Screen parent) {
         return new com.dishanhai.sh_better_ui.client.gui.panel.MarkdownExampleScreen(parent);
     }
