@@ -141,13 +141,18 @@ public final class LocalMusicIsland {
     }
 
     public void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered) {
-        render(ui, font, compact, full, hovered, music.getAudioFeatures());
+        render(ui, font, compact, full, hovered, Optional.empty(), true);
     }
 
     /** The host may supply its own authorized output capture for this view. */
     public void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio) {
+        render(ui, font, compact, full, hovered, audio, false);
+    }
+
+    private void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio, boolean systemAudio) {
         if (compact.width() < 94 || compact.height() < 28) { notices.pause(); return; }
         observeMusic(ui.nowMs());
+        if (systemAudio) audio = music.getAudioFeatures(current);
         var snapshot = current.snapshot();
         var session = snapshot.session();
         var preferences = ui.preferences();

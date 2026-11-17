@@ -19,6 +19,7 @@ public final class ClientMusic {
             new MusicSnapshot("system", MusicSnapshot.State.INITIALIZING, null),
             new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK, LyricTimeline.empty()), 0);
     private static final MusicArtworkTexture ARTWORK = new MusicArtworkTexture();
+    private static final ForegroundMusicFrames FOREGROUND = new ForegroundMusicFrames();
     private static volatile MusicService service;
     private static volatile SystemAudioCapture capture;
     private static boolean closed;
@@ -54,8 +55,10 @@ public final class ClientMusic {
 
     public static MusicService.Frame frame() {
         var active = service;
-        return active == null ? INACTIVE : active.getFrame();
+        return FOREGROUND.select(active == null ? INACTIVE : active.getFrame(), System.nanoTime());
     }
+
+    public static ForegroundMusicFrames.Lease foreground() { return FOREGROUND.acquire(); }
 
     public static MusicService service() { return service; }
 

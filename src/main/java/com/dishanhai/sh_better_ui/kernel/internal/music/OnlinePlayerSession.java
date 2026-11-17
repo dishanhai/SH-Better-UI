@@ -359,6 +359,9 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return new Snapshot(track, current, position, duration, lyricsState, lyrics,
                 current == State.FAILED && failure == Failure.NONE ? Failure.AUDIO : failure, preview);
     }
+    record MediaObservation(Snapshot snapshot, long offsetMs) {}
+    /** Called on the bridge worker, under one session lock, never on the render thread. */
+    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset); }
     @Override public LyricFeed lyricFeed() {
         return new LyricFeed() {
             @Override public Frame frame() {
