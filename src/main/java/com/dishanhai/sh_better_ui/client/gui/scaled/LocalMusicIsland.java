@@ -35,6 +35,8 @@ public final class LocalMusicIsland {
     private IslandNoticeQueue.Notice activeNotice;
     private final IslandAmbientState ambient = new IslandAmbientState();
     private boolean ambientShown;
+    private boolean noticeSurfaceAllowed = true;
+    private IslandShellStyle style = IslandShellStyle.CLASSIC;
 
     public LocalMusicIsland(MusicApi music) {
         this.music = music;
@@ -53,10 +55,15 @@ public final class LocalMusicIsland {
 
     public void setScene(boolean inWorld, boolean playerListVisible, boolean hudHidden, boolean playerUiOpen) {
         lifecycle.setScene(inWorld, playerListVisible, hudHidden, playerUiOpen);
+        noticeSurfaceAllowed = inWorld && !playerListVisible && !hudHidden;
+        if (!noticeSurfaceAllowed) notices.pause();
     }
 
     /** Hosts may use the same hit region for pointer and keyboard focus. */
     public void setHovered(boolean hovered, long nowMs) { lifecycle.setHovered(hovered, nowMs); }
+
+    public void setStyle(String id) { style = IslandShellStyle.fromId(id); }
+    public String styleId() { return style.id(); }
 
     public void setAmbient(IslandAmbientState.Settings settings) { ambient.configure(settings); }
     public void updateAmbient(int fps, int pingMillis, int hour, int minute, long nowMs) {
@@ -64,6 +71,15 @@ public final class LocalMusicIsland {
     }
 
     public void notify(IslandNoticeQueue.Notice notice) { notices.offer(notice); }
+
+    /** Cancel only the completed/withdrawn operation, never unrelated queued notices. */
+    public void cancelNotice(String id) {
+        notices.cancel(id);
+        if (activeNotice != null && activeNotice.id().equals(id)) {
+            activeNotice = null;
+            lifecycle.setNoticeActive(false);
+        }
+    }
 
     public boolean visible(long nowMs) {
         observeMusic(nowMs);
@@ -86,7 +102,8 @@ public final class LocalMusicIsland {
     }
 
     private void sampleNotice(long nowMs) {
-        activeNotice = notices.sample(nowMs).orElse(null);
+        if (!noticeSurfaceAllowed) notices.pause();
+        activeNotice = notices.peek(nowMs).orElse(null);
         lifecycle.setNoticeActive(activeNotice != null);
     }
 
@@ -118,7 +135,7 @@ public final class LocalMusicIsland {
 
     /** The host may supply its own authorized output capture for this view. */
     public void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio) {
-        if (compact.width() < 94 || compact.height() < 29) return;
+        if (compact.width() < 94 || compact.height() < 29) { notices.pause(); return; }
         observeMusic(ui.nowMs());
         var snapshot = current.snapshot();
         var session = snapshot.session();
@@ -130,7 +147,10 @@ public final class LocalMusicIsland {
         if (!lifecycle.visible(ui.nowMs())) { rhythm.reset(); return; }
         var outline = MusicIsland.outline(compact, full, expansion.sample(ui.nowMs(), still));
         var graphics = ui.graphics();
-        MusicIsland.drawShell(graphics, outline, preferences, hovered);
+        var rect = outline.rect();
+        var shell = style.shell(outline.radius(), rect.getH(), hovered, preferences.highContrast());
+        RoundedCorners.draw(graphics, rect.getX(), rect.getY(), rect.getW(), rect.getH(),
+                shell.radius(), shell.border(), shell.edge(), shell.fill(), false);
         ambientShown = false;
         if (activeNotice != null) {
             int left = Math.round(outline.rect().getX()) + 10;
@@ -145,6 +165,7 @@ public final class LocalMusicIsland {
                 graphics.fill(left, barY, left + (int) Math.round((right-left)*activeNotice.progress()),
                         barY + 2, preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
             }
+            notices.presented(activeNotice, ui.nowMs());
             return;
         }
 

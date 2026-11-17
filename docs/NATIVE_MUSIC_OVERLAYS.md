@@ -33,3 +33,29 @@ lyrics, or MP theme/asset transplantation. The host does not invent progress
 notifications for downloads it does not own. On very small windows the renderer
 reduces available bounds; a visual runtime check remains required for supported
 GUI scales and screen sizes.
+
+## Real task notices and scene lifetime
+
+The optional **Task notices** setting projects the existing system MusicApi's
+immutable frames: lyric loading, lyric availability/unavailability and temporary
+provider failure/recovery. These are local-lyric/media observations, not online
+song downloads. Loading has no percentage and a bounded 8-second notice TTL;
+completion is shown only after an observed loading state, never for an initially
+cached result. Matching uses provider/session/track identity and the actual lyrics
+request revision. Older revisions cannot replace a newer song's feedback.
+Changing songs cancels the obsolete notice. Pausing the game overlay for a screen,
+F1 or Tab does not destroy its queue, but wall-clock expiry still prevents old
+feedback appearing much later. Leaving the world, disabling the island or module
+shutdown clears state. ClientMusic currently creates one service per process and
+cannot restart after shutdown; this host resets its observer at world boundaries.
+
+The shell selector persists stable IDs `classic`, `pill`, `minimal`, not enum
+ordinals. Missing/null style in existing configuration defaults to `classic`
+without resetting coordinates or dimensions. These native shell variants do not
+claim MP theme/animation parity or import third-party fonts.
+
+Backend audit: OnlinePlayerSession downloads audio internally but publishes no
+byte-progress task API. OnlineMusicScreen closes its owned session on removal.
+Consequently this increment does not claim background-download percentages or
+player-to-island continuing playback/handoff. Those require an explicit durable
+player owner and actual backend task events, rather than cosmetic notifications.

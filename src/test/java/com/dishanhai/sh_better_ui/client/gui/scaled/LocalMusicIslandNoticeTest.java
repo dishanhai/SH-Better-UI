@@ -17,7 +17,11 @@ class LocalMusicIslandNoticeTest {
         assertEquals("First\n", island.narration().getString());
         assertTrue(island.visible(1010));
         assertTrue(island.notificationActive(1010));
+        assertEquals("First\n", island.narration().getString());
+        island.cancelNotice("a");
+        assertTrue(island.visible(1010));
         assertEquals("Second\n", island.narration().getString());
+        island.cancelNotice("b");
         assertFalse(island.visible(2010));
         assertFalse(island.notificationActive(2010));
     }

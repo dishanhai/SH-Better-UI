@@ -351,7 +351,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             case MUSIC -> 114;
             case MUONIUM -> 132;
             case OVERVIEW -> 0;
-            case LINKS -> 16 + FeedbackLink.values().length * (BUTTON_HEIGHT + GAP);
+            case LINKS -> 16 + (FeedbackLink.values().length + 1) * (BUTTON_HEIGHT + GAP);
         };
         contentWidth = bodyWidth()
                 - (selectedArea != Area.OVERVIEW && maxScroll() == 0 ? 0 : SCROLLBAR_WIDTH + GAP);
@@ -721,7 +721,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void addFeedbackLinks(int x) {
-        int y = 16;
+        row(button(x, 16, contentWidth, NativeAboutScreen.text("title"), GraphicIcon.INFO, false,
+                () -> minecraft.setScreen(new NativeAboutScreen(this))));
+        int y = 16 + BUTTON_HEIGHT + GAP;
         for (var link : FeedbackLink.values()) {
             var message = label(link.key);
             var entry = row(button(x, y, contentWidth, message, link.icon, false, () -> {
