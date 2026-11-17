@@ -5,6 +5,6 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewScene;
 
 /** Mountable player page with navigation, search, lyrics, accounts and a persistent transport bar. */
 public interface OnlineMusicView extends PreviewScene {
-    /** This view owns the session and closes it when the view closes. */
+    /** Session exposed by this view. Independent views own it; background views borrow the kernel-owned player. */
     OnlineMusicPlayer player();
 }
