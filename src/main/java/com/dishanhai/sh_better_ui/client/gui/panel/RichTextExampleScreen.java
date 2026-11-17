@@ -61,6 +61,8 @@ public final class RichTextExampleScreen extends Screen {
     private RichDocument document;
     private RichTextComponents.Snapshot advancedDocument;
     private RichTextComponents.Snapshot trustedSnapshot;
+    private final com.dishanhai.sh_better_ui.client.visual.BoundedMetricSource demoMetric =
+            new com.dishanhai.sh_better_ui.client.visual.BoundedMetricSource(40, 0, 100);
     private boolean advanced;
     private int effectMode;
     private int scroll;
@@ -104,7 +106,7 @@ public final class RichTextExampleScreen extends Screen {
             var layout = ShBetterUiApi.layout().create(viewport());
             content = layout.node("rich_text", AlignmentFrame.box(new Rect(0, 0, 0, 0)));
             view = RichTextView.attach(module, tree, content);
-            if (trustedDemo) view.bindExtensions(TrustedRichTooltipDemo.attach(tree));
+            if (trustedDemo) view.bindExtensions(TrustedRichTooltipDemo.attach(tree, demoMetric));
             view.interaction().onButton(RichTextWorkbench.PRESS, () -> activations++);
             view.interaction().onSlider(RichTextWorkbench.LEVEL, value -> level = value);
             view.interaction().draggable(RichTextWorkbench.MOVABLE);
@@ -121,7 +123,17 @@ public final class RichTextExampleScreen extends Screen {
                 .build());
         if (imported != null) {
             inline = addWidget(new RichTextWorkbench.Viewport(this, view, this::scroll, this::scrollPage));
-            if (trustedDemo) inline.setMessage(RichTextComponents.toComponent(imported));
+            if (trustedDemo) {
+                inline.setMessage(RichTextComponents.toComponent(trustedSnapshot.document()));
+                addRenderableWidget(Button.builder(metricLabel(), button -> {
+                    double next = demoMetric.state().value() >= 100 ? 0 : demoMetric.state().value() + 20;
+                    demoMetric.set(next, 0, 100);
+                    trustedSnapshot = TrustedRichTooltipDemo.snapshot(demoMetric.state());
+                    inline.setMessage(RichTextComponents.toComponent(trustedSnapshot.document()));
+                    button.setMessage(metricLabel());
+                    view.invalidate();
+                }).bounds(Math.max(6, width - 154), 6, Math.min(148, Math.max(0, width - 12)), 20).build());
+            }
             setInitialFocus(back);
             return;
         }
@@ -165,6 +177,10 @@ public final class RichTextExampleScreen extends Screen {
             addEditor(buttonY, MARGIN + buttonWidth + 6);
         }
         setInitialFocus(back);
+    }
+
+    private Component metricLabel() {
+        return Component.literal("演示负载 " + (int) demoMetric.state().value() + "% · +20");
     }
 
     private void addEditor(int y, int x) {
@@ -273,7 +289,7 @@ public final class RichTextExampleScreen extends Screen {
             graphics.fillGradient(0, ADVANCED_TOP, width, Math.max(ADVANCED_TOP, height - 46), 0xff23496a, 0xff392940);
         }
         var viewport = viewport();
-        if (font.width(title) <= width - ((!advanced && imported == null) ? 212 : 2 * MARGIN) && viewport.height() >= font.lineHeight + MARGIN) {
+        if (font.width(title) <= width - (trustedDemo ? 320 : (!advanced && imported == null) ? 212 : 2 * MARGIN) && viewport.height() >= font.lineHeight + MARGIN) {
             graphics.drawCenteredString(font, title, width / 2, MARGIN, DarkModeTheme.textColor());
         }
         // LoadingOverlay renders its backdrop directly, outside the native Screen render event.

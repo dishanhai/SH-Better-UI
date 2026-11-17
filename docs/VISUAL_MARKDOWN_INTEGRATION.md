@@ -41,3 +41,13 @@ view.prepare(content, font, availableWidth);
 追加实机检查：NeoForge 1.21.1 已实际进入测试世界并打开混排页，检查图标、折线图、柱图、全文滚动与返回；字面 `<rich:item=...>` 未被二次解析。发现并修复示例末尾缺段落导致下一节标题连行的问题。程序锅炉示意图的实机检查另行记录。
 
 原创程序材质追加验收：Forge/NeoForge 各 35 项定向测试通过，0 失败/错误/跳过。NeoForge 1.21.1 实机确认水→锅炉→蒸汽图形及标签正确显示，滚动后阅读说明独立成段、末尾代码保持字面文本；已留原生 F2 截图。未宣称 Forge 实机、全部 GUI 缩放、热重载、旁白或性能基准通过。
+
+## 第二阶段：受限动态指标（可信宿主）
+
+`BoundedMetricSource` 提供不可变数值快照与 revision；宿主显式写入 `value/min/max`，拒绝非有限数值、无效范围和越界值。同值更新不改变 revision。用 `registry.registerData(sourceId, source)` 绑定到当前 screen/tree 的作用域，再将 renderer 显式绑定为 `context -> BoundedMetricRenderer.render(context, sourceId)`。renderer 只使用本帧 `context.data(sourceId)`，不按文档 payload 查找任意来源，缺失/坏数据显示明确后备。
+
+示例右上原生按钮可用鼠标或 Tab 后 Enter/Space 操作，每次将演示负载增加 20，100 后回到 0。事件在 UI 线程同时更新 source、正文、节点 alt、旁白消息及按钮标签，再失效布局；数值未变化时不需要重解析文档。实际业务宿主也应在同一 UI 更新边界同步正文/alt 与 source，不能只修改图形数据而留下旧的无障碍描述。renderer 不自主采集系统、游戏、网络或账号数据。
+
+本阶段为显式事件驱动的数据绑定，不冒充真实机器监测或自动采样仪表盘。数据注册跟随原有 tree 关闭；重新打开新示例会重建独立状态。已有图片/帧资源走原有 reload 处理，动态指标与程序锅炉不依赖外部贴图。热重载、旁白实际发声和所有缩放尺寸仍须单独实机验证。
+
+第二阶段验证：Forge 1.20.1 与 NeoForge 1.21.1 各 40 项定向测试通过，无失败/错误/跳过。NeoForge 实机确认鼠标点击 40→60、Enter 激活 60→80，按钮/正文/条形图一致；关闭再打开恢复独立初值 40，Tab 焦点+Space 更新至 60。已留 80% 原生截图。F3+T 未确认触发，不能视为资源热重载通过；本阶段未测试真实设备数据源或旁白语音。

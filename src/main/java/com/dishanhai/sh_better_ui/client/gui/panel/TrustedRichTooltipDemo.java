@@ -3,6 +3,8 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.visual.RichTextExtensions;
 import com.dishanhai.sh_better_ui.client.visual.BoilerSchematicRenderer;
+import com.dishanhai.sh_better_ui.client.visual.BoundedMetricSource;
+import com.dishanhai.sh_better_ui.client.visual.BoundedMetricRenderer;
 import com.dishanhai.sh_better_ui.client.visual.RichMarkdownContent;
 import com.dishanhai.sh_better_ui.client.visual.RichTextComponents;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
@@ -19,6 +21,8 @@ import net.minecraft.network.chat.Component;
  * resource fetching or arbitrary registry lookup is granted to document text.
  */
 final class TrustedRichTooltipDemo {
+    private static final UiId METRIC = id("live_metric");
+    private static final UiId METRIC_DATA = id("live_metric_data");
     private static final UiId BOILER = id("boiler_schematic");
     private static final UiId GRAPH = id("graph");
     private static final UiId BARS = id("bars");
@@ -31,9 +35,14 @@ final class TrustedRichTooltipDemo {
 
     private TrustedRichTooltipDemo() {}
     static RichDocument document() { return snapshot().document(); }
-    static RichTextComponents.Snapshot snapshot() {
+    static RichTextComponents.Snapshot snapshot() { return snapshot(new BoundedMetricSource(40, 0, 100).state()); }
+    static RichTextComponents.Snapshot snapshot(BoundedMetricSource.State state) {
+        int value = (int) Math.round(state.value());
         var doc = RichText.document(id("document"));
-        doc.text("蒸汽锅炉 · 可信富提示示例", TITLE).paragraph(6)
+        doc.text("交互数据示例 · 非真实设备读数", LABEL).paragraph(4)
+                .text("当前演示负载：" + value + "% 。使用右上按钮更新；数字、条形图和替代文字一起更新。").paragraph(4)
+                .extension(METRIC, 1, 320, 32, 32, "演示负载：" + value + "%（范围 0…100%）", "").paragraph(8)
+                .text("蒸汽锅炉 · 可信富提示示例", TITLE).paragraph(6)
                 .text("本页为演示数据，不代表游戏配方。", RichStyle.EMPTY).paragraph(6)
                 .text("原创锅炉示意：进水 → 加热 → 蒸汽；非真实机器贴图。").paragraph(4)
                 .extension(BOILER, 1, 320, 104, 104, "原创静态锅炉示意：左侧进水，在容器底部受热，右上方输出蒸汽；小尺寸改为简化容器图标", "").paragraph(4)
@@ -67,8 +76,10 @@ final class TrustedRichTooltipDemo {
     private static RichObjectNode item(String name, String item, String alt) {
         return new RichObjectNode(id(name), new RichObjectNode.Item(UiId.parse("minecraft:" + item), 1), 16, 16, 16, alt);
     }
-    static RichTextExtensions attach(ScopeHandle scope) {
+    static RichTextExtensions attach(ScopeHandle scope, BoundedMetricSource source) {
         var registry = RichTextExtensions.attach(scope);
+        registry.registerData(METRIC_DATA, source);
+        registry.register(METRIC, 1, context -> BoundedMetricRenderer.render(context, METRIC_DATA));
         registry.register(RULE, 1, context -> {
             var b = context.bounds();
             context.graphics().fill(b.x(), b.y(), b.x() + b.width(), b.y() + b.height(), 0xff62748b);
