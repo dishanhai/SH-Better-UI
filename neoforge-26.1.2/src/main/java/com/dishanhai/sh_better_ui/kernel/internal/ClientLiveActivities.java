@@ -11,18 +11,22 @@ import net.minecraft.client.renderer.RenderPipelines;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.Identifier;
 
+import com.dishanhai.sh_better_ui.kernel.internal.live.SurfaceTransition;
 import java.time.Duration;
 import java.util.List;
 
 /** Native 26.x presentation for the shared, scope-owned local activity/notification runtime. */
 public final class ClientLiveActivities implements AutoCloseable {
     private final LiveSurfaceRuntime runtime;
+    private final KernelHost host;
+    private final NativeActivityMotion motion = new NativeActivityMotion();
     private LiveSurfaceSettings settings;
     private SurfacePlacement.Result placement = SurfacePlacement.Result.HIDDEN;
     private NativeActivityScreen details;
     private boolean closed;
 
     ClientLiveActivities(KernelHost host, LiveSurfaceSettings settings) {
+        this.host = host;
         runtime = new LiveSurfaceRuntime(host);
         settings(settings);
     }
@@ -34,6 +38,7 @@ public final class ClientLiveActivities implements AutoCloseable {
 
     public void settings(LiveSurfaceSettings next) {
         settings = java.util.Objects.requireNonNull(next);
+        motion.configure(next.motion());
         var layout = next.layout();
         var notifications = next.notifications();
         // This first native host presents one surface at a time, not a misleading half-rendered split.
@@ -68,6 +73,7 @@ public final class ClientLiveActivities implements AutoCloseable {
     }
 
     private void suspend() {
+        motion.suspend(host.nowNanos() / 1_000_000L);
         runtime.present(new LiveSurfaceService.View(runtime.plan(), SurfacePresentation.SUSPENDED,
                 SurfacePresentation.SUSPENDED, SurfaceGeometry.HIDDEN, SurfaceGeometry.HIDDEN, false));
     }
@@ -79,26 +85,58 @@ public final class ClientLiveActivities implements AutoCloseable {
                 || NativePort.hasOverlay(client) || !client.isWindowActive()) { suspend(); return; }
         var plan = runtime.plan();
         var snapshot = plan.primary();
-        if (snapshot == null) { runtime.present(LiveSurfaceService.View.EMPTY); placement = SurfacePlacement.Result.HIDDEN; return; }
-        var tokens = palette(snapshot.content());
-        int guiWidth = graphics.guiWidth(), guiHeight = graphics.guiHeight();
-        var candidate = candidate(plan.requested(), tokens, settings.layout(), guiWidth, guiHeight);
-        placement = SurfacePlacement.place(new SurfacePlacement.Rect(6, 6, Math.max(0, guiWidth - 12), Math.max(0, guiHeight - 12)),
-                List.of(candidate), runtime.occupied(), SurfacePlacement.CollisionPolicy.AVOID, placement);
-        var area = placement.geometry();
-        runtime.present(new LiveSurfaceService.View(plan, placement.presentation(), placement.presentation(),
-                area, SurfaceGeometry.HIDDEN, false));
+        var viewport = new SurfacePlacement.Rect(6, 6, Math.max(0, graphics.guiWidth() - 12), Math.max(0, graphics.guiHeight() - 12));
+        SurfaceTransition.Target<ActivityService.Content> target;
+        if (snapshot == null) {
+            placement = SurfacePlacement.Result.HIDDEN;
+            target = new SurfaceTransition.Target<>(SurfacePresentation.HIDDEN, SurfaceGeometry.HIDDEN, null);
+        } else {
+            var tokens = palette(snapshot.content());
+            var candidate = candidate(plan.requested(), tokens, settings.layout(), graphics.guiWidth(), graphics.guiHeight());
+            placement = SurfacePlacement.place(viewport, List.of(candidate), runtime.occupied(),
+                    SurfacePlacement.CollisionPolicy.AVOID, placement);
+            // Revisions update progress/lyrics without restarting geometry. A different song/title crossfades.
+            target = new SurfaceTransition.Target<>(placement.presentation(), placement.geometry(), snapshot.content(),
+                    new ContentKey(snapshot.instance(), snapshot.content().title()));
+        }
+        var frame = motion.step(target, viewport, runtime.occupied(), host.nowNanos() / 1_000_000L,
+                UiPreferences.configured().reducedMotion());
+        var area = frame.animated();
+        runtime.present(new LiveSurfaceService.View(plan, frame.target().presentation(), frame.current().presentation(),
+                area, SurfaceGeometry.HIDDEN, false, frame.running()));
         if (!area.visible()) return;
-        paint(graphics, snapshot.content(), area, tokens, placement.presentation());
-        runtime.markPainted(snapshot);
+        var shellContent = target.content() != null ? target.content()
+                : frame.contentMix().stream().map(SurfaceTransition.Layer::content).filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (shellContent != null) paintShell(graphics, area, fade(palette(shellContent), area.opacity()));
+        for (var layer : frame.contentMix()) if (layer.content() != null && layer.weight() > 0) {
+            paintContent(graphics, layer.content(), area, fade(palette(layer.content()), area.opacity() * layer.weight()), layer.presentation());
+        }
+        if (snapshot != null && frame.input().content() != null) runtime.markPainted(snapshot);
+    }
+
+    private record ContentKey(long instance, ActivityService.Text title) {}
+
+    static SurfaceTokens fade(SurfaceTokens colors, double opacity) {
+        return new SurfaceTokens(alpha(colors.surface(), opacity), alpha(colors.title(), opacity), alpha(colors.detail(), opacity),
+                alpha(colors.accent(), opacity), alpha(colors.progressTrack(), opacity), alpha(colors.button(), opacity),
+                alpha(colors.buttonPressed(), opacity), alpha(colors.focus(), opacity), alpha(colors.shadow(), opacity),
+                colors.highContrast(), colors.dimensions());
+    }
+
+    private static int alpha(int color, double opacity) {
+        return ((int) Math.round((color >>> 24) * Math.clamp(opacity, 0, 1)) << 24) | (color & 0xffffff);
     }
 
     static SurfacePlacement.Candidate candidate(SurfacePresentation requested, SurfaceTokens tokens,
                                                 LiveSurfaceSettings.Layout layout, int guiWidth, int guiHeight) {
-        var mode = requested == SurfacePresentation.MINIMAL ? SurfacePresentation.MINIMAL : SurfacePresentation.COMPACT;
+        var mode = switch (requested) {
+            case MINIMAL -> SurfacePresentation.MINIMAL;
+            case EXPANDED, FLOATING -> SurfacePresentation.EXPANDED;
+            default -> SurfacePresentation.COMPACT;
+        };
         var sizing = tokens.dimensions().forPresentation(mode);
         int width = Math.min((int) Math.round(sizing.maxWidth() * layout.scale()), Math.max(0, guiWidth - 12));
-        int height = (int) Math.round((mode == SurfacePresentation.MINIMAL ? sizing.minHeight() : Math.max(34, sizing.minHeight())) * layout.scale());
+        int height = (int) Math.round((mode == SurfacePresentation.EXPANDED ? Math.max(48, sizing.minHeight()) : sizing.minHeight()) * layout.scale());
         double x = switch (layout.anchor()) {
             case TOP_LEFT -> 6;
             case TOP_RIGHT -> guiWidth - width - 6;
@@ -113,17 +151,27 @@ public final class ClientLiveActivities implements AutoCloseable {
     SurfaceTokens palette(ActivityService.Content content) {
         if (UiPreferences.configured().highContrast()) return SurfaceTokens.HIGH_CONTRAST;
         if (content.appearance() != null) return content.appearance();
-        return SurfaceTokens.DARK;
+        var defaults = SurfaceTokens.DARK;
+        var theme = settings.theme();
+        if (theme.mode() == LiveSurfaceSettings.ThemeMode.CUSTOM)
+            return new SurfaceTokens(theme.background(), defaults.title(), defaults.detail(), theme.accent(), defaults.progressTrack(),
+                    defaults.button(), defaults.buttonPressed(), defaults.focus(), defaults.shadow(), false, defaults.dimensions());
+        return defaults;
     }
 
     static Component text(ActivityService.Text text) {
         return text.translated() ? Component.translatable(text.value()) : Component.literal(text.value());
     }
 
-    static void paint(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode) {
+    /** The shell is painted once; content blending must never reduce its opacity. */
+    static void paintShell(GuiGraphicsExtractor graphics, SurfaceGeometry area, SurfaceTokens tokens) {
+        RoundedCorners.draw(graphics, (int) area.x(), (int) area.y(), (int) area.width(), (int) area.height(),
+                (float) area.radius(), 1, tokens.focus(), tokens.surface());
+    }
+
+    static void paintContent(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode) {
         int x = (int) area.x(), y = (int) area.y(), width = (int) area.width(), height = (int) area.height();
         var font = Minecraft.getInstance().font;
-        RoundedCorners.draw(graphics, x, y, width, height, (float) area.radius(), 1, tokens.focus(), tokens.surface());
         graphics.enableScissor(x, y, x + width, y + height);
         try {
             if (mode == SurfacePresentation.MINIMAL) {
@@ -136,17 +184,28 @@ public final class ClientLiveActivities implements AutoCloseable {
             if (content.icon() != null && width >= 100) {
                 var id = Identifier.tryParse(content.icon().toString());
                 if (id != null && Minecraft.getInstance().getResourceManager().getResource(id).isPresent()) {
-                    graphics.blit(RenderPipelines.GUI_TEXTURED, id, left, y + 8, 0f, 0f, 16, 16, 16, 16);
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, id, left, y + Math.max(0, (height - 16) / 2), 0f, 0f, 16, 16, 16, 16, (tokens.title() & 0xff000000) | 0xffffff);
                     left += 22;
                 }
             }
             int available = Math.max(1, x + width - left - 8);
-            graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text(content.title()), available)), left, y + 6, tokens.title(), false);
-            graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text(content.detail()), available)), left, y + 17, tokens.detail(), false);
+            var title = text(content.title()).copy().withStyle(net.minecraft.ChatFormatting.BOLD);
+            var detail = text(content.detail());
+            if (mode == SurfacePresentation.EXPANDED) {
+                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(title, available)), left, y + 8, tokens.title(), false);
+                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(detail, available)), left, y + 23, tokens.detail(), false);
+            } else {
+                int titleWidth = detail.getString().isBlank() ? available : Math.min(font.width(title), Math.max(1, available / 2));
+                int baseline = y + Math.max(0, (height - font.lineHeight) / 2) - (content.progress() >= 0 ? 1 : 0);
+                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(title, titleWidth)), left, baseline, tokens.title(), false);
+                int detailX = left + titleWidth + 8;
+                if (detailX < x + width - 8)
+                    graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(detail, x + width - detailX - 8)), detailX, baseline, tokens.detail(), false);
+            }
             if (content.progress() >= 0) {
                 int track = Math.max(0, width - 16);
-                graphics.fill(x + 8, y + height - 5, x + 8 + track, y + height - 3, tokens.progressTrack());
-                graphics.fill(x + 8, y + height - 5, x + 8 + (int) Math.round(track * content.progress()), y + height - 3, tokens.accent());
+                graphics.fill(x + 8, y + height - 3, x + 8 + track, y + height - 2, tokens.progressTrack());
+                graphics.fill(x + 8, y + height - 3, x + 8 + (int) Math.round(track * content.progress()), y + height - 2, tokens.accent());
             }
         } finally { graphics.disableScissor(); }
     }
