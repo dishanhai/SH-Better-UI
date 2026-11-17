@@ -4,6 +4,30 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DynamicIslandStateTest {
+    @Test void capsuleRequiresIntentionalHoverAndDoesNotExpandOnFlyBy() {
+        var state = new DynamicIslandState();
+        state.setHoverDelayMs(450);
+        state.setHovered(true, 100);
+        assertFalse(state.expanded(549));
+        state.setHovered(false, 549);
+        assertFalse(state.expanded(550));
+        state.setHovered(true, 600);
+        assertTrue(state.expanded(1050));
+        state.setHovered(false, 1100);
+        assertTrue(state.expanded(1319));
+        assertFalse(state.expanded(1320));
+    }
+    @Test void noticeAndExplicitPinBypassHoverDelay() {
+        var state = new DynamicIslandState();
+        state.setHoverDelayMs(450);
+        state.setHovered(true, 100);
+        state.setNoticeActive(true);
+        assertTrue(state.expanded(101));
+        state.dismiss();
+        state.setPinned(true);
+        assertTrue(state.expanded(102));
+    }
+
     @Test void newTrackExpandsOnceAndExpires() {
         var state = new DynamicIslandState();
         state.observeTrack("a", 100);

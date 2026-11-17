@@ -9,26 +9,32 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 
 final class OnlineMusicViewPaint {
+    private static Component styled(Component text) { return MpTypography.SEMIBOLD.equals(text.getStyle().getFont())?text:MpTypography.text(text); }
     static void clip(UiFrame ui, Bounds bounds) { ui.graphics().enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom()); }
     static void unclip(UiFrame ui) { ui.graphics().disableScissor(); }
     static boolean editing(UiSlider slider) { return slider.isEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
-        var value = font.substrByWidth(text, Math.max(0, width));
-        ink(ui, font, net.minecraft.locale.Language.getInstance().getVisualOrder(value), x, y, color);
+        var value = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(font,styled(text),Math.max(0,width));
+        ink(ui, font, value, x, y, color);
     }
     private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
                             int x, int y, int color) {
-        if ((UiTheme.current().background() >>> 24) == 255) {
-            ui.graphics().drawString(font, text, x, y, color, false); return;
-        }
-        var paint = LyricTextPalette.sample(color, color, UiTheme.current().background(), 0, ui.preferences().highContrast());
-        ui.graphics().fill(x - 2, y - 1, x + font.width(text) + 2, y + font.lineHeight + 1, paint.protection());
-        ui.graphics().drawString(font, text, x, y, paint.text(), paint.shadow());
+        // The player owns one opaque, theme-colored canvas. Per-label backplates create visual noise.
+        ui.graphics().drawString(font, text, x, y, color, false);
     }
+    static void scaledLine(UiFrame ui, Font font, Component text, int x, int y, int width, int color, float scale) {
+        var line=com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(font,styled(text),Math.max(1,(int)(width/scale)));
+        ui.graphics().pose().pushPose();
+        try {
+            ui.graphics().pose().translate(x,y,0); ui.graphics().pose().scale(scale,scale,1);
+            ui.graphics().drawString(font,line,0,0,color,false);
+        } finally { ui.graphics().pose().popPose(); }
+    }
+
     static void paragraph(UiFrame ui, Font font, Component text, Bounds bounds, int color) {
         int y = bounds.y();
-        for (var line : font.split(text, Math.max(1, bounds.width()))) {
+        for (var line : font.split(styled(text), Math.max(1, bounds.width()))) {
             if (y + font.lineHeight > bounds.bottom()) break;
             ink(ui, font, line, bounds.x(), y, color);
             y += font.lineHeight + 3;
@@ -58,26 +64,12 @@ final class OnlineMusicViewPaint {
         int accent = theme.accent();
         int inset = area.width() >= 180 ? 12 : 6;
         int available = Math.max(1, area.width() - inset * 2);
-        int y = area.y() + 3;
-        if (area.height() >= 44) {
-            line(ui, font, kicker, area.x() + inset, y, available, accent);
-            y += font.lineHeight + 5;
-        }
+        int y = area.y() + 6;
         float scale = area.height() >= 32 ? 1.35f : 1f;
-        var heading = Component.literal(font.plainSubstrByWidth(title.getString(), (int)(available / scale)));
-        int headingColor = theme.text();
-        if ((theme.background() >>> 24) != 255) {
-            var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background(), 0, ui.preferences().highContrast());
-            ui.graphics().fill(area.x() + inset - 2, y - 1, area.x() + inset + (int)Math.ceil(font.width(heading) * scale) + 2,
-                    y + (int)Math.ceil(font.lineHeight * scale) + 1, paint.protection());
-            headingColor = paint.text();
-        }
-        ui.drawScaledText(font, heading, area.x() + inset, y, headingColor, scale);
-        y += (int)Math.ceil(font.lineHeight * scale) + 6;
-        if (y + font.lineHeight <= area.bottom() - 4)
-            line(ui, font, subtitle, area.x() + inset, y, available, muted(ui));
-        int length = Math.min(available, 22 + Math.round(22 * clamp(emphasis)));
-        ui.graphics().fill(area.x() + inset, area.bottom() - 2, area.x() + inset + length, area.bottom(), accent);
+        scaledLine(ui,font,MpTypography.bold(title),area.x()+inset,y,available,theme.text(),scale);
+        y += 22;
+        if (y + MpTypography.LINE_HEIGHT <= area.bottom())
+            line(ui,font,subtitle,area.x()+inset,y,available,muted(ui));
     }
 
     /** Empty/loading/error copy remains supplied by the owner; no fake results or network work. */

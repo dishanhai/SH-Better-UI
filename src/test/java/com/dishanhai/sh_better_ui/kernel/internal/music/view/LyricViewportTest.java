@@ -35,4 +35,33 @@ class LyricViewportTest {
         assertEquals(2, v.sample(9, 10, 150, false, true));
         assertTrue(v.sample(3, 10, 200, false, false) > 2);
     }
+    @Test void directBrowsingIsImmediateAndFollowIsContinuous() {
+        var v = new LyricViewport();
+        v.sample(2, 20, 0, false, false);
+        v.browseTo(5, 20, 10);
+        assertEquals(5, v.sample(2, 20, 11, false, false));
+        v.follow();
+        double prior = 5;
+        for (int i=1; i<=100; i++) {
+            double next = v.sample(2, 20, 11+16L*i, false, false);
+            assertTrue(next <= prior && next >= 2); prior = next;
+        }
+        assertEquals(2, prior, .005);
+    }
+    @Test void stalledAndReversedClocksCannotExplodeAndResizingClampsFocus() {
+        var v = new LyricViewport();
+        v.sample(4, 20, 0, false, false);
+        double next = v.sample(5, 20, Long.MAX_VALUE, false, false);
+        assertTrue(next > 4 && next < 5);
+        assertEquals(next, v.sample(5, 20, 0, false, false));
+        assertEquals(1, v.sample(0, 2, 1, false, true));
+        v.scroll(Integer.MAX_VALUE, Integer.MAX_VALUE, 10, 3);
+        assertEquals(9, v.sample(0, 10, 4, false, false));
+    }
+    @Test void typographyRespectsContrastAndBounds() {
+        assertEquals(1f, OnlineLyricButton.lyricScale(true, 0, true));
+        assertEquals(1.12f, OnlineLyricButton.lyricScale(true, 0, false));
+        assertTrue(OnlineLyricButton.lyricScale(false, Float.NaN, false) >= .9f);
+        assertEquals(OnlineLyricButton.lyricScale(false, 2, false), OnlineLyricButton.lyricScale(false, -2, false));
+    }
 }

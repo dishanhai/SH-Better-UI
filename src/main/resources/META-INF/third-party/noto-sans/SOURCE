@@ -1,0 +1,19 @@
+SH Sans UI Regular is a static weight-400 derivative of Noto Sans SC.
+Upstream: https://github.com/notofonts/noto-cjk
+Input: Sans/Variable/TTF/Subset/NotoSansSC-VF.ttf (retrieved 2026-11-17).
+License: SIL Open Font License 1.1, reproduced in OFL.txt.
+Modification: instantiate weight 400 with FontTools varLib.instancer, rename font family
+and PostScript identity to SH Sans UI / SHSansUI-Regular. Original copyright and license
+metadata remain embedded. No Apple fonts or MuoniumPlayer font resources are copied.
+Scope: only components explicitly using sh_better_ui:mp_ui. Minecraft default remains
+unchanged and is used as fallback for glyphs absent from this font.
+Input SHA-256: d68bafcb48a2707749396aa12bbbd833cb70401f3a9a689fd2902c7e0d295964
+Static derivative SHA-256: 4a4055ff3fa53e0afab8532330897ace54df40844af230738822ea3aa2acc2f3
+
+Original embedded copyright: © 2014-2021 Adobe (http://www.adobe.com/),
+with Reserved Font Name 'Source'. The derivative uses the separate SH Sans UI name.
+
+SH Sans UI Semibold is the same licensed input instantiated at weight 600,
+renamed SH Sans UI Semibold / SHSansUI-Semibold. It is opt-in for music titles
+and focused lyrics; no synthetic bolding or Apple font data are used.
+Semibold SHA-256: fa0e00bbacba4a6d903ce95f3dd3f36f71a80f0e304e7803e92d1e796d10921e

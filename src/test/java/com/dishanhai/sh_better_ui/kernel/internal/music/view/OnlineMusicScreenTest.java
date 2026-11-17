@@ -34,6 +34,8 @@ class OnlineMusicScreenTest {
         var screen=OnlineMusicScreen.create(parent,focus,()->{calls.incrementAndGet();return new View();});
         assertEquals(0,calls.get());
         var field=UiScreen.class.getDeclaredField("definition");field.setAccessible(true);var definition=field.get(screen);
+        var backFlag=definition.getClass().getDeclaredMethod("backButton");backFlag.setAccessible(true);
+        assertEquals(false,backFlag.invoke(definition),"Dedicated music chrome must fill the viewport without a native header");
         for(var item:new Object[][]{{"parent",parent},{"returnFocus",focus}}) {
             var method=definition.getClass().getDeclaredMethod((String)item[0]);method.setAccessible(true);
             assertSame(item[1],method.invoke(definition));

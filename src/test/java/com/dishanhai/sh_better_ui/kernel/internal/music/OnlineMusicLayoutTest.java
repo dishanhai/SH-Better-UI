@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OnlineMusicLayoutTest {
     @Test void responsivePagesKeepNavigationResultsAndPlaybackInsideTheViewport() {
-        for (int width : new int[]{208, 260, 359, 360, 519, 520, 640, 960}) for (int height : new int[]{240, 263, 264, 300, 319, 320, 339, 340, 360, 540}) {
+        for (int width : new int[]{208, 260, 359, 360, 559, 560, 640, 960}) for (int height : new int[]{240, 263, 264, 300, 319, 320, 339, 340, 360, 540}) {
             var frame = new Bounds(19, 31, width, height); var page = OnlineMusicLayout.of(frame);
             assertTrue(page.supported());
             for (var region : new Bounds[]{page.navigation(), page.header(), page.content(), page.transport(), page.pager()}) contains(frame, region);
@@ -21,17 +21,19 @@ class OnlineMusicLayoutTest {
     }
     @Test void shortWindowsUseTheCompactHeaderAndTinyWindowsDoNotCreateOverlappingControls() {
         assertFalse(OnlineMusicLayout.of(new Bounds(0, 0, 960, 240)).sidebar());
-        assertTrue(OnlineMusicLayout.of(new Bounds(0, 0, 520, 264)).sidebar());
+        assertTrue(OnlineMusicLayout.of(new Bounds(0, 0, 560, 264)).sidebar());
         for (var box : new Bounds[]{new Bounds(0, 0, 207, 360), new Bounds(0, 0, 640, 239), new Bounds(0, 0, 0, 0)}) {
             var page = OnlineMusicLayout.of(box); assertFalse(page.supported()); assertTrue(page.rows().isEmpty());
         }
     }
     @Test void expandedPresentationSeparatesHeroSearchCoverAndPersistentPlayer() {
-        for (int width : new int[]{360, 519, 520, 960}) for (int height : new int[]{340, 360, 540}) {
+        for (int width : new int[]{360, 559, 560, 960}) for (int height : new int[]{340, 360, 540}) {
             var p = OnlineMusicLayout.of(new Bounds(19, 31, width, height));
             assertTrue(p.expanded()); contains(p.header(), p.hero()); contains(p.header(), p.searchBar());
             assertTrue(p.hero().bottom() < p.searchBar().y()); contains(p.transport(), p.cover());
-            assertEquals(104, p.transport().height());
+            assertEquals(64, p.transport().height());
+            contains(p.transport(),p.seekBar());
+            assertTrue(p.cover().bottom()<p.seekBar().y());
             // Account detail controls: provider tabs, remember preference, playlists, auth actions.
             var c = p.content();
             assertTrue(c.y() + 44 <= c.bottom() - 44, "remember must not overlap playlists");

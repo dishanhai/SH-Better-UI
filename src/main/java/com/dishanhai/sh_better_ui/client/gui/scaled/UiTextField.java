@@ -20,7 +20,11 @@ import java.util.function.Consumer;
 public final class UiTextField extends UiTextFieldPlatform {
     private static final int PADDING = 6;
     private final SingleLineEdit edit;
-    private final UiPreferences preferences;
+    public enum Appearance { THEMED, QUIET }
+    private UiPreferences preferences;
+    private Appearance appearance = Appearance.THEMED;
+    private Style textStyle = Style.EMPTY;
+    private int textLineHeight;
     private final InterruptibleAnimation hover = new InterruptibleAnimation(Spring.INDICATOR);
     private Consumer<String> onChange = value -> {};
     private Consumer<String> onSubmit;
@@ -39,6 +43,28 @@ public final class UiTextField extends UiTextFieldPlatform {
         this.preferences = Objects.requireNonNull(preferences);
         tooltipDelay(preferences.feedback().tooltipDelayMs());
     }
+
+    public void setAppearance(Appearance value) {
+        appearance = Objects.requireNonNull(value);
+        selecting = false;
+    }
+    public Appearance appearance() { return appearance; }
+    public void setPreferences(UiPreferences value) {
+        preferences = Objects.requireNonNull(value);
+        tooltipDelay(value.feedback().tooltipDelayMs());
+    }
+    /** Configures the shared measurement/drawing style and line box, not glyph raster size. */
+    public void setTextStyle(Style value, int lineHeight) {
+        Objects.requireNonNull(value);
+        int height = Math.max(1, lineHeight);
+        if (textStyle.equals(value) && textLineHeight == height) return;
+        textStyle = value;
+        textLineHeight = height;
+        selecting = false;
+        measure();
+        updateCaret(false);
+    }
+    private int lineHeight() { return textLineHeight > 0 ? textLineHeight : font.lineHeight; }
 
     public String getValue() { return edit.value(); }
 
@@ -197,28 +223,32 @@ public final class UiTextField extends UiTextFieldPlatform {
         int edge = error != null ? danger : GuiMotion.lerpColor(baseEdge, ink, emphasis * .5f);
         if (focused && error == null) edge = accent;
         if (!isActive()) ink = GuiMotion.lerpColor(ink, fill, .5f);
-        canvas.box(getX(), getY(), getWidth(), getHeight(), 5, focused ? 2 : 1, edge, fill);
-        if (getWidth() <= 2 * PADDING || getHeight() < font.lineHeight) return;
+        boolean quiet = appearance == Appearance.QUIET;
+        int stroke = quiet ? (focused || error != null || preferences.highContrast() ? 1 : 0) : (focused ? 2 : 1);
+        if (quiet) fill = GuiMotion.lerpColor(opaque(theme.background()), ink, .055f + emphasis * .025f);
+        canvas.box(getX(), getY(), getWidth(), getHeight(), quiet ? 4 : 5, stroke, edge, fill);
+        int lineHeight = lineHeight();
+        if (getWidth() <= 2 * PADDING || getHeight() < lineHeight) return;
         revealCaret();
         int left = getX() + PADDING;
         int x = left - scroll;
-        int y = getY() + (getHeight() - font.lineHeight) / 2;
+        int y = getY() + (getHeight() - lineHeight) / 2;
         int caretX = x + advance(edit.caret());
         canvas.clip(left, getY(), left + textWidth(), getY() + getHeight());
         try {
             if (focused && edit.selectionStart() != edit.selectionEnd()) {
                 int start = x + advance(edit.selectionStart());
                 int end = x + advance(edit.selectionEnd());
-                canvas.fill(start, y - 1, end, y + font.lineHeight + 1, GuiMotion.lerpColor(fill, accent, .38f));
+                canvas.fill(start, y - 1, end, y + lineHeight + 1, GuiMotion.lerpColor(fill, accent, .38f));
             }
             if (edit.value().isEmpty()) {
                 int hintColor = GuiMotion.lerpColor(ink, fill, preferences.highContrast() ? 0f : .27f);
-                canvas.text(hint.getVisualOrderText(), x, y, hintColor);
+                canvas.text(hint.copy().withStyle(hint.getStyle().applyTo(textStyle)).getVisualOrderText(), x, y, hintColor);
             } else {
                 canvas.text(literal(edit.value()), x, y, ink);
             }
             if (focused && !composing() && (preferences.reducedMotion() || (time - blink) % 1000 < 550)) {
-                canvas.fill(caretX, y - 1, caretX + 1, y + font.lineHeight + 1, ink);
+                canvas.fill(caretX, y - 1, caretX + 1, y + lineHeight + 1, ink);
             }
         } finally {
             canvas.unclip();
@@ -227,8 +257,8 @@ public final class UiTextField extends UiTextFieldPlatform {
     }
 
     // Keep glyph order aligned with the editing offsets in this single-line control.
-    private static FormattedCharSequence literal(String value) {
-        return FormattedCharSequence.forward(value, Style.EMPTY);
+    private FormattedCharSequence literal(String value) {
+        return FormattedCharSequence.forward(value, textStyle);
     }
 
     @Override

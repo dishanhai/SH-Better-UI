@@ -132,6 +132,11 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private boolean searchDirty;
     private UiButton historyBack, historyForward;
     private int sidebarWidth;
+    private boolean classicSearchOpen;
+    private boolean layoutRebuild;
+    private UiButton layoutChoice;
+    private com.dishanhai.sh_better_ui.config.ControlPanelLayout panelLayout(){return draft.settings().controlPanelLayout();}
+    private int headerOffset(){return panelLayout().headerOffset(classicSearchOpen||!searchQuery.isBlank());}
     private final ControlCenterNavigation history = new ControlCenterNavigation(
             new ControlCenterNavigation.Location("CONFIGURATION", "GLASS", "", 0));
     private int bodyX() { return left + PADDING + sidebarWidth; }
@@ -240,9 +245,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
 
         panelWidth = Math.min(MAX_WIDTH, width - 12);
-        sidebarWidth = panelWidth >= 500 && height >= 300 ? 136 : 0;
+        sidebarWidth = panelLayout().sidebarWidth(panelWidth,height);
         sidePreview = bodyWidth() >= 388;
-        panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
+        panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + headerOffset() + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         if (!entered) {
@@ -250,17 +255,17 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             entrance.startAt(width * 0.5f, top + 5f);
         }
         layers.setShown(true, PageTransition.nowMs(), preferences.reducedMotion());
-        bodyTop = top + (selectedArea == Area.CONFIGURATION ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
+        bodyTop = top + headerOffset() + (selectedArea == Area.CONFIGURATION ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
         bodyBottom = top + panelHeight - FOOTER_HEIGHT;
         int x = bodyX();
         int innerWidth = bodyWidth();
         int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
         navigation = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 63, innerWidth, BUTTON_HEIGHT),
+                new Bounds(x, top + 63 + headerOffset(), innerWidth, BUTTON_HEIGHT),
                 preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
                 draft.settings().tabs(), mainTabWidth).withJellyRadio());
         sections = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 93, innerWidth, BUTTON_HEIGHT),
+                new Bounds(x, top + 93 + headerOffset(), innerWidth, BUTTON_HEIGHT),
                 preferences, TABS, selectedSection.ordinal(), index -> requestedSection = SECTIONS.get(index),
                 draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH).withJellyRadio());
         navigation.visible = navigation.active = sidebarWidth == 0;
@@ -282,6 +287,9 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         search.setHint(label("search"));
         search.setValue(searchQuery);
         search.setResponder(value -> { searchQuery = value; searchDirty = true; });
+        boolean searchVisible=headerOffset()==0;
+        search.visible=search.active=searchVisible;
+        historyBack.visible=historyForward.visible=searchVisible;
         addFooter(x, innerWidth);
         buildPage();
         if (restoreThemeConfigureFocus && (themeConfigure != null || themeCustomize != null) && minecraft != null && minecraft.screen == this) {
@@ -312,6 +320,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         if (glassCard != null) glassCard.close();
         glassCard = null;
         sampling = null;
+        layoutChoice = null;
         contrast = null;
         motion = null;
         musicToggle = null;
@@ -338,7 +347,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         boolean configuration = selectedArea == Area.CONFIGURATION;
         int retainedScroll = configuration ? sectionScroll[selectedSection.ordinal()] : areaScroll[selectedArea.ordinal()];
         sections.visible = sections.active = configuration && searchQuery.isBlank();
-        bodyTop = top + (configuration ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
+        bodyTop = top + headerOffset() + (configuration ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
         contentHeight = switch (selectedArea) {
             case CONFIGURATION -> switch (selectedSection) {
                 case GLASS -> sidePreview ? GLASS_SIDE_HEIGHT : GLASS_STACK_HEIGHT;
@@ -533,7 +542,18 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                     var settings = draft.settings();
                     edit(new Draft(settings.withTheme(settings.theme().withHudBlurRadius(value)), draft.shortcut()));
                 });
+        layoutChoice=row(button(x,146,contentWidth,panelLayoutLabel(),GraphicIcon.SETTINGS,false,this::switchPanelLayout));
+        layoutChoice.setPreview(label("layout.tooltip"));
     }
+
+    private void switchPanelLayout() {
+        var next=panelLayout()==com.dishanhai.sh_better_ui.config.ControlPanelLayout.CLASSIC
+                ?com.dishanhai.sh_better_ui.config.ControlPanelLayout.SIDEBAR
+                :com.dishanhai.sh_better_ui.config.ControlPanelLayout.CLASSIC;
+        edit(new Draft(draft.settings().withControlPanelLayout(next),draft.shortcut()));
+        layoutRebuild=true;
+    }
+    private Component panelLayoutLabel(){return label("layout",label("layout."+panelLayout().name().toLowerCase(java.util.Locale.ROOT)));}
 
     private Component hudBackgroundLabel() {
         var effect = draft.settings().theme().hudBackgroundEffect();
@@ -913,6 +933,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void resetDraft() {
+        var oldLayout=panelLayout();
         if (beforeReset == null) {
             beforeReset = draft;
             draft = defaults;
@@ -920,6 +941,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             draft = beforeReset;
             beforeReset = null;
         }
+        layoutRebuild=oldLayout!=panelLayout();
         status = null;
         syncThemeEditor();
         if (dynamicThemeId != null) dynamicThemeId.setValue(draft.settings().dynamicTheme().fixedTheme());
@@ -932,6 +954,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private void refreshActions() {
+        if(layoutChoice!=null)layoutChoice.setMessage(panelLayoutLabel());
         var settings = draft.settings();
         updateThemePreview(settings.theme());
         var nextPreferences = UiPreferences.fromSettings(settings);
@@ -1045,7 +1068,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             return true;
         }
         if (!capturingShortcut && search != null && (modifiers & GLFW.GLFW_MOD_CONTROL) != 0 && key == GLFW.GLFW_KEY_F) {
+            if(headerOffset()!=0){classicSearchOpen=true;rebuildPanelLayout();}
             setFocused(search); return true;
+        }
+        if (!capturingShortcut && panelLayout()==com.dishanhai.sh_better_ui.config.ControlPanelLayout.CLASSIC
+                && classicSearchOpen && key==GLFW.GLFW_KEY_ESCAPE) {
+            searchQuery="";classicSearchOpen=false;searchDirty=false;rebuildPanelLayout();setFocused(navigation);return true;
         }
         if (!capturingShortcut && search != null && !searchQuery.isEmpty() && key == GLFW.GLFW_KEY_ESCAPE) {
             search.setValue(""); applyRequestedSection(); return true;
@@ -1139,9 +1167,12 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private void restoreLocation(ControlCenterNavigation.Location location) {
         boolean continuing = capturePage();
+        int previousHeader=headerOffset();
         selectedArea = Area.valueOf(location.area());
         selectedSection = Section.valueOf(location.section());
         searchQuery = location.query();
+        if(!searchQuery.isBlank())classicSearchOpen=true;
+        if(previousHeader!=headerOffset())rebuildPanelLayout();
         searchDirty = false;
         setDragging(false);
         clearPage();
@@ -1170,7 +1201,13 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         return ControlCenterNavigation.search(entries, searchQuery);
     }
 
+    /** Rebuilds structural controls; each caller restores its explicit focus target below.
+     * Avoid Screen.rebuildWidgets' loader-specific automatic focus reset, which can steal
+     * search/layout focus and also assumes an attached Minecraft instance in test hosts. */
+    private void rebuildPanelLayout() { clearWidgets(); init(); }
+
     private void applyRequestedSection() {
+        if(layoutRebuild){layoutRebuild=false;rebuildPanelLayout();if(layoutChoice!=null)setFocused(layoutChoice);return;}
         if (searchDirty) {
             searchDirty = false;
             clearPage();
@@ -1192,7 +1229,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private boolean capturePage() {
         boolean continuing = pageHandoff.active();
         if (fits && minecraft != null && minecraft.screen == this) {
-            int captureTop = top + HEADER_HEIGHT;
+            int captureTop = top + HEADER_HEIGHT + headerOffset();
             pageHandoff.capture(new Bounds(bodyX() - 3, captureTop, bodyWidth() + 6,
                     bodyBottom - captureTop), preferences);
         }
@@ -1622,7 +1659,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private static Component label(String key, Object... arguments) {
-        return Component.translatable("sh_better_ui.panel." + key, arguments);
+        return com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography.text(Component.translatable("sh_better_ui.panel." + key, arguments));
     }
 
     private enum Section {

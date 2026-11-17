@@ -23,13 +23,14 @@ public final class LocalMusicIsland {
     private static final int ACCENT = 0xFF72DDD0;
     private static final String TEXT = "sh_better_ui.music.";
     private final MusicApi music;
-    private final InterruptibleAnimation expansion = new InterruptibleAnimation(Spring.FLUID_MORPH);
+    private final InterruptibleAnimation expansion = new InterruptibleAnimation(new Spring.Preset(.28, .64, .00035f, .02f));
     private final MusicRhythm rhythm = new MusicRhythm();
     private final com.dishanhai.sh_better_ui.client.gui.text.UiMarqueeLabel titleLabel =
             new com.dishanhai.sh_better_ui.client.gui.text.UiMarqueeLabel();
     private final FloatingLyricRenderer lyrics;
     private MusicService.Frame current;
     private boolean expanded;
+    private final MusicIslandCapsuleState capsule = new MusicIslandCapsuleState();
     private final DynamicIslandState lifecycle = new DynamicIslandState();
     private final IslandNoticeQueue notices = new IslandNoticeQueue();
     private IslandNoticeQueue.Notice activeNotice;
@@ -62,7 +63,10 @@ public final class LocalMusicIsland {
     /** Hosts may use the same hit region for pointer and keyboard focus. */
     public void setHovered(boolean hovered, long nowMs) { lifecycle.setHovered(hovered, nowMs); }
 
-    public void setStyle(String id) { style = IslandShellStyle.fromId(id); }
+    public void setStyle(String id) {
+        style = IslandShellStyle.fromId(id);
+        lifecycle.setHoverDelayMs(style.hoverDelayMs());
+    }
     public String styleId() { return style.id(); }
 
     public void setAmbient(IslandAmbientState.Settings settings) { ambient.configure(settings); }
@@ -84,7 +88,7 @@ public final class LocalMusicIsland {
     public boolean visible(long nowMs) {
         observeMusic(nowMs);
         sampleNotice(nowMs);
-        return lifecycle.visible(nowMs);
+        return surfaceVisible(nowMs);
     }
     public boolean notificationActive(long nowMs) {
         observeMusic(nowMs);
@@ -97,8 +101,15 @@ public final class LocalMusicIsland {
         var snapshot = current.snapshot();
         var session = snapshot.session();
         var track = session == null ? null : session.track();
-        lifecycle.observeTrack(track == null ? null
-                : snapshot.providerId() + "\u0000" + session.id() + "\u0000" + track.key(), nowMs);
+        String identity = track == null ? null
+                : snapshot.providerId() + "\u0000" + session.id() + "\u0000" + track.key();
+        lifecycle.observeTrack(identity, nowMs);
+        capsule.observe(identity, session != null && session.status() == MusicSnapshot.PlaybackStatus.PLAYING, nowMs);
+    }
+
+    private boolean surfaceVisible(long nowMs) {
+        return lifecycle.visible(nowMs) && (!style.musicCapsule() || capsule.active()
+                || lifecycle.pinned() || lifecycle.notificationActive(nowMs));
     }
 
     private void sampleNotice(long nowMs) {
@@ -112,6 +123,7 @@ public final class LocalMusicIsland {
         this.expanded = expanded;
         float target = expanded ? 1 : 0;
         if (reducedMotion) expansion.snapTo(target);
+        else if (style == IslandShellStyle.BOUNCE) expansion.animateTo(target, nowMs);
         else expansion.blendTo(target, nowMs, 0, expanded ? 265 : 220,
                 InterruptibleAnimation.BlendCurve.SMOOTHSTEP);
     }
@@ -144,13 +156,11 @@ public final class LocalMusicIsland {
         var observedTrack = session == null ? null : session.track();
         sampleNotice(ui.nowMs());
         animateExpansion(lifecycle.expanded(ui.nowMs()), ui.nowMs(), still);
-        if (!lifecycle.visible(ui.nowMs())) { rhythm.reset(); return; }
+        if (!surfaceVisible(ui.nowMs())) { rhythm.reset(); return; }
         var outline = MusicIsland.outline(compact, full, expansion.sample(ui.nowMs(), still));
         var graphics = ui.graphics();
         var rect = outline.rect();
-        var shell = style.shell(outline.radius(), rect.getH(), hovered, preferences.highContrast());
-        RoundedCorners.draw(graphics, rect.getX(), rect.getY(), rect.getW(), rect.getH(),
-                shell.radius(), shell.border(), shell.edge(), shell.fill(), false);
+        MusicIsland.drawShell(graphics, outline, preferences, hovered, style);
         ambientShown = false;
         if (activeNotice != null) {
             int left = Math.round(outline.rect().getX()) + 10;
@@ -169,7 +179,7 @@ public final class LocalMusicIsland {
             return;
         }
 
-        if (!expanded && !lifecycle.notificationActive(ui.nowMs())
+        if (!style.musicCapsule() && !expanded && !lifecycle.notificationActive(ui.nowMs())
                 && ambient.page(ui.nowMs(), observedTrack != null, preferences.reducedMotion()) == IslandAmbientState.Page.STATUS) {
             ambientShown = true;
             drawAmbient(ui, font, compact);
@@ -201,8 +211,9 @@ public final class LocalMusicIsland {
         var track = session == null ? null : session.track();
         int secondary = preferences.highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1;
         int step = font.lineHeight + 1;
-        boolean showCredit = track != null && compact.height() >= step * 3 + 8;
-        int lines = session == null ? 1 : showCredit ? 3 : 2;
+        boolean capsuleCompact = style.musicCapsule() && !expanded;
+        boolean showCredit = !capsuleCompact && track != null && compact.height() >= step * 3 + 8;
+        int lines = capsuleCompact || session == null ? 1 : showCredit ? 3 : 2;
         int y = compact.y() + (compact.height() - lines * step + 1) / 2;
         int textX = x + 22;
         if (session != null) {
@@ -215,7 +226,15 @@ public final class LocalMusicIsland {
                 y += step;
             }
         }
-        drawText(ui, font, state, textX, y, textRight, secondary);
+        if (!capsuleCompact || session == null) drawText(ui, font, state, textX, y, textRight, secondary);
+        if (style.musicCapsule() && session != null && session.durationMs().isPresent()) {
+            int left = compact.x() + 15, right = compact.right() - 15;
+            int progressY = compact.bottom() - 4;
+            double fraction = MusicIslandCapsuleState.progress(session.positionAt(System.nanoTime()), session.durationMs().getAsLong());
+            graphics.fill(left, progressY, right, progressY + 1, 0xFF415064);
+            graphics.fill(left, progressY, left + (int) Math.round((right - left) * fraction), progressY + 1,
+                    preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
+        }
 
         int height = Math.round(outline.rect().getH());
         int lineY = compact.bottom() + 2;
@@ -227,7 +246,7 @@ public final class LocalMusicIsland {
         if (position >= 0 && session.durationMs().isPresent()) {
             long duration = session.durationMs().getAsLong();
             graphics.fill(left, lineY, right, lineY + 2, 0xFF415064);
-            int fill = (int) Math.round((right - left) * Math.min(1, position / (double) duration));
+            int fill = (int) Math.round((right - left) * MusicIslandCapsuleState.progress(position, duration));
             if (fill > 0) graphics.fill(left, lineY, left + fill, lineY + 2, still ? 0xFFFFFFFF : ACCENT);
         }
         var time = position < 0 ? Component.translatable(TEXT + "time_unknown")
@@ -256,6 +275,7 @@ public final class LocalMusicIsland {
         rhythm.reset();
         titleLabel.reset();
         lifecycle.suspend();
+        capsule.reset();
         notices.clear();
         activeNotice = null;
         ambient.reset();

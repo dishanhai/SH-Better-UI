@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette;
 import com.dishanhai.sh_better_ui.kernel.internal.music.OnlineArtwork;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -15,7 +16,9 @@ import java.util.concurrent.atomic.AtomicLong;
 
 /** One view owns one cover. Downloads/decoding never block rendering; no persistent disk cache. */
 public final class OnlineArtworkTexture implements AutoCloseable {
-    public record Texture(ResourceLocation id, int width, int height) {}
+    public record Texture(ResourceLocation id, int width, int height, ArtworkPalette palette) {
+        public Texture(ResourceLocation id, int width, int height) { this(id, width, height, null); }
+    }
     private static final AtomicLong IDS = new AtomicLong();
     private final long instance = IDS.incrementAndGet();
     private final ResourceLocation id = ResourceLocation.tryParse("sh_better_ui:music/online_cover_" + instance);
@@ -25,6 +28,7 @@ public final class OnlineArtworkTexture implements AutoCloseable {
     private String requested;
     private Future<?> task;
     private NativeImage pending;
+    private ArtworkPalette pendingPalette;
     private Texture current;
     private long generation;
     private boolean closed;
@@ -43,11 +47,11 @@ public final class OnlineArtworkTexture implements AutoCloseable {
             }
         }
         if (pending != null) {
-            var image = pending; pending = null;
+            var image = pending; var colors = pendingPalette; pending = null; pendingPalette = null;
             try {
                 int width = image.getWidth(), height = image.getHeight();
                 Minecraft.getInstance().getTextureManager().register(id, new DynamicTexture(image));
-                current = new Texture(id, width, height);
+                current = new Texture(id, width, height, colors);
                 lease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
                     com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
                     com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/music/online_cover_" + instance), this::release);
@@ -56,13 +60,25 @@ public final class OnlineArtworkTexture implements AutoCloseable {
         return Optional.ofNullable(current);
     }
     private void load(long ticket, String url) {
+        NativeImage image = null;
         try {
-            var image = NativeImage.read(new ByteArrayInputStream(OnlineArtwork.download(url)));
+            image = NativeImage.read(new ByteArrayInputStream(OnlineArtwork.download(url)));
+            // Sample the image already decoded for this texture, once, off the render thread.
+            // No second cover request, no unrelated system-media artwork, no GPU readback.
+            int columns = Math.min(64, image.getWidth()), rows = Math.min(64, image.getHeight());
+            int[] pixels = new int[columns * rows];
+            for (int y = 0; y < rows; y++) for (int x = 0; x < columns; x++) {
+                int abgr = image.getPixelRGBA(x * image.getWidth() / columns, y * image.getHeight() / rows);
+                pixels[y * columns + x] = (abgr & 0xff00ff00) | ((abgr >>> 16) & 255) | ((abgr & 255) << 16);
+            }
+            var colors = ArtworkPalette.fromArgb(columns, rows, pixels);
             synchronized (this) {
-                if (closed || ticket != generation) image.close();
-                else pending = image;
+                if (!closed && ticket == generation && !Thread.currentThread().isInterrupted()) {
+                    pending = image; pendingPalette = colors; image = null;
+                }
             }
         } catch (java.io.IOException | RuntimeException ignored) { /* The view retains its explicit missing-cover fallback. */ }
+        finally { if (image != null) image.close(); }
     }
     private synchronized void release() {
         lease = null; requested = null;
@@ -75,7 +91,7 @@ public final class OnlineArtworkTexture implements AutoCloseable {
         if (task != null) task.cancel(true);
         task = null;
         if (pending != null) pending.close();
-        pending = null;
+        pending = null; pendingPalette = null;
         if (lease != null) lease.close(); else release();
     }
     @Override public synchronized void close() {

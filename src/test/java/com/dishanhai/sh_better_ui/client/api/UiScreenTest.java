@@ -22,6 +22,85 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
+    @Test void lyricsFollowOverlayWinsHitsWithoutShrinkingFortyTwoPixelViewport() {
+        var area=new Bounds(12,84,180,42);
+        var prefs=com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT;
+        var lyrics=new com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView(area,Component.literal("Lyrics"),prefs,p->{});
+        var follow=new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl(
+                new Bounds(area.x(),area.bottom()-20,108,20),Component.literal("Return to current lyrics"),prefs,lyrics::follow,()->{});
+        var screen=new UiScreenBuilder(Component.empty()).backButton(false).onInit(page->{
+            page.addClipped(lyrics,()->area,"online-music-lyrics");
+            page.addClipped(follow,()->area,"online-music-lyrics");
+        }).build();
+        screen.width=392;screen.height=269;screen.init();
+        assertEquals(42,lyrics.getHeight());
+        for(int i=0;i<2;i++) {
+            lyrics.model().browse();assertTrue(lyrics.browsing());
+            assertSame(follow,screen.getChildAt(20,116).orElseThrow());
+            assertTrue(screen.mouseClicked(20,116,0));assertTrue(screen.mouseReleased(20,116,0));
+            assertFalse(lyrics.browsing());assertSame(follow,screen.getFocused());
+        }
+        follow.setVisible(false);
+        assertSame(lyrics,screen.getChildAt(20,116).orElseThrow());
+        assertSame(lyrics,screen.getChildAt(20,90).orElseThrow());
+        assertTrue(screen.getChildAt(20,127).isEmpty());
+        assertEquals(42,lyrics.getHeight());screen.removed();
+    }
+
+    @Test void escapeCancelsMusicInputBeforeClosingTheHost() {
+        var prefs=new com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences(false,false,false);
+        var commits=new java.util.concurrent.atomic.AtomicInteger();
+        var seek=new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl(new Bounds(0,0,100,20),
+                Component.literal("Seek"),prefs,e->{},e->commits.incrementAndGet(),e->{});
+        seek.sync("track",0,10000,true);
+        var transport=new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl(new Bounds(0,25,24,24),
+                Component.literal("Play"),com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.Glyph.PLAY,
+                prefs,commits::incrementAndGet,()->{});
+        var lyrics=new com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView(new Bounds(110,0,80,90),
+                Component.literal("Lyrics"),prefs,p->commits.incrementAndGet());
+        var screen=new UiScreenBuilder(Component.empty()).backButton(false).onInit(page->{
+            page.addClipped(seek,()->new Bounds(0,0,200,100));
+            page.addClipped(transport,()->new Bounds(0,0,200,100));
+            page.addClipped(lyrics,()->new Bounds(0,0,200,100));
+        }).build();
+        screen.width=200;screen.height=100;screen.init();
+        assertTrue(screen.mouseClicked(40,10,0));assertTrue(seek.isEditing());
+        assertTrue(screen.keyPressed(256,0,0));assertFalse(seek.isEditing());assertFalse(screen.isDragging());
+        screen.mouseReleased(90,10,0);assertEquals(0,commits.get());
+        assertTrue(screen.mouseClicked(10,35,0));assertTrue(screen.keyPressed(256,0,0));
+        screen.mouseReleased(10,35,0);assertEquals(0,commits.get());
+        assertTrue(screen.mouseClicked(10,35,0));screen.mouseReleased(10,35,0);assertEquals(1,commits.get());
+        assertTrue(screen.mouseClicked(10,35,0));screen.mouseReleased(10,35,0);assertEquals(2,commits.get());
+        screen.setFocused(lyrics);lyrics.model().browse();
+        assertTrue(screen.keyPressed(256,0,0));assertFalse(lyrics.browsing());
+        screen.removed();
+    }
+
+    @Test void escapeCancelsMusicTextRowBeforeClosingOrActivating() {
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        var row = new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl(
+                new Bounds(5, 5, 140, 32), Component.literal("Long song title"),
+                new com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences(false, false, false),
+                count::incrementAndGet, () -> {});
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page -> page.addClipped(row, () -> new Bounds(0, 0, 200, 100))).build();
+        screen.width = 200; screen.height = 100; screen.init();
+        assertTrue(screen.mouseClicked(20, 20, 0));
+        assertTrue(row.isArmed());
+        assertTrue(screen.keyPressed(256, 0, 0));
+        assertFalse(row.isArmed()); assertFalse(screen.isDragging());
+        screen.mouseReleased(20, 20, 0); assertEquals(0, count.get());
+        screen.setFocused(row);
+        assertTrue(screen.keyPressed(257, 0, 0)); assertTrue(row.isArmed());
+        assertTrue(screen.keyPressed(256, 0, 0));
+        screen.keyReleased(257, 0, 0); assertEquals(0, count.get());
+        assertTrue(screen.mouseClicked(20, 20, 0));
+        screen.mouseReleased(20, 20, 0); assertEquals(1, count.get());
+        assertTrue(screen.mouseClicked(20, 20, 0));
+        screen.mouseReleased(20, 20, 0); assertEquals(2, count.get());
+        screen.removed();
+    }
+
     @Test
     void escapeStillCancelsIngredientDragAfterFocusClipGuardMerge() throws Exception {
         // Allocate a native widget shell without bootstrapping Minecraft's item registry.

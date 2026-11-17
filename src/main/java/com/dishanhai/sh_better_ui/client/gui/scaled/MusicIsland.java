@@ -26,12 +26,28 @@ public final class MusicIsland {
 
     /** 在前景内容之前绘制底板。音频信号只进入波形。 */
     public static void drawShell(GuiGraphics graphics, FluidMorph outline, UiPreferences preferences, boolean hovered) {
+        drawShell(graphics, outline, preferences, hovered, IslandShellStyle.CLASSIC);
+    }
+
+    public static void drawShell(GuiGraphics graphics, FluidMorph outline, UiPreferences preferences,
+                                 boolean hovered, IslandShellStyle style) {
         var rect = outline.rect();
-        boolean contrast = preferences.highContrast();
-        int edge = contrast ? 0xFFFFFFFF : hovered ? 0xFF546478 : 0xFF344052;
-        int fill = contrast ? 0xFF08090C : hovered ? 0xF21A202B : 0xF0111620;
+        var shell = style.shell(outline.radius(), rect.getH(), hovered, preferences.highContrast());
         RoundedCorners.draw(graphics, rect.getX(), rect.getY(), rect.getW(), rect.getH(),
-                outline.radius(), contrast ? 2f : 1f, edge, fill, false);
+                shell.radius(), shell.border(), shell.edge(), shell.fill(), false);
+        // Native translucent highlight, intentionally no claim of optical refraction.
+        if (style.glass() && !preferences.highContrast()) {
+            int inset = Math.max(8, Math.round(shell.radius()));
+            graphics.fill(Math.round(rect.getX()) + inset, Math.round(rect.getY()) + 2,
+                    Math.round(rect.getX() + rect.getW()) - inset, Math.round(rect.getY()) + 3,
+                    style == IslandShellStyle.LIQUID_GLASS ? 0xAADDFAFF : 0x669FC6DF);
+        }
+        if (style.accentRail()) {
+            int railX = Math.round(rect.getX()) + 3;
+            graphics.fill(railX, Math.round(rect.getY()) + 9, railX + 2,
+                    Math.round(rect.getY() + rect.getH()) - 9,
+                    preferences.highContrast() ? 0xFFFFFFFF : style == IslandShellStyle.MUSIC_FOCUS ? 0xFFD3B5FF : 0xFF72DDD0);
+        }
     }
 
     /**

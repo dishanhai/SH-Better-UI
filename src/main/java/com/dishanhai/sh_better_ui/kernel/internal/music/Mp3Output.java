@@ -13,6 +13,8 @@ final class Mp3Output implements PlaybackOutput {
     private volatile SourceDataLine line;
     private volatile long baseMs, endedMs;
     private Thread worker;
+    private volatile float gain = 1f;
+    @Override public void volume(float value) { gain = PcmGain.normalize(value); }
 
     @Override public void start(byte[] bytes, long positionMs, boolean playing) {
         paused = !playing;
@@ -29,6 +31,7 @@ final class Mp3Output implements PlaybackOutput {
         try {
             Header header;
             byte[] pcm = new byte[8192];
+            float previousGain = gain;
             while (!closed && (header = bits.readFrame()) != null) {
                 var samples = (SampleBuffer) decoder.decodeFrame(header, bits);
                 int channels = samples.getChannelCount(), rate = samples.getSampleFrequency();
@@ -55,12 +58,10 @@ final class Mp3Output implements PlaybackOutput {
                 synchronized (this) { while (paused && !closed) wait(); }
                 if (closed) return;
                 short[] source = samples.getBuffer();
-                int length = 0;
-                for (int i = skip * channels; i < samples.getBufferLength(); i++) {
-                    short value = source[i];
-                    pcm[length++] = (byte) value;
-                    pcm[length++] = (byte) (value >> 8);
-                }
+                float requestedGain = gain;
+                int length = PcmGain.write(source, skip * channels, samples.getBufferLength(), channels,
+                        pcm, previousGain, requestedGain);
+                previousGain = requestedGain;
                 int written = 0;
                 while (written < length && !closed) {
                     synchronized (this) { while (paused && !closed) wait(); }

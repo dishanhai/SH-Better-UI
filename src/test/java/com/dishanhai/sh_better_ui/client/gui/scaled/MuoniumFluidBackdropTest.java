@@ -32,7 +32,7 @@ class MuoniumFluidBackdropTest {
         assertNotSame(a, b); assertInstanceOf(MuoniumFluidBackdrop.class, a);
         assertDoesNotThrow(a::close); assertDoesNotThrow(b::close);
         var fields = ThemeEffectFields.fields(MuoniumFluidBackdrop.ID);
-        assertEquals(8, fields.size());
+        assertEquals(9, fields.size());
         for (var field : fields) if (List.of("speed", "scale", "opacity", "intensity").contains(field.name()))
             assertNotNull(ThemeEffectRanges.find(MuoniumFluidBackdrop.ID, field));
         var local = ThemeEffectFields.edit(ClientUiSettings.DEFAULT, MuoniumFluidBackdrop.ID,

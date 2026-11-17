@@ -40,27 +40,42 @@ final class UiThemePreviewCard extends AbstractWidget {
         var p=browser.palette(id); if(p==null) return;
         var font=Minecraft.getInstance().font;
         int x=getX(), y=getY();
-        int frame=DarkModeTheme.surfaceColor() | 0xff000000;
-        int outline=selected() || isFocused() ? DarkModeTheme.accentColor() : DarkModeTheme.borderColor();
-        RoundedCorners.draw(g,x,y,width,height,8,isFocused() || selected()?2:1,outline,frame);
-        int sx=x+8, sy=y+8, sw=width-16, sh=46;
-        // Known canvas permits mathematically valid contrast without reading GPU pixels.
+        var host=UiTheme.current();
+        int frame=preferences.highContrast()?0xff000000:GuiMotion.lerpColor(host.background()|0xff000000,host.surface()|0xff000000,.76f);
+        int outline=selected() || isFocused() ? host.accent() : preferences.highContrast()?0xffffffff:0;
+        if(isHoveredOrFocused())frame=GuiMotion.lerpColor(frame,host.elevatedSurface()|0xff000000,.3f);
+        RoundedCorners.draw(g,x,y,width,height,8,isFocused()||selected()||preferences.highContrast()?1:0,outline,frame);
+        int sx=x+8,sy=y+8,sw=width-16,sh=56;
         int canvas=p.light()?0xffe8eef5:0xff101722;
-        g.fill(sx,sy,sx+sw,sy+sh,canvas);
-        g.fill(sx,sy,sx+sw,sy+sh,p.background());
-        g.fill(sx+3,sy+3,sx+sw-3,sy+sh-3,p.surface());
         int backing=ContrastPolicy.composite(p.surface(),ContrastPolicy.composite(p.background(),canvas));
         int ink=ContrastPolicy.readable(p.text(),0,backing,4.5);
-        int accentText=ContrastPolicy.readable(p.text(),p.accent(),backing,4.5);
-        g.fill(sx+5,sy+5,sx+22,sy+sh-5,p.secondarySurface());
-        g.fill(sx+26,sy+8,sx+sw-10,sy+10,ink);
-        g.fill(sx+26,sy+15,sx+sw-22,sy+17,ink & 0x00ffffff | 0x99000000);
-        g.fill(sx+26,sy+24,sx+sw-10,sy+37,p.accent());
-        g.fill(sx+32,sy+29,sx+sw-16,sy+31,accentText);
-        int text=ContrastPolicy.readable(DarkModeTheme.textColor(),frame,frame,preferences.highContrast()?7:4.5);
-        g.drawString(font,font.plainSubstrByWidth(getMessage().getString(),width-16),x+8,y+60,text,false);
-        if(selected()) g.drawString(font,Component.translatable("sh_better_ui.mp_theme.selected"),x+8,y+73,text,false);
-        else if(isHoveredOrFocused()) g.drawString(font,Component.translatable("sh_better_ui.mp_theme.stage"),x+8,y+73,text,false);
+        int soft=GuiMotion.lerpColor(ink,backing,.65f);
+        RoundedCorners.draw(g,sx,sy,sw,sh,5,0,0,ContrastPolicy.composite(p.background(),canvas));
+        // A miniature real music application: navigation, cover, metadata, queue and transport.
+        int side=22,main=sx+side+5,mainW=sw-side-10;
+        RoundedCorners.draw(g,sx+3,sy+3,side-1,sh-6,3,0,0,ContrastPolicy.composite(p.secondarySurface(),backing));
+        for(int row=0;row<4;row++){
+            int yy=sy+9+row*8;
+            RoundedCorners.draw(g,sx+6,yy,side-7,3,1,0,0,row==1?p.accent():soft&0xffffff|0x45000000);
+        }
+        int cover=23;
+        RoundedCorners.draw(g,main,sy+6,cover,cover,4,0,0,p.accent());
+        RoundedCorners.draw(g,main+5,sy+11,13,13,6,0,0,ink&0xffffff|0x30000000);
+        g.fill(main+cover+5,sy+8,main+mainW,sy+10,ink);
+        g.fill(main+cover+5,sy+14,main+mainW-4,sy+16,soft);
+        g.fill(main+cover+5,sy+23,main+mainW-8,sy+25,p.accent());
+        for(int row=0;row<2;row++){
+            int yy=sy+34+row*6;
+            g.fill(main,yy,main+mainW,yy+2,soft&0xffffff|0x60000000);
+        }
+        RoundedCorners.draw(g,main,sy+47,6,6,3,0,0,p.accent());
+        g.fill(main+11,sy+49,main+mainW,sy+51,soft&0xffffff|0x45000000);
+        g.fill(main+11,sy+49,main+11+Math.max(1,(mainW-11)/3),sy+51,p.accent());
+        int text=ContrastPolicy.readable(host.text(),frame,frame,preferences.highContrast()?7:4.5);
+        String name=getMessage().getString().replaceFirst("^Muonium\\s*[·/]?\\s*", "");
+        var label=net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MpTypography.text(Component.literal(name)),width-30));
+        g.drawString(font,label,x+9,y+70,text,false);
+        if(selected())g.drawString(font,MpTypography.text(Component.literal("✓")),x+width-17,y+70,host.accent(),false);
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput output) {
         output.add(NarratedElementType.TITLE,Component.translatable("sh_better_ui.mp_theme.card_hint",getMessage()));

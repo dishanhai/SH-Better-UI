@@ -46,6 +46,11 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     void resume();
     void seek(long positionMs);
     void stop();
+    /** Session-local software gain, independent of the operating-system mixer. */
+    default boolean supportsVolume() { return false; }
+    default float volume() { return 1f; }
+    /** Normalized 0..1; implementations reject non-finite values and never amplify above unity. */
+    default void volume(float value) { throw new UnsupportedOperationException("Music volume unavailable"); }
     Snapshot snapshot();
     LyricFeed lyricFeed();
     @Override void close();

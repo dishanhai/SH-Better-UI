@@ -15,6 +15,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation.BlendCurve;
 import com.dishanhai.sh_better_ui.client.gui.scaled.MusicIsland;
+import com.dishanhai.sh_better_ui.client.gui.scaled.IslandShellStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
@@ -32,7 +33,7 @@ import static com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen.l
 
 /** 山海：固定头部、同底板展开与可操作的无声曲目。 */
 final class MusicIslandGalleryPreview implements PreviewScene {
-    static final int HEIGHT = 90;
+    static final int HEIGHT = 112;
     private static final String TEXT = "gallery.music_island.";
     private static final int COMPACT_HEIGHT = 26;
     private static final int PANEL_HEIGHT = 68;
@@ -42,8 +43,9 @@ final class MusicIslandGalleryPreview implements PreviewScene {
             new Track("dusk", 0xFFB4A0FC, 486, 1f, 1.5),
             new Track("copper", 0xFFFFB57B, 552, .82f, 3.0));
 
+    private IslandShellStyle shellStyle = IslandShellStyle.CLASSIC;
     private final MusicRhythm rhythm = ShBetterUiApi.motion().musicRhythm();
-    private final InterruptibleAnimation expansion = new InterruptibleAnimation(Spring.FLUID_MORPH);
+    private final InterruptibleAnimation expansion = new InterruptibleAnimation(new Spring.Preset(.28, .64, .00035f, .02f));
     private final InterruptibleAnimation tint = new InterruptibleAnimation(Spring.STAGGER, 1f);
     private PreviewContext host;
     private Bounds compact, panel;
@@ -70,11 +72,17 @@ final class MusicIslandGalleryPreview implements PreviewScene {
         toggle = null;
         transport = List.of();
         var area = host.viewport();
-        if (area.width() < 100 || area.height() < COMPACT_HEIGHT + 2) return;
+        if (area.width() < 100 || area.height() < COMPACT_HEIGHT + 24) return;
         int availableWidth = (area.width() - 4) & ~1;
         int width = Math.min(148, availableWidth);
         int panelWidth = Math.min(204, availableWidth);
-        int y = area.y() + UiMath.clamp((area.height() - PANEL_HEIGHT) / 2, 1, 10);
+        int y = area.y() + 24;
+        var styleButton = host.add(new UiButton(area.x() + (area.width() - Math.min(150, area.width() - 4)) / 2,
+                area.y() + 2, Math.min(150, area.width() - 4), 18, styleLabel(), button -> {
+                    shellStyle = shellStyle.next();
+                    button.setMessage(styleLabel());
+                }, host.preferences(), false));
+        styleButton.setTooltip(Tooltip.create(Component.translatable("sh_better_ui.music_overlay.style")));
         compact = new Bounds(area.x() + (area.width() - width) / 2, y, width, COMPACT_HEIGHT);
         panel = new Bounds(area.x() + (area.width() - panelWidth) / 2, y, panelWidth, PANEL_HEIGHT);
         boolean fits = panel.bottom() < area.bottom();
@@ -101,6 +109,11 @@ final class MusicIslandGalleryPreview implements PreviewScene {
         updateLabels();
     }
 
+    private Component styleLabel() {
+        return Component.translatable("sh_better_ui.music_overlay.style").append(": ")
+                .append(Component.translatable("sh_better_ui.music_overlay.style." + shellStyle.id()));
+    }
+
     private UiButton control(int x, int y, String key, GraphicIcon icon, Runnable action) {
         boolean primary = key.equals("pause");
         var button = new UiButton(x, y, primary ? 32 : 26, 18, label(TEXT + key),
@@ -114,6 +127,7 @@ final class MusicIslandGalleryPreview implements PreviewScene {
         float target = expanded ? 1f : 0f;
         long now = PageTransition.nowMs();
         if (still()) expansion.snapTo(target);
+        else if (shellStyle == IslandShellStyle.BOUNCE) expansion.animateTo(target, now);
         else expansion.blendTo(target, now, 0, expanded ? 265 : 220, BlendCurve.SMOOTHSTEP);
         updateLabels();
         updateBody();
@@ -242,16 +256,16 @@ final class MusicIslandGalleryPreview implements PreviewScene {
         }
 
         private boolean withinCapsule(double x, double y) {
-            double radius = COMPACT_HEIGHT * .5;
+            double radius = shellStyle.shell(COMPACT_HEIGHT * .5f, COMPACT_HEIGHT, false, host.preferences().highContrast()).radius();
             double dx = x - UiMath.clamp(x, compact.x() + radius, compact.right() - radius);
-            double dy = y - (compact.y() + radius);
+            double dy = y - UiMath.clamp(y, compact.y() + radius, compact.bottom() - radius);
             return dx * dx + dy * dy <= radius * radius;
         }
 
         @Override
         protected void renderWidget(GuiGraphics g, int mouseX, int mouseY, float partialTick) {
             var prefs = host.preferences();
-            MusicIsland.drawShell(g, outline, prefs, active && withinCapsule(mouseX, mouseY));
+            MusicIsland.drawShell(g, outline, prefs, active && withinCapsule(mouseX, mouseY), shellStyle);
             int x = compact.x(), y = compact.y();
             boolean contrast = prefs.highContrast();
             int foreground = contrast ? 0xFFFFFFFF : 0xFFF2F5FA;

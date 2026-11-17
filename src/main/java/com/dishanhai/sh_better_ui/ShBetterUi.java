@@ -53,6 +53,7 @@ public final class ShBetterUi {
         var refraction = builder.defineInRange("refractionScale", backdrop.refractionScale(), 0.0, 2.0);
         var denseSampling = builder.define("denseSampling", backdrop.denseSampling());
         builder.pop().push(UI_SECTION);
+        var controlPanelLayout = builder.defineEnum("controlPanelLayout", defaults.controlPanelLayout());
         var highContrast = builder.define("highContrast", defaults.highContrast());
         var reducedMotion = builder.define("reducedMotion", defaults.reducedMotion());
         var widgetBackdropBlur = builder.define("widgetBackdropBlur", defaults.widgetBackdropBlur());
@@ -114,7 +115,7 @@ public final class ShBetterUi {
                                         hudBackgroundEffect.get(), hudBlurRadius.get(), registeredTheme.get(), new ThemePaletteArchive(paletteArchive.get())),
                                 new DynamicThemeSettings(dynamicTheme.get(), dynamicSpeed.get(), dynamicLowPerformance.get()),
                                 new SpatialStyle.Settings(spatialEnabled.get(), spatialShadows.get(), spatialLighting.get(),
-                                        spatialBlur.get(), spatialQuality.get(), spatialProfiling.get()))
+                                        spatialBlur.get(), spatialQuality.get(), spatialProfiling.get()), controlPanelLayout.get())
                         : defaults);
             }
         });
@@ -150,6 +151,7 @@ public final class ShBetterUi {
         replaceScale(updatedBackdrop, "refractionScale", backdrop.refractionScale());
         updatedBackdrop.set("denseSampling", backdrop.denseSampling());
         CommentedConfig updatedUi = copySection(data, previousUi);
+        updatedUi.set("controlPanelLayout", settings.controlPanelLayout().name());
         updatedUi.set("highContrast", settings.highContrast());
         updatedUi.set("reducedMotion", settings.reducedMotion());
         updatedUi.set("widgetBackdropBlur", settings.widgetBackdropBlur());
