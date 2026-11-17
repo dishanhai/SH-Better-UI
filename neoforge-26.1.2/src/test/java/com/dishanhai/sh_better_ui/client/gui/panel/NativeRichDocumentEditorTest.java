@@ -145,6 +145,39 @@ final class NativeRichDocumentEditorTest {
     private static Object field(Object object, String name) throws Exception {
         var field = object.getClass().getDeclaredField(name); field.setAccessible(true); return field.get(object);
     }
+    @Test void splitPreviewStartsBeyondActualNativeScrollableContainer() throws Exception {
+        try (var fixture = NativeTestClient.install()) {
+            var screen = new NativeRichDocumentEditorScreen(null, Component.literal("Editor"), initial());
+            for (int width : new int[]{560, 590, 800}) {
+                screen.width = width; screen.height = 360; screen.init();
+                var body = (net.minecraft.client.gui.components.AbstractContainerWidget) field(screen, "body");
+                int previewX = (int) field(screen, "previewX");
+                assertEquals(body.getX() + body.getWidth() + 8, previewX,
+                        "Preview must clear native padding/scrollbar and retain an eight-pixel gutter");
+                assertTrue(body.getX() + body.getWidth() <= previewX);
+                assertTrue(previewX < width - 8, "A usable preview must remain at the split threshold");
+            }
+        }
+    }
+    @Test void narrowEditAndJsonContainersIncludeNativeReserveInWidthBudget() throws Exception {
+        try (var fixture = NativeTestClient.install()) {
+            var screen = new NativeRichDocumentEditorScreen(null, Component.literal("Editor"), initial());
+            var tabField = screen.getClass().getDeclaredField("tab"); tabField.setAccessible(true);
+            var tabs = tabField.getType().getEnumConstants();
+            for (int width : new int[]{200, 208, 320, 559}) {
+                for (int tab : new int[]{0, 2}) {
+                    tabField.set(screen, tabs[tab]); screen.width = width; screen.height = 240; screen.init();
+                    var body = (net.minecraft.client.gui.components.AbstractContainerWidget) field(screen, "body");
+                    assertNotNull(body);
+                    assertTrue(body.getX() + body.getWidth() <= width - 8,
+                            "Native scrollbar/padding must fit inside the window at width " + width + " tab " + tab);
+                }
+            }
+            screen.model.json("Unsaved draft"); screen.width = 160; screen.init();
+            assertNull(field(screen, "body")); assertEquals("Unsaved draft", screen.model.json());
+            screen.width = 208; screen.init(); assertNotNull(field(screen, "body"));
+        }
+    }
     @Test void staleCloseCannotNavigateOrDiscardEdits() throws Exception {
         try (var fixture = NativeTestClient.install()) {
             var screen = new NativeRichDocumentEditorScreen(null, Component.literal("Editor"), initial());

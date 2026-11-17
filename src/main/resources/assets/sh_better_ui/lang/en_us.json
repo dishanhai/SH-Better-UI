@@ -2665,5 +2665,6 @@
   "sh_better_ui.rich_text_editor.native.hint": "Preview shows applied changes. Export and copy JSON to keep your work.",
   "sh_better_ui.rich_text_editor.native.ready": "Ready. Export and copy JSON to keep your document; no file is written.",
   "sh_better_ui.rich_text_editor.native.error": "Cannot apply: %s",
-  "sh_better_ui.rich_text_editor.native.preview_error": "Preview unavailable: %s"
+  "sh_better_ui.rich_text_editor.native.preview_error": "Preview unavailable: %s",
+  "sh_better_ui.rich_text_editor.native.too_small": "Enlarge the window to edit. Your document and drafts are retained."
 }

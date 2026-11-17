@@ -2665,5 +2665,6 @@
   "sh_better_ui.rich_text_editor.native.hint": "预览显示已应用的更改。请导出并复制 JSON 以保留文档。",
   "sh_better_ui.rich_text_editor.native.ready": "就绪。请导出并复制 JSON 以保留文档；不会写入文件。",
   "sh_better_ui.rich_text_editor.native.error": "无法应用：%s",
-  "sh_better_ui.rich_text_editor.native.preview_error": "无法预览：%s"
+  "sh_better_ui.rich_text_editor.native.preview_error": "无法预览：%s",
+  "sh_better_ui.rich_text_editor.native.too_small": "请放大窗口后编辑。文档和草稿均已保留。"
 }

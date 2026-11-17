@@ -1798,5 +1798,6 @@
   "sh_better_ui.rich_text_editor.native.hint": "預覽顯示已套用的變更。請匯出並複製 JSON 以保留文件。",
   "sh_better_ui.rich_text_editor.native.ready": "就緒。請匯出並複製 JSON 以保留文件；不會寫入檔案。",
   "sh_better_ui.rich_text_editor.native.error": "無法套用：%s",
-  "sh_better_ui.rich_text_editor.native.preview_error": "無法預覽：%s"
+  "sh_better_ui.rich_text_editor.native.preview_error": "無法預覽：%s",
+  "sh_better_ui.rich_text_editor.native.too_small": "請放大視窗後編輯。文件及草稿均已保留。"
 }

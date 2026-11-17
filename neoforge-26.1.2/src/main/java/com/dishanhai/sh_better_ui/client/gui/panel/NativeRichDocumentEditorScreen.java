@@ -27,6 +27,7 @@ public final class NativeRichDocumentEditorScreen extends Screen {
     private RichDocument previewDocument;
     private net.minecraft.locale.Language previewLanguage;
     private int previewWidth, previewScroll, previewX, previewY, previewHeight;
+    private boolean tooSmall;
 
     public NativeRichDocumentEditorScreen(Screen parent, Component title, RichDocument initial) {
         super(title); this.parent = parent; model = new NativeRichEditorModel(initial);
@@ -63,6 +64,15 @@ public final class NativeRichDocumentEditorScreen extends Screen {
     }
     private void build() {
         clearWidgets(); focusIds.clear(); body = null;
+        tooSmall = width < 200 || height < 160;
+        if (tooSmall) {
+            var hint = new MultiLineTextWidget(Component.translatableWithFallback("sh_better_ui.rich_text_editor.native.too_small",
+                    "Enlarge the window to edit. Your document and drafts are retained."), font).setMaxWidth(Math.max(1, width - 16));
+            hint.setPosition(8, 30); addRenderableWidget(hint);
+            var back = button("back", "Back", Math.max(20, Math.min(100, width - 16)), this::onClose);
+            back.setPosition(8, Math.max(0, height - 26)); addRenderableWidget(back); setInitialFocus(back);
+            return;
+        }
         int usable = Math.max(24, width - 16);
         int tabWidth = Math.max(20, Math.min(108, usable / 3));
         for (var value : Tab.values()) {
@@ -71,7 +81,14 @@ public final class NativeRichDocumentEditorScreen extends Screen {
         }
         int bodyHeight = Math.max(20, height - 108);
         boolean split = width >= 560 && tab == Tab.EDIT;
-        int paneWidth = split ? Math.max(220, usable / 2 - 8) : usable;
+        int containerBudget = split ? usable / 2 - 8 : usable;
+        // Measure the native reserve rather than hard-coding scrollbar widths or OS/GUI-scale assumptions.
+        var probeContent = LinearLayout.vertical();
+        probeContent.addChild(new net.minecraft.client.gui.layouts.SpacerElement(1, 1));
+        var probe = new ScrollableLayout(minecraft, probeContent, bodyHeight);
+        probe.arrangeElements();
+        int reserve = probe.getWidth() - 1;
+        int paneWidth = Math.max(1, containerBudget - reserve);
         var content = LinearLayout.vertical().spacing(4);
         if (tab == Tab.EDIT) edit(content, paneWidth);
         else if (tab == Tab.JSON) json(content, paneWidth, bodyHeight);
@@ -82,7 +99,10 @@ public final class NativeRichDocumentEditorScreen extends Screen {
             layout.visitWidgets(widget -> body = (AbstractContainerWidget) addRenderableWidget(widget));
             if (body != null) body.setScrollAmount(restoreScroll);
         }
-        previewX = split ? 16 + paneWidth : 8; previewY = 50; previewHeight = bodyHeight;
+        // Native ScrollableLayout adds its own inset/scrollbar to the requested content width.
+        // Place the preview after the actual container, not after the nominal form width.
+        previewX = split && body != null ? body.getX() + body.getWidth() + 8 : 8;
+        previewY = 50; previewHeight = bodyHeight;
         if (split || tab == Tab.PREVIEW) ensurePreview(Math.max(1, width - previewX - 8));
         int footerWidth = Math.max(20, Math.min(140, (width - 24) / 2));
         var back = button("back", "Back", footerWidth, this::onClose);
@@ -120,7 +140,7 @@ public final class NativeRichDocumentEditorScreen extends Screen {
         }
         for (var field : RichTextEditorProperties.Field.values()) {
             if (model.properties.get(field) == null) continue;
-            content.addChild(new MultiLineTextWidget(Component.translatable("sh_better_ui.rich_text_editor." + field.key()), font));
+            content.addChild(new MultiLineTextWidget(Component.translatable("sh_better_ui.rich_text_editor." + field.key()), font).setMaxWidth(available));
             if (field == RichTextEditorProperties.Field.TEXT) {
                 var multiline = MultiLineEditBox.builder().setPlaceholder(Component.empty())
                         .build(font, available, 72, Component.translatable("sh_better_ui.rich_text_editor.field.text"));
@@ -177,7 +197,7 @@ public final class NativeRichDocumentEditorScreen extends Screen {
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int x, int y, float partialTick) {
         graphics.fill(0, 0, width, height, 0xff151b25);
         graphics.centeredText(font, title.copy().append(model.dirty() ? " *" : ""), width / 2, 9, 0xffe7edf7);
-        if (tab == Tab.PREVIEW || tab == Tab.EDIT && width >= 560) {
+        if (!tooSmall && (tab == Tab.PREVIEW || tab == Tab.EDIT && width >= 560)) {
             ensurePreview(Math.max(1, width - previewX - 8));
             graphics.enableScissor(previewX, previewY, width - 8, previewY + previewHeight);
             try { if (preview != null) preview.render(graphics, previewX, previewY - previewScroll, previewY, previewY + previewHeight,
@@ -188,13 +208,13 @@ public final class NativeRichDocumentEditorScreen extends Screen {
         super.extractRenderState(graphics, x, y, partialTick);
     }
     @Override public boolean mouseScrolled(double x, double y, double dx, double dy) {
-        if ((tab == Tab.PREVIEW || tab == Tab.EDIT && width >= 560) && x >= previewX && x < width - 8 && y >= previewY && y < previewY + previewHeight) {
+        if (!tooSmall && (tab == Tab.PREVIEW || tab == Tab.EDIT && width >= 560) && x >= previewX && x < width - 8 && y >= previewY && y < previewY + previewHeight) {
             previewScroll = Math.clamp(previewScroll - (int) (dy * 24), 0, Math.max(0, (preview == null ? 0 : preview.height()) - previewHeight)); return dy != 0;
         }
         return super.mouseScrolled(x, y, dx, dy);
     }
     @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event) {
-        if (tab == Tab.PREVIEW) {
+        if (!tooSmall && tab == Tab.PREVIEW) {
             int max = Math.max(0, (preview == null ? 0 : preview.height()) - previewHeight);
             int delta = switch (event.key()) {
                 case org.lwjgl.glfw.GLFW.GLFW_KEY_UP -> -18;
