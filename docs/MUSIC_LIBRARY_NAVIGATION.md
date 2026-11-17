@@ -29,3 +29,12 @@ Library filters actual available built-in sources (NetEase and QQ); no-source an
 - Final code revision tested: `31e091a`. `git diff --check` passed.
 - Native Neo client launched and entered the isolated creative QA world. The process exited with code 137 before final music navigation and screenshots could be verified. No old screenshots are offered as evidence for this change. Native wide/compact interaction and visual verification remain pending.
 - No real-account login, authenticated playlist read, like mutation or credential persistence was exercised. Tests use controlled fake services. This change does not claim new provider/backend support.
+
+## Guest authorization follow-up (2026-11-17)
+
+- A player who has never signed in now sees a neutral, provider-specific sign-in invitation for playlists and liked songs, including the login control's tooltip. They are no longer told their session expired.
+- A provider's `LoginRequired` response still asks for reauthorization. The wording does not assume expiration: missing permissions and revoked authorization can produce the same response. Network and unsupported-operation failures remain failures, not authentication claims.
+- The existing session invalidates rejected credentials and protects newer credentials from stale requests. The new guest regression verifies that account, playlist and liked-track requests do not contact a provider before credentials are supplied, and that a later sign-in enables a real request.
+- Background queue advancement is deliberately not bundled with this fix. `SessionPlayQueue` is view-owned; its observer runs from `OnlineMusicViewImpl.render`, and `suspend` disarms it. Moving only the observer would not preserve queue ownership, lifecycle or stop/skip semantics. This requires a separate session-owned queue/end-of-track change and lifecycle tests.
+
+Validation: shared authorization feedback compiles with `javac --release 17`; all three focused JUnit tests pass. The 19 account-session JUnit tests also pass against the real session classes, compiled with Java 17 compatibility and the JNA/Gson/ICU dependencies (no stubs). Forge and NeoForge Gradle tests were both attempted but stopped at plugin resolution (`net.minecraftforge.gradle` and `net.neoforged.moddev` respectively), before compiling the mod. No in-game screenshot, real-account request or full dual-loader success is claimed.
