@@ -68,3 +68,23 @@ rendering require separate in-game acceptance.
 - License notices and the Apple Music local authorization HTML/modules are now included and checked in the 26.x JAR.
 - No in-game GPU, real-account music, audible playback, Windows batch execution or 26.2 build acceptance is claimed. The remaining feature inventory is not marked complete.
 - Compatibility regression: the shared account authorization-return suite passed on both Forge 1.20.1 and NeoForge 1.21.1 (15 tests each, zero failures/skips), including actual production/test compilation; Forge `reobfJar` also passed. These were targeted suites, not complete legacy-platform builds or in-game tests.
+
+## Main synchronization after first publication
+
+The follow-up merges main `6b714b70b98be653bfa65031a7889784b81468f5`
+(the accepted background queue, online island bridge, font and rich-media fixes).
+The authorization-return conflict preserves both `AUTHORIZATION_REQUIRED` and
+`SIGN_IN`; the test uses the shared `SIGN_IN` constant. The new background queue
+and bridge are retained rather than replaced with the older screen-owned queue.
+This is a compatibility merge, not an assertion that native 26.x HUD presentation
+has already been ported. Native 26.2 compilation was additionally attempted and
+still reports older screen access APIs; it remains outside the verified target.
+
+Post-merge validation: full 26.1.2 build and library-JAR validation pass again.
+The native queue-view tests now exercise the merged player-owned queue rather
+than casting it to the removed screen-owned implementation. Native music frames
+use the shared real metadata/lyrics services and online publisher lease; native
+GPU artwork/system-output capture/global HUD remain separate migrations.
+Forge 1.20.1 and NeoForge 1.21.1 each pass 35 targeted account, background queue
+and frame-bridge tests (zero failures/errors/skips), with production/test
+compilation and Forge reobfuscation. These are not full old-platform test runs.

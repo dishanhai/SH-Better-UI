@@ -205,7 +205,7 @@ class OnlineMusicQueueViewTest {
         var next=(MusicTextControl)field(f.view,"queueNext"); assertTrue(next.visible);assertTrue(next.active);next.onPress();assertEquals(B,f.playing);
         var clear=(MusicTextControl)field(f.view,"queueClear");clear.onPress();assertEquals(B,f.playing);
         assertFalse(next.active);var undo=(MusicTextControl)field(f.view,"queueUndo");assertTrue(undo.active);undo.onPress();
-        assertEquals(2,((SessionPlayQueue)field(f.view,"queue")).tracks().size());assertEquals(B,f.playing);
+        assertEquals(2,((PlayerQueue)field(f.view,"queue")).tracks().size());assertEquals(B,f.playing);
         ((MusicTextControl)field(f.view,"back")).onPress();assertFalse(next.visible);assertEquals(B,f.playing);
     }
     @Test void queueActionControlsStayDisjointAtSupportedWindowSizes() throws Exception {
@@ -219,10 +219,10 @@ class OnlineMusicQueueViewTest {
     @Test void suspendingTheActualViewDisarmsAutoplayWithoutDroppingItsQueue() throws Exception {
         var f=new Fixture();f.view.layout(new Host());
         call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
-        var queue=(SessionPlayQueue)field(f.view,"queue");queue.observe(f.player.snapshot());
+        var queue=(PlayerQueue)field(f.view,"queue");queue.observe(f.player.snapshot());
         f.view.suspend();
         var end=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.ENDED,1000,1000,OnlineMusicPlayer.LyricsState.EMPTY,LyricTimeline.empty(),OnlineMusicPlayer.Failure.NONE,false);
-        assertTrue(queue.observe(end).isEmpty());assertEquals(2,queue.tracks().size());assertEquals(0,queue.index());
+        queue.observe(end);assertEquals(A,f.playing);assertEquals(2,queue.tracks().size());assertEquals(0,queue.index());
     }
     @Test void immersiveEntryHidesNavigationAndReturnRestoresQueueWithoutPausing() throws Exception {
         var f=new Fixture();f.view.layout(new Host());
@@ -286,7 +286,7 @@ class OnlineMusicQueueViewTest {
     @Test void resizePreservesQueueSelectionWithoutReplaying() throws Exception {
         var f=new Fixture();f.view.layout(new Host());call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),1);queuePage(f.view);
         var host=new Host();host.width=360;host.height=340;f.view.layout(host);
-        var queue=(SessionPlayQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
+        var queue=(PlayerQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
         assertTrue(((MusicTextControl)field(f.view,"queuePrevious")).visible);
     }
 }

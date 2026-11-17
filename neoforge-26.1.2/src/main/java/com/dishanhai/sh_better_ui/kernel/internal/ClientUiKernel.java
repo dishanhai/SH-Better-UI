@@ -94,6 +94,7 @@ public final class ClientUiKernel {
         text = textReadability;
         hud = clientHud;
         screens.sync(minecraft);
+        com.dishanhai.sh_better_ui.client.music.ClientMusic.start(config);
     }
 
     @SubscribeEvent
@@ -205,7 +206,8 @@ public final class ClientUiKernel {
         text = null;
         hud = null;
         catalog = null;
-        if (kernel != null) kernel.close();
+        try { if (kernel != null) kernel.close(); }
+        finally { com.dishanhai.sh_better_ui.client.music.ClientMusic.close(); }
     }
 
     private static List<NativeModuleSources.Source> modSources() {

@@ -59,7 +59,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             accountControls = new ArrayList<>(), detailControls = new ArrayList<>(), libraryControls = new ArrayList<>();
     private final List<MusicTextControl> resultRows = new ArrayList<>();
     private final List<OnlineLyricButton> lyricRows = new ArrayList<>();
-    private final SessionPlayQueue queue = new SessionPlayQueue();
+    private final PlayerQueue queue;
     private final List<AbstractWidget> queueControls = new ArrayList<>();
     private final List<MusicTextControl> queueRows = new ArrayList<>(), queueRemoves = new ArrayList<>();
     private OnlineMusicScrollRegion queueScroll;
@@ -128,7 +128,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private final boolean ownsPlayer;
     public OnlineMusicViewImpl(OnlineMusicPlayer player) { this(player, true); }
     /** Borrowed sessions are released by their kernel service, never by screen removal. */
-    public OnlineMusicViewImpl(OnlineMusicPlayer player, boolean ownsPlayer) { this.player = Objects.requireNonNull(player); this.ownsPlayer = ownsPlayer; }
+    public OnlineMusicViewImpl(OnlineMusicPlayer player, boolean ownsPlayer) { this.player = Objects.requireNonNull(player); this.queue = new PlayerQueue(player); this.ownsPlayer = ownsPlayer; }
     @Override public OnlineMusicPlayer player() { return player; }
     @Override public void layout(PreviewContext context) {
         if (closed) throw new IllegalStateException("Music view closed");
@@ -418,7 +418,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }, libraryControls); libraryNext.setIcon(GraphicIcon.NEXT);
     }
     private void playCollection(List<OnlineTrack> tracks, int selected) {
-        queue.replace(tracks, selected).ifPresent(player::play);
+        queue.replace(tracks, selected);
         queueFirst = Math.max(0, selected - visibleRows / 2);
         updateQueueRows();
     }
@@ -430,7 +430,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         for (var row : musicRows()) {
             int slot = queueRows.size();
             var play = button(new Bounds(row.x(), row.y(), row.width() - 28, row.height()), Component.empty(),
-                    () -> { queue.select(queueFirst + slot).ifPresent(player::play); updateQueueRows(); }, queueControls);
+                    () -> { queue.select(queueFirst + slot); updateQueueRows(); }, queueControls);
             play.setLeadingIcon(GraphicIcon.RUN); play.setVariant(MusicTextControl.Variant.ROW);queueRows.add(play);
             var remove = button(new Bounds(row.right() - 24, row.y(), 24, row.height()), label("queue.remove"),
                     () -> { queue.remove(queueFirst + slot); updateQueueRows(); updateScrollRegions(); }, queueControls);
@@ -438,10 +438,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         var p = layout.pager();
         queuePrevious = button(new Bounds(p.x(), p.y(), 24, 20), label("queue.previous"),
-                () -> { queue.previous().ifPresent(player::play); updateQueueRows(); }, queueControls);
+                () -> { queue.previous(); updateQueueRows(); }, queueControls);
         queuePrevious.setIcon(GraphicIcon.PREVIOUS);
         queueNext = button(new Bounds(p.x() + 28, p.y(), 24, 20), label("queue.next"),
-                () -> { queue.next().ifPresent(player::play); updateQueueRows(); }, queueControls);
+                () -> { queue.next(); updateQueueRows(); }, queueControls);
         queueNext.setIcon(GraphicIcon.NEXT);
         int actionWidth = Math.min(68, Math.max(36, (p.width() - 64) / 2));
         queueUndo = button(new Bounds(p.right() - actionWidth * 2 - 4, p.y(), actionWidth, 20), label("queue.undo"),
@@ -501,11 +501,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         nowPlaying=button(mini.metadata(),label("view.now_playing"),this::enterImmersive,null);
         nowPlaying.setVariant(MusicTextControl.Variant.ROW);
         // Register in visual order so keyboard traversal follows previous / play / next.
-        miniPrevious=miniControl(mini.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous().ifPresent(player::play));
+        miniPrevious=miniControl(mini.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous());
         playback=miniControl(mini.play(),"play",MusicTransportControl.Glyph.PLAY,()->{
             if(player.snapshot().state()==OnlineMusicPlayer.State.PLAYING)player.pause();else player.resume();
         });
-        miniNext=miniControl(mini.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next().ifPresent(player::play));
+        miniNext=miniControl(mini.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next());
         stop=miniControl(mini.stop(),"stop",MusicTransportControl.Glyph.STOP,player::stop);
         lyricsToggle=miniControl(mini.lyrics(),"view.lyrics",MusicTransportControl.Glyph.LYRICS,this::enterImmersive);
         miniQueue=miniControl(mini.queue(),"view.queue",MusicTransportControl.Glyph.QUEUE,()->show(Page.QUEUE));
@@ -560,8 +560,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stagePlay=stageButton(stage.play(),"play",MusicTransportControl.Glyph.PLAY,()->{
             if(player.snapshot().state()==OnlineMusicPlayer.State.PLAYING)player.pause();else player.resume();
         });
-        stagePrevious=stageButton(stage.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous().ifPresent(player::play));
-        stageNext=stageButton(stage.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next().ifPresent(player::play));
+        stagePrevious=stageButton(stage.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous());
+        stageNext=stageButton(stage.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next());
         stageMode=stageButton(stage.mode(),"stage.toggle_lyrics",MusicTransportControl.Glyph.LYRICS,
                 ()->setStagePage(stagePage==StagePage.LYRICS?StagePage.ARTWORK:StagePage.LYRICS));
         stageQueue=stageButton(stage.queue(),"view.queue",MusicTransportControl.Glyph.QUEUE,()->{if(stage.lyrics().height()<56)show(Page.QUEUE);else setStagePage(StagePage.QUEUE);});
@@ -592,7 +592,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         for(int i=0;i<count;i++) {
             int slot=i;
             stageQueueRows.add(host.add(new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+24+i*32,Math.max(1,stage.lyrics().width()-10),30),
-                    Component.empty(),host.preferences(),()->{queue.select(stageQueueFirst+slot).ifPresent(player::play);updateStageQueueRows();})));
+                    Component.empty(),host.preferences(),()->{queue.select(stageQueueFirst+slot);updateStageQueueRows();})));
         }
         var h=layout.header();
         stageEntry=host.add(new MusicStageButton(new Bounds(h.right()-100,h.y()+2,100,22),label("stage.open"),null,this::enterImmersive,host.preferences(),false,false));
@@ -764,7 +764,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void enterLibrary() {
         show(Page.LIBRARY);
-        if(library==Library.NONE||libraryState.equals("library.login_required")||libraryState.equals(LibraryAccessFeedback.SIGN_IN)||!player.authenticated(librarySource)) {
+        if(library==Library.NONE||libraryState.equals(LibraryAccessFeedback.AUTHORIZATION_REQUIRED)||libraryState.equals(LibraryAccessFeedback.SIGN_IN)||!player.authenticated(librarySource)) {
             if(library==Library.TRACKS&&selectedPlaylist!=null)loadPlaylist(selectedPlaylist,libraryPage);else openLibraryGroup(libraryGroup);
         }
     }
@@ -972,7 +972,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         updateScrollRegions();
         var current = player.snapshot();
-        queue.observe(current).ifPresent(player::play);
+        queue.observe(current);
         current = player.snapshot();
         updateQueueRows();
         var visual = visualMotion.sample(System.nanoTime() / 1_000_000L, ui.preferences().reducedMotion(),

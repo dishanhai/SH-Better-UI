@@ -28,6 +28,17 @@ def sharedSources = [
         'client/gui/scaled/UiPillNav.java',
         'client/gui/scaled/UiPillNavPaint.java',
         'client/gui/panel/PillNavDemo.java',
+        'client/music/MusicService.java',
+        'client/music/MusicSnapshot.java',
+        'client/music/MusicProvider.java',
+        'client/music/MusicEvent.java',
+        'client/music/LyricsProvider.java',
+        'client/music/ForegroundMusicFrames.java',
+        'client/music/MusicLyricFeed.java',
+        'client/music/platform/LocalMediaCommand.java',
+        'client/music/platform/MacMusicProvider.java',
+        'client/music/platform/MprisProvider.java',
+        'client/music/platform/WindowsMediaProvider.java',
         'client/audio/AudioBand.java',
         'client/audio/AudioFrame.java',
         'client/audio/MusicAnalyzer.java',
@@ -204,6 +215,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
         include("${packagePath}/kernel/internal/music/**")
+        include("${packagePath}/client/music/MusicServiceTest.java")
+        include("${packagePath}/client/music/NativeMusicFramesTest.java")
         include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")

@@ -81,7 +81,7 @@ public final class CustomFontScreen extends Screen {
             }
             repo.setSelected(selected);
             minecraft.reloadResourcePacks().whenComplete((unused,error)->minecraft.execute(()->{
-                if(error==null){minecraft.options.updateResourcePacks(repo);finish(label(pack==null?"restored":"applied"));}
+                if(error==null){savePackSelection();finish(label(pack==null?"restored":"applied"));}
                 else rollback(previous);
             }));
         } catch(RuntimeException error) { rollback(previous); }
@@ -89,8 +89,21 @@ public final class CustomFontScreen extends Screen {
     private void rollback(List<String> previous) {
         var repo=minecraft.getResourcePackRepository();repo.setSelected(previous);
         minecraft.reloadResourcePacks().whenComplete((unused,error)->minecraft.execute(()->{
-            minecraft.options.updateResourcePacks(repo);finish(label(error==null?"failed":"recovery"));
+            savePackSelection();finish(label(error==null?"failed":"recovery"));
         }));
+    }
+    /** Persist the completed reload without Options.updateResourcePacks starting a second one. */
+    private void savePackSelection() {
+        var options=minecraft.options;
+        options.resourcePacks.clear();
+        options.incompatibleResourcePacks.clear();
+        for(var pack:minecraft.getResourcePackRepository().getSelectedPacks()) {
+            if(!pack.isFixedPosition()&&!pack.isHidden()) {
+                options.resourcePacks.add(pack.getId());
+                if(!pack.getCompatibility().isCompatible())options.incompatibleResourcePacks.add(pack.getId());
+            }
+        }
+        options.save();
     }
     private void finish(Component message){busy=false;applying=false;status=message;rebuildWidgets();}
     @Override public void onFilesDrop(List<Path> paths) {

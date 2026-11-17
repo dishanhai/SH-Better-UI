@@ -55,11 +55,17 @@ final class RichMediaJobs {
         private T result;
         private boolean ready;
         private boolean released;
+        private boolean running;
+        private boolean slotReleased;
 
         private Job(Pool pool, Callable<T> work, Runnable abort) {
             this.pool = pool;
             this.abort = abort;
             task = new FutureTask<>(() -> {
+                synchronized (this) {
+                    if (released) return null;
+                    running = true;
+                }
                 T value = null;
                 try {
                     value = work.call();
@@ -71,8 +77,11 @@ final class RichMediaJobs {
         }
 
         private synchronized void finish(T value) {
-            if (released) dispose(value);
-            else result = value;
+            running = false;
+            if (released) {
+                dispose(value);
+                releaseSlot();
+            } else result = value;
             ready = true;
         }
 
@@ -100,7 +109,12 @@ final class RichMediaJobs {
 
         private void releaseSlot() {
             released = true;
-            pool.slots.release();
+            // Interrupting resource IO does not guarantee it has stopped retaining decoded pixels.
+            // Queued work is released immediately; running work releases only after finish().
+            if (!running && !slotReleased) {
+                slotReleased = true;
+                pool.slots.release();
+            }
         }
 
         private static void dispose(AutoCloseable value) {

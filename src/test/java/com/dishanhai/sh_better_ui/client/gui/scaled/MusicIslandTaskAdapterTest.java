@@ -28,6 +28,16 @@ class MusicIslandTaskAdapterTest {
         assertTrue(adapter.observe(frame("A",1,MusicService.LyricsState.AVAILABLE)).isEmpty());
         assertTrue(adapter.observe(frame("B",2,MusicService.LyricsState.UNAVAILABLE)).stream().anyMatch(u->u.messageKey().equals("lyrics_unavailable")));
     }
+    @Test void independentProviderRevisionsDoNotSuppressSourceChanges() {
+        var adapter = new MusicIslandTaskAdapter();
+        var system = frame("system", 8, MusicService.LyricsState.LOADING);
+        adapter.observe(system);
+        var base = frame("online", 1, MusicService.LyricsState.LOADING);
+        var online = new MusicService.Frame(new MusicSnapshot("online", MusicSnapshot.State.AVAILABLE,
+                base.snapshot().session()), base.lyrics(), 1);
+        assertTrue(adapter.observe(online).stream().anyMatch(u -> u.messageKey().equals("lyrics_loading")));
+        assertTrue(adapter.observe(system).stream().anyMatch(u -> u.messageKey().equals("lyrics_loading")));
+    }
     @Test void initialCachedResultIsNotInventedAsTaskCompletion() {
         var adapter=new MusicIslandTaskAdapter();
         assertTrue(adapter.observe(frame("A",1,MusicService.LyricsState.AVAILABLE)).stream().allMatch(MusicIslandTaskAdapter.Update::cancel));
