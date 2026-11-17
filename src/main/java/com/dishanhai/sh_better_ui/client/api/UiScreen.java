@@ -483,6 +483,7 @@ public final class UiScreen extends Screen {
         var focusedMusic = getFocused();
         if (key == GLFW.GLFW_KEY_ESCAPE && (focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl
                 || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl
+                || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl
                 || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl
                 || focusedMusic instanceof com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView)
                 && focusedMusic.keyPressed(key, scanCode, modifiers)) {
