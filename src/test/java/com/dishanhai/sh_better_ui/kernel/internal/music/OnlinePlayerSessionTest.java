@@ -13,6 +13,17 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.*;
 
 class OnlinePlayerSessionTest {
+    private Object previousRenderThread;
+    private java.lang.reflect.Field renderThread;
+    @org.junit.jupiter.api.BeforeEach void bindRenderThread() throws Exception {
+        renderThread = com.mojang.blaze3d.systems.RenderSystem.class.getDeclaredField("renderThread");
+        renderThread.setAccessible(true); previousRenderThread = renderThread.get(null);
+        renderThread.set(null, Thread.currentThread());
+    }
+    @org.junit.jupiter.api.AfterEach void restoreRenderThread() throws Exception {
+        renderThread.set(null, previousRenderThread);
+    }
+
     private static OnlineTrack track(String id) { return new OnlineTrack("test", id, id, id, "Artist", "", 10000); }
     private static class Source implements OnlineMusicSource {
         @Override public String id() { return "test"; }
@@ -49,6 +60,35 @@ class OnlinePlayerSessionTest {
             session.volume(-10);assertEquals(0f,last.get().gain);session.volume(10);assertEquals(1f,last.get().gain);
         } finally {session.close();}
         assertThrows(IllegalStateException.class,()->session.volume(.5f));
+    }
+    @Test void leavingAndReopeningBorrowedViewKeepsActiveOutputAndExplicitControlsWork() throws Exception {
+        var output = new Output();
+        try (var session = new OnlinePlayerSession(List.of(new Source()), () -> output, uri -> new byte[]{1})) {
+            session.play(track("background"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+            view.suspend(); view.close();
+            assertFalse(output.closed);
+            assertEquals(State.PLAYING, session.snapshot().state());
+            output.position = 2300;
+            var reopened = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+            assertEquals(2300, reopened.player().snapshot().positionMs());
+            reopened.player().pause(); assertEquals(State.PAUSED, session.snapshot().state());
+            reopened.player().resume(); assertEquals(State.PLAYING, session.snapshot().state());
+            reopened.player().stop(); assertTrue(output.closed);
+            assertEquals(State.IDLE, session.snapshot().state()); reopened.close();
+        }
+    }
+    @Test void pendingTrackCanFinishLoadingAfterBackgroundViewCloses() throws Exception {
+        var started = new CountDownLatch(1); var release = new CountDownLatch(1);
+        try (var session = new OnlinePlayerSession(List.of(new Source()), Output::new, uri -> {
+            started.countDown(); release.await(); return new byte[]{1};
+        })) {
+            session.play(track("background")); assertTrue(started.await(2, TimeUnit.SECONDS));
+            var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+            view.close(); release.countDown();
+            await(() -> session.snapshot().state() == State.PLAYING);
+        } finally { release.countDown(); }
     }
     @Test void pauseSeekStopAndCloseReleaseOwnedOutputs() throws Exception {
         var last = new AtomicReference<Output>();
