@@ -46,6 +46,27 @@ class OnlinePlayerSessionTest {
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(5);
         assertTrue(condition.getAsBoolean(), "asynchronous state did not settle");
     }
+    @Test void bridgeTracksBorrowedViewRemovalPauseSwitchAndStop() throws Exception {
+        var frames = new com.dishanhai.sh_better_ui.client.music.ForegroundMusicFrames();
+        try (var session = new OnlinePlayerSession(List.of(new Source()), Output::new, uri -> new byte[]{1});
+             var bridge = new OnlineMusicFrameBridge(session, frames.acquire())) {
+            session.play(track("first"));
+            await(() -> frames.select(null, System.nanoTime()) != null);
+            var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+            view.suspend(); view.close();
+            await(() -> frames.select(null, System.nanoTime()).snapshot().session().status()
+                    == com.dishanhai.sh_better_ui.client.music.MusicSnapshot.PlaybackStatus.PLAYING);
+            String id = frames.select(null, System.nanoTime()).snapshot().session().id();
+            session.pause();
+            await(() -> frames.select(null, System.nanoTime()).snapshot().session().status()
+                    == com.dishanhai.sh_better_ui.client.music.MusicSnapshot.PlaybackStatus.PAUSED);
+            session.play(track("second"));
+            await(() -> frames.select(null, System.nanoTime()).snapshot().session().track().key().equals("test:second"));
+            assertEquals(id, frames.select(null, System.nanoTime()).snapshot().session().id());
+            session.stop(); await(() -> frames.select(null, System.nanoTime()) == null);
+        }
+    }
+
     @Test void softwareVolumeIsSessionLocalAndRetainedAcrossOutputReplacement() throws Exception {
         var last=new AtomicReference<Output>();
         var session=new OnlinePlayerSession(List.of(new Source()),()->{var output=new Output();last.set(output);return output;},uri->new byte[]{1});

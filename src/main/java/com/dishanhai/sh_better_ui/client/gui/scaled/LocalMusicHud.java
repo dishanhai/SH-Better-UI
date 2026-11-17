@@ -46,7 +46,7 @@ public final class LocalMusicHud {
         var session = snapshot.session();
         var track = session == null ? null : session.track();
         boolean still = ui.preferences().reducedMotion() || ui.preferences().highContrast();
-        var audio = music.getAudioFeatures().orElseGet(() -> AudioFrame.silence(ui.nowMs()));
+        var audio = music.getAudioFeatures(current).orElseGet(() -> AudioFrame.silence(ui.nowMs()));
         var motion = rhythm.sample(audio, ui.nowMs(), still);
         var g = ui.graphics();
         g.enableScissor(area.x(), area.y(), area.right(), area.bottom());

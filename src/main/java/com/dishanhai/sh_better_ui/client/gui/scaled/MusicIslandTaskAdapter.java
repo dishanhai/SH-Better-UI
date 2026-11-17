@@ -13,27 +13,31 @@ public final class MusicIslandTaskAdapter {
     public record Update(String id, String messageKey, String detail, boolean cancel, long ttlMs) {}
     private record Identity(String provider, String session, String track) {}
     private Identity identity;
+    private String source;
+    private String providerId;
     private long revision = Long.MIN_VALUE;
     private MusicService.LyricsState lyrics;
     private MusicSnapshot.State provider;
 
-    public void reset() { identity=null; revision=Long.MIN_VALUE; lyrics=null; provider=null; }
+    public void reset() { source=null; providerId=null; identity=null; revision=Long.MIN_VALUE; lyrics=null; provider=null; }
 
     public List<Update> observe(MusicService.Frame frame) {
         var updates=new ArrayList<Update>();
-        // A late callback/frame from the same service generation must never restore old content.
-        if (frame.revision()<revision) return List.of();
         var snapshot=frame.snapshot();
         var session=snapshot.session();
+        String nextSource = snapshot.providerId() + "\u0000" + (session == null ? "" : session.id());
+        // Revisions are local to a provider/session, not comparable across source switches.
+        boolean sourceChanged = !Objects.equals(source, nextSource);
+        if (!sourceChanged && frame.revision()<revision) return List.of();
         var next=session==null||session.track()==null ? null
                 : new Identity(snapshot.providerId(),session.id(),session.track().key());
-        boolean changed=!Objects.equals(identity,next)||revision!=frame.revision();
+        boolean changed=sourceChanged||!Objects.equals(identity,next)||revision!=frame.revision();
         if(changed) updates.add(new Update(LYRICS,"","",true,0));
-        if(provider!=snapshot.state()) {
+        if(sourceChanged||provider!=snapshot.state()) {
             updates.add(new Update(PROVIDER,"","",true,0));
             if(snapshot.state()==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE)
                 updates.add(new Update(PROVIDER,"provider_unavailable","",false,5000));
-            else if(provider==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE && snapshot.state()==MusicSnapshot.State.AVAILABLE)
+            else if(Objects.equals(providerId, snapshot.providerId()) && provider==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE && snapshot.state()==MusicSnapshot.State.AVAILABLE)
                 updates.add(new Update(PROVIDER,"provider_recovered","",false,3500));
         }
         var nextLyrics=frame.lyrics().state();
@@ -47,7 +51,7 @@ public final class MusicIslandTaskAdapter {
                     updates.add(new Update(LYRICS,nextLyrics==MusicService.LyricsState.AVAILABLE?"lyrics_ready":"lyrics_unavailable",title,false,3500));
             }
         }
-        identity=next;revision=frame.revision();lyrics=nextLyrics;provider=snapshot.state();
+        providerId=snapshot.providerId();source=nextSource;identity=next;revision=frame.revision();lyrics=nextLyrics;provider=snapshot.state();
         return List.copyOf(updates);
     }
 }

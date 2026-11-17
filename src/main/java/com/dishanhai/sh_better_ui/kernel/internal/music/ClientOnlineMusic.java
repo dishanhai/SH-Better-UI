@@ -7,17 +7,23 @@ import java.util.List;
 /** Independent sessions plus a kernel-owned player for the ordinary background music route. */
 public final class ClientOnlineMusic implements OnlineMusicService, AutoCloseable {
     private OnlineMusicPlayer background;
+    private OnlineMusicFrameBridge bridge;
     private boolean closed;
 
     @Override public synchronized OnlineMusicView backgroundView() {
         if (closed) throw new IllegalStateException("Music service closed");
-        if (background == null || background.snapshot().state() == OnlineMusicPlayer.State.CLOSED) background = open();
+        if (background == null || background.snapshot().state() == OnlineMusicPlayer.State.CLOSED) {
+            if (bridge != null) bridge.close();
+            background = open();
+            bridge = new OnlineMusicFrameBridge(background, com.dishanhai.sh_better_ui.client.music.ClientMusic.foreground());
+        }
         return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(background, false);
     }
 
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
+        if (bridge != null) { bridge.close(); bridge = null; }
         if (background != null) { background.close(); background = null; }
     }
     @Override public OnlineMusicPlayer open() { return open(List.of(new NeteaseSource(), new QQMusicSource())); }
