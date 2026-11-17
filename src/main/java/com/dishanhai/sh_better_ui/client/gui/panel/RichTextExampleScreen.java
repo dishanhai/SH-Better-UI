@@ -60,6 +60,7 @@ public final class RichTextExampleScreen extends Screen {
     private Language language;
     private RichDocument document;
     private RichTextComponents.Snapshot advancedDocument;
+    private RichTextComponents.Snapshot trustedSnapshot;
     private boolean advanced;
     private int effectMode;
     private int scroll;
@@ -81,7 +82,10 @@ public final class RichTextExampleScreen extends Screen {
     }
 
     public static RichTextExampleScreen trustedDemo(ModuleContext module, Screen parent) {
-        return new RichTextExampleScreen(module, parent, TrustedRichTooltipDemo.document(), true);
+        var snapshot = TrustedRichTooltipDemo.snapshot();
+        var screen = new RichTextExampleScreen(module, parent, snapshot.document(), true);
+        screen.trustedSnapshot = snapshot;
+        return screen;
     }
 
     private RichTextExampleScreen(ModuleContext module, Screen parent, RichDocument imported, boolean trustedDemo) {
@@ -250,7 +254,9 @@ public final class RichTextExampleScreen extends Screen {
             if (edited == null) edited = label("editable_default").getString();
             advancedDocument = RichTextWorkbench.document(edited);
         }
-        var text = advanced ? view.prepare(advancedDocument, font, contentWidth) : view.prepare(document, font, contentWidth);
+        var text = advanced ? view.prepare(advancedDocument, font, contentWidth)
+                : trustedSnapshot != null ? view.prepare(trustedSnapshot, font, contentWidth)
+                : view.prepare(document, font, contentWidth);
         maxScroll = advanced || imported != null ? Math.max(0, text.height() - visibleHeight) : 0;
         scroll = Math.min(scroll, maxScroll);
         int contentHeight = Math.min(text.height(), visibleHeight);

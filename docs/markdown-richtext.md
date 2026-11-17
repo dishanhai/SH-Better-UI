@@ -46,3 +46,7 @@ graphics.disableScissor();
 - NeoForge 1.21.1 / Java 21：完整项目 `compileJava` 和相同 7 项回归通过。开发环境使用 ModDev 官方二进制 Minecraft artifacts 模式，未跳过项目编译或测试；纯 Java 块解析器另有 7 项测试通过。
 - NeoForge 1.21.1 独立游戏实例实际验证 Markdown、表格、图标/流体、效率曲线与比较条；验证内容滚动、返回重入、外链确认及取消。修复了 NeoForge `Screen.render()` 再次调用背景钩子导致正文被模糊的问题。
 - 尚未执行 Forge 游戏内视觉验证、窄窗口截图、资源包热重载或性能基准；编译通过不代表这些场景已验收。
+
+## 可信可视化混排桥接
+
+新增 `RichMarkdownContent` 可将 Markdown 段落与宿主显式构造的视觉节点组合为一个 `RichTextView` 的 Snapshot。表格采用带列标题的记录行，不是网格；权限和作用域不变，Markdown 不自动创建图像/控件/renderer。见 [混合文档第一阶段](VISUAL_MARKDOWN_INTEGRATION.md)。

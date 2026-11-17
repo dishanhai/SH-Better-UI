@@ -37,6 +37,11 @@ public final class UiRichText {
 
     private UiRichText() {}
 
+    /** Reserved insertion marker for already-parsed passive text; preserved through native bidi/line splitting. */
+    private static final String LITERAL_MARKER = "shbui:literal_text";
+    public static Style literalStyle(Style style) { return Objects.requireNonNull(style).withInsertion(LITERAL_MARKER); }
+    public static boolean isLiteral(Style style) { return LITERAL_MARKER.equals(style.getInsertion()); }
+
     public static Component parse(String text) {
         return prepare(UiTextEffects.parse(Objects.requireNonNull(text, "text")));
     }
@@ -52,6 +57,7 @@ public final class UiRichText {
         var result = Component.empty();
         boolean[] changed = {false};
         text.visit((style, raw) -> {
+            if (isLiteral(style)) { result.append(Component.literal(raw).setStyle(style)); return Optional.empty(); }
             var matcher = TAG.matcher(raw);
             int start = 0;
             while (matcher.find()) {
@@ -158,6 +164,7 @@ public final class UiRichText {
             Style style = input.get(from).style();
             int to = from + 1;
             while (to < input.size() && style.equals(input.get(to).style())) to++;
+            if (isLiteral(style)) { output.addAll(input.subList(from, to)); from = to; continue; }
             var raw = new StringBuilder();
             for (int i = from; i < to; i++) raw.appendCodePoint(input.get(i).cp());
             var matcher = TAG.matcher(raw);

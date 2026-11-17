@@ -2,6 +2,8 @@
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.visual.RichTextExtensions;
+import com.dishanhai.sh_better_ui.client.visual.RichMarkdownContent;
+import com.dishanhai.sh_better_ui.client.visual.RichTextComponents;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument;
@@ -26,7 +28,8 @@ final class TrustedRichTooltipDemo {
     private static final int[] COLORS = {0xffd28c65, 0xffb8c8da, 0xffe4c05b};
 
     private TrustedRichTooltipDemo() {}
-    static RichDocument document() {
+    static RichDocument document() { return snapshot().document(); }
+    static RichTextComponents.Snapshot snapshot() {
         var doc = RichText.document(id("document"));
         doc.text("蒸汽锅炉 · 可信富提示示例", TITLE).paragraph(6)
                 .text("本页为演示数据，不代表游戏配方。", RichStyle.EMPTY).paragraph(6)
@@ -46,7 +49,16 @@ final class TrustedRichTooltipDemo {
                 .paragraph(8).extension(RULE, 1, 320, 1, 1, "分隔线", "").paragraph(6)
                 .text("物品与流体使用本地原生图标；图表由宿主显式注册。")
                 .paragraph(4).text("Markdown 表格见返回后的 Markdown 示例。滚轮或 Page Up / Page Down 滚动。");
-        return doc.build();
+        return RichMarkdownContent.builder(id("mixed"))
+                .markdown("# 可视化 × Markdown\n**同一份文档**里的文字、图标、图表与本机动画。\n> 示例数据，不代表真实配方。")
+                .node(new com.dishanhai.sh_better_ui.kernel.api.richtext.RichObjectNode(id("frames"),
+                        new RichObjectNode.Frames(java.util.List.of(UiId.parse("minecraft:textures/item/diamond.png"),
+                                UiId.parse("minecraft:textures/item/emerald.png")), 800), 24, 24, 24,
+                        "本机动画示例：钻石和绿宝石；减少动效时保持首帧"))
+                .markdown("本机帧动画由宿主显式创建，Markdown 不加载图片。")
+                .document(doc.build())
+                .markdown("## 阅读说明\n- **滚动**查看全部内容\n- 图标和图表保留替代文字\n\n| 能力 | 接入方式 |\n| --- | --- |\n| Markdown | 被动解析 |\n| 可视化节点 | 可信 Java 显式构造 |\n\n`<rich:item=minecraft:diamond>` 不从 Markdown 自动变成对象。")
+                .build();
     }
     private static RichObjectNode item(String name, String item, String alt) {
         return new RichObjectNode(id(name), new RichObjectNode.Item(UiId.parse("minecraft:" + item), 1), 16, 16, 16, alt);
