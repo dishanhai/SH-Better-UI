@@ -22,6 +22,25 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 /** 山海：界面构建快照、重布局和离开页面的资源生命周期。 */
 class UiScreenTest {
+    @Test void segmentedSelectionCancelsOnEscapeAndStillSupportsRepeatedMouseCommits() {
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        var control = new com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl(
+                new Bounds(4,4,180,28), Component.literal("Source"),
+                java.util.List.of(Component.literal("First"),Component.literal("Second")),0,
+                com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT,i->count.incrementAndGet(),()->{});
+        var screen = new UiScreenBuilder(Component.empty()).backButton(false)
+                .onInit(page->page.addClipped(control,()->new Bounds(0,0,200,100))).build();
+        screen.width=200;screen.height=100;screen.init();
+        assertTrue(screen.mouseClicked(140,16,0));assertTrue(control.isArmed());
+        assertTrue(screen.keyPressed(256,0,0));assertFalse(control.isArmed());
+        screen.mouseReleased(140,16,0);assertEquals(0,control.selectedIndex());assertEquals(0,count.get());
+        assertTrue(screen.mouseClicked(140,16,0));screen.mouseReleased(140,16,0);
+        assertEquals(1,control.selectedIndex());assertEquals(1,count.get());
+        assertTrue(screen.mouseClicked(40,16,0));screen.mouseReleased(40,16,0);
+        assertEquals(0,control.selectedIndex());assertEquals(2,count.get());
+        screen.removed();
+    }
+
     @Test void lyricsFollowOverlayWinsHitsWithoutShrinkingFortyTwoPixelViewport() {
         var area=new Bounds(12,84,180,42);
         var prefs=com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT;

@@ -12,11 +12,12 @@ class OnlineMusicQueueViewTest {
     private static final OnlineTrack B = new OnlineTrack("qq", "2", "2", "Second", "Artist", "", 1000);
     private static class Fixture {
         OnlineTrack playing;
+        List<String> providers=List.of("netease","qq");
         int paused,closed;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
-            case "sources" -> List.of("netease", "qq");
+            case "sources" -> providers;
             case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
             case "snapshot" -> new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
@@ -88,6 +89,52 @@ class OnlineMusicQueueViewTest {
         assertFalse(nav.isArmed());assertFalse(title.isArmed());
         assertFalse(f.view.permitsScreenClose());
         assertFalse(nav.keyReleased(32,0,0));assertFalse(title.keyReleased(32,0,0));
+    }
+
+    @Test void providerSegmentsFollowRealProvidersAndCancelOldSearchWithoutChangingAccounts() throws Exception {
+        var f=new Fixture();f.providers=List.of("netease","qq","custom");var host=new Host();host.width=392;host.height=269;f.view.layout(host);
+        var selector=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl)field(f.view,"sourceSegments");
+        assertEquals(3,selector.choiceCount());
+        var pending=new java.util.concurrent.CompletableFuture<List<OnlineTrack>>();
+        var pendingField=f.view.getClass().getDeclaredField("pending");pendingField.setAccessible(true);pendingField.set(f.view,pending);
+        ((java.util.function.IntConsumer)field(selector,"onChange")).accept(1);
+        assertTrue(pending.isCancelled());assertEquals("qq",field(f.view,"source"));assertEquals("netease",field(f.view,"accountSource"));assertEquals(1,selector.selectedIndex());assertSame(selector,host.screen.getFocused());
+        selector.setFocused(true);assertTrue(selector.keyPressed(262,0,0));assertTrue(selector.isArmed());
+        call(f.view,"enterImmersive",new Class<?>[0]);assertFalse(selector.visible);assertFalse(selector.isArmed());
+    }
+    @Test void sameTitleReplacementCancelsAnArmedSearchRow() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);
+        results.set(f.view,List.of(A));call(f.view,"updateRows",new Class<?>[0]);
+        var row=(MusicTextControl)((List<?>)field(f.view,"resultRows")).get(0);row.setFocused(true);assertTrue(row.keyPressed(32,0,0));
+        var like=(MusicTextControl)((List<?>)field(f.view,"searchLikes")).get(0);like.active=true;like.setFocused(true);assertTrue(like.keyPressed(32,0,0));
+        var unlike=(MusicTextControl)((List<?>)field(f.view,"searchUnlikes")).get(0);unlike.active=true;unlike.setFocused(true);assertTrue(unlike.keyPressed(32,0,0));
+        results.set(f.view,List.of(new OnlineTrack("qq","other","other",A.title(),"Different Artist","",1000)));
+        call(f.view,"updateRows",new Class<?>[0]);assertFalse(row.isArmed());assertFalse(row.keyReleased(32,0,0));assertFalse(like.isArmed());assertFalse(unlike.isArmed());assertFalse(like.keyReleased(32,0,0));assertFalse(unlike.keyReleased(32,0,0));assertNull(f.playing);
+    }
+
+    @Test void initialSearchStatusDoesNotRepeatTheSameInstructionAsDetail() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var status=(com.dishanhai.sh_better_ui.kernel.api.music.status.MusicStatusView)field(f.view,"searchStatus");
+        assertEquals(net.minecraft.network.chat.Component.empty(),field(status,"detail"));
+        var narration=status.narration().getString();
+        assertEquals(narration.indexOf("search_hint"),narration.lastIndexOf("search_hint"));
+    }
+
+    @Test void successfulResultsClearBusyTooltipAndQueueEmptyHasFocusableNarration() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var state=f.view.getClass().getDeclaredField("searchState");state.setAccessible(true);state.set(f.view,"searching");
+        var pending=f.view.getClass().getDeclaredField("pending");pending.setAccessible(true);pending.set(f.view,new java.util.concurrent.CompletableFuture<>());
+        call(f.view,"updateRows",new Class<?>[0]);
+        var search=(MusicTextControl)field(f.view,"searchButton");
+        assertTrue(((net.minecraft.network.chat.Component)field(search.getTooltip(),"message")).getString().contains("searching"));
+        pending.set(f.view,null);var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);results.set(f.view,List.of(A));
+        call(f.view,"updateRows",new Class<?>[0]);
+        assertEquals("sh_better_ui.online_music.search",((net.minecraft.network.chat.Component)field(search.getTooltip(),"message")).getString());
+        queuePage(f.view);var nav=(MusicTextControl)((List<?>)field(f.view,"navigation")).get(3);
+        assertTrue(nav.visible);assertTrue(nav.active);
+        assertTrue(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
+        call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A),0);
+        assertFalse(((net.minecraft.network.chat.Component)field(nav,"secondary")).getString().contains("queue.empty_hint"));
     }
 
     @Test void compactResultsQueueAndMiniExposeRealArtistMetadata() throws Exception {

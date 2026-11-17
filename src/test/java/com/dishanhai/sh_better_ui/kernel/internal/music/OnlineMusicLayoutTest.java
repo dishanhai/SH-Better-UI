@@ -8,7 +8,7 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class OnlineMusicLayoutTest {
     @Test void responsivePagesKeepNavigationResultsAndPlaybackInsideTheViewport() {
-        for (int width : new int[]{208, 260, 359, 360, 559, 560, 640, 960}) for (int height : new int[]{240, 263, 264, 300, 319, 320, 339, 340, 360, 540}) {
+        for (int width : new int[]{208, 260, 392, 359, 360, 559, 560, 640, 960}) for (int height : new int[]{240, 269, 263, 264, 300, 319, 320, 339, 340, 360, 540}) {
             var frame = new Bounds(19, 31, width, height); var page = OnlineMusicLayout.of(frame);
             assertTrue(page.supported());
             for (var region : new Bounds[]{page.navigation(), page.header(), page.content(), page.transport(), page.pager()}) contains(frame, region);
@@ -41,6 +41,15 @@ class OnlineMusicLayoutTest {
         }
         assertFalse(OnlineMusicLayout.of(new Bounds(0, 0, 359, 540)).expanded());
         assertFalse(OnlineMusicLayout.of(new Bounds(0, 0, 960, 339)).expanded());
+    }
+    @Test void providerAndQueryRowsNeverOverlapOrConsumeTheLastResult() {
+        for(var size:new int[][]{{208,240},{392,269},{590,406},{960,540}}) {
+            var p=OnlineMusicLayout.of(new Bounds(0,0,size[0],size[1]));
+            contains(p.header(),p.sourceBar());contains(p.header(),p.searchBar());
+            assertTrue(p.sourceBar().bottom()<p.searchBar().y());
+            assertTrue(p.searchBar().width()>=192);assertFalse(p.rows().isEmpty());
+            assertTrue(p.rows().get(0).bottom()<p.pager().y());
+        }
     }
     private static void contains(Bounds outer, Bounds inner) {
         assertTrue(inner.width() > 0 && inner.height() > 0);
