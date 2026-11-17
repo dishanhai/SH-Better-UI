@@ -195,12 +195,12 @@ public final class UiTextEffects {
     }
 
     private static Component normalize(Component component, boolean requireEffect) {
-        boolean hasCode = component.visit((style, text) -> !LegacyTextParser.hasMarkup(text, requireEffect)
+        boolean hasCode = component.visit((style, text) -> (UiRichText.isLiteral(style) || !LegacyTextParser.hasMarkup(text, requireEffect))
                 ? Optional.empty() : Optional.of(Boolean.TRUE), Style.EMPTY).isPresent();
         if (!hasCode) return component;
         MutableComponent normalized = Component.empty();
         component.visit((style, text) -> {
-            Component parsed = LegacyTextParser.parse(text, style, requireEffect);
+            Component parsed = UiRichText.isLiteral(style) ? null : LegacyTextParser.parse(text, style, requireEffect);
             normalized.append(parsed == null ? Component.literal(text).setStyle(style) : parsed);
             return Optional.empty();
         }, Style.EMPTY);
