@@ -350,6 +350,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         output = outputs.get();
         output.volume(volume);
         output.start(audio, target, playing);
+        if (queue.attachedGeneration == generation && queueTask == null) queue.watch();
         feed.clear();
     }
     @Override public synchronized Snapshot snapshot() {
@@ -411,14 +412,19 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         if (current == State.FAILED) { cancelQueueProgress(); return; }
         if (current != State.ENDED) return;
         cancelQueueProgress();
-        if (queue.index >= 0 && queue.index + 1 < queue.tracks.size()) queue.select(queue.index + 1);
+        int next = queue.order.next(true);
+        if (next >= 0) queue.playIndex(next);
     }
 
     private final class PlayerQueue implements OnlineMusicQueue {
         private List<OnlineTrack> tracks = List.of(), undoTracks;
         private int index = -1, undoIndex;
+        private final PlaybackOrder order = new PlaybackOrder();
+        private long attachedGeneration = -1, undoGeneration;
+        private PlaybackOrder.Saved undoOrder;
         @Override public Snapshot snapshot() {
-            synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null); }
+            synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null, order.mode(),
+                    order.canPrevious(), order.canNext()); }
         }
         @Override public void replace(List<OnlineTrack> next, int selected) {
             synchronized (OnlinePlayerSession.this) {
@@ -429,6 +435,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 // Start before committing the collection so a rejected selection preserves it.
                 play(copy.get(selected));
                 tracks = copy; index = selected; undoTracks = null;
+                order.reset(tracks.size(), index); attachedGeneration = generation;
                 watch();
             }
         }
@@ -436,35 +443,50 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= tracks.size()) return;
-                play(tracks.get(selected)); index = selected; watch();
+                order.reset(tracks.size(), selected); playIndex(selected);
             }
         }
+        @Override public Mode mode() { synchronized (OnlinePlayerSession.this) { return order.mode(); } }
+        @Override public void mode(Mode mode) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen(); order.mode(Objects.requireNonNull(mode));
+                cancelQueueProgress();
+                if (attachedGeneration == generation && index >= 0
+                        && OnlinePlayerSession.this.snapshot().state() != State.ENDED) watch();
+            }
+        }
+        private void playIndex(int selected) {
+            play(tracks.get(selected)); index = selected; attachedGeneration = generation; watch();
+        }
         private void watch() {
-            if (index + 1 < tracks.size()) {
+            if (attachedGeneration == generation && index >= 0) {
                 long request = generation, watch = queueWatch;
                 queueTask = queueWorker.scheduleWithFixedDelay(() -> advanceQueue(request, watch), 50, 50, TimeUnit.MILLISECONDS);
             }
         }
         @Override public void next() {
-            synchronized (OnlinePlayerSession.this) { requireOpen(); if (index >= 0) select(index + 1); }
+            synchronized (OnlinePlayerSession.this) { requireOpen(); int next = order.next(false); if (next >= 0) playIndex(next); }
         }
         @Override public void previous() {
-            synchronized (OnlinePlayerSession.this) { requireOpen(); if (index > 0) select(index - 1); }
+            synchronized (OnlinePlayerSession.this) { requireOpen(); int previous = order.previous(); if (previous >= 0) playIndex(previous); }
         }
-        private void remember() { undoTracks = tracks; undoIndex = index; }
+        private void remember() {
+            undoTracks = tracks; undoIndex = index; undoGeneration = generation; undoOrder = order.save();
+        }
         @Override public void remove(int selected) {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= tracks.size()) return;
                 remember(); var copy = new ArrayList<>(tracks); copy.remove(selected); tracks = List.copyOf(copy);
-                if (selected == index) { index = -1; cancelQueueProgress(); }
+                if (selected == index) { index = -1; attachedGeneration = -1; cancelQueueProgress(); }
                 else if (selected < index) index--;
+                order.reset(tracks.size(), index);
             }
         }
         @Override public void clear() {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen(); if (tracks.isEmpty()) return;
-                remember(); tracks = List.of(); index = -1; cancelQueueProgress();
+                remember(); tracks = List.of(); index = -1; order.reset(0, -1); attachedGeneration = -1; cancelQueueProgress();
             }
         }
         @Override public void undo() {
@@ -474,6 +496,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 var selected = index >= 0 ? tracks.get(index) : null;
                 tracks = undoTracks; index = selected == null ? undoIndex : tracks.indexOf(selected);
                 undoTracks = null;
+                if (generation == undoGeneration) {
+                    index = undoIndex;
+                    if (order.mode() == undoOrder.mode()) order.restore(undoOrder);
+                    else order.reset(tracks.size(), index);
+                } else order.reset(tracks.size(), index);
                 cancelQueueProgress();
                 // Keep an attached queue running; restoring a detached one never restarts it.
                 if (advancing) watch();
@@ -498,7 +525,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             workers.shutdownNow();
             loginWorker.shutdownNow();
             queueWorker.shutdownNow();
-            queue.tracks = List.of(); queue.undoTracks = null; queue.index = -1;
+            queue.tracks = List.of(); queue.undoTracks = null; queue.index = -1; queue.order.reset(0, -1);
             for (var provider : sources.values()) {
                 try { provider.credentials(""); } catch (UnsupportedOperationException ignored) { }
             }
