@@ -54,6 +54,9 @@ gradle.projectsEvaluated {
                 if (required.any { zip.getEntry(it) == null })
                     throw new GradleException('Baseline is missing NeoForge mod metadata, manifest, or UUK controls.')
                 def entries = java.util.Collections.list(zip.entries())
+                def fileNames = entries.findAll { !it.directory }.collect { it.name }
+                if (fileNames.size() != fileNames.toSet().size())
+                    throw new GradleException('Baseline contains duplicate file entries.')
                 if (entries.find { entry ->
                     def name = entry.name.toUpperCase(java.util.Locale.ROOT)
                     name.startsWith('META-INF/') && (name.endsWith('.SF') || name.endsWith('.RSA') ||
@@ -62,6 +65,9 @@ gradle.projectsEvaluated {
                 def descriptor = zip.getInputStream(zip.getEntry('META-INF/neoforge.mods.toml')).getText('UTF-8')
                 if (!descriptor.contains('sh_better_ui') || !descriptor.contains('26.1.2'))
                     throw new GradleException('Baseline is not an identified SH-Better-UI NeoForge 26.1.2 mod JAR.')
+                def modVersion = descriptor =~ /(?m)^\s*version\s*=\s*"([^"]+)"/
+                if (!modVersion.find() || modVersion.group(1) != target.version.toString())
+                    throw new GradleException('Baseline version must match the current SH-Better-UI project version.')
                 def manifest = manifestFile.get().asFile
                 manifest.parentFile.mkdirs()
                 manifest.bytes = zip.getInputStream(zip.getEntry('META-INF/MANIFEST.MF')).bytes
@@ -84,7 +90,7 @@ gradle.projectsEvaluated {
         dependsOn(test, validate)
         archiveFileName = "sh_better_ui-neoforge-26.1.2-${target.version}-world-overlay.jar"
         destinationDirectory = target.layout.buildDirectory.dir('world-overlay-compat')
-        duplicatesStrategy = DuplicatesStrategy.FAIL
+        duplicatesStrategy = DuplicatesStrategy.EXCLUDE
         manifest.from(manifestFile)
         from({ target.zipTree(baseline.get()) }) {
             exclude('META-INF/MANIFEST.MF', auditPath, apiPath + '.class', apiPath + '$*.class')
@@ -93,8 +99,9 @@ gradle.projectsEvaluated {
         from(metadataFile) { into('META-INF'); rename { 'sh_better_ui.world-overlay.properties' } }
         doLast {
             // Refuse an archive if packaging altered or dropped any non-API baseline file.
-            new java.util.zip.ZipFile(baseline.get()).withCloseable { oldZip ->
-                new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { newZip ->
+            try {
+                new java.util.zip.ZipFile(baseline.get()).withCloseable { oldZip ->
+                    new java.util.zip.ZipFile(archiveFile.get().asFile).withCloseable { newZip ->
                     java.util.Collections.list(oldZip.entries()).findAll { !it.directory }.each { entry ->
                         def name = entry.name
                         if (name == auditPath || name == apiPath + '.class' ||
@@ -106,7 +113,11 @@ gradle.projectsEvaluated {
                     }
                     if (newZip.getEntry(apiPath + '.class') == null || newZip.getEntry(auditPath) == null)
                         throw new GradleException('Compatibility JAR is missing the API or baseline audit metadata.')
+                    }
                 }
+            } catch (Exception failure) {
+                java.nio.file.Files.deleteIfExists(archiveFile.get().asFile.toPath())
+                throw failure
             }
         }
     }

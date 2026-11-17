@@ -1,0 +1,103 @@
+// Author: dishanhai
+// Adds only the new settings controls to an explicit, verified NeoForge 26 baseline.
+gradle.projectsEvaluated {
+    def project = gradle.rootProject
+    def root = project.projectDir.name == 'SH-Better-UI' ? project.projectDir : project.projectDir.parentFile
+    def modern = project.findProperty('minecraft_version').toString() == '26.1.2'
+    if (!modern) throw new GradleException('This compatibility task is only for NeoForge 26.1.2. Build other platforms normally, including Forge reobfuscation.')
+    def baseline = project.providers.gradleProperty('artisanControlsBaseline').map { project.file(it) }
+    def apiNames = [
+        'com/dishanhai/sh_better_ui/kernel/api/layout/SettingsPanelLayout',
+        'com/dishanhai/sh_better_ui/kernel/api/layout/RadialMenuLayout',
+        'com/dishanhai/sh_better_ui/kernel/api/controls/SwitchRowState',
+        'com/dishanhai/sh_better_ui/client/gui/scaled/UiSwitchRow']
+    def generated = { String name -> apiNames.any { name == it + '.class' || name.startsWith(it + '$') } }
+    def classes = project.layout.buildDirectory.dir('artisan-controls-compat/classes')
+    def tests = project.layout.buildDirectory.dir('artisan-controls-compat/test-classes')
+    def manifestFile = project.layout.buildDirectory.file('artisan-controls-compat/manifest.mf')
+    def metadata = project.layout.buildDirectory.file('artisan-controls-compat/sh_better_ui.artisan-controls.properties')
+    def auditPath = 'META-INF/sh_better_ui.artisan-controls.properties'
+    def validate = project.tasks.register('validateArtisanControlsBaseline') {
+        inputs.file(baseline)
+        outputs.files(manifestFile, metadata)
+        doLast {
+            if (!baseline.isPresent() || !baseline.get().isFile()) throw new GradleException('Set -PartisanControlsBaseline to the matching SHBUI JAR.')
+            new java.util.zip.ZipFile(baseline.get()).withCloseable { zip ->
+                def files = java.util.Collections.list(zip.entries()).findAll { !it.directory }.collect { it.name }
+                if (files.size() != files.toSet().size()) throw new GradleException('Duplicate baseline entries.')
+                if (files.any { it.toUpperCase(java.util.Locale.ROOT) ==~ /META-INF\/.*\.(SF|RSA|DSA|EC)/ })
+                    throw new GradleException('Signed baselines cannot be augmented.')
+                def descriptorName = modern || project.projectDir.name.startsWith('neoforge') ? 'META-INF/neoforge.mods.toml' : 'META-INF/mods.toml'
+                def descriptor = zip.getEntry(descriptorName)
+                if (descriptor == null) throw new GradleException('Baseline loader does not match this project.')
+                def text = zip.getInputStream(descriptor).getText('UTF-8')
+                if (!text.contains('sh_better_ui') || !text.contains(project.findProperty('minecraft_version').toString()))
+                    throw new GradleException('Baseline mod and Minecraft version must match.')
+                def manifest = zip.getEntry('META-INF/MANIFEST.MF')
+                if (manifest == null || zip.getEntry('com/dishanhai/sh_better_ui/client/gui/scaled/UiButton.class') == null)
+                    throw new GradleException('Baseline has no manifest or native controls.')
+                manifestFile.get().asFile.parentFile.mkdirs()
+                manifestFile.get().asFile.bytes = zip.getInputStream(manifest).bytes
+            }
+            def digest = java.security.MessageDigest.getInstance('SHA-256')
+            baseline.get().withInputStream { stream ->
+                byte[] buffer = new byte[8192]
+                int count
+                while ((count = stream.read(buffer)) != -1) digest.update(buffer, 0, count)
+            }
+            metadata.get().asFile.text = 'baseline.sha256=' + digest.digest().encodeHex().toString() + '\n'
+        }
+    }
+    def compile = project.tasks.register('compileArtisanControls', JavaCompile) {
+        dependsOn(validate)
+        source(apiNames.take(3).collect { new File(root, 'src/kernel/java/' + it + '.java') })
+        source(new File(root, (modern ? 'neoforge-26.1.2/src/main/java/' : 'src/main/java/') + apiNames.last() + '.java'))
+        classpath = project.sourceSets.main.compileClasspath + project.files(baseline)
+        destinationDirectory = classes
+        javaCompiler = project.javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(modern ? 25 : 21) }
+        options.release = modern ? 25 : 17
+        options.encoding = 'UTF-8'
+    }
+    def compileTests = project.tasks.register('compileArtisanControlsTest', JavaCompile) {
+        dependsOn(compile)
+        source(new File(root, 'src/kernelTest/java/com/dishanhai/sh_better_ui/kernel/api/layout/SettingsControlsTest.java'))
+        classpath = project.files(classes)
+        destinationDirectory = tests
+        javaCompiler = project.javaToolchains.compilerFor { languageVersion = JavaLanguageVersion.of(modern ? 25 : 21) }
+        options.release = modern ? 25 : 17
+    }
+    def verify = project.tasks.register('artisanControlsTest', JavaExec) {
+        dependsOn(compileTests)
+        classpath = project.files(classes, tests)
+        mainClass = 'com.dishanhai.sh_better_ui.kernel.api.layout.SettingsControlsTest'
+        javaLauncher = project.javaToolchains.launcherFor { languageVersion = JavaLanguageVersion.of(modern ? 25 : 21) }
+    }
+    project.tasks.register('artisanControlsCompatibilityJar', Jar) {
+        dependsOn(verify)
+        archiveFileName = "sh_better_ui-${project.findProperty('minecraft_version')}-${project.version}-artisan-controls.jar"
+        destinationDirectory = project.layout.buildDirectory.dir('artisan-controls-compat')
+        duplicatesStrategy = DuplicatesStrategy.FAIL
+        manifest.from(manifestFile)
+        from({ project.zipTree(baseline.get()) }) { exclude { it.path == 'META-INF/MANIFEST.MF' || it.path == auditPath || generated(it.path) } }
+        from(classes)
+        from(metadata) { into('META-INF') }
+        doLast {
+            def output = archiveFile.get().asFile
+            try {
+                new java.util.zip.ZipFile(baseline.get()).withCloseable { oldZip ->
+                    new java.util.zip.ZipFile(output).withCloseable { newZip ->
+                        java.util.Collections.list(oldZip.entries()).findAll { !it.directory }.each { entry ->
+                            if (entry.name == auditPath || generated(entry.name)) return
+                            def copy = newZip.getEntry(entry.name)
+                            if (copy == null || !java.util.Arrays.equals(oldZip.getInputStream(entry).bytes, newZip.getInputStream(copy).bytes))
+                                throw new GradleException('Unrelated baseline content changed: ' + entry.name)
+                        }
+                        apiNames.each { if (newZip.getEntry(it + '.class') == null) throw new GradleException('Missing API: ' + it) }
+                    }
+                }
+            } catch (Exception error) {
+                java.nio.file.Files.deleteIfExists(output.toPath()); throw error
+            }
+        }
+    }
+}
