@@ -287,6 +287,7 @@ public final class ClientUiKernel {
                     if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();
+                    if (liveActivities != null) liveActivities.invalidateArtwork();
                     if (liveActivities != null) liveActivities.settings(LiveSurfaceConfig.load(
                             Minecraft.getInstance().gameDirectory.toPath().resolve("config")));
                 });
