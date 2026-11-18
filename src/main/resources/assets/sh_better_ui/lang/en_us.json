@@ -24,7 +24,7 @@
   "sh_better_ui.online_music.library.empty": "No songs or playlists",
   "sh_better_ui.online_music.library.results": "Page %s · results %s–%s",
   "sh_better_ui.online_music.library.failed": "Request failed. Please retry.",
-  "sh_better_ui.online_music.library.sign_in": "Sign in to this music service to view your playlists and liked songs.",
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source",
   "sh_better_ui.online_music.library.login_required": "This music service requires authorization. Sign in again.",
   "sh_better_ui.online_music.library.updating": "Updating liked songs…",
   "sh_better_ui.online_music.library.updated": "Liked songs updated",
@@ -2636,5 +2636,9 @@
   "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings.",
   "sh_better_ui.online_music.view.library": "Library",
   "sh_better_ui.online_music.refresh.library": "Your library",
-  "sh_better_ui.online_music.library.sign_in": "Sign in to this source"
+  "sh_better_ui.panel.developer.gallery.sample.glass_confirmation": "Glass confirmation",
+  "sh_better_ui.glass_confirmation.launch": "Open glass confirmation",
+  "sh_better_ui.glass_confirmation.title": "Confirm demonstration",
+  "sh_better_ui.glass_confirmation.details": "This is a demonstration only. Confirming changes no files or account data. Escape or Cancel returns without confirming. Use Page Up, Page Down, or the scroll wheel to read the full message.",
+  "sh_better_ui.glass_confirmation.status": "Confirmed: %s · Background clicks: %s"
 }

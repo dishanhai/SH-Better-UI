@@ -17,6 +17,7 @@ def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
         'client/gui/scaled/UiNavigationRail.java',
+        'client/gui/scaled/ConfirmationChoice.java',
         'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
         'client/gui/scaled/UiPagination.java',
@@ -138,6 +139,7 @@ def sharedSources = [
         'client/gui/scaled/UiStyle.java',
         'client/gui/scaled/UiTextField.java',
         'client/gui/scaled/UiTabSelection.java',
+        'client/gui/scaled/ConfirmationGlassStyle.java',
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
         'client/gui/search/PinyinSearch.java',
@@ -188,6 +190,8 @@ kotlin.sourceSets.main.kotlin {
 sourceSets.test {
     java {
         srcDir('../src/test/java')
+        include("${packagePath}/client/gui/scaled/ConfirmationChoiceTest.java")
+        include("${packagePath}/client/gui/scaled/NativeConfirmationInputTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
@@ -221,6 +225,7 @@ sourceSets.test {
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
+        include("${packagePath}/client/gui/scaled/ConfirmationGlassStyleTest.java")
         include("${packagePath}/kernel/api/music/**")
     }
     compileClasspath += sourceSets.main.compileClasspath
@@ -345,6 +350,7 @@ tasks.register('verifyLibraryJar') {
                     'assets/sh_better_ui/shaders/core/gallery_spatial_reveal.fsh',
                     "${packagePath}/client/gui/display/GraphicIcon.class",
                     "${packagePath}/client/gui/scaled/UiButton.class",
+                    "${packagePath}/client/gui/scaled/UiConfirmation.class",
                     "${packagePath}/client/gui/scaled/UiHoldButton.class",
                     "${packagePath}/kernel/api/input/HoldGesture.class",
                     "${packagePath}/client/gui/scaled/UiCenteredMenu.class",

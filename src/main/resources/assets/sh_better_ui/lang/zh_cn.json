@@ -24,7 +24,7 @@
   "sh_better_ui.online_music.library.empty": "暂无歌曲或歌单",
   "sh_better_ui.online_music.library.results": "第 %s 页 · 第 %s–%s 项",
   "sh_better_ui.online_music.library.failed": "请求失败，请重试。",
-  "sh_better_ui.online_music.library.sign_in": "登录此音乐平台后，即可查看你的歌单和喜欢的歌曲。",
+  "sh_better_ui.online_music.library.sign_in": "登录此音乐平台",
   "sh_better_ui.online_music.library.login_required": "此音乐平台需要重新授权，请重新登录。",
   "sh_better_ui.online_music.library.updating": "正在更新喜欢的歌曲…",
   "sh_better_ui.online_music.library.updated": "喜欢的歌曲已更新",
@@ -2636,5 +2636,9 @@
   "sh_better_ui.custom_font.small": "请减小 GUI 缩放以显示字体设置。",
   "sh_better_ui.online_music.view.library": "音乐库",
   "sh_better_ui.online_music.refresh.library": "我的音乐库",
-  "sh_better_ui.online_music.library.sign_in": "登录此音乐平台"
+  "sh_better_ui.panel.developer.gallery.sample.glass_confirmation": "玻璃确认弹窗",
+  "sh_better_ui.glass_confirmation.launch": "打开玻璃确认弹窗",
+  "sh_better_ui.glass_confirmation.title": "确认演示操作",
+  "sh_better_ui.glass_confirmation.details": "这只是演示，不会修改文件或账号数据。按 Escape 或取消可返回而不确认。使用 Page Up、Page Down 或滚轮阅读完整内容。",
+  "sh_better_ui.glass_confirmation.status": "已确认：%s · 背景点击：%s"
 }

@@ -1058,6 +1058,7 @@ public final class DeveloperGalleryScreen extends Screen {
         FUSE_BUTTON("fuse_button", GraphicIcon.ARCHIVE, GalleryFuseButtonSample::new),
         SWIPE_ROW(SwipeRowDemo.ID, GraphicIcon.ARCHIVE, GallerySwipeRowSample::new),
         SEARCH("search", GraphicIcon.SEARCH),
+        GLASS_CONFIRMATION("glass_confirmation", GraphicIcon.WARNING, GalleryGlassConfirmationSample::new),
         DIALOG("dialog", GraphicIcon.WARNING),
         LIQUID_BUTTON("liquid_button", GraphicIcon.CUSTOM_THEME),
         DARK_BUTTON("dark_button", GraphicIcon.MONITOR),
@@ -1148,7 +1149,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
+                case GLASS_CONFIRMATION, PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
                 case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
                         STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
                         DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
@@ -1184,7 +1185,7 @@ public final class DeveloperGalleryScreen extends Screen {
                 case LOADING_PROGRESS, ASCII_FIELD -> 20;
                 case LOADING_SKELETON, SHAPE_WAVES -> 21;
                 case SEARCH, VISUAL_REVEAL -> 22;
-                case DIALOG -> 23;
+                case DIALOG, GLASS_CONFIRMATION -> 23;
                 case TOAST -> 24;
                 case LOCAL_MODAL -> 25;
                 case LIVE_ACTIVITY -> 26;
