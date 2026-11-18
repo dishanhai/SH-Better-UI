@@ -1769,5 +1769,21 @@
   "sh_better_ui.custom_font.small": "请减小 GUI 缩放以显示字体设置。",
   "sh_better_ui.online_music.view.library": "音樂庫",
   "sh_better_ui.online_music.refresh.library": "我的音樂庫",
-  "sh_better_ui.online_music.library.sign_in": "登入此音樂平台"
+  "sh_better_ui.online_music.library.sign_in": "登入此音樂平台",
+  "sh_better_ui.native.markdown.title": "Markdown 文件",
+  "sh_better_ui.native.markdown.next_link": "下一連結",
+  "sh_better_ui.native.markdown.copy": "複製 Markdown",
+  "sh_better_ui.live.dismiss": "隱藏活動",
+  "sh_better_ui.live.open_details": "開啟即時活動",
+  "sh_better_ui.native.rich_document.refresh": "重新整理文件",
+  "sh_better_ui.native.rich_document.copy": "複製文字",
+  "sh_better_ui.native.rich_document.title": "結構化文件",
+  "sh_better_ui.native.rich_document.example_text": "資源圖片與樣式文字：",
+  "sh_better_ui.native.music_settings.title": "音樂動態島設定",
+  "sh_better_ui.native.music_settings.description": "音樂島預設關閉，僅在有可用播放狀態時顯示。",
+  "sh_better_ui.native.music_settings.island": "音樂島：%s",
+  "sh_better_ui.native.music_settings.notices": "工作提示：%s",
+  "sh_better_ui.native.music_settings.notice_hint": "工作提示需啟用音樂島，並遵循全域通知設定。",
+  "sh_better_ui.native.music_settings.player": "開啟音樂播放器",
+  "sh_better_ui.native.music_settings.activity": "管理即時活動"
 }
