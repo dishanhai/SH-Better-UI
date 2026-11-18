@@ -3,6 +3,8 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.dishanhai.sh_better_ui.config.ThemeOverrides;
+import com.dishanhai.sh_better_ui.config.ThemePaletteArchive;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
 import org.jspecify.annotations.Nullable;
 
@@ -19,7 +21,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
                                    boolean backgroundBlur, boolean widgetBlur, boolean glassEnabled,
                                    int glassBlur, int glassRefraction, int glassRim) {
     public static final int MAX_GLASS_SCALE = 200;
-    public static final ControlPanelSettings DEFAULT = new ControlPanelSettings(ThemeSettings.DEFAULT,
+    public static final ControlPanelSettings DEFAULT = new ControlPanelSettings(ThemeSettings.DEFAULT.withBackgroundEffect("nativeBackdrop"),
             false, false, true, true, true, 100, 100, 100);
     private static final System.Logger LOGGER = System.getLogger(ControlPanelSettings.class.getName());
     private static volatile ControlPanelSettings settings = DEFAULT;
@@ -69,7 +71,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
         try (var input = Files.newInputStream(file)) {
             var properties = new Properties();
             properties.load(input);
-            var theme = ThemeSettings.DEFAULT.withMode(mode(properties.getProperty("theme")));
+            var theme = readTheme(properties);
             settings = new ControlPanelSettings(theme, flag(properties, "highContrast", DEFAULT.highContrast),
                     flag(properties, "reducedMotion", DEFAULT.reducedMotion),
                     flag(properties, "backgroundBlur", DEFAULT.backgroundBlur),
@@ -92,7 +94,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
             Files.createDirectories(directory);
             temporary = Files.createTempFile(directory, "control-panel", ".properties.tmp");
             var properties = new Properties();
-            properties.setProperty("theme", draft.theme.mode().name());
+            writeTheme(properties, draft.theme);
             properties.setProperty("highContrast", Boolean.toString(draft.highContrast));
             properties.setProperty("reducedMotion", Boolean.toString(draft.reducedMotion));
             properties.setProperty("backgroundBlur", Boolean.toString(draft.backgroundBlur));
@@ -125,6 +127,38 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
         }
     }
 
+    /** Mode-only older 26.x files continue to inherit all absent fields. Dormant legacy data is retained. */
+    static ThemeSettings readTheme(Properties properties) {
+        var defaults = DEFAULT.theme().withMode(mode(properties.getProperty("theme")));
+        try {
+            return new ThemeSettings(defaults.mode(), ThemeSettings.Base.valueOf(properties.getProperty("theme.base", defaults.customBase().name())),
+                    properties.getProperty("theme.background", defaults.background()), properties.getProperty("theme.surface", defaults.surface()),
+                    properties.getProperty("theme.border", defaults.border()), properties.getProperty("theme.text", defaults.text()),
+                    properties.getProperty("theme.accent", defaults.accent()),
+                    new ThemeOverrides(properties.getProperty("theme.effects", "{}")),
+                    properties.getProperty("theme.backgroundEffect", defaults.backgroundEffect()),
+                    properties.getProperty("theme.hudBackgroundEffect", defaults.hudBackgroundEffect()),
+                    Integer.parseInt(properties.getProperty("theme.hudBlurRadius", defaults.hudBlurRadius().toString())),
+                    properties.getProperty("theme.registeredThemeId", ""),
+                    new ThemePaletteArchive(properties.getProperty("theme.paletteArchive", "{}")));
+        } catch (IllegalArgumentException invalid) {
+            LOGGER.log(System.Logger.Level.WARNING, "Invalid saved theme; preserving other client options and using the selected mode defaults.", invalid);
+            return defaults;
+        }
+    }
+    static void writeTheme(Properties properties, ThemeSettings theme) {
+        properties.setProperty("theme", theme.mode().name());
+        properties.setProperty("theme.base", theme.customBase().name());
+        properties.setProperty("theme.background", theme.background()); properties.setProperty("theme.surface", theme.surface());
+        properties.setProperty("theme.border", theme.border()); properties.setProperty("theme.text", theme.text());
+        properties.setProperty("theme.accent", theme.accent()); properties.setProperty("theme.effects", theme.effects().json());
+        properties.setProperty("theme.backgroundEffect", theme.backgroundEffect());
+        properties.setProperty("theme.hudBackgroundEffect", theme.hudBackgroundEffect());
+        properties.setProperty("theme.hudBlurRadius", theme.hudBlurRadius().toString());
+        properties.setProperty("theme.registeredThemeId", theme.registeredThemeId());
+        properties.setProperty("theme.paletteArchive", theme.paletteArchive().json());
+    }
+
     private static boolean flag(Properties properties, String key, boolean fallback) {
         String value = properties.getProperty(key);
         if ("true".equalsIgnoreCase(value)) return true;
@@ -148,7 +182,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
     private static ThemeSettings.Mode mode(@Nullable String value) {
         if (value != null) {
             for (var choice : ThemeSettings.Mode.values()) {
-                if (choice != ThemeSettings.Mode.CUSTOM && choice.name().equals(value)) return choice;
+                if (choice.name().equals(value)) return choice;
             }
         }
         return ThemeSettings.DEFAULT.mode();

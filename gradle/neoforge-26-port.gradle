@@ -229,6 +229,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
+        include("${packagePath}/client/gui/panel/NativeAppearanceScreenTest.java")
+        include("${packagePath}/client/gui/scaled/NativeAppearanceBackgroundTest.java")
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
         include("${packagePath}/client/gui/panel/ShredderDemoTest.java")
