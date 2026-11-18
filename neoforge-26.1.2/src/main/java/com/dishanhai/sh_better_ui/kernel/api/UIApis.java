@@ -22,6 +22,10 @@ public final class UIApis {
     public static final CapabilityKey NATIVE_HUD = new CapabilityKey(HUD.id());
     public static final ServiceKey<ComputerStatusService> COMPUTER_STATUS = ComputerStatusService.KEY;
     public static final CapabilityKey COMPUTER_STATUS_READ = ComputerStatusService.CAPABILITY;
+    public static final ServiceKey<AccessibilityService> ACCESSIBILITY = key("accessibility",AccessibilityService.class);
+    public static final CapabilityKey MINECRAFT_NARRATION = new CapabilityKey(new UiId("sh_better_ui","minecraft_narration"));
+    /** Capability identifier only; no native system screen reader provider is registered. */
+    public static final CapabilityKey SYSTEM_SCREEN_READER = new CapabilityKey(new UiId("sh_better_ui","system_screen_reader"));
     public static final ServiceKey<AnimationService> ANIMATION = key("animation", AnimationService.class);
     public static final CapabilityKey SCOPED_ANIMATION = new CapabilityKey(ANIMATION.id());
     public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.dock.CollapseService> COLLAPSE =
