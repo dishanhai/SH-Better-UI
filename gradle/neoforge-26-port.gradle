@@ -23,6 +23,7 @@ def sharedSources = [
         'client/gui/scaled/MusicOverlayLayout.java',
         'client/gui/scaled/MusicIslandTaskAdapter.java',
         'client/gui/scaled/UiNavigationRail.java',
+        'client/gui/scaled/ConfirmationChoice.java',
         'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
         'client/gui/scaled/UiPagination.java',
@@ -148,6 +149,7 @@ def sharedSources = [
         'client/gui/scaled/UiStyle.java',
         'client/gui/scaled/UiTextField.java',
         'client/gui/scaled/UiTabSelection.java',
+        'client/gui/scaled/ConfirmationGlassStyle.java',
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
         'client/gui/scaled/GlassControls.java',
@@ -218,6 +220,8 @@ sourceSets.test {
         srcDir('../src/test/java')
         include("${packagePath}/client/font/Native*.java")
         include("${packagePath}/client/font/LocalFontPackTest.java")
+        include("${packagePath}/client/gui/scaled/ConfirmationChoiceTest.java")
+        include("${packagePath}/client/gui/scaled/NativeConfirmationInputTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
@@ -284,6 +288,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/GlassTextInkTest.java")
         include("${packagePath}/client/gui/scaled/RubberSegmentInputTest.java")
         include("${packagePath}/client/gui/scaled/NativeGlassControlsLifecycleTest.java")
+        include("${packagePath}/client/gui/scaled/ConfirmationGlassStyleTest.java")
         include("${packagePath}/client/api/MarkdownApiTest.java")
         include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")
         include("${packagePath}/kernel/api/music/**")
@@ -435,6 +440,7 @@ tasks.register('verifyLibraryJar') {
                     'assets/sh_better_ui/shaders/core/gallery_spatial_reveal.fsh',
                     "${packagePath}/client/gui/display/GraphicIcon.class",
                     "${packagePath}/client/gui/scaled/UiButton.class",
+                    "${packagePath}/client/gui/scaled/UiConfirmation.class",
                     "${packagePath}/client/gui/scaled/UiHoldButton.class",
                     "${packagePath}/kernel/api/input/HoldGesture.class",
                     "${packagePath}/client/gui/scaled/UiCenteredMenu.class",

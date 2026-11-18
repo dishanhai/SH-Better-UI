@@ -518,6 +518,12 @@ enum DeveloperSamples {
                         || super.keyPressed(key, scan, modifiers);
             }
             """),
+    GLASS_CONFIRMATION("glass_confirmation", 24, 40, GlassConfirmationPreview::new, """
+            ShBetterUiApi.interactions().confirmGlass(parent,
+                    new UiConfirmation.Prompt(title, details, confirmLabel, cancelLabel),
+                    preferences, this::drawInertContext, () -> currentTriggerButton, this::confirmOnce);
+            // Context is drawing only. Query a fresh trigger after the parent rebuilds.
+            """),
     DIALOG("dialog", 23, () -> ControlPreviewScenes::dialog, DeveloperPanelScreen.DIALOG_CODE),
     TOAST("toast", 24, 64, ControlPreviewScenes.Toast::new, DeveloperPanelScreen.TOAST_CODE),
     MUSIC_HUD("music_hud", MATERIALS, 13, MusicHudGalleryPreview.HEIGHT, 0, MusicHudGalleryPreview::new, """
