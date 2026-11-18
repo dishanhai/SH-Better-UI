@@ -107,6 +107,11 @@ public final class ControlsApi {
     }
 
     /** Card navigation. Bounds reserve the open viewport; forward outside clicks to pointerDown(). */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard mediaCard(Bounds area,
+            Component title, Component subtitle, UiPreferences preferences, Runnable onActivate) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard(area, title, subtitle, preferences, onActivate);
+    }
+
     public UiCardNav cardNav(
             Font font, Bounds area, Component name,
             CardNavControl.Link logo, List<CardNavControl.Item> items,
