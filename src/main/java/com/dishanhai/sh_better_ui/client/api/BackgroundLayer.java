@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.client.api;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiMouseState;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.GuiStateGuard;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.resources.ResourceLocation;
@@ -25,6 +26,19 @@ public final class BackgroundLayer implements AutoCloseable {
 
     public void draw(String id, GuiGraphics graphics, Font font, Bounds area, UiMouseState mouse,
                      double x, double y, long now, UiPreferences preferences) {
+        graphics.flush();
+        GuiStateGuard.draw(() -> {
+            try {
+                drawIsolated(id, graphics, font, area, mouse, x, y, now, preferences);
+            } finally {
+                // Submit queued image/solid fallback vertices before restoring their target and textures.
+                graphics.flush();
+            }
+        });
+    }
+
+    private void drawIsolated(String id, GuiGraphics graphics, Font font, Bounds area, UiMouseState mouse,
+                              double x, double y, long now, UiPreferences preferences) {
         var spec = preferences.highContrast() || area.width() <= 0 || area.height() <= 0
                 ? null : registry.find(id).orElse(null);
         if (spec != active) {
