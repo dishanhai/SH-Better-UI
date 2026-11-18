@@ -467,8 +467,17 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void moveQueueRow(int slot, int direction) {
         int from = queueFirst + slot;
-        if (boundQueueFirst == queueFirst && boundQueueTracks.equals(queue.tracks())) queue.move(from, from + direction);
+        int to = from + direction;
+        if (boundQueueFirst != queueFirst || !boundQueueTracks.equals(queue.tracks()) || to < 0 || to >= queue.tracks().size()) {
+            updateQueueRows(); return;
+        }
+        queue.move(from, to);
+        if (to < queueFirst) queueFirst = to;
+        else if (to >= queueFirst + visibleRows) queueFirst = to - visibleRows + 1;
         updateQueueRows(); updateScrollRegions();
+        int targetSlot = to - queueFirst;
+        var target = (direction < 0 ? queueUps : queueDowns).get(targetSlot);
+        host.screen().setFocused(target.active ? target : queueRows.get(targetSlot));
     }
     private void updateQueueRows() {
         if (queuePrevious == null) return;

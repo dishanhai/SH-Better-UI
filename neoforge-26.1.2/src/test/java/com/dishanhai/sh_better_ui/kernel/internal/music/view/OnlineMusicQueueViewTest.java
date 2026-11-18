@@ -87,11 +87,12 @@ class OnlineMusicQueueViewTest {
     }
     @Test void editableQueueControlsDelegateWithoutInterruptingPlaybackAndUndo() throws Exception {
         var queue = new EditableQueue(); var f = new Fixture(queue); f.playing = A;
-        f.view.layout(new Host()); queuePage(f.view);
+        var host = new Host(); f.view.layout(host); queuePage(f.view);
         var up = (MusicTextControl)((List<?>)field(f.view,"queueUps")).get(0);
         var down = (MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
         assertFalse(up.active); assertTrue(down.active); down.onPress();
         assertEquals(List.of(B,A),queue.tracks); assertEquals(1,queue.moves);
+        assertSame(((List<?>)field(f.view,"queueRows")).get(1),host.screen.getFocused());
         ((MusicTextControl)field(f.view,"queueUndo")).onPress(); assertEquals(List.of(A,B),queue.tracks);
         var append = (MusicTextControl)field(f.view,"queueAppend"); assertTrue(append.active); append.onPress();
         assertEquals(List.of(A,B,A),queue.tracks); assertEquals(1,queue.appends);
@@ -112,6 +113,17 @@ class OnlineMusicQueueViewTest {
             }
             assertFalse(((MusicTextControl)field(f.view,"queueAppend")).active);
         }
+    }
+    @Test void movingAcrossViewportKeepsTheMovedEntryVisibleAndFocused() throws Exception {
+        var queue=new EditableQueue(); queue.tracks=java.util.stream.IntStream.range(0,30)
+                .mapToObj(i->new OnlineTrack("qq",""+i,""+i,"Song "+i,"Artist","",1000)).toList();
+        var f=new Fixture(queue);var host=new Host();host.width=360;host.height=340;f.view.layout(host);queuePage(f.view);
+        var downs=(List<?>)field(f.view,"queueDowns");int last=downs.size()-1;var moved=queue.tracks.get(last);
+        ((MusicTextControl)downs.get(last)).onPress();
+        assertEquals(1,field(f.view,"queueFirst"));assertEquals(moved,queue.tracks.get(last+1));
+        assertSame(downs.get(last),host.screen.getFocused());
+        ((MusicTextControl)downs.get(last)).onPress();assertEquals(moved,queue.tracks.get(last+2));
+        assertEquals(2,field(f.view,"queueFirst"));assertEquals(2,queue.moves);
     }
     @Test void changingVisibleQueueCancelsArmedEditControls() throws Exception {
         var queue=new EditableQueue(); var f=new Fixture(queue);f.view.layout(new Host());queuePage(f.view);

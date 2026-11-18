@@ -20,7 +20,8 @@ has advanced, undo maps entry positions back to the pre-edit queue, not song
 value equality. If an appended entry is currently playing and undo removes it,
 audio continues but the queue detaches rather than attaching a different equal song.
 
-This is a backend API increment, not new queue drag/drop or add-to-queue UI.
+PR #60 introduces the backend API; the follow-up controls are described below.
+Drag-and-drop is not included.
 Validation uses deterministic device/provider doubles and checks all three
 supported loaders. It does not establish live account access or real audio-device
 playback. PR #47's session cache and #48's mode UI remain separate work.
@@ -38,6 +39,7 @@ disabled. Existing undo applies to these edits. Unsupported legacy queues retain
 the prior layout without nonfunctional editing controls.
 
 The controls support keyboard activation and named narration/tooltips, cancel
-armed interactions when the visible queue changes, and hide in the immersive
+armed interactions when the visible queue changes, keep keyboard focus on the
+moved entry (scrolling it into view when needed), and hide in the immersive
 player. This slice does not add drag-and-drop, search-result multi-selection,
 queue persistence, or real-account/device validation.
