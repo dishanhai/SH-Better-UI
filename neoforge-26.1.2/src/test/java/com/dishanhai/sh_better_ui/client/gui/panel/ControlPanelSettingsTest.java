@@ -116,11 +116,42 @@ final class ControlPanelSettingsTest {
 
         ControlPanelSettings.load(config);
         var loaded = ControlPanelSettings.current();
-        assertEquals(ThemeSettings.DEFAULT, loaded.theme());
+        assertEquals(ControlPanelSettings.DEFAULT.theme(), loaded.theme());
         assertFalse(loaded.backgroundBlur());
         assertTrue(loaded.widgetBlur());
         assertEquals(100, loaded.glassBlur());
         assertEquals(110, loaded.glassRefraction());
+    }
+
+    @Test void completeThemeRoundTripsWithoutDroppingDormantLegacyFields() {
+        var archive = com.dishanhai.sh_better_ui.config.ThemePaletteArchive.EMPTY.with("example:legacy",
+                new com.dishanhai.sh_better_ui.config.ThemePaletteArchive.Palette(ThemeSettings.Base.LIGHT,
+                        "#112233", "#223344", "#334455", "#445566", "#556677"));
+        var theme = new ThemeSettings(ThemeSettings.Mode.CUSTOM, ThemeSettings.Base.LIGHT,
+                "#123456", "#234567", "#345678", "#456789", "#56789a",
+                new com.dishanhai.sh_better_ui.config.ThemeOverrides("{\"legacyEffect\":{\"strength\":0.6}}"),
+                "example:unmigrated", "legacyHudEffect", 7, "example:legacy", archive);
+        var draft = ControlPanelSettings.DEFAULT.withTheme(theme).withDisplay(true,true,false).withGlass(false,true,80,120,60);
+        ControlPanelSettings.load(config); assertTrue(ControlPanelSettings.save(draft));
+        ControlPanelSettings.load(config); assertEquals(draft,ControlPanelSettings.current());
+        assertEquals("example:unmigrated",ControlPanelSettings.current().theme().backgroundEffect());
+    }
+
+    @Test void oldModeOnlyCustomFilesLoadWithoutDiscardingTheirMode() throws IOException {
+        Files.createDirectory(config.resolve("sh_better_ui"));
+        Files.writeString(config.resolve("sh_better_ui/control-panel.properties"),"theme=CUSTOM\nreducedMotion=true\n");
+        ControlPanelSettings.load(config);
+        assertEquals(ControlPanelSettings.DEFAULT.theme().withMode(ThemeSettings.Mode.CUSTOM),ControlPanelSettings.current().theme());
+        assertTrue(ControlPanelSettings.current().reducedMotion());
+    }
+
+    @Test void malformedThemeDoesNotResetUnrelatedClientOptions() throws IOException {
+        Files.createDirectory(config.resolve("sh_better_ui"));
+        Files.writeString(config.resolve("sh_better_ui/control-panel.properties"),
+                "theme=CUSTOM\ntheme.accent=invalid\nreducedMotion=true\nbackgroundBlur=false\n");
+        ControlPanelSettings.load(config);
+        assertEquals(ControlPanelSettings.DEFAULT.theme().withMode(ThemeSettings.Mode.CUSTOM),ControlPanelSettings.current().theme());
+        assertTrue(ControlPanelSettings.current().reducedMotion()); assertFalse(ControlPanelSettings.current().backgroundBlur());
     }
 
     @Test
@@ -128,7 +159,10 @@ final class ControlPanelSettingsTest {
         Files.writeString(config.resolve("sh_better_ui"), "");
         ControlPanelSettings.load(config);
         var initial = ControlPanelSettings.current();
-        assertFalse(ControlPanelSettings.save(initial.withDisplay(true, true, false)
+        var changedTheme = initial.theme().withMode(ThemeSettings.Mode.CUSTOM)
+                .withPalette(ThemeSettings.Base.LIGHT, "#123456", "#234567", "#345678", "#456789", "#56789a")
+                .withBackgroundEffect("nativeGradient");
+        assertFalse(ControlPanelSettings.save(initial.withDisplay(true, true, false).withTheme(changedTheme)
                 .withFeedback(new ControlFeedbackSettings(false, false, false, 850))));
         assertEquals(initial, ControlPanelSettings.current());
     }

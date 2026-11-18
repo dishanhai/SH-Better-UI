@@ -24,6 +24,22 @@ class PlayerQueueTest {
         return new OnlineMusicPlayer.Snapshot(A,state,0,1000,OnlineMusicPlayer.LyricsState.EMPTY,
                 LyricTimeline.empty(),OnlineMusicPlayer.Failure.NONE,false);
     }
+    @Test void editingDelegatesOnlyWhenTheBackendAdvertisesSupport() {
+        var plays = new ArrayList<OnlineTrack>(); var calls = new ArrayList<String>();
+        var supported = new boolean[]{true};
+        OnlineMusicQueue persistent = (OnlineMusicQueue) Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{OnlineMusicQueue.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("supportsEditing")) return supported[0];
+                    calls.add(method.getName()); return null;
+                });
+        var queue = new PlayerQueue(player(persistent, plays));
+        assertTrue(queue.supportsEditing()); queue.append(A); queue.move(0, 1);
+        assertEquals(List.of("append", "move"), calls); assertTrue(plays.isEmpty());
+        supported[0] = false; queue.append(B); queue.move(1, 0);
+        assertFalse(queue.supportsEditing()); assertEquals(2, calls.size());
+        var legacy = new PlayerQueue(player(null, plays));
+        assertFalse(legacy.supportsEditing()); legacy.append(A); legacy.move(0,1); assertTrue(plays.isEmpty());
+    }
     @Test void legacyPlayerKeepsLocalQueueAndSuspensionSemantics() {
         var plays = new ArrayList<OnlineTrack>(); var queue = new PlayerQueue(player(null, plays));
         queue.replace(List.of(A,B),0); assertEquals(List.of(A),plays);
