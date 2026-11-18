@@ -17,7 +17,7 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import java.util.*;
 
-/** Screen-scoped native windows. Persistent layout uses module-owned config storage; HUD and composited materials are not advertised. */
+/** Screen-scoped native windows. Persistent layout uses module-owned config storage; HUD materials are not advertised. */
 final class ClientDockWindows implements WindowService, DockService {
     private final KernelHost host;
     private final ClientScreens screens;
@@ -44,8 +44,6 @@ final class ClientDockWindows implements WindowService, DockService {
         access.require(UIPermission.CAPTURE_INPUT, owned);
         access.require(UIPermission.BLOCK_VANILLA_INPUT, owned);
         if (!spec.id().namespace().equals(module.descriptor().id().namespace())) throw new SecurityException("Window ID must belong to module");
-        if (spec.glass() != null)
-            throw new UnsupportedOperationException("Native Screen windows support plain surfaces; glass compositing is not migrated");
         if (windows.containsKey(spec.id())) throw new IllegalArgumentException("Duplicate window ID");
         if (windows.size() >= 128) throw new IllegalStateException("Window limit reached");
         if (spec.persistent()) access.require(UIPermission.MODIFY_GLOBAL_CONFIG, owned);
@@ -109,6 +107,11 @@ final class ClientDockWindows implements WindowService, DockService {
         long now = host.nowNanos();
         updateHover(mouseX,mouseY,now);
         var context = new Canvas(graphics, screen.width, screen.height, Minecraft.getInstance().getWindow().getGuiScale(), partialTick);
+        var preferences = UiPreferences.configured();
+        var settings = com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelSettings.current();
+        // Establish one shared snapshot before ANY Dock surface, title or content is submitted.
+        boolean prepared = prepareGlass(preferences, settings.glassEnabled(),
+                () -> com.dishanhai.sh_better_ui.client.blur.BackdropCapture.request(graphics) != null);
         long paintStart = System.nanoTime();
         try {
             for (var entry : presented.entries().entrySet()) {
@@ -116,22 +119,68 @@ final class ClientDockWindows implements WindowService, DockService {
                 if (window == null || !geometry.visible()) continue;
                 window.geometry = geometry;
                 var b = geometry.bounds();
-                context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)(b.y()+b.height()),0xf0222530);
-                context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)Math.min(b.y()+20,b.y()+b.height()),window == focused ? 0xff536c97 : 0xff333d50);
+                var material = window.spec.glass();
+                context.ink = material == null ? null : foreground(material);
+                int ink = foreground(material);
+                if (material == null) {
+                    context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)(b.y()+b.height()),0xf0222530);
+                    context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)Math.min(b.y()+20,b.y()+b.height()),window == focused ? 0xff536c97 : 0xff333d50);
+                } else {
+                    int plate = material.foreground().fallbackArgb();
+                    boolean optical = prepared && optical(material, preferences, settings.glassEnabled())
+                            && com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface.drawPrepared(graphics,
+                            (int)b.x(),(int)b.y(),(int)b.width(),(int)b.height(),8,
+                            (plate & 0xffffff) | 0x40000000,0,settings.optics(material.optics()),preferences,1);
+                    // A bounded scrim protects the declared ink even over an unknown bright/dark scene.
+                    com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners.draw(graphics,
+                            (int)b.x(),(int)b.y(),(int)b.width(),(int)b.height(),8,1,
+                            window == focused || preferences.highContrast() ? ink : (ink & 0xffffff) | 0x80000000,
+                            optical ? (plate & 0xffffff) | 0xc0000000 : plate);
+                }
                 if(!drawCompactIndicator(window.id(),context,now,UiPreferences.configured(),!Minecraft.getInstance().isWindowActive())) {
                     context.clip((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)(b.y()+b.height()),()->
-                        graphics.text(Minecraft.getInstance().font, net.minecraft.locale.Language.getInstance().getVisualOrder(Minecraft.getInstance().font.substrByWidth(window.spec.title(), Math.max(0,(int)b.width()-42))),(int)b.x()+5,(int)b.y()+6,0xffffffff,false));
+                        graphics.text(Minecraft.getInstance().font, titleText(window.spec.title(), Math.max(0,(int)b.width()-42), material),(int)b.x()+5,(int)b.y()+6,ink,false));
                 }
                 if (window.progress > .98f) {
-                    context.text(Component.literal("×"),(int)(b.x()+b.width())-14,(int)b.y()+6,0xffffffff);
+                    context.text(Component.literal("×"),(int)(b.x()+b.width())-14,(int)b.y()+6,ink);
                     var body = window.body();
                     context.clip((int)body.x(),(int)body.y(),(int)(body.x()+body.width()),(int)(body.y()+body.height()), () -> window.content().render(context,window.view()));
                     // Visible diagonal grip establishes the resize affordance.
-                    context.fill((int)(b.x()+b.width())-9,(int)(b.y()+b.height())-3,(int)(b.x()+b.width())-2,(int)(b.y()+b.height())-2,0xffaab6cc);
-                    context.fill((int)(b.x()+b.width())-5,(int)(b.y()+b.height())-6,(int)(b.x()+b.width())-2,(int)(b.y()+b.height())-5,0xffaab6cc);
+                    context.fill((int)(b.x()+b.width())-9,(int)(b.y()+b.height())-3,(int)(b.x()+b.width())-2,(int)(b.y()+b.height())-2,material == null ? 0xffaab6cc : ink);
+                    context.fill((int)(b.x()+b.width())-5,(int)(b.y()+b.height())-6,(int)(b.x()+b.width())-2,(int)(b.y()+b.height())-5,material == null ? 0xffaab6cc : ink);
                 }
             }
         } finally { context.open = false; paintNanos = System.nanoTime()-paintStart; }
+    }
+
+    static net.minecraft.util.FormattedCharSequence inkText(Component text, int ink) {
+        return inkText(text.getVisualOrderText(), ink);
+    }
+    static net.minecraft.util.FormattedCharSequence titleText(Component title, int width,
+            com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial material) {
+        var sequence = net.minecraft.locale.Language.getInstance().getVisualOrder(
+                Minecraft.getInstance().font.substrByWidth(title, width));
+        return material == null ? sequence : inkText(sequence, foreground(material));
+    }
+    static net.minecraft.util.FormattedCharSequence inkText(net.minecraft.util.FormattedCharSequence sequence, int ink) {
+        return sink -> sequence.accept((index, style, codePoint) -> sink.accept(index, style.withColor(ink), codePoint));
+    }
+    static int foreground(com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial material) {
+        return material == null ? 0xffffffff : material.foreground().argb();
+    }
+    static boolean optical(com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial material,
+                           UiPreferences preferences, boolean enabled) {
+        return material != null && enabled && !preferences.highContrast() && preferences.useBackdropBlur()
+                && material.quality() != com.dishanhai.sh_better_ui.kernel.api.glass.GlassQuality.FALLBACK
+                && material.optics().transmission() > 0;
+    }
+    boolean prepareGlass(UiPreferences preferences, boolean enabled, java.util.function.BooleanSupplier request) {
+        for (var entry : presented.entries().entrySet()) {
+            var window = windows.get(entry.getKey());
+            if (window != null && entry.getValue().visible() && optical(window.spec.glass(), preferences, enabled))
+                return request.getAsBoolean();
+        }
+        return false;
     }
 
     /** Input coordinates and painted geometry are identical. The caller cancels native propagation when true. */
@@ -348,7 +397,7 @@ final class ClientDockWindows implements WindowService, DockService {
         }
         WindowContent content() { if (content==null) content=Objects.requireNonNull(spec.content().get()); return content; }
         Rect body() { var b=geometry.bounds(); return new Rect(b.x()+2,b.y()+20,Math.max(0,b.width()-4),Math.max(0,b.height()-22),Space.GUI); }
-        WindowContent.View view() { return new WindowContent.View(body(),progress,this==focused,0xffffffff); }
+        WindowContent.View view() { return new WindowContent.View(body(),progress,this==focused,foreground(spec.glass())); }
         @Override public void expand() { target(true); }
         @Override public void collapse() { target(false); }
         @Override public void toggle() { target(!expanded); }
@@ -372,12 +421,14 @@ final class ClientDockWindows implements WindowService, DockService {
     }
 
     private static final class Canvas implements RenderService.Context {
-        final GuiGraphicsExtractor graphics; final RenderService.Frame frame; final Thread thread=Thread.currentThread(); boolean open=true;
+        final GuiGraphicsExtractor graphics; final RenderService.Frame frame; final Thread thread=Thread.currentThread(); boolean open=true; Integer ink;
         Canvas(GuiGraphicsExtractor graphics,int width,int height,double scale,float tick) { this.graphics=graphics; frame=new RenderService.Frame(RenderService.Surface.SCREEN,width,height,scale,tick); }
         void check(){if(!open || Thread.currentThread()!=thread)throw new IllegalStateException("Expired dock drawing context");}
         @Override public RenderService.Frame frame(){check();return frame;}
         @Override public void fill(int x,int y,int r,int b,int argb){check();graphics.fill(x,y,r,b,argb);}
-        @Override public void text(Component text,int x,int y,int argb){check();graphics.text(Minecraft.getInstance().font,text,x,y,argb,false);}
+        @Override public void text(Component text,int x,int y,int argb){check();
+            if(ink == null) graphics.text(Minecraft.getInstance().font,text,x,y,argb,false);
+            else graphics.text(Minecraft.getInstance().font, inkText(text,ink),x,y,ink,false);}
         @Override public void clip(int x,int y,int r,int b,Runnable draw){check();graphics.enableScissor(x,y,r,b);try{draw.run();}finally{graphics.disableScissor();}}
         @Override public void transform(double x,double y,float scale,Runnable draw){check();graphics.pose().pushMatrix();try{graphics.pose().translate((float)x,(float)y).scale(scale);draw.run();}finally{graphics.pose().popMatrix();}}
     }
