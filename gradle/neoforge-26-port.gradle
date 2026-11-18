@@ -135,6 +135,7 @@ def sharedSources = [
         'client/gui/scaled/SpringTable.java',
         'client/gui/scaled/TabScrollState.java',
         'client/gui/scaled/ThemeButtonStyle.java',
+        'client/gui/scaled/DisplaySuiteButtonPaint.java',
         'client/gui/scaled/UiAttention.java',
         'client/gui/scaled/UiLatticeLoader.java',
         'client/gui/scaled/UiBranchedMenu.java',
@@ -233,6 +234,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
         include("${packagePath}/client/gui/panel/NativeAppearanceScreenTest.java")
+        include("${packagePath}/theme/DisplayStyleSuitesTest.java")
+        include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
         include("${packagePath}/client/gui/scaled/NativeAppearanceBackgroundTest.java")
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")

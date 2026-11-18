@@ -108,6 +108,85 @@ class NativeAppearanceScreenTest {
             assertFalse(((java.util.List<?>) renderables.get(screen)).contains(segment));
         }
     }
+    @Test void suitesRestoreTheirOwnOverridesAndPersistWithoutChangingOtherSettings() throws Exception {
+        ControlPanelSettings.load(directory);
+        var suites=com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS;
+        try(var client=NativeTestClient.install()) {
+            var screen=new NativeAppearanceScreen(null);client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            press(screen,"suite:"+suites.get(0));
+            assertEquals(suites.get(0),screen.draft.value().registeredThemeId());
+            screen.draft.color(4,"#123456");
+            screen.draft.suite(suites.get(1));assertEquals("",screen.draft.value().accent());
+            screen.draft.suite(suites.get(0));assertEquals("#123456",screen.draft.value().accent());
+            screen.init();press(screen,"apply");ControlPanelSettings.load(directory);
+            assertEquals(suites.get(0),ControlPanelSettings.current().theme().registeredThemeId());
+            assertEquals("#123456",ControlPanelSettings.current().theme().accent());
+            screen.draft.reset();screen.draft.undoReset();assertEquals(suites.get(0),screen.draft.value().registeredThemeId());
+        }
+    }
+    @Test void resetApplyPreservesOtherSuitesArchivedColors() {
+        ControlPanelSettings.load(directory);
+        var first=com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.PORCELAIN;
+        var second=com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.JADE;
+        var settings=ThemeSettings.DEFAULT.withRegisteredTheme(first)
+                .withPalette(ThemeSettings.Base.DARK,"","","","","#123456")
+                .withRegisteredTheme(second).withPalette(ThemeSettings.Base.DARK,"","","","","#ABCDEF");
+        var draft=new NativeAppearanceDraft(settings,settings);
+        draft.reset();
+        assertEquals(ThemeSettings.Mode.DARK,draft.value().mode());
+        assertEquals("",draft.value().accent());
+        assertTrue(ControlPanelSettings.save(ControlPanelSettings.current().withTheme(draft.value())));
+        ControlPanelSettings.load(directory);
+        var reopened=new NativeAppearanceDraft(ControlPanelSettings.current().theme(),ControlPanelSettings.current().theme());
+        reopened.suite(first);assertEquals("#123456",reopened.value().accent());
+        reopened.suite(second);assertEquals("",reopened.value().accent());
+    }
+    @Test void registeredSuiteResolvesActualNativePaletteAndCustomOverrides() {
+        for(String id:com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS) {
+            var settings=ThemeSettings.DEFAULT.withRegisteredTheme(id);
+            var palette=com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme.resolve(settings);
+            try(var manager=new com.dishanhai.sh_better_ui.theme.ThemeManager()) {
+                manager.preferences(manager.preferences().withReducedMotion(true).withFixedTheme(id));
+                assertEquals(manager.snapshot().resolve(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.ACCENT).argb(),palette.accent());
+                assertEquals(manager.snapshot().resolve(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.LIGHT),palette.light());
+            }
+            assertEquals(0xff123456,com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme.resolve(
+                    settings.withPalette(ThemeSettings.Base.DARK,"","","","","#123456")).accent());
+        }
+    }
+    @Test void fullPaletteArchiveKeepsDraftAndShowsCapacityInsteadOfCrashing() throws Exception {
+        ControlPanelSettings.load(directory);
+        var archive=com.dishanhai.sh_better_ui.config.ThemePaletteArchive.EMPTY;
+        var color=new com.dishanhai.sh_better_ui.config.ThemePaletteArchive.Palette(ThemeSettings.Base.DARK,"","","","","#123456");
+        for(int i=0;i<com.dishanhai.sh_better_ui.config.ThemePaletteArchive.MAX_PALETTES;i++)archive=archive.with("test:p"+i,color);
+        var initial=new ThemeSettings(ThemeSettings.Mode.CUSTOM,ThemeSettings.Base.DARK,"","","","","#ABCDEF",
+                ThemeSettings.DEFAULT.effects(),ThemeSettings.DEFAULT.backgroundEffect(),"",4,"",archive);
+        try(var client=NativeTestClient.install()) {
+            var screen=new NativeAppearanceScreen(null,initial,ignored->{});client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            assertDoesNotThrow(()->press(screen,"suite:"+com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.PORCELAIN));
+            assertEquals(initial,screen.draft.value());
+            assertTrue(field(screen,"status").toString().contains("palette_capacity"));
+        }
+    }
+    @Test void realPreviewInitializationMountsControlsAndOwnsOnlyChildScope() throws Exception {
+        ControlPanelSettings.load(directory);
+        var saved=ControlPanelSettings.current();
+        try(var client=NativeTestClient.install()) {
+            for(String id:com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS) {
+                var preview=new NativeAppearanceScreen.Preview(null,saved.theme().withRegisteredTheme(id));
+                client.client().screen=preview;preview.width=300;preview.height=200;
+                assertDoesNotThrow(()->{preview.init();});
+                var samples=(java.util.List<?>)field(preview,"samples");assertEquals(4,samples.size());
+                assertTrue(preview.children().stream().anyMatch(Button.class::isInstance));
+                var scope=(com.dishanhai.sh_better_ui.theme.ThemeScope)field(preview,"scope");
+                assertNotNull(scope.parent());
+                var selected=(com.dishanhai.sh_better_ui.client.gui.scaled.UiButton)samples.get(2);
+                selected.onPress(new KeyEvent(257,0,0));assertFalse(selected.isSelected());
+                assertEquals(saved,ControlPanelSettings.current());
+                preview.removed();assertNull(field(preview,"scope"));assertNull(field(preview,"manager"));
+            }
+        }
+    }
     private static void press(Object screen,String key)throws Exception{((Button)controls(screen).get(key)).onPress(new KeyEvent(257,0,0));}
     @SuppressWarnings("unchecked") private static Map<String,AbstractWidget> controls(Object screen)throws Exception{return (Map<String,AbstractWidget>)field(screen,"controls");}
     private static Object field(Object target,String name)throws Exception{var f=target.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(target);}

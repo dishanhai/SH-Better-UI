@@ -126,7 +126,10 @@ public final class UiButton extends Button {
 
     ThemeButtonStyle.Paint themePaint(DarkModeTheme.State state, boolean pressed) {
         var paint = hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
-                state.highContrast(), selected, state.hover(), state.press()) : null;
+                state.highContrast(), selected, state.hover(), state.press())
+                : DisplaySuiteButtonPaint.sample(com.dishanhai.sh_better_ui.config.ClientUiSettings.current().theme(),
+                        UiTheme.current(), style, UiTheme.isPreviewActive(), primary, selected, state.enabled(),
+                        state.highContrast(), state.hover(), state.press());
         return paint == null || cornerRadius < 0 ? paint : new ThemeButtonStyle.Paint(paint.fill(), paint.text(),
                 paint.border(), paint.focus(), paint.accent(), paint.background(), cornerRadius, paint.borderWidth(), paint.glass(), paint.backdrop());
     }
