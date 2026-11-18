@@ -114,9 +114,10 @@ across physical line boundaries.
 | Native 26.1.2 HUD and text entry points | Covered; actual game smoke passed |
 | High contrast and reduced motion | Existing accessibility policies preserved |
 | Pure FCS colorize/lines, gradient, lyrics and reveal | Mirrored on 26.x; reveal/lyric progress remains code-point based |
-| ShanhaiTextAPI exact same-name/signature compatibility | Not complete; SHBUI parse/applyNamed are semantic replacements |
-| Global speed/direction/time locks | Replaced with explicit frame time and Timing, not identical global API |
-| All concat overloads, format(input, defaultStyle), start/end color queries, GTL wrappers | Not fully ported |
+| ShanhaiTextAPI source facade | Added in the opt-in compatibility slice below; SHBUI namespace, not binary compatibility |
+| Speed/direction/time locks | Added for facade snapshots only; existing explicit frame-time API is unchanged |
+| Concat overloads, default-style format, start/end colors | Added in the compatibility facade; exact differences documented below |
+| External GTL wrappers | Not implemented without verified bundled dependency contracts |
 | Raw markup in already-shaped bare FCS | Intentionally not reparsed; parse before bidi shaping |
 | Duplicate registry IDs | Namespaced registration/cleanup; duplicate IDs throw rather than return old definition |
 | Unmarked text and unknown markup | Remain unchanged/literal, unlike GTSH implicit ultimate-color behavior |
@@ -124,3 +125,67 @@ across physical line boundaries.
 | KubeJS on 26.x | Bindings not established |
 | Third-party font engines | Not verified |
 | NeoForge 26.2 | Not accepted; separate API migration compile blockers described above |
+
+## Opt-in source API compatibility slice
+
+`com.dishanhai.sh_better_ui.client.gui.text.ShanhaiTextAPI` is an explicit,
+source-level facade. It is not installed under GTSH's original Java package and
+is not a drop-in binary mod replacement. Existing `UiTextEffects`,
+`UiFormattedText` and existing KubeJS bindings retain their current semantics.
+
+The facade distinguishes construction-time color snapshots from live FCS effect
+markers. Rebuild snapshot Components to animate them. Its speed/direction/time
+lock are confined to the facade, never the whole SHBUI renderer. `setSpeed(80)`
+restores the source adaptive/body timing policy rather than forcing an 80ms step.
+Custom RGB/ChatFormatting calls are discrete wall-clock snapshots and deliberately
+ignore that lock, speed and global direction. RGB `dir` remains an arbitrary
+palette stride, including zero. `resetCompatibilityState()` restores compatibility clock defaults.
+
+The compatibility surface includes named/body convenience methods, style fallback,
+both concat overloads, `format(input, defaultStyle)`, permissive inline tags,
+legacy section codes, custom snapshots, multiline snapshots, endpoint queries,
+gradient filler and reveal overloads. Unknown styles and unclosed inline tags
+follow the explicit compatibility facade's rules; the existing stricter parser
+is not changed. Native Component text is clean before layout instead of retaining
+hidden ampersand markup for a later mixin to strip.
+
+Deliberate corrections and limits:
+
+- Unicode code points replace upstream UTF-16 halves. This snapshot API does not
+  claim grapheme-count reveal semantics.
+- Multiline dash conversion (`——` to `----`) and empty-line space behavior remain,
+  but the total length is counted after conversion to keep phases consistent.
+- Single-code-point gradient filler uses the source midpoint with truncating RGB
+  interpolation; the existing modern gradient API is unchanged.
+- Legacy `§` parsing additionally preserves native bold/italic formatting rather
+  than reproducing upstream's color-only loss. Unknown section-code sequences
+  stay literal so malformed markup cannot split a supplementary character.
+- Explicit styled/reveal preference overloads honor accessibility. Source-signature
+  defaults remain pure construction with DEFAULT preferences; hosts must pass their
+  actual preferences when needed. The upstream global string-matching
+  tooltip centering side channel is not recreated; the host still owns alignment.
+- Live FCS/WOBBLE and randomized meta modes use SHBUI's engine, not GTSH's global
+  render-context caches or identical random registry/seed identity.
+- External GTLCore and GTLAdditions wrappers remain unimplemented: the exact
+  bundled GTLCore `1.2.3.2-fix4` and GTLAdditions contracts were not established.
+- This facade does not install new KubeJS 26.x, GuideMe or FTB integrations.
+
+### Compatibility-slice verification
+
+The facade covers 72 of the upstream API's 83 distinct public method names; the
+11 omitted names are the external GTLCore/GTLAdditions wrappers. Method-name
+coverage is not an overall migration completion percentage or exact binary parity.
+
+After cross-review, malformed `§` plus supplementary characters was corrected and
+regression-tested. The final tree then passed `test kernelTest verifyLibraryJar`:
+
+| Target | Tests | Skipped | Failures/errors | Kernel tests | Library verification |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Forge 1.20.1 | 1,872 | 5 | 0 | 541 passed | passed |
+| NeoForge 1.21.1 | 1,884 | 5 | 0 | 541 passed | passed |
+| NeoForge 26.1.2 | 831 | 5 | 0 | 541 passed | passed |
+
+This adds 19 tests per target over the native-renderer slice. Independent
+cross-review confirmed the Unicode correction and found no remaining blocking
+issues. The prior real-game smoke covers the renderer; this additional snapshot
+API slice was verified by the tests above, not a new visual screenshot run.
