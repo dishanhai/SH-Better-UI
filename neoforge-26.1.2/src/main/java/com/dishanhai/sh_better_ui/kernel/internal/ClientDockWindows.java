@@ -13,10 +13,11 @@ import net.minecraft.network.chat.Component;
 import org.lwjgl.glfw.GLFW;
 import java.util.*;
 
-/** Screen-scoped native windows. HUD, persistence and composited material surfaces are not advertised. */
+/** Screen-scoped native windows. Persistent layout uses module-owned config storage; HUD and composited materials are not advertised. */
 final class ClientDockWindows implements WindowService, DockService {
     private final KernelHost host;
     private final ClientScreens screens;
+    private final NativeDockPlacements placements = new NativeDockPlacements();
     private final LinkedHashMap<UiId, Window> windows = new LinkedHashMap<>();
     private Screen surface;
     private Window focused, captured;
@@ -39,11 +40,13 @@ final class ClientDockWindows implements WindowService, DockService {
         access.require(UIPermission.CAPTURE_INPUT, owned);
         access.require(UIPermission.BLOCK_VANILLA_INPUT, owned);
         if (!spec.id().namespace().equals(module.descriptor().id().namespace())) throw new SecurityException("Window ID must belong to module");
-        if (spec.persistent() || spec.glass() != null || spec.compactIndicator() != null || spec.animation().curve() == CollapseSpec.Curve.SPRING)
-            throw new UnsupportedOperationException("26.x first-stage windows support transient plain surfaces and timed collapse; persistence, glass, custom indicators and spring collapse are not migrated");
+        if (spec.glass() != null || spec.compactIndicator() != null || spec.animation().curve() == CollapseSpec.Curve.SPRING)
+            throw new UnsupportedOperationException("26.x first-stage windows support plain surfaces and timed collapse; glass, custom indicators and spring collapse are not migrated");
         if (windows.containsKey(spec.id())) throw new IllegalArgumentException("Duplicate window ID");
         if (windows.size() >= 128) throw new IllegalStateException("Window limit reached");
-        var window = new Window(module, owner, spec);
+        if (spec.persistent()) access.require(UIPermission.MODIFY_GLOBAL_CONFIG, owned);
+        var key = spec.persistent() ? placements.bind(module,spec.id(),initialPlacement(spec)) : null;
+        var window = new Window(module, owner, spec, key);
         windows.put(spec.id(), window);
         window.lifetime = host.onScopeClose(owned, window::close);
         return window;
@@ -59,6 +62,7 @@ final class ClientDockWindows implements WindowService, DockService {
         host.assertOwner();
         if (!(handle instanceof Window window) || windows.get(window.id()) != window) throw new IllegalArgumentException("Unknown window");
         window.placement = window.placement.withRequest(request);
+        window.save();
         return new DockResult(true, window.placement);
     }
     @Override public DockLayoutSnapshot layout() { host.assertOwner(); return presented; }
@@ -169,7 +173,7 @@ final class ClientDockWindows implements WindowService, DockService {
                         var rect = new Rect(placement.x(),placement.y(),placement.width(),placement.height(),Space.GUI);
                         DockLayout.snap(rect,presented.safeArea(),12).ifPresent(gesture.window::dock);
                     }
-                    gesture = null; return true; }
+                    var completed = gesture.window; gesture = null; completed.save(); return true; }
             }
             if (captured != null) {
                 var target = captured;
@@ -235,14 +239,24 @@ final class ClientDockWindows implements WindowService, DockService {
         }
     }
 
+    private static WindowPlacement initialPlacement(MiniWindowSpec spec) {
+        return WindowPlacement.docked(spec.anchor(),spec.autoHide()?DockMode.AUTO_HIDE:DockMode.PINNED,spec.width(),spec.height()).withGroup(spec.group());
+    }
+
     private final class Window implements MiniWindowHandle {
-        final ModuleContext module; final Screen owner; final MiniWindowSpec spec;
+        final ModuleContext module; final Screen owner; final MiniWindowSpec spec; final ConfigKey<WindowPlacement> stored;
         WindowPlacement placement; Subscription lifetime; WindowContent content; DockLayoutSnapshot.Entry geometry;
         boolean expanded, hovered, contentFocused; float progress, from; long changed, hoveredAt; int z;
-        Window(ModuleContext module,Screen owner,MiniWindowSpec spec) {
-            this.module=module; this.owner=owner; this.spec=spec; reset(); expanded=spec.animation().initiallyExpanded(); progress=expanded?1:0; from=progress; changed=host.nowNanos(); z=++ClientDockWindows.this.z;
+        Window(ModuleContext module,Screen owner,MiniWindowSpec spec,ConfigKey<WindowPlacement> stored) {
+            this.module=module; this.owner=owner; this.spec=spec; this.stored=stored; reset();
+            if(stored!=null){ var saved=NativeDockPlacements.read(module,stored); placement=saved.withSize(Math.clamp(saved.width(),spec.minWidth(),spec.maxWidth()),Math.clamp(saved.height(),spec.minHeight(),spec.maxHeight())).withGroup(spec.group()); }
+            expanded=spec.animation().initiallyExpanded(); progress=expanded?1:0; from=progress; changed=host.nowNanos(); z=++ClientDockWindows.this.z;
         }
-        void reset() { placement=WindowPlacement.docked(spec.anchor(),spec.autoHide()?DockMode.AUTO_HIDE:DockMode.PINNED,spec.width(),spec.height()).withGroup(spec.group()); }
+        void reset() { placement=initialPlacement(spec); }
+        void save() {
+            if(stored!=null && !(gesture!=null && gesture.window==this))
+                NativeDockPlacements.write(module,stored,placement);
+        }
         void check() { host.assertOwner(); if (!isOpen()) throw new IllegalStateException("Closed window"); }
         @Override public UiId id() { return spec.id(); }
         @Override public boolean isOpen() { return windows.get(id())==this; }
@@ -281,12 +295,12 @@ final class ClientDockWindows implements WindowService, DockService {
         @Override public void expand() { target(true); }
         @Override public void collapse() { target(false); }
         @Override public void toggle() { target(!expanded); }
-        @Override public void pin(boolean value) { check(); placement=placement.withPinned(value); if(value)expand(); }
-        @Override public void dock(DockEdge edge) { check(); placement=placement.withRequest(DockRequest.edge(edge,DockMode.AUTO_HIDE)); }
-        @Override public void floatAt(double x,double y) { check(); placement=placement.withRequest(DockRequest.floating(x,y)); }
-        @Override public void detach(double x,double y) { check(); placement=placement.withRequest(DockRequest.detached(x,y)); }
-        @Override public void resize(double width,double height) { check(); placement=placement.withSize(Math.clamp(width,spec.minWidth(),spec.maxWidth()),Math.clamp(height,spec.minHeight(),spec.maxHeight())); }
-        @Override public void resetPlacement() { check(); reset(); }
+        @Override public void pin(boolean value) { check(); placement=placement.withPinned(value); if(value)expand(); save(); }
+        @Override public void dock(DockEdge edge) { check(); placement=placement.withRequest(DockRequest.edge(edge,DockMode.AUTO_HIDE)); save(); }
+        @Override public void floatAt(double x,double y) { check(); placement=placement.withRequest(DockRequest.floating(x,y)); save(); }
+        @Override public void detach(double x,double y) { check(); placement=placement.withRequest(DockRequest.detached(x,y)); save(); }
+        @Override public void resize(double width,double height) { check(); placement=placement.withSize(Math.clamp(width,spec.minWidth(),spec.maxWidth()),Math.clamp(height,spec.minHeight(),spec.maxHeight())); save(); }
+        @Override public void resetPlacement() { check(); reset(); save(); }
         @Override public Optional<WindowSnapshot> snapshot() {
             host.assertOwner(); if (!isOpen() || geometry==null || owner!=surface) return Optional.empty();
             return Optional.of(new WindowSnapshot(presented.version(),geometry,body(),progress==0?CollapseState.COLLAPSED:progress==1?CollapseState.EXPANDED:expanded?CollapseState.EXPANDING:CollapseState.COLLAPSING,progress,expanded,hovered,this==focused,this==captured||gesture!=null&&gesture.window==this));

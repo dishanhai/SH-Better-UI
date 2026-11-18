@@ -25,10 +25,12 @@ final class NativeDockWindowsTest {
         Fixture() throws Exception {
             this(Set.of(UIPermission.REGISTER_RENDER_PASS,UIPermission.CAPTURE_INPUT,UIPermission.BLOCK_VANILLA_INPUT));
         }
-        Fixture(Set<UIPermission> grants) throws Exception {
+        Fixture(Set<UIPermission> grants) throws Exception { this(grants,null,"example:windows"); }
+        Fixture(Set<UIPermission> grants, java.nio.file.Path storage, String moduleId) throws Exception {
+            if(storage!=null) host.storage(storage);
             var plugin = new UIModule() {
                 @Override public ModuleDescriptor descriptor() {
-                    var builder=ModuleDescriptor.builder().id(UiId.parse("example:windows")).version("1.0.0")
+                    var builder=ModuleDescriptor.builder().id(UiId.parse(moduleId)).version("1.0.0")
                             .platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2));
                     grants.forEach(builder::requestPermission); return builder.build();
                 }
@@ -50,6 +52,96 @@ final class NativeDockWindowsTest {
         @Override public void close() throws Exception { try {dock.closeAll();host.close();}finally{client.close();} }
     }
     static NativeInput.Pointer pointer(NativeInput.PointerAction type,double x,double y) {return new NativeInput.Pointer(type,x,y,0,0,0);}
+
+    private static Set<UIPermission> persistentGrants() {
+        return Set.of(UIPermission.REGISTER_RENDER_PASS,UIPermission.CAPTURE_INPUT,UIPermission.BLOCK_VANILLA_INPUT,UIPermission.MODIFY_GLOBAL_CONFIG);
+    }
+    private static MiniWindowHandle persistent(Fixture fixture) {
+        return fixture.dock.createMiniWindow(fixture.module,fixture.tree,MiniWindowSpec.builder("example:persistent")
+                .persistent(true).autoHide(false)
+                .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.LINEAR,0,0,true,false))
+                .content(() -> (draw,view) -> {}).build());
+    }
+    @Test void persistentRequiresGrantAndRealStorageBeforeWindowAllocation() throws Exception {
+        try(var fixture=new Fixture()) {
+            assertThrows(SecurityException.class,()->persistent(fixture));
+            assertTrue(fixture.dock.windows(fixture.module).isEmpty());
+        }
+        try(var fixture=new Fixture(persistentGrants())) {
+            assertThrows(IllegalStateException.class,()->persistent(fixture));
+            assertTrue(fixture.dock.windows(fixture.module).isEmpty());
+        }
+    }
+    @Test void placementSurvivesHostRestartButNotWindowLifetimeAndIsModuleIsolated(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);window.floatAt(100,110);window.resize(400,220);
+            fixture.module.engine().configs().flush().toCompletableFuture().join();
+            fixture.tree.close();assertFalse(window.isOpen());
+            assertTrue(fixture.dock.windows(fixture.module).isEmpty());
+        }
+        try(var files=java.nio.file.Files.walk(directory)) { assertTrue(files.anyMatch(java.nio.file.Files::isRegularFile)); }
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);fixture.prepare();
+            var bounds=window.snapshot().orElseThrow().geometry().bounds();
+            assertEquals(100,bounds.x());assertEquals(110,bounds.y());assertEquals(400,bounds.width());
+            window.close(); window=persistent(fixture);fixture.prepare();
+            assertEquals(100,window.snapshot().orElseThrow().geometry().bounds().x());
+            fixture.screen.width=140;fixture.screen.height=90;fixture.prepare();
+            bounds=window.snapshot().orElseThrow().geometry().bounds();
+            assertTrue(bounds.x()>=0 && bounds.y()>=0 && bounds.x()+bounds.width()<=140 && bounds.y()+bounds.height()<=90);
+        }
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:other")) {
+            var window=persistent(fixture);fixture.prepare();
+            assertEquals(260,window.snapshot().orElseThrow().geometry().bounds().width());
+        }
+    }
+    @Test void restoredSizeRespectsNewSpecAndResetPersists(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);window.resize(700,600);window.floatAt(20,30);
+            fixture.module.engine().configs().flush().toCompletableFuture().join();
+        }
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var spec=MiniWindowSpec.builder("example:persistent").persistent(true).autoHide(false)
+                    .size(260,180).limits(90,80,300,200)
+                    .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.LINEAR,0,0,true,false))
+                    .content(() -> (draw,view) -> {}).build();
+            var window=fixture.dock.createMiniWindow(fixture.module,fixture.tree,spec);fixture.prepare();
+            assertEquals(300,window.snapshot().orElseThrow().geometry().bounds().width());
+            assertEquals(200,window.snapshot().orElseThrow().geometry().bounds().height());
+            window.resetPlacement();fixture.module.engine().configs().flush().toCompletableFuture().join();
+        }
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);fixture.prepare();
+            assertEquals(260,window.snapshot().orElseThrow().geometry().bounds().width());
+        }
+    }
+
+    @Test void cancelledDragDoesNotWriteButReleasedDragRestoresOnRestart(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);window.floatAt(60,70);fixture.prepare();
+            fixture.module.engine().configs().flush().toCompletableFuture().join();
+            long writes=fixture.module.engine().configs().persistence().submitted();
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.PRESS,80,80));
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.DRAG,180,180));
+            fixture.dock.suspend();fixture.prepare();
+            assertEquals(writes,fixture.module.engine().configs().persistence().submitted());
+            assertEquals(60,window.snapshot().orElseThrow().geometry().bounds().x());
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.PRESS,318,248));
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.DRAG,418,348));
+            fixture.dock.suspend();fixture.prepare();
+            assertEquals(writes,fixture.module.engine().configs().persistence().submitted());
+            assertEquals(260,window.snapshot().orElseThrow().geometry().bounds().width());
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.PRESS,80,80));
+            fixture.dock.input(fixture.screen,pointer(NativeInput.PointerAction.RELEASE,180,180));
+            fixture.module.engine().configs().flush().toCompletableFuture().join();
+        }
+        try(var fixture=new Fixture(persistentGrants(),directory,"example:windows")) {
+            var window=persistent(fixture);fixture.prepare();assertEquals(160,window.snapshot().orElseThrow().geometry().bounds().x());
+        }
+    }
 
     @Test void missingInputPermissionRejectsBeforeAllocatingWindow() throws Exception {
         try (var f = new Fixture(Set.of(UIPermission.REGISTER_RENDER_PASS, UIPermission.CAPTURE_INPUT))) {
@@ -82,7 +174,7 @@ final class NativeDockWindowsTest {
     }
     @Test void unsupportedFeaturesRejectBeforeAllocatingAndCloseIsIdempotent() throws Exception {
         try(var f=new Fixture()) {
-            assertThrows(UnsupportedOperationException.class,()->f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:persistent").persistent(true).build()));
+            assertThrows(UnsupportedOperationException.class,()->f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:spring").animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,100,100,true,false)).build()));
             assertTrue(f.dock.windows(f.module).isEmpty());
             var window=f.window();window.close();window.close();assertFalse(window.isOpen());
             assertThrows(IllegalStateException.class,window::expand);
