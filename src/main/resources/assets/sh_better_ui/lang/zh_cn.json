@@ -411,7 +411,7 @@
   "sh_better_ui.correctness.inspector.tab_hint.page_layout": "控件边界和焦点",
   "sh_better_ui.correctness.inspector.tab_hint.page_protocol": "连接能力、权限与 Trace",
   "sh_better_ui.native.dock_example.title": "Dock 指示器示例",
-  "sh_better_ui.native.dock_example.help": "仅演示进度，并非音乐或实际任务。悬停左侧标签展开；拖动标题、拖动角落调整大小，Esc 取消手势。Tab 与 Enter 操作按钮。",
+  "sh_better_ui.native.dock_example.help": "弹簧展开；仅演示进度，并非音乐或实际任务。悬停左侧标签展开；拖动标题、拖动角落调整大小，Esc 取消手势。Tab 与 Enter 操作按钮。",
   "sh_better_ui.native.dock_example.sample": "演示进度",
   "sh_better_ui.native.dock_example.expand": "打开 / 展开",
   "sh_better_ui.native.dock_example.collapse": "折叠",

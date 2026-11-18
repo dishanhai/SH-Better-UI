@@ -5,6 +5,8 @@ import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.dock.*;
 import com.dishanhai.sh_better_ui.kernel.api.dock.indicator.*;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
+import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Rect;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Space;
 import com.dishanhai.sh_better_ui.kernel.internal.dock.DockLayout;
@@ -42,8 +44,8 @@ final class ClientDockWindows implements WindowService, DockService {
         access.require(UIPermission.CAPTURE_INPUT, owned);
         access.require(UIPermission.BLOCK_VANILLA_INPUT, owned);
         if (!spec.id().namespace().equals(module.descriptor().id().namespace())) throw new SecurityException("Window ID must belong to module");
-        if (spec.glass() != null || spec.animation().curve() == CollapseSpec.Curve.SPRING)
-            throw new UnsupportedOperationException("26.x first-stage windows support plain surfaces and timed collapse; glass and spring collapse are not migrated");
+        if (spec.glass() != null)
+            throw new UnsupportedOperationException("Native Screen windows support plain surfaces; glass compositing is not migrated");
         if (windows.containsKey(spec.id())) throw new IllegalArgumentException("Duplicate window ID");
         if (windows.size() >= 128) throw new IllegalStateException("Window limit reached");
         if (spec.persistent()) access.require(UIPermission.MODIFY_GLOBAL_CONFIG, owned);
@@ -278,10 +280,13 @@ final class ClientDockWindows implements WindowService, DockService {
         final ModuleContext module; final Screen owner; final MiniWindowSpec spec; final ConfigKey<WindowPlacement> stored;
         WindowPlacement placement; Subscription lifetime; WindowContent content; DockLayoutSnapshot.Entry geometry;
         final DockHover hover=new DockHover(); final IndicatorRenderer indicator;
+        final InterruptibleAnimation spring;
         boolean expanded, hovered, contentFocused, indicatorFailed; float progress, from; long changed; int z;
         Window(ModuleContext module,Screen owner,MiniWindowSpec spec,ConfigKey<WindowPlacement> stored) {
             this.module=module; this.owner=owner; this.spec=spec; this.stored=stored;
             indicator=spec.compactIndicator()==null?null:new IndicatorRenderer(spec.compactIndicator().get(),failure->{indicatorFailed=true;host.report("Dock indicator "+spec.id(),failure);});
+            spring=spec.animation().curve()==CollapseSpec.Curve.SPRING
+                    ?new InterruptibleAnimation(Spring.STAGGER,spec.animation().initiallyExpanded()?1:0):null;
             reset();
             if(stored!=null){ var saved=NativeDockPlacements.read(module,stored); placement=saved.withSize(Math.clamp(saved.width(),spec.minWidth(),spec.maxWidth()),Math.clamp(saved.height(),spec.minHeight(),spec.maxHeight())).withGroup(spec.group()); }
             expanded=spec.animation().initiallyExpanded(); progress=expanded?1:0; from=progress; changed=host.nowNanos(); z=++ClientDockWindows.this.z;
@@ -304,13 +309,25 @@ final class ClientDockWindows implements WindowService, DockService {
                 else contentFocus(false);
             }
             sample(host.nowNanos());
-            if (expanded!=target) { from=progress; expanded=target; changed=host.nowNanos(); }
+            if (expanded!=target) {
+                from=progress; expanded=target; changed=host.nowNanos();
+                if(spring!=null){
+                    long duration=expanded?spec.animation().expandMillis():spec.animation().collapseMillis();
+                    if(duration==0||UiPreferences.configured().reducedMotion())spring.snapTo(expanded?1:0);
+                    else spring.transitionTo(expanded?1:0,changed/1_000_000L,InterruptibleAnimation.Policy.RETARGET,0);
+                    sample(changed);
+                }
+            }
         }
         void sample(long now) {
-            long duration=(expanded?spec.animation().expandMillis():spec.animation().collapseMillis())*1_000_000L;
-            float t=duration==0||UiPreferences.configured().reducedMotion()?1:Math.min(1,Math.max(0,(float)(now-changed)/duration));
-            if (spec.animation().curve()==CollapseSpec.Curve.EASE) t=t*t*(3-2*t);
-            progress=from+((expanded?1:0)-from)*t;
+            if(spring!=null){
+                progress=Math.clamp(spring.sample(now/1_000_000L,UiPreferences.configured().reducedMotion()),0f,1f);
+            }else{
+                long duration=(expanded?spec.animation().expandMillis():spec.animation().collapseMillis())*1_000_000L;
+                float t=duration==0||UiPreferences.configured().reducedMotion()?1:Math.min(1,Math.max(0,(float)(now-changed)/duration));
+                if (spec.animation().curve()==CollapseSpec.Curve.EASE) t=t*t*(3-2*t);
+                progress=from+((expanded?1:0)-from)*t;
+            }
             if (expanded && progress > .98f && focused == this) contentFocus(true);
         }
         boolean protectedInteraction(){return placement.pinned()||this==focused||this==captured||gesture!=null&&gesture.window==this;}
@@ -343,13 +360,13 @@ final class ClientDockWindows implements WindowService, DockService {
         @Override public void resetPlacement() { check(); reset(); save(); }
         @Override public Optional<WindowSnapshot> snapshot() {
             host.assertOwner(); if (!isOpen() || geometry==null || owner!=surface) return Optional.empty();
-            return Optional.of(new WindowSnapshot(presented.version(),geometry,body(),progress==0?CollapseState.COLLAPSED:progress==1?CollapseState.EXPANDED:expanded?CollapseState.EXPANDING:CollapseState.COLLAPSING,progress,expanded,hovered,this==focused,this==captured||gesture!=null&&gesture.window==this));
+            return Optional.of(new WindowSnapshot(presented.version(),geometry,body(),spring!=null&&spring.running()?(expanded?CollapseState.EXPANDING:CollapseState.COLLAPSING):progress==0?CollapseState.COLLAPSED:progress==1?CollapseState.EXPANDED:expanded?CollapseState.EXPANDING:CollapseState.COLLAPSING,progress,expanded,hovered,this==focused,this==captured||gesture!=null&&gesture.window==this));
         }
         @Override public void close() {
             host.assertOwner(); if(!isOpen())return;
             if(captured==this || gesture!=null&&gesture.window==this)cancelGesture();
             if(focused==this)focus(null);
-            windows.remove(id()); if(lifetime!=null)lifetime.close();
+            windows.remove(id()); if(spring!=null)spring.close(); if(lifetime!=null)lifetime.close();
             if(content!=null){var old=content;content=null;old.close();}
         }
     }

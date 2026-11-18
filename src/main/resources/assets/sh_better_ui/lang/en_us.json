@@ -411,7 +411,7 @@
   "sh_better_ui.correctness.inspector.tab_hint.page_layout": "Widget bounds and focus",
   "sh_better_ui.correctness.inspector.tab_hint.page_protocol": "Connection capabilities, permissions and trace",
   "sh_better_ui.native.dock_example.title": "Dock indicator example",
-  "sh_better_ui.native.dock_example.help": "Simulated progress only, not music or a real task. Hover the left tab to expand. Drag the title, resize the corner; Escape cancels a gesture. Tab and Enter operate the buttons.",
+  "sh_better_ui.native.dock_example.help": "Spring expansion; simulated progress only, not music or a real task. Hover the left tab to expand. Drag the title, resize the corner; Escape cancels a gesture. Tab and Enter operate the buttons.",
   "sh_better_ui.native.dock_example.sample": "Simulated progress",
   "sh_better_ui.native.dock_example.expand": "Open / expand",
   "sh_better_ui.native.dock_example.collapse": "Collapse",
