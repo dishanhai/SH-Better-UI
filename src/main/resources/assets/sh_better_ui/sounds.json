@@ -1,0 +1,14 @@
+{
+  "dishanhai_fumo": {
+    "subtitle": "subtitles.sh_better_ui.dishanhai_fumo",
+    "sounds": [
+      { "name": "sh_better_ui:plushie_music", "stream": true, "attenuation_distance": 16 }
+    ]
+  },
+  "beibeipuo_fumo": {
+    "subtitle": "subtitles.sh_better_ui.beibeipuo_fumo",
+    "sounds": [
+      { "name": "sh_better_ui:plushie_music", "stream": true, "attenuation_distance": 16 }
+    ]
+  }
+}

@@ -1,0 +1,42 @@
+// Author: dishanhai
+if (gradle.startParameter.taskNames.isEmpty() || gradle.startParameter.taskNames.any {
+    !(it.tokenize(':').last() in ['runClient', 'renderStateSmoke'])
+}) {
+    throw new GradleException('Render state smoke only supports runClient and renderStateSmoke')
+}
+gradle.beforeProject { p ->
+    p.afterEvaluate {
+        if (!p.plugins.hasPlugin('net.minecraftforge.gradle')) return
+        def nativeSmoke = p.sourceSets.create('renderStateSmoke') {
+            java.srcDir(new File(p.projectDir, 'src/renderStateSmoke/java'))
+            compileClasspath += p.sourceSets.main.output + p.sourceSets.main.compileClasspath
+            runtimeClasspath += output + compileClasspath + p.sourceSets.main.runtimeClasspath
+        }
+        p.tasks.register('renderStateSmoke', JavaExec) {
+            dependsOn nativeSmoke.classesTaskName
+            classpath = nativeSmoke.runtimeClasspath
+            mainClass = 'com.dishanhai.sh_better_ui.client.gui.scaled.RenderStateSmoke'
+        }
+        if (!gradle.startParameter.taskNames.any { it.tokenize(':').last() == 'runClient' }) return
+        def game = new File(p.projectDir, 'build/render-state-smoke/client')
+        def output = new File(p.projectDir, 'build/render-state-smoke/client-result')
+        p.sourceSets.main.java.srcDirs(new File(p.projectDir, 'src/renderStateSmoke/java'),
+                new File(p.projectDir, 'src/renderStateSmoke/forge'))
+        p.minecraft.runs.named('client').configure {
+            workingDirectory game
+            property 'shb.renderState.smoke', output.absolutePath
+            property 'shb.music.disabled', 'true'
+            args '--width', '1000', '--height', '600'
+        }
+        p.tasks.matching { it.name == 'runClient' }.configureEach {
+            doFirst {
+                game.mkdirs()
+                new File(game, 'options.txt').text = 'onboardAccessibility:false\nlang:zh_cn\nguiScale:2\nmaxFps:60\n'
+                ['success.txt', 'failure.txt'].each { java.nio.file.Files.deleteIfExists(new File(output, it).toPath()) }
+            }
+            doLast {
+                if (!new File(output, 'success.txt').isFile()) throw new GradleException('Render state smoke failed; see client-result')
+            }
+        }
+    }
+}

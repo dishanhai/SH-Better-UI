@@ -1,4 +1,8 @@
 {
+  "block.sh_better_ui.dishanhai_fumo": "dishanhai",
+  "block.sh_better_ui.beibeipuo_fumo": "BeiBeiPuo",
+  "subtitles.sh_better_ui.beibeipuo_fumo": "BeiBeiPuo plays music",
+  "subtitles.sh_better_ui.dishanhai_fumo": "dishanhai plays music",
   "key.sh_better_ui.music_island": "Expand / collapse music island",
   "sh_better_ui.online_music.view.scroll_search": "Scroll search results",
   "sh_better_ui.online_music.view.scroll_library": "Scroll playlists and tracks",
