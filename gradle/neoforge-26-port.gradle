@@ -151,6 +151,8 @@ def sharedSources = [
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
         'client/gui/scaled/GlassControls.java',
+        'client/gui/scaled/GlassSegmentStyle.java',
+        'client/gui/scaled/GlassTextInk.java',
         'client/gui/search/PinyinSearch.java',
         'client/gui/search/SearchIndex.java',
         'client/gui/search/SearchQuery.java',
@@ -275,6 +277,9 @@ sourceSets.test {
         include("${packagePath}/client/api/UiScreenCloseTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
         include("${packagePath}/client/gui/scaled/GlassControlsTest.java")
+        include("${packagePath}/client/gui/scaled/GlassSegmentStyleTest.java")
+        include("${packagePath}/client/gui/scaled/GlassTextInkTest.java")
+        include("${packagePath}/client/gui/scaled/RubberSegmentInputTest.java")
         include("${packagePath}/client/gui/scaled/NativeGlassControlsLifecycleTest.java")
         include("${packagePath}/client/api/MarkdownApiTest.java")
         include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")

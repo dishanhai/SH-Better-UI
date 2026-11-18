@@ -266,9 +266,14 @@ public final class ClientUiKernel implements AutoCloseable {
     }
 
     public static boolean paintHudGlass(GuiGraphics graphics, GlassDraw surface) {
+        return paintHudGlassBatch(graphics, java.util.List.of(surface));
+    }
+
+    /** Submits related surfaces together so every region samples the same pre-foreground snapshot. */
+    public static boolean paintHudGlassBatch(GuiGraphics graphics, java.util.List<GlassDraw> surfaces) {
         var client = active;
         if (client == null || client.host.lifecycle().state() != EngineState.RUNNING) return false;
-        client.rendering.paintHudGlass(graphics, surface);
+        client.rendering.paintHudGlassBatch(graphics, java.util.List.copyOf(surfaces));
         return true;
     }
 
