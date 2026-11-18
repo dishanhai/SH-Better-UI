@@ -307,6 +307,8 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/live/SurfaceTransitionTest.java")
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")
+        include("${packagePath}/client/api/NativeSettingsDetailPageTest.java")
+        include("${packagePath}/client/gui/panel/NativeGlassDetailPageTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
         include("${packagePath}/client/gui/scaled/GlassControlsTest.java")
         include("${packagePath}/client/gui/scaled/GlassSegmentStyleTest.java")

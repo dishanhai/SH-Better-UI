@@ -37,9 +37,13 @@ public final class UiScreen extends Screen {
     private final Map<GuiEventListener, Supplier<Bounds>> clips = new IdentityHashMap<>();
     private final Map<GuiEventListener, String> stacks = new IdentityHashMap<>();
     private GuiEventListener hovered;
+    private Consumer<GuiEventListener> focusChanged = ignored -> {};
+    public void onFocusChanged(Consumer<GuiEventListener> callback) { focusChanged=Objects.requireNonNull(callback); }
 
     public void returnFocus(Supplier<? extends GuiEventListener> target) { returnFocus = Objects.requireNonNull(target); }
     public void onCloseRequest(BooleanSupplier handler) { closeRequested = Objects.requireNonNull(handler); }
+    /** Rebuild native controls without ending the page session. */
+    public void refreshLayout(){rebuildWidgets();}
     public UiPreferences preferences() { return UiPreferences.configured(); }
 
 
@@ -85,6 +89,7 @@ public final class UiScreen extends Screen {
         setDragging(false);
         rebuildWidgets();
     }
+    @Override protected void setInitialFocus(){if(getFocused()==null)super.setInitialFocus();}
     @Override public void tick() { tick.accept(this); }
     @Override public void removed() {
         try {
@@ -164,7 +169,7 @@ public final class UiScreen extends Screen {
     }
 
     @Override public void setFocused(GuiEventListener listener) {
-        if (getFocused() != listener) super.setFocused(listener);
+        if (getFocused() != listener) { super.setFocused(listener); focusChanged.accept(listener); }
     }
 
     @Override public Optional<GuiEventListener> getChildAt(double x, double y) {

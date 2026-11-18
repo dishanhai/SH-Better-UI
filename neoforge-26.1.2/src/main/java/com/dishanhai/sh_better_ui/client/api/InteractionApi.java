@@ -36,6 +36,12 @@ public final class InteractionApi {
         return UiConfirmation.open(parent, prompt, preferences, context, restoreFocus, onConfirm, icon);
     }
 
+    /** Owned confirmation: abandonment is distinct from returning to edit the draft. */
+    public boolean confirm(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Supplier<? extends GuiEventListener> restoreFocus, Runnable onConfirm, Runnable onAbandon) {
+        return UiConfirmation.openOwned(parent,prompt,preferences,restoreFocus,onConfirm,onAbandon);
+    }
+
     /** Native isolated confirmation with an explicit optical surface; ordinary confirm is unchanged. */
     public boolean confirmGlass(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
                            Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,

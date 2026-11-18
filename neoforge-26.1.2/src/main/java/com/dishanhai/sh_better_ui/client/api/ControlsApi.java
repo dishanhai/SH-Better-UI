@@ -277,4 +277,11 @@ public final class ControlsApi {
     public UiDisclosure disclosure(boolean expanded) {
         return new UiDisclosure(expanded);
     }
+    public UiSettingsDetailPage settingsDetailPage(Component title, java.util.List<UiSettingsDetailPage.Section> sections) {
+        return new UiSettingsDetailPage(title,sections);
+    }
+    public UiSettingsDetailPage settingsDetailPage(Component title, java.util.List<UiSettingsDetailPage.Section> sections, UiSettingsDetailPage.Actions actions) {
+        return new UiSettingsDetailPage(title,sections,actions);
+    }
+
 }

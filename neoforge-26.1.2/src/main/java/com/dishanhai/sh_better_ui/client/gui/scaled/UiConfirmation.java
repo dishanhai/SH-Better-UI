@@ -57,16 +57,28 @@ public final class UiConfirmation {
         return openStyled(parent, prompt, preferences, context, restoreFocus, onConfirm, icon, true);
     }
 
+    /** As ordinary confirmation, with cleanup when the modal is replaced without returning. */
+    public static boolean openOwned(Screen parent, Prompt prompt, UiPreferences preferences,
+                                    Supplier<? extends GuiEventListener> restoreFocus,
+                                    Runnable onConfirm, Runnable onAbandon) {
+        return openStyled(parent,prompt,preferences,null,restoreFocus,onConfirm,GraphicIcon.WARNING,false,onAbandon);
+    }
+
     private static boolean openStyled(Screen parent, Prompt prompt, UiPreferences preferences,
                                     Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
                                     Runnable onConfirm, GraphicIcon icon, boolean glass) {
+        return openStyled(parent,prompt,preferences,context,restoreFocus,onConfirm,icon,glass,()->{});
+    }
+    private static boolean openStyled(Screen parent, Prompt prompt, UiPreferences preferences,
+                                    Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
+                                    Runnable onConfirm, GraphicIcon icon, boolean glass, Runnable onAbandon) {
         Minecraft client = Minecraft.getInstance();
         if (parent == null || client.screen != parent) return false;
         Objects.requireNonNull(prompt);
         Objects.requireNonNull(preferences);
         Objects.requireNonNull(restoreFocus);
         Objects.requireNonNull(onConfirm);
-        var choice = new Choice(client, parent, restoreFocus, onConfirm);
+        var choice = new Choice(client, parent, restoreFocus, onConfirm, onAbandon);
         var screen = new ConfirmationScreen(prompt, preferences, context, choice.state, icon, glass);
         choice.state.attach(screen);
         client.setScreen(screen);
@@ -76,13 +88,13 @@ public final class UiConfirmation {
     private static final class Choice {
         private final ConfirmationChoice<Screen> state;
         private Choice(Minecraft client, Screen parent, Supplier<? extends GuiEventListener> restoreFocus,
-                       Runnable onConfirm) {
+                       Runnable onConfirm, Runnable onAbandon) {
             state = new ConfirmationChoice<>(parent, () -> client.screen, client::setScreen, () -> {
                 GuiEventListener target = restoreFocus.get();
                 if (client.screen == parent && target != null && parent.children().contains(target)
                         && (!(target instanceof net.minecraft.client.gui.components.AbstractWidget widget)
                             || widget.active && widget.visible)) parent.setFocused(target);
-            }, onConfirm);
+            }, onConfirm, onAbandon);
         }
         private void finish(boolean confirmed) { state.finish(confirmed); }
     }

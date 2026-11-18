@@ -2218,6 +2218,8 @@
   "sh_better_ui.automation.planning_edit_blocked": "请求仍在规划，请先暂停再编辑。",
   "sh_better_ui.automation.default_replacement": "默认 UUK：%s",
   "sh_better_ui.automation.preference_failed": "无法保存终端界面偏好，请检查配置目录。",
+  "sh_better_ui.settings_detail.small": "请放大窗口以编辑设置。",
+  "sh_better_ui.settings_detail.parent_draft_hint": "应用仅更新主面板草稿；请在主面板应用后保存。",
   "sh_better_ui.settings_detail.discard_title": "放弃此分组的修改？",
   "sh_better_ui.settings_detail.discard_details": "仅放弃本二级页面尚未应用的修改，其他分组的草稿会保留。",
   "sh_better_ui.settings_detail.discard": "放弃修改",
