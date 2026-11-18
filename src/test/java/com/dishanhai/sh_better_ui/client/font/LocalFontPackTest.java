@@ -7,6 +7,7 @@ import java.nio.ByteBuffer;
 import java.io.*;
 import java.util.zip.ZipFile;
 import static org.junit.jupiter.api.Assertions.*;
+import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class LocalFontPackTest {
     @TempDir Path temp;
@@ -36,10 +37,19 @@ class LocalFontPackTest {
         assertThrows(IOException.class,()->LocalFontPack.create(font(),temp,34,new byte[0],()->true));
         try(var entries=Files.list(temp)){assertEquals(0,entries.count());}
     }
-    @Test void rejectsSymlinkAndBoundedStreamOverflow() throws Exception {
-        Path real=temp.resolve("real.ttf");Files.write(real,font());Path link=temp.resolve("link.ttf");Files.createSymbolicLink(link,real);
-        assertThrows(IOException.class,()->LocalFontPack.read(link));
-        assertThrows(IOException.class,()->LocalFontPack.bounded(new ByteArrayInputStream(new byte[40]),32,()->false));
+    @Test void rejectsSymlink() throws Exception {
+        Path real = Files.write(temp.resolve("real.ttf"), font());
+        Path link = temp.resolve("link.ttf");
+        try {
+            Files.createSymbolicLink(link, real);
+        } catch (UnsupportedOperationException | FileSystemException unavailable) {
+            assumeTrue(false, () -> "Symbolic link creation is unavailable: " + unavailable.getMessage());
+        }
+        assertThrows(IOException.class, () -> LocalFontPack.read(link));
+    }
+
+    @Test void rejectsBoundedStreamOverflow() {
+        assertThrows(IOException.class, () -> LocalFontPack.bounded(new ByteArrayInputStream(new byte[40]), 32, () -> false));
     }
     @Test void presetsUseImmutableOfficialHttpsAndDigests() {
         for(var preset:LocalFontPack.SOURCES) {
