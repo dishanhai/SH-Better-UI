@@ -182,6 +182,7 @@ def sharedSources = [
         'kernel/internal/ClientMaterialCatalog.java',
         'kernel/internal/MaterialPresetCodec.java',
         'kernel/internal/NativeModuleSources.java',
+        'client/font/LocalFontPack.java',
         'kernel/internal/NativeTextClusters.java',
         'kernel/internal/TextReadabilityBudget.java'
 ].collect { "${packagePath}/${it}".toString() }.toSet()
@@ -206,6 +207,8 @@ kotlin.sourceSets.main.kotlin {
 sourceSets.test {
     java {
         srcDir('../src/test/java')
+        include("${packagePath}/client/font/Native*.java")
+        include("${packagePath}/client/font/LocalFontPackTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")

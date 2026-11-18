@@ -49,6 +49,7 @@ public final class NativeTestClient implements AutoCloseable {
         try {
             RenderSystem.initRenderThread();
             singleton.set(null, client);
+            client.setLastInputType(net.minecraft.client.InputType.MOUSE);
         } catch (Throwable failure) {
             renderThread.set(null, previousRenderThread);
             singleton.set(null, previousClient);
