@@ -1,0 +1,25 @@
+modLoader="javafml"
+loaderVersion="[1,)"
+license="MIT"
+[[mods]]
+modId="shbui_text_compat_smoke"
+version="1.0.0"
+displayName="SHBUI Actual Text Compatibility Smoke"
+[[dependencies.shbui_text_compat_smoke]]
+modId="sh_better_ui"
+type="required"
+versionRange="[1,)"
+ordering="AFTER"
+side="CLIENT"
+[[dependencies.shbui_text_compat_smoke]]
+modId="guideme"
+type="required"
+versionRange="[26.1.17-beta]"
+ordering="AFTER"
+side="CLIENT"
+[[dependencies.shbui_text_compat_smoke]]
+modId="ftblibrary"
+type="required"
+versionRange="[26.1.2.12]"
+ordering="AFTER"
+side="CLIENT"

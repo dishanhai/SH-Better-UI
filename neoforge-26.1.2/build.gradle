@@ -5,5 +5,43 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.3.10'
 }
 
-ext.portMixinConfigs = ['sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json']
+ext.portMixinConfigs = ['sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'sh_better_ui-26-text-compat.mixins.json']
 apply from: '../gradle/neoforge-26-port.gradle'
+
+// Optional integrations are compiled against pinned official artifacts, never bundled or required at runtime.
+// Keep this source set out of the 26.2 port until those upstream APIs are separately verified.
+sourceSets.main.java.srcDir('src/textCompat/java')
+sourceSets.main.resources.srcDir('src/textCompat/resources')
+repositories {
+    maven {
+        url = 'https://maven.ftb.dev/releases'
+        content { includeGroup 'dev.ftb.mods' }
+    }
+}
+configurations {
+    textCompatArtifacts {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+configurations.compileOnly.extendsFrom(configurations.textCompatArtifacts)
+configurations.testCompileOnly.extendsFrom(configurations.textCompatArtifacts)
+sourceSets.test.java {
+    srcDir('src/textCompatTest/java')
+    include('com/dishanhai/sh_better_ui/client/compat/text26/**')
+}
+dependencies {
+    textCompatArtifacts('org.appliedenergistics:guideme:26.1.17-beta') { transitive = false }
+    textCompatArtifacts('dev.ftb.mods:ftb-library-neoforge:26.1.2.12') { transitive = false }
+}
+
+tasks.named('verifyLibraryJar') {
+    doLast {
+        new java.util.zip.ZipFile(tasks.jar.archiveFile.get().asFile).withCloseable { zip ->
+            if (zip.entries().any { it.name.startsWith('guideme/') || it.name.startsWith('dev/ftb/') || it.name.startsWith('META-INF/jarjar/') }) {
+                throw new GradleException('Optional third-party implementation must not be bundled')
+            }
+        }
+    }
+}

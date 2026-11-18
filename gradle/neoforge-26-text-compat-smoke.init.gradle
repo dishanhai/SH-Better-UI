@@ -1,0 +1,40 @@
+// Author: dishanhai
+// Isolated consumer: actual pinned GuideME/FTB jars are installed only in this test profile.
+gradle.beforeProject { p ->
+    p.afterEvaluate {
+        if (p.projectDir.name != 'neoforge-26.1.2') return
+        def library = p.tasks.named('jar', Jar)
+        def sources = p.sourceSets.create('textCompatSmoke') {
+            java.setSrcDirs([p.file('src/textCompatSmoke/java')])
+            resources.setSrcDirs([p.file('src/textCompatSmoke/resources')])
+            compileClasspath += p.sourceSets.main.compileClasspath + p.files(library.flatMap { it.archiveFile })
+        }
+        def consumer = p.neoForge.mods.create('shbui_text_compat_smoke') { sourceSet sources }
+        File directory = p.layout.buildDirectory.dir("text-compat-smoke/${p.version}").get().asFile
+        p.neoForge.runs.create('textCompatSmoke') {
+            client()
+            loadedMods.set([consumer])
+            gameDirectory.set(directory)
+            programArguments.addAll('--width', '1000', '--height', '800')
+        }
+        p.tasks.named('compileTextCompatSmokeJava').configure { dependsOn(library) }
+        def stage = p.tasks.register('stageTextCompatSmokeMods', Sync) {
+            from library.flatMap { it.archiveFile }
+            from p.configurations.textCompatArtifacts
+            into new File(directory, 'mods')
+        }
+        p.tasks.named('runTextCompatSmoke').configure {
+            dependsOn(stage)
+            doFirst {
+                directory.mkdirs()
+                new File(directory, 'options.txt').setText('guiScale:2\nlang:zh_cn\n', 'UTF-8')
+                ['compat-0.png', 'compat-1.png', 'compat.txt'].each {
+                    java.nio.file.Files.deleteIfExists(new File(directory, it).toPath())
+                }
+            }
+            doLast {
+                if (!new File(directory, 'compat.txt').isFile()) throw new GradleException('Text compatibility smoke did not pass')
+            }
+        }
+    }
+}

@@ -291,3 +291,24 @@ original native-text probe changed 814 pixels and the built-in palette region
 1682 pixels. The game exited normally; build exit 0. This validates explicit
 native tooltip rows, not automatic third-party tooltip interception or real GTL
 provider execution.
+
+### GuideME 26.1.2 optional adapter: literal fallback boundary
+
+The isolated GuideME 26.1.17-beta adapter accepts FCS color/displacement markup while
+retaining GuideME's own font, bold, scale and layout metrics. Unsupported inline
+section formatting is counted and rendered as **literal logical-order FCS**: both
+`§` and its following character remain visible. This fallback deliberately bypasses
+`Language.getVisualOrder`, whose formatted-text decomposition would consume `§`.
+It does not claim RTL reordering or Arabic shaping for unsupported inputs. Supported
+FCS still uses Minecraft's visual ordering. The final-sequence regression checks
+literal code points, host styles and fractional advance totals with a deterministic
+`StringSplitter` metric fixture; real-font/game acceptance remains separate.
+
+### NeoForge 26.1.2 real-provider slice
+
+Optional GuideME 26.1.17-beta and FTB Library 26.1.2.12 adapters now have real
+installed-provider layout/parser/render acceptance and a separate no-provider
+startup regression. See [the integration boundary and evidence](NEOFORGE_26_TEXT_COMPAT.md).
+The vendor jars remain compile-only and are not distributed in SHBUI. This does
+not close GTL runtime verification, 26.2, all provider screens/versions, or the
+remaining unsupported Unicode/layout combinations.
