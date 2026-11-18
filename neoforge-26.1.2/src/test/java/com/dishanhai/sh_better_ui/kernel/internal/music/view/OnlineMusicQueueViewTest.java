@@ -36,7 +36,7 @@ class OnlineMusicQueueViewTest {
         });
         final OnlineMusicViewImpl view;
         Fixture() { this(null); }
-        Fixture(OnlineMusicQueue persistent) { this.persistent=persistent; view=new OnlineMusicViewImpl(player); }
+        Fixture(OnlineMusicQueue queue) { persistent = queue; view = new OnlineMusicViewImpl(player); }
     }
     private static Object field(Object owner,String name) throws Exception { var f=owner.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(owner); }
     private static net.minecraft.client.gui.components.Tooltip tooltip(net.minecraft.client.gui.components.AbstractWidget widget) throws Exception {
@@ -70,6 +70,90 @@ class OnlineMusicQueueViewTest {
         @Override public com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences preferences() { return com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT; }
         @Override public boolean interactive() { return true; }
         @Override public <T extends net.minecraft.client.gui.components.AbstractWidget> T add(T widget) { widgets.add(widget);return widget; }
+    }
+
+    private static class EditableQueue implements OnlineMusicQueue {
+        List<OnlineTrack> tracks = List.of(A, B);
+        List<OnlineTrack> previous;
+        int index, moves, appends;
+        public boolean supportsEditing() { return true; }
+        public Snapshot snapshot() { return new Snapshot(tracks, index, previous != null); }
+        public void append(List<OnlineTrack> additions) { previous = tracks; var copy = new ArrayList<>(tracks); copy.addAll(additions); tracks = List.copyOf(copy); appends++; }
+        public void move(int from, int to) { previous = tracks; var copy = new ArrayList<>(tracks); copy.add(to, copy.remove(from)); tracks = List.copyOf(copy); index = to; moves++; }
+        public void undo() { tracks = previous; previous = null; }
+        public void replace(List<OnlineTrack> tracks, int selected) { this.tracks = tracks; index = selected; }
+        public void select(int selected) { index = selected; }
+        public void next() {} public void previous() {} public void remove(int selected) {} public void clear() {}
+    }
+    @Test void editableQueueControlsDelegateWithoutInterruptingPlaybackAndUndo() throws Exception {
+        var queue = new EditableQueue(); var f = new Fixture(queue); f.playing = A;
+        var host = new Host(); f.view.layout(host); queuePage(f.view);
+        var up = (MusicTextControl)((List<?>)field(f.view,"queueUps")).get(0);
+        var down = (MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
+        assertFalse(up.active); assertTrue(down.active); down.onPress();
+        assertEquals(List.of(B,A),queue.tracks); assertEquals(1,queue.moves);
+        assertSame(((List<?>)field(f.view,"queueRows")).get(1),host.screen.getFocused());
+        ((MusicTextControl)field(f.view,"queueUndo")).onPress(); assertEquals(List.of(A,B),queue.tracks);
+        var append = (MusicTextControl)field(f.view,"queueAppend"); assertTrue(append.active); append.onPress();
+        assertEquals(List.of(A,B,A),queue.tracks); assertEquals(1,queue.appends);
+        assertEquals(A,f.playing); assertEquals(0,f.paused); assertEquals(0,f.closed);
+        call(f.view,"enterImmersive",new Class<?>[0]); call(f.view,"updateQueueRows",new Class<?>[0]);
+        assertFalse(append.visible); assertFalse(down.visible);
+    }
+    @Test void editControlsAreHiddenForLegacyQueuesAndBoundedAtSmallSizes() throws Exception {
+        var legacy = new Fixture(); legacy.view.layout(new Host()); queuePage(legacy.view);
+        assertFalse(((MusicTextControl)field(legacy.view,"queueAppend")).visible);
+        assertTrue(((List<?>)field(legacy.view,"queueUps")).stream().noneMatch(w->((MusicTextControl)w).visible));
+        for(int[] size:new int[][]{{208,240},{360,340},{800,600}}) {
+            var f = new Fixture(new EditableQueue()); var host = new Host(); host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            int right=-1;
+            for(String name:List.of("queueRows","queueUps","queueDowns","queueRemoves")) {
+                var w=(MusicTextControl)((List<?>)field(f.view,name)).get(0);
+                assertTrue(w.visible);assertTrue(w.getWidth()>0);assertTrue(w.getX()>=right);right=w.getX()+w.getWidth();assertTrue(right<=size[0]);
+            }
+            assertFalse(((MusicTextControl)field(f.view,"queueAppend")).active);
+        }
+    }
+    @Test void movingAcrossViewportKeepsTheMovedEntryVisibleAndFocused() throws Exception {
+        var queue=new EditableQueue(); queue.tracks=java.util.stream.IntStream.range(0,30)
+                .mapToObj(i->new OnlineTrack("qq",""+i,""+i,"Song "+i,"Artist","",1000)).toList();
+        var f=new Fixture(queue);var host=new Host();host.width=360;host.height=340;f.view.layout(host);queuePage(f.view);
+        var downs=(List<?>)field(f.view,"queueDowns");int last=downs.size()-1;var moved=queue.tracks.get(last);
+        ((MusicTextControl)downs.get(last)).onPress();
+        assertEquals(1,field(f.view,"queueFirst"));assertEquals(moved,queue.tracks.get(last+1));
+        assertSame(downs.get(last),host.screen.getFocused());
+        ((MusicTextControl)downs.get(last)).onPress();assertEquals(moved,queue.tracks.get(last+2));
+        assertEquals(2,field(f.view,"queueFirst"));assertEquals(2,queue.moves);
+    }
+    @Test void suspendingCancelsArmedQueueEditsBeforeKeyboardOrPointerRelease() throws Exception {
+        for(String name:List.of("queueAppend","queueUps","queueDowns")) for(boolean pointer:List.of(false,true)) {
+            var queue=new EditableQueue();var f=new Fixture(queue);f.playing=A;f.view.layout(new Host());queuePage(f.view);
+            var value=field(f.view,name);var control=value instanceof List<?> list?(MusicTextControl)list.get(name.equals("queueUps")?1:0):(MusicTextControl)value;
+            control.setFocused(true);assertTrue(control.active);assertTrue(control.visible);
+            if(pointer) assertTrue(control.mouseClicked(control.getX()+2,control.getY()+2,0));
+            else assertTrue(control.keyPressed(32,0,0));
+            assertTrue(control.isArmed());f.view.suspend();assertFalse(control.isArmed());
+            if(pointer) assertFalse(control.mouseReleased(control.getX()+2,control.getY()+2,0));
+            else assertFalse(control.keyReleased(32,0,0));
+            assertEquals(0,queue.moves);assertEquals(0,queue.appends);assertEquals(List.of(A,B),queue.tracks);
+        }
+    }
+    @Test void queueHeaderEditsReserveThePlaybackModeRegionAtCompactSizes() throws Exception {
+        for(int[] size:new int[][]{{208,240},{360,340},{800,600}}) {
+            var f=new Fixture(new EditableQueue());var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            var source=((OnlineMusicLayout)field(f.view,"layout")).sourceBar();
+            var append=(MusicTextControl)field(f.view,"queueAppend");var locate=(MusicTextControl)field(f.view,"queueLocate");
+            int modeRight=source.x()+Math.max(12,source.width()-96);
+            assertTrue(append.getX()>=modeRight);assertTrue(append.getX()+append.getWidth()<=locate.getX());
+            assertTrue(locate.getX()+locate.getWidth()<=source.right());assertEquals(24,locate.getWidth());
+        }
+    }
+    @Test void changingVisibleQueueCancelsArmedEditControls() throws Exception {
+        var queue=new EditableQueue(); var f=new Fixture(queue);f.view.layout(new Host());queuePage(f.view);
+        var down=(MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
+        down.setFocused(true); var armed = down.getClass().getDeclaredField("pressedKey"); armed.setAccessible(true); armed.setInt(down,32);
+        queue.tracks=List.of(B,A);call(f.view,"updateQueueRows",new Class<?>[0]);
+        assertFalse(down.isArmed());assertEquals(0,queue.moves);
     }
 
     @Test void primaryLyricsEntrancesUseStageAndRestoreTheirOrigin() throws Exception {

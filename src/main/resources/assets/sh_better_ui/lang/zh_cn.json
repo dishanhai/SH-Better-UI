@@ -2755,5 +2755,9 @@
   "sh_better_ui.display_suite.preview.selected": "切换选中状态",
   "sh_better_ui.display_suite.preview.disabled": "已禁用按钮",
   "sh_better_ui.display_suite.preview.slider": "样例值：%s%%",
-  "sh_better_ui.display_suite.preview.hint": "仅本地样例 · 点击：%s"
+  "sh_better_ui.display_suite.preview.hint": "仅本地样例 · 点击：%s",
+  "sh_better_ui.online_music.queue.append_current": "将当前歌曲追加到队列",
+  "sh_better_ui.online_music.queue.append_track": "将 %s 追加到队列",
+  "sh_better_ui.online_music.queue.move_up": "上移 %s",
+  "sh_better_ui.online_music.queue.move_down": "下移 %s"
 }

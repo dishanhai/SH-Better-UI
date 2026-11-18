@@ -1883,5 +1883,9 @@
   "sh_better_ui.display_suite.preview.selected": "切換選取狀態",
   "sh_better_ui.display_suite.preview.disabled": "已停用按鈕",
   "sh_better_ui.display_suite.preview.slider": "範例值：%s%%",
-  "sh_better_ui.display_suite.preview.hint": "僅本機範例 · 點擊：%s"
+  "sh_better_ui.display_suite.preview.hint": "僅本機範例 · 點擊：%s",
+  "sh_better_ui.online_music.queue.append_current": "將目前歌曲附加至佇列",
+  "sh_better_ui.online_music.queue.append_track": "將 %s 附加至佇列",
+  "sh_better_ui.online_music.queue.move_up": "上移 %s",
+  "sh_better_ui.online_music.queue.move_down": "下移 %s"
 }

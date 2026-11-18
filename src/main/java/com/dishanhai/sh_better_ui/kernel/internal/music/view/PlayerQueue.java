@@ -27,6 +27,9 @@ final class PlayerQueue {
     boolean canPrevious() { return persistent == null ? local.canPrevious() : persistent.snapshot().canPrevious(); }
     boolean canNext() { return persistent == null ? local.canNext() : persistent.snapshot().canNext(); }
     boolean canUndo() { return persistent == null ? local.canUndo() : persistent.snapshot().canUndo(); }
+    boolean supportsEditing() { return persistent != null && persistent.supportsEditing(); }
+    void append(OnlineTrack track) { if (supportsEditing()) persistent.append(List.of(track)); }
+    void move(int from, int to) { if (supportsEditing()) persistent.move(from, to); }
     void replace(List<OnlineTrack> tracks, int selected) {
         if (persistent == null) local.replace(tracks, selected).ifPresent(player::play); else persistent.replace(tracks, selected);
     }

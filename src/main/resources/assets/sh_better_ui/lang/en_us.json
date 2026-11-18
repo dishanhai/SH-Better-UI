@@ -2755,5 +2755,9 @@
   "sh_better_ui.display_suite.preview.selected": "Toggle selection",
   "sh_better_ui.display_suite.preview.disabled": "Disabled button",
   "sh_better_ui.display_suite.preview.slider": "Sample level: %s%%",
-  "sh_better_ui.display_suite.preview.hint": "Local samples only · clicks: %s"
+  "sh_better_ui.display_suite.preview.hint": "Local samples only · clicks: %s",
+  "sh_better_ui.online_music.queue.append_current": "Add current track to queue",
+  "sh_better_ui.online_music.queue.append_track": "Add %s to queue",
+  "sh_better_ui.online_music.queue.move_up": "Move %s up",
+  "sh_better_ui.online_music.queue.move_down": "Move %s down"
 }
