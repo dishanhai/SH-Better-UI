@@ -110,9 +110,9 @@ class ThemePaletteScreenTest {
                     @Override public void close() { closed.incrementAndGet(); }
                 }));
         var layer = registry.layer(null);
-        layer.draw("test:palette", null, null,
-                new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(0, 0, 240, 180),
-                null, 0, 0, 0, com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.fromSettings(ClientUiSettings.DEFAULT));
+        // This is a lifecycle fixture; real drawing now requires the native GL state scope.
+        var renderer = layer.getClass().getDeclaredField("renderer"); renderer.setAccessible(true);
+        renderer.set(layer, registry.find("test:palette").orElseThrow().factory().create(null));
         var owner = ThemePaletteScreen.class.getDeclaredField("background"); owner.setAccessible(true);
         var effect = com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground.class.getDeclaredField("effectLayer");
         effect.setAccessible(true); effect.set(owner.get(f.screen), layer);

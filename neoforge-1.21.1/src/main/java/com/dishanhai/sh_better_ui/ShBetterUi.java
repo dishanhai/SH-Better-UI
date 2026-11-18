@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui;
 
+import com.dishanhai.sh_better_ui.internal.fumo.FumoRegistration;
+
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.spatial.SpatialStyle;
 import com.dishanhai.sh_better_ui.config.ControlFeedbackSettings;
@@ -34,6 +36,7 @@ public final class ShBetterUi {
     private static volatile ModConfig clientConfig;
 
     public ShBetterUi(ModContainer container) {
+        FumoRegistration.register(container.getEventBus());
         PlatformLiveActivityNetwork.register(container.getEventBus());
         PlatformPageNetwork.register(container.getEventBus());
         PlatformPageMenus.register(container.getEventBus());

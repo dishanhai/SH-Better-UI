@@ -1,0 +1,6 @@
+{
+  "credit": "Model by dishanhai, skin by BeiBeiPuo",
+  "parent": "sh_better_ui:block/fumo/skin_64",
+  "render_type": "minecraft:cutout",
+  "textures": { "skin": "sh_better_ui:block/beibeipuo_fumo" }
+}
