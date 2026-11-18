@@ -43,6 +43,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
     private byte[] audio;
+    private final SessionAudioCache audioCache = new SessionAudioCache();
+    private SessionAudioCache.Key audioKey;
     private long generation, duration, offset;
     private boolean preview, playRequested, savedCredentialsRestored;
     private State state = State.IDLE;
@@ -110,6 +112,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             obsolete.add(entry.getKey()); searches.remove(entry.getKey());
         }
         searchIndex.clear(sourceId);
+        audioCache.clear();
         if (cookie.isBlank()) { authenticated.remove(sourceId); credentials.remove(sourceId); }
         else { authenticated.add(sourceId); credentials.put(sourceId, cookie); }
         return obsolete;
@@ -298,7 +301,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         track = next; duration = next.durationMs(); state = State.LOADING; playRequested = true;
         lyricsState = LyricsState.LOADING;
         long request = generation;
-        audioTask = workers.submit(() -> loadAudio(provider, next, request));
+        long cacheRevision = audioCache.revision();
+        audioTask = workers.submit(() -> loadAudio(provider, next, request, cacheRevision));
         lyricTask = workers.submit(() -> {
             LyricTimeline timeline;
             try { timeline = provider.lyrics(next); } catch (Exception ignored) { timeline = LyricTimeline.empty(); }
@@ -309,14 +313,24 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             }
         });
     }
-    private void loadAudio(OnlineMusicSource provider, OnlineTrack next, long request) {
+    private void loadAudio(OnlineMusicSource provider, OnlineTrack next, long request, long cacheRevision) {
         Failure problem = Failure.NETWORK;
         try {
             var stream = provider.resolve(next);
             if (stream == null) { problem = Failure.UNAVAILABLE; throw new IllegalStateException("No granted stream"); }
-            var bytes = download.read(stream.uri());
+            // Always resolve first: an earlier cache hit never overrides revoked access or a new preview.
+            var key = new SessionAudioCache.Key(next.source(), next.id(), next.mediaId(), stream);
+            byte[] bytes;
             synchronized (this) {
                 if (generation != request || state == State.CLOSED) return;
+                bytes = audioCache.get(key);
+            }
+            boolean downloaded = bytes == null;
+            if (downloaded) bytes = download.read(stream.uri());
+            synchronized (this) {
+                if (generation != request || state == State.CLOSED) return;
+                if (downloaded) audioCache.put(key, bytes, cacheRevision);
+                audioKey = key;
                 audio = bytes; offset = Math.max(0, stream.offsetMs());
                 duration = Math.max(0, stream.durationMs()); preview = stream.preview();
                 output = outputs.get(); output.volume(volume); output.start(audio, 0, playRequested);
@@ -325,9 +339,13 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         } catch (OnlineMusicSource.LoginRequired ignored) { problem = Failure.LOGIN_REQUIRED; }
         catch (Exception ignored) { }
         synchronized (this) {
-            if (generation == request && state != State.CLOSED) { failure = problem; state = State.FAILED; }
+            if (generation == request && state != State.CLOSED) {
+                audioCache.remove(audioKey); failure = problem; state = State.FAILED;
+            }
         }
     }
+    @Override public synchronized AudioCacheInfo audioCacheInfo() { return audioCache.info(); }
+    @Override public synchronized void clearAudioCache() { requireOpen(); audioCache.clear(); }
     @Override public boolean supportsVolume() { return true; }
     @Override public synchronized float volume() { return volume; }
     @Override public synchronized void volume(float value) {
@@ -360,9 +378,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return new Snapshot(track, current, position, duration, lyricsState, lyrics,
                 current == State.FAILED && failure == Failure.NONE ? Failure.AUDIO : failure, preview);
     }
-    record MediaObservation(Snapshot snapshot, long offsetMs) {}
+    record MediaObservation(Snapshot snapshot, long offsetMs, long generation) {}
     /** Called on the bridge worker, under one session lock, never on the render thread. */
-    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset); }
+    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset, generation); }
+    /** Identity of the current playback attempt; reads share the playback mutation lock. */
+    synchronized long playbackGeneration() { return generation; }
     @Override public LyricFeed lyricFeed() {
         return new LyricFeed() {
             @Override public Frame frame() {
@@ -394,7 +414,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         generation++;
         if (audioTask != null) audioTask.cancel(true);
         if (lyricTask != null) lyricTask.cancel(true);
-        if (output != null) output.close();
+        if (output != null) {
+            if (output.state() == State.FAILED) audioCache.remove(audioKey);
+            output.close();
+        }
+        audioKey = null;
         output = null; audio = null; duration = offset = 0; preview = false;
         failure = Failure.NONE; lyricsState = LyricsState.EMPTY; lyrics = LyricTimeline.empty(); feed.clear();
     }
@@ -447,6 +471,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 order.reset(tracks.size(), selected); playIndex(selected);
             }
         }
+        @Override public boolean supportsModes() { return true; }
         @Override public Mode mode() { synchronized (OnlinePlayerSession.this) { return order.mode(); } }
         @Override public void mode(Mode mode) {
             synchronized (OnlinePlayerSession.this) {
@@ -549,7 +574,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         List<CompletableFuture<?>> obsolete;
         synchronized (this) {
             if (state == State.CLOSED) return;
-            reset(); track = null; state = State.CLOSED;
+            reset(); audioCache.clear(); track = null; state = State.CLOSED;
             if (login != null) { login.close(); login = null; }
             authenticated.clear(); credentials.clear(); remembered.clear(); persistenceVersions.clear(); searchIndex.clear();
             obsolete = List.copyOf(searches.keySet()); searches.clear();

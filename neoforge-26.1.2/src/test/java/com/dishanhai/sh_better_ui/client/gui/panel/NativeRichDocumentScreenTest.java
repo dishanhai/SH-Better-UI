@@ -24,6 +24,7 @@ class NativeRichDocumentScreenTest {
             assertEquals(field(screen,"maxScroll"),field(screen,"scroll"));
             assertTrue(screen.keyPressed(new KeyEvent(268,0,0)));
             assertEquals(0,field(screen,"scroll"));
+            screen.removed();
         }
     }
 

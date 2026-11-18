@@ -43,6 +43,8 @@ public record UiTheme(boolean light, int background, int surface, int border, in
     private static ThemeSettings cachedSettings;
     private static UiTheme cachedTheme;
 
+    static boolean isPreviewActive() { return PREVIEW.get() != null; }
+
     public static UiTheme current() {
         UiTheme preview = PREVIEW.get();
         return preview == null ? MinecraftThemes.resolvePalette(configured()) : preview;

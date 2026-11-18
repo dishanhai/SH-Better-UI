@@ -129,14 +129,18 @@ final class ClientRender implements RenderService {
     }
 
     void paintHudGlass(GuiGraphics graphics, GlassDraw surface) {
+        paintHudGlassBatch(graphics, List.of(surface));
+    }
+
+    void paintHudGlassBatch(GuiGraphics graphics, List<GlassDraw> surfaces) {
         if (backend != null) {
-            glass.paint(graphics, List.of(surface));
+            glass.paint(graphics, surfaces);
             return;
         }
         // The position editor draws its preview during Screen.render, before the native post pass.
         glass.begin();
         try {
-            glass.paint(graphics, List.of(surface));
+            glass.paint(graphics, surfaces);
         } finally {
             glass.end();
         }

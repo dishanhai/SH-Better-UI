@@ -16,6 +16,8 @@ public interface OnlineMusicQueue {
                     index >= 0 && index + 1 < tracks.size());
         }
     }
+    /** Whether this queue implements mode selection; legacy queues remain sequential. */
+    default boolean supportsModes() { return false; }
     default Mode mode() { return Mode.SEQUENTIAL; }
     /** Changes order without starting or resuming playback. Explicit next skips a repeat-one track. */
     default void mode(Mode mode) { throw new UnsupportedOperationException("Queue modes unavailable"); }

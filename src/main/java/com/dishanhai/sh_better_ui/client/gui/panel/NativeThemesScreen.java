@@ -64,8 +64,9 @@ public final class NativeThemesScreen extends Screen {
             next.displayText(Component.literal("›"));
             next.setTooltip(net.minecraft.client.gui.components.Tooltip.create(text("next")));
         }
-        int footer=panelY+panelH-34,action=Math.min(72,(w-12)/3);
+        int footer=panelY+panelH-34,action=Math.min(72,(w-18)/4);
         undo=button(left,footer,action,text("undo"),()->{if(draft.undo()){status=text("undone");rebuildWidgets();}});
+        button(left+action+6,footer,action,text("preview"),()->minecraft.setScreen(new DisplaySuitePreviewScreen(this,draft.current())));
         button(left+w-2*action-6,footer,action,Component.translatable("gui.cancel"),this::onClose);
         apply=button(left+w-action,footer,action,common("apply"),this::apply);
         refreshActions();

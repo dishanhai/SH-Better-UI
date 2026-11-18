@@ -9,6 +9,7 @@ import com.dishanhai.sh_better_ui.config.MusicOverlaySettings;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.live.*;
 import com.google.gson.Gson;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
 import java.time.Duration;
 import java.util.*;
 import java.util.function.*;
@@ -30,6 +31,9 @@ public final class NativeMusicActivity implements UIModule {
     private ModuleContext context;
     private ActivityService activities;
     private NotificationService notifications;
+    private OnlineMusicService online;
+    private LiveSurfaceService liveSurfaces;
+    private LiveSurfaceService.Reservation hudReservation;
     private ActivityService.Handle handle;
     private ActivityService.Content published;
     private String identity;
@@ -72,6 +76,8 @@ public final class NativeMusicActivity implements UIModule {
         this.context = context;
         activities = context.engine().require(ActivityService.KEY);
         notifications = context.engine().require(NotificationService.KEY);
+        online = context.engine().find(OnlineMusicService.KEY).orElse(null);
+        liveSurfaces = context.engine().find(LiveSurfaceService.KEY).orElse(null);
         var configs = context.engine().configs();
         configs.define(MusicOverlaySettings.KEY);
         if (persistent) {
@@ -91,7 +97,19 @@ public final class NativeMusicActivity implements UIModule {
         var configs = context.engine().configs();
         configs.beginTransaction().set(configs.userGlobal(), MusicOverlaySettings.KEY, value).commit();
     }
-    @Override public void stop(ModuleContext ignored) { clear(); context = null; }
+    /** Reservation is independent of the island publication and follows the actual HUD bounds. */
+    boolean hudBounds(com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds bounds) {
+        if (bounds == null || !available() || liveSurfaces == null) {
+            if (hudReservation != null) hudReservation.close(); hudReservation = null; return false;
+        }
+        var rect = new SurfacePlacement.Rect(bounds.x(), bounds.y(), bounds.width(), bounds.height());
+        if (hudReservation == null) {
+            if (liveSurfaces instanceof LiveSurfaceRuntime runtime && runtime.occupied().size() >= 128) return false;
+            hudReservation = liveSurfaces.reserve(context, context.scope(), UiId.parse("sh_better_ui:music/hud"), rect);
+        } else hudReservation.update(rect);
+        return true;
+    }
+    @Override public void stop(ModuleContext ignored) { hudBounds(null); clear(); context = null; }
 
     /** UI-thread MEASURE, before LiveSurfaceRuntime.advance. No network or playback commands. */
     public void advance() {
@@ -107,15 +125,18 @@ public final class NativeMusicActivity implements UIModule {
         var session = frame.snapshot().session();
         visibility.observe(next, session != null && session.status() == MusicSnapshot.PlaybackStatus.PLAYING, now / 1_000_000);
         if (next == null || !visibility.active()) { endActivity(); clearNotices(); return; }
-        var content = content(frame, now);
+        var content = withControls(content(frame, now), frame);
         // Respect explicit dismissal until a new track/source or disable/re-enable cycle.
         if (handle == null && activityAdmission.getAsBoolean()) {
             String issuedIdentity = next;
             handle = activities.publish(context, context.scope(), new ActivityService.Request(ID, content,
                     ActivityService.Priority.NORMAL, Duration.ZERO, true, action -> {
                 var current = frames.get();
-                if (action.id().equals(OPEN) && issuedIdentity.equals(identity(current))
-                        && ONLINE.equals(current.snapshot().providerId())) openMusic.run();
+                if (!issuedIdentity.equals(identity(current)) || !ONLINE.equals(current.snapshot().providerId())) return;
+                if (action.id().equals(OPEN)) { openMusic.run(); return; }
+                if (online == null) return;
+                var command = action.id().equals(ActivityService.SEEK) ? OnlineMusicService.BackgroundCommand.SEEK : command(action.id());
+                if (command != null) online.controlBackground(target(current), command, action.fraction());
             }));
             published = content; expanded = settings.expanded();
             handle.requestPresentation(expanded ? SurfacePresentation.EXPANDED : SurfacePresentation.COMPACT);
@@ -147,6 +168,32 @@ public final class NativeMusicActivity implements UIModule {
             lastNotice = now;
         }
     }
+    private static OnlineMusicService.BackgroundTarget target(MusicService.Frame frame) {
+        var session = frame.snapshot().session();
+        return new OnlineMusicService.BackgroundTarget(session.id(), session.track().key());
+    }
+    private static UiId commandId(OnlineMusicService.BackgroundCommand command) {
+        return UiId.parse("sh_better_ui:music/" + command.name().toLowerCase(java.util.Locale.ROOT));
+    }
+    private static OnlineMusicService.BackgroundCommand command(UiId id) {
+        for (var command : OnlineMusicService.BackgroundCommand.values()) if (commandId(command).equals(id)) return command;
+        return null;
+    }
+    private ActivityService.Content withControls(ActivityService.Content content, MusicService.Frame frame) {
+        if (online == null || !ONLINE.equals(frame.snapshot().providerId())) return content;
+        var available = online.backgroundControls(target(frame)).orElse(null);
+        if (available == null) return content;
+        var controls = new ArrayList<>(content.controls());
+        if (available.previous()) controls.add(control(OnlineMusicService.BackgroundCommand.PREVIOUS, "previous"));
+        if (available.pause()) controls.add(control(OnlineMusicService.BackgroundCommand.PAUSE, "pause"));
+        else if (available.resume()) controls.add(control(OnlineMusicService.BackgroundCommand.RESUME, "play"));
+        if (available.next()) controls.add(control(OnlineMusicService.BackgroundCommand.NEXT, "next"));
+        return new ActivityService.Content(content.title(), content.detail(), content.icon(), content.progress(),
+                content.progress() >= 0 && available.seek(), controls, content.rhythm(), content.appearance());
+    }
+    private static ActivityService.Control control(OnlineMusicService.BackgroundCommand command, String label) {
+        return new ActivityService.Control(commandId(command), ActivityService.Text.key("sh_better_ui.online_music." + label));
+    }
     static String identity(MusicService.Frame frame) {
         var snapshot = frame.snapshot(); var session = snapshot.session();
         if (snapshot.state() != MusicSnapshot.State.AVAILABLE || session == null || session.track() == null
@@ -168,7 +215,7 @@ public final class NativeMusicActivity implements UIModule {
         var controls = ONLINE.equals(frame.snapshot().providerId())
                 ? List.of(new ActivityService.Control(OPEN, ActivityService.Text.key("sh_better_ui.panel.developer.gallery.sample.online_music")))
                 : List.<ActivityService.Control>of();
-        return new ActivityService.Content(title, ActivityService.Text.literal(bounded(detail)), null, progress, false, controls, List.of());
+        return new ActivityService.Content(title, ActivityService.Text.literal(bounded(detail)), NativeMusicArtwork.icon(session.artwork()), progress, false, controls, List.of());
     }
     private static String bounded(String value) {
         if (value.length() <= 512) return value;

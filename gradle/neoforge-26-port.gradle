@@ -19,8 +19,11 @@ def sharedSources = [
         'kernel/internal/live/SurfaceTransition.java',
         'config/MusicOverlaySettings.java',
         'client/gui/scaled/MusicIslandCapsuleState.java',
+        'client/gui/scaled/MusicHudLayout.java',
+        'client/gui/scaled/MusicOverlayLayout.java',
         'client/gui/scaled/MusicIslandTaskAdapter.java',
         'client/gui/scaled/UiNavigationRail.java',
+        'client/gui/scaled/ConfirmationChoice.java',
         'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
         'client/gui/scaled/UiPagination.java',
@@ -55,6 +58,7 @@ def sharedSources = [
         'client/api/preview/DeveloperPreviewProvider.java',
         'client/api/preview/PreviewRegistry.java',
         'kernel/api/config/ConfigPage.java',
+        'kernel/api/richtext/RichDocumentCodec.java',
         'config/ControlFeedbackSettings.java',
         'config/LiveSurfaceConfig.java',
         'config/TabScrollSettings.java',
@@ -82,6 +86,8 @@ def sharedSources = [
         'client/gui/panel/LatticeLoaderPreview.java',
         'client/gui/panel/PhotonKnotPreview.java',
         'client/gui/panel/ConfigPageDraft.java',
+        'client/gui/panel/RichTextEditorDocument.java',
+        'client/gui/panel/RichTextEditorProperties.java',
         'client/gui/panel/ConfigPageScreen.java',
         'client/gui/panel/FolderFloatPreview.java',
         'client/gui/panel/CardNavPreview.java',
@@ -130,6 +136,7 @@ def sharedSources = [
         'client/gui/scaled/SpringTable.java',
         'client/gui/scaled/TabScrollState.java',
         'client/gui/scaled/ThemeButtonStyle.java',
+        'client/gui/scaled/DisplaySuiteButtonPaint.java',
         'client/gui/scaled/UiAttention.java',
         'client/gui/scaled/UiLatticeLoader.java',
         'client/gui/scaled/UiBranchedMenu.java',
@@ -142,8 +149,13 @@ def sharedSources = [
         'client/gui/scaled/UiStyle.java',
         'client/gui/scaled/UiTextField.java',
         'client/gui/scaled/UiTabSelection.java',
+        'client/gui/scaled/ConfirmationGlassStyle.java',
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
+        'client/gui/scaled/GlassControls.java',
+        'client/gui/scaled/GlassSegmentStyle.java',
+        'client/gui/scaled/GlassMediaStyle.java',
+        'client/gui/scaled/GlassTextInk.java',
         'client/gui/search/PinyinSearch.java',
         'client/gui/search/SearchIndex.java',
         'client/gui/search/SearchQuery.java',
@@ -171,12 +183,17 @@ def sharedSources = [
         'kernel/api/dock/WindowSnapshot.java',
         'kernel/api/dock/CollapseSpec.java',
         'kernel/api/dock/CollapseState.java',
+        'kernel/internal/DockHover.java',
         'kernel/api/text/TextReadabilityPalette.java',
         'kernel/internal/BuiltinService.java',
         'kernel/internal/ClientDeveloperPreviews.java',
+        'client/visual/RichMediaDecoder.java',
+        'client/visual/RichMediaPng.java',
+        'client/visual/RichMediaJobs.java',
         'kernel/internal/ClientMaterialCatalog.java',
         'kernel/internal/MaterialPresetCodec.java',
         'kernel/internal/NativeModuleSources.java',
+        'client/font/LocalFontPack.java',
         'kernel/internal/NativeTextClusters.java',
         'kernel/internal/TextReadabilityBudget.java'
 ].collect { "${packagePath}/${it}".toString() }.toSet()
@@ -201,6 +218,10 @@ kotlin.sourceSets.main.kotlin {
 sourceSets.test {
     java {
         srcDir('../src/test/java')
+        include("${packagePath}/client/font/Native*.java")
+        include("${packagePath}/client/font/LocalFontPackTest.java")
+        include("${packagePath}/client/gui/scaled/ConfirmationChoiceTest.java")
+        include("${packagePath}/client/gui/scaled/NativeConfirmationInputTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
@@ -217,11 +238,17 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/SpringTableTest.java")
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
         include("${packagePath}/client/gui/scaled/HudTextPaletteTest.java")
+        include("${packagePath}/client/gui/scaled/MusicHudLayoutTest.java")
+        include("${packagePath}/client/gui/scaled/MusicOverlayLayoutTest.java")
         include("${packagePath}/client/gui/scaled/UiBranchedMenuTest.java")
         include("${packagePath}/client/gui/scaled/TabScrollStateTest.java")
         include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
+        include("${packagePath}/client/gui/panel/NativeAppearanceScreenTest.java")
+        include("${packagePath}/theme/DisplayStyleSuitesTest.java")
+        include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
+        include("${packagePath}/client/gui/scaled/NativeAppearanceBackgroundTest.java")
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
         include("${packagePath}/client/gui/panel/GallerySampleInputTest.java")
@@ -233,16 +260,36 @@ sourceSets.test {
         include("${packagePath}/client/music/NativeMusicFramesTest.java")
         include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
         include("${packagePath}/kernel/internal/NativeDockWindowsTest.java")
+        include("${packagePath}/kernel/internal/NativeDockIndicatorsTest.java")
+        include("${packagePath}/kernel/internal/NativeDockExampleTest.java")
+        include("${packagePath}/kernel/internal/DockHoverTest.java")
+        include("${packagePath}/kernel/api/dock/indicator/CompactIndicatorTest.java")
         include("${packagePath}/kernel/internal/NativeLiveActivityTest.java")
         include("${packagePath}/kernel/internal/NativeActivityMotionTest.java")
+        include("${packagePath}/kernel/internal/NativeMusicArtworkTest.java")
+        include("${packagePath}/kernel/internal/NativeMusicHudTest.java")
         include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
         include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
+        include("${packagePath}/client/visual/NativeRichMedia*.java")
+        include("${packagePath}/client/visual/RichMediaDecoderTest.java")
+        include("${packagePath}/client/visual/RichMediaJobsTest.java")
+        include("${packagePath}/client/gui/panel/NativeRichDocumentMediaTest.java")
         include("${packagePath}/client/gui/panel/NativeRichDocumentScreenTest.java")
+        include("${packagePath}/client/gui/panel/NativeRichDocumentEditorTest.java")
+        include("${packagePath}/client/gui/panel/RichTextEditorDocumentTest.java")
         include("${packagePath}/kernel/internal/NativeMusicSettingsScreenTest.java")
         include("${packagePath}/kernel/internal/live/SurfaceTransitionTest.java")
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
+        include("${packagePath}/client/gui/scaled/GlassControlsTest.java")
+        include("${packagePath}/client/gui/scaled/GlassSegmentStyleTest.java")
+        include("${packagePath}/client/gui/scaled/GlassMediaStyleTest.java")
+        include("${packagePath}/client/gui/scaled/NativeMediaCardTest.java")
+        include("${packagePath}/client/gui/scaled/GlassTextInkTest.java")
+        include("${packagePath}/client/gui/scaled/RubberSegmentInputTest.java")
+        include("${packagePath}/client/gui/scaled/NativeGlassControlsLifecycleTest.java")
+        include("${packagePath}/client/gui/scaled/ConfirmationGlassStyleTest.java")
         include("${packagePath}/client/api/MarkdownApiTest.java")
         include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")
         include("${packagePath}/kernel/api/music/**")
@@ -324,10 +371,20 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/InteractionApi.class",
                     "${packagePath}/client/api/SearchApi.class",
                     "${packagePath}/client/api/RichDocumentsApi.class",
+                    "${packagePath}/kernel/api/richtext/RichDocumentCodec.class",
                     "${packagePath}/client/visual/NativeRichDocumentView.class",
+                    "${packagePath}/client/visual/NativeRichMedia.class",
+                    'assets/sh_better_ui/textures/gui/rich/native-motion.gif',
                     "${packagePath}/client/gui/panel/NativeRichDocumentScreen.class",
+                    "${packagePath}/client/gui/panel/NativeRichDocumentEditorScreen.class",
+                    "${packagePath}/client/gui/panel/RichTextEditorDocument.class",
                     "${packagePath}/client/gui/panel/NativeMusicSettingsScreen.class",
                     "${packagePath}/kernel/internal/NativeMusicActivity.class",
+                    "${packagePath}/kernel/internal/NativeMusicArtwork.class",
+                    "${packagePath}/kernel/internal/NativeMusicHud.class",
+                    "${packagePath}/kernel/internal/music/view/NativeHudLyrics.class",
+                    "${packagePath}/kernel/internal/NativeDockPlacements.class",
+                    "${packagePath}/kernel/internal/music/OnlineCoverFrames.class",
                     "${packagePath}/kernel/internal/NativeActivityMotion.class",
                     "${packagePath}/client/api/MarkdownApi.class",
                     "${packagePath}/client/api/LinkApi.class",
@@ -384,12 +441,15 @@ tasks.register('verifyLibraryJar') {
                     'assets/sh_better_ui/shaders/core/gallery_spatial_reveal.fsh',
                     "${packagePath}/client/gui/display/GraphicIcon.class",
                     "${packagePath}/client/gui/scaled/UiButton.class",
+                    "${packagePath}/client/gui/scaled/UiConfirmation.class",
                     "${packagePath}/client/gui/scaled/UiHoldButton.class",
                     "${packagePath}/kernel/api/input/HoldGesture.class",
                     "${packagePath}/client/gui/scaled/UiCenteredMenu.class",
                     "${packagePath}/client/gui/scaled/UiExpansionController.class",
                     "${packagePath}/client/gui/scaled/UiToggleButton.class",
                     "${packagePath}/client/gui/scaled/UiSlider.class",
+                    "${packagePath}/client/gui/scaled/GlassControls.class",
+                    "${packagePath}/client/gui/scaled/UiMediaCard.class",
                     "${packagePath}/client/gui/scaled/UiStepper.class",
                     "${packagePath}/client/gui/scaled/UiSectionBar.class",
                     "${packagePath}/client/gui/scaled/UiScrollableSectionBar.class",
