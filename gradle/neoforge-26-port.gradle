@@ -177,6 +177,7 @@ def sharedSources = [
         'kernel/api/dock/WindowSnapshot.java',
         'kernel/api/dock/CollapseSpec.java',
         'kernel/api/dock/CollapseState.java',
+        'kernel/internal/DockHover.java',
         'kernel/api/text/TextReadabilityPalette.java',
         'kernel/internal/BuiltinService.java',
         'kernel/internal/ClientDeveloperPreviews.java',
@@ -250,6 +251,10 @@ sourceSets.test {
         include("${packagePath}/client/music/NativeMusicFramesTest.java")
         include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
         include("${packagePath}/kernel/internal/NativeDockWindowsTest.java")
+        include("${packagePath}/kernel/internal/NativeDockIndicatorsTest.java")
+        include("${packagePath}/kernel/internal/NativeDockExampleTest.java")
+        include("${packagePath}/kernel/internal/DockHoverTest.java")
+        include("${packagePath}/kernel/api/dock/indicator/CompactIndicatorTest.java")
         include("${packagePath}/kernel/internal/NativeLiveActivityTest.java")
         include("${packagePath}/kernel/internal/NativeActivityMotionTest.java")
         include("${packagePath}/kernel/internal/NativeMusicArtworkTest.java")

@@ -3,6 +3,8 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.dock.*;
+import com.dishanhai.sh_better_ui.kernel.api.dock.indicator.*;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Rect;
 import com.dishanhai.sh_better_ui.kernel.api.intelligence.SpatialIntelligence.Space;
 import com.dishanhai.sh_better_ui.kernel.internal.dock.DockLayout;
@@ -40,8 +42,8 @@ final class ClientDockWindows implements WindowService, DockService {
         access.require(UIPermission.CAPTURE_INPUT, owned);
         access.require(UIPermission.BLOCK_VANILLA_INPUT, owned);
         if (!spec.id().namespace().equals(module.descriptor().id().namespace())) throw new SecurityException("Window ID must belong to module");
-        if (spec.glass() != null || spec.compactIndicator() != null || spec.animation().curve() == CollapseSpec.Curve.SPRING)
-            throw new UnsupportedOperationException("26.x first-stage windows support plain surfaces and timed collapse; glass, custom indicators and spring collapse are not migrated");
+        if (spec.glass() != null || spec.animation().curve() == CollapseSpec.Curve.SPRING)
+            throw new UnsupportedOperationException("26.x first-stage windows support plain surfaces and timed collapse; glass and spring collapse are not migrated");
         if (windows.containsKey(spec.id())) throw new IllegalArgumentException("Duplicate window ID");
         if (windows.size() >= 128) throw new IllegalStateException("Window limit reached");
         if (spec.persistent()) access.require(UIPermission.MODIFY_GLOBAL_CONFIG, owned);
@@ -71,6 +73,7 @@ final class ClientDockWindows implements WindowService, DockService {
     /** Call before/after screen switches and when the client loses focus; this never commits a cancelled gesture. */
     void suspend() {
         cancelGesture(); focus(null); surface = null;
+        for(var window:windows.values()){window.hover.suspend(host.nowNanos());window.hovered=false;}
         presented = DockLayout.solve(++version, new Rect(0,0,0,0,Space.GUI), List.of(), 4);
     }
     void sync(Screen next, boolean focused) {
@@ -102,6 +105,7 @@ final class ClientDockWindows implements WindowService, DockService {
         prepare(screen);
         if (surface != screen) return;
         long now = host.nowNanos();
+        updateHover(mouseX,mouseY,now);
         var context = new Canvas(graphics, screen.width, screen.height, Minecraft.getInstance().getWindow().getGuiScale(), partialTick);
         long paintStart = System.nanoTime();
         try {
@@ -110,11 +114,12 @@ final class ClientDockWindows implements WindowService, DockService {
                 if (window == null || !geometry.visible()) continue;
                 window.geometry = geometry;
                 var b = geometry.bounds();
-                boolean hover = contains(b, mouseX, mouseY);
-                window.hover(hover, now);
                 context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)(b.y()+b.height()),0xf0222530);
                 context.fill((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)Math.min(b.y()+20,b.y()+b.height()),window == focused ? 0xff536c97 : 0xff333d50);
-                graphics.text(Minecraft.getInstance().font, net.minecraft.locale.Language.getInstance().getVisualOrder(Minecraft.getInstance().font.substrByWidth(window.spec.title(), Math.max(0,(int)b.width()-42))),(int)b.x()+5,(int)b.y()+6,0xffffffff,false);
+                if(!drawCompactIndicator(window.id(),context,now,UiPreferences.configured(),!Minecraft.getInstance().isWindowActive())) {
+                    context.clip((int)b.x(),(int)b.y(),(int)(b.x()+b.width()),(int)(b.y()+b.height()),()->
+                        graphics.text(Minecraft.getInstance().font, net.minecraft.locale.Language.getInstance().getVisualOrder(Minecraft.getInstance().font.substrByWidth(window.spec.title(), Math.max(0,(int)b.width()-42))),(int)b.x()+5,(int)b.y()+6,0xffffffff,false));
+                }
                 if (window.progress > .98f) {
                     context.text(Component.literal("×"),(int)(b.x()+b.width())-14,(int)b.y()+6,0xffffffff);
                     var body = window.body();
@@ -165,6 +170,9 @@ final class ClientDockWindows implements WindowService, DockService {
                 return focused != null && focused.content != null && focused.content.input(event, focused.view()) != WindowContent.Response.PASS;
             }
             if (!(event instanceof NativeInput.Pointer pointer)) return focused != null && focused.content != null && focused.content.input(event,focused.view()) != WindowContent.Response.PASS;
+            // Capture the pointer boundary before an explicit command suppresses hover changes.
+            // This samples intent only: input still uses the last presented geometry.
+            if(pointer.action()==NativeInput.PointerAction.PRESS)updateHover(pointer.x(),pointer.y(),host.nowNanos());
             if (gesture != null) {
                 if (pointer.action() == NativeInput.PointerAction.DRAG) { gesture.update(pointer.x(), pointer.y()); return true; }
                 if (pointer.action() == NativeInput.PointerAction.RELEASE && pointer.button() == 0) { gesture.update(pointer.x(),pointer.y());
@@ -173,12 +181,12 @@ final class ClientDockWindows implements WindowService, DockService {
                         var rect = new Rect(placement.x(),placement.y(),placement.width(),placement.height(),Space.GUI);
                         DockLayout.snap(rect,presented.safeArea(),12).ifPresent(gesture.window::dock);
                     }
-                    var completed = gesture.window; gesture = null; completed.save(); return true; }
+                    var completed = gesture.window; gesture = null; completed.holdHoverClock(); completed.save(); return true; }
             }
             if (captured != null) {
                 var target = captured;
                 try { target.content().input(event,target.view()); }
-                finally { if (pointer.action() == NativeInput.PointerAction.RELEASE && pointer.button() == capturedButton) { captured = null; capturedButton = -1; } }
+                finally { if (pointer.action() == NativeInput.PointerAction.RELEASE && pointer.button() == capturedButton) { captured = null; capturedButton = -1; target.holdHoverClock(); } }
                 return true;
             }
             var target = pick(pointer.x(),pointer.y());
@@ -203,9 +211,32 @@ final class ClientDockWindows implements WindowService, DockService {
             return response != WindowContent.Response.PASS;
         } finally { inputNanos = System.nanoTime()-start; }
     }
+    boolean drawCompactIndicator(UiId id,RenderService.Context canvas,long now,UiPreferences preferences,boolean lowPower) {
+        var window=windows.get(id);
+        if(window==null||window.owner!=surface||window.geometry==null||!window.geometry.visible()||window.progress>.98f||window.indicator==null)return false;
+        return window.drawIndicator(canvas,window.geometry.bounds(),now,preferences,lowPower);
+    }
+
+    /** One topmost hover owner; a small corridor retains, but never acquires, hover. */
+    void updateHover(double x,double y,long now) {
+        var top=pick(x,y);
+        for(var window:windows.values()) {
+            if(window.owner!=surface||window.geometry==null||!window.geometry.visible())continue;
+            var bounds=window.geometry.bounds();
+            boolean inside=top==window||top==null&&window.hover.inside()
+                    &&x>=bounds.x()-3&&y>=bounds.y()-3&&x<bounds.x()+bounds.width()+3&&y<bounds.y()+bounds.height()+3;
+            window.hovered=top==window;
+            if(window.placement.mode()!=DockMode.AUTO_HIDE)continue;
+            window.hovered=inside;
+            boolean next=window.hover.update(now,inside,window.protectedInteraction(),window.expanded,window.spec.expandOnHover(),
+                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(window.spec.openDelayMs()),
+                    java.util.concurrent.TimeUnit.MILLISECONDS.toNanos(window.spec.closeDelayMs()));
+            if(next!=window.expanded)window.target(next,false);
+        }
+    }
     private Window pick(double x,double y) {
         Window result = null;
-        for (var entry : presented.entries().entrySet()) if (contains(entry.getValue().bounds(),x,y)) result = windows.get(entry.getKey());
+        for (var entry : presented.entries().entrySet()) if (entry.getValue().visible() && contains(entry.getValue().bounds(),x,y)) result = windows.get(entry.getKey());
         return result;
     }
     private void focus(Window next) {
@@ -215,7 +246,7 @@ final class ClientDockWindows implements WindowService, DockService {
             previousFocus = surface.getFocused(); surface.setFocused(null);
         }
         focused = next;
-        if (previous != null) previous.contentFocus(false);
+        if (previous != null) {previous.contentFocus(false);previous.holdHoverClock();}
         if (next != null && next.progress > .98f) next.contentFocus(true);
         if (next == null && surface != null && surface == NativePort.screen(Minecraft.getInstance())) {
             if (previousFocus != null && surface.children().contains(previousFocus)) surface.setFocused(previousFocus);
@@ -223,8 +254,8 @@ final class ClientDockWindows implements WindowService, DockService {
         if (next == null) previousFocus = null;
     }
     private void cancelGesture() {
-        if (gesture != null) { gesture.window.placement = gesture.before; gesture = null; }
-        if (captured != null) { var old = captured; captured = null; capturedButton = -1; old.content().captureCancelled(); }
+        if (gesture != null) { gesture.window.placement = gesture.before; gesture.window.holdHoverClock(); gesture = null; }
+        if (captured != null) { var old = captured; captured = null; capturedButton = -1; old.content().captureCancelled(); old.holdHoverClock(); }
     }
     static boolean contains(Rect b,double x,double y) { return x>=b.x() && y>=b.y() && x<b.x()+b.width() && y<b.y()+b.height(); }
 
@@ -246,9 +277,12 @@ final class ClientDockWindows implements WindowService, DockService {
     private final class Window implements MiniWindowHandle {
         final ModuleContext module; final Screen owner; final MiniWindowSpec spec; final ConfigKey<WindowPlacement> stored;
         WindowPlacement placement; Subscription lifetime; WindowContent content; DockLayoutSnapshot.Entry geometry;
-        boolean expanded, hovered, contentFocused; float progress, from; long changed, hoveredAt; int z;
+        final DockHover hover=new DockHover(); final IndicatorRenderer indicator;
+        boolean expanded, hovered, contentFocused, indicatorFailed; float progress, from; long changed; int z;
         Window(ModuleContext module,Screen owner,MiniWindowSpec spec,ConfigKey<WindowPlacement> stored) {
-            this.module=module; this.owner=owner; this.spec=spec; this.stored=stored; reset();
+            this.module=module; this.owner=owner; this.spec=spec; this.stored=stored;
+            indicator=spec.compactIndicator()==null?null:new IndicatorRenderer(spec.compactIndicator().get(),failure->{indicatorFailed=true;host.report("Dock indicator "+spec.id(),failure);});
+            reset();
             if(stored!=null){ var saved=NativeDockPlacements.read(module,stored); placement=saved.withSize(Math.clamp(saved.width(),spec.minWidth(),spec.maxWidth()),Math.clamp(saved.height(),spec.minHeight(),spec.maxHeight())).withGroup(spec.group()); }
             expanded=spec.animation().initiallyExpanded(); progress=expanded?1:0; from=progress; changed=host.nowNanos(); z=++ClientDockWindows.this.z;
         }
@@ -260,8 +294,10 @@ final class ClientDockWindows implements WindowService, DockService {
         void check() { host.assertOwner(); if (!isOpen()) throw new IllegalStateException("Closed window"); }
         @Override public UiId id() { return spec.id(); }
         @Override public boolean isOpen() { return windows.get(id())==this; }
-        void target(boolean target) {
+        void target(boolean target) {target(target,true);}
+        void target(boolean target,boolean command) {
             check();
+            if(command)hover.command();
             if (!target) {
                 if (captured == this || gesture != null && gesture.window == this) cancelGesture();
                 if (focused == this) focus(null);
@@ -272,16 +308,20 @@ final class ClientDockWindows implements WindowService, DockService {
         }
         void sample(long now) {
             long duration=(expanded?spec.animation().expandMillis():spec.animation().collapseMillis())*1_000_000L;
-            float t=duration==0?1:Math.min(1,Math.max(0,(float)(now-changed)/duration));
+            float t=duration==0||UiPreferences.configured().reducedMotion()?1:Math.min(1,Math.max(0,(float)(now-changed)/duration));
             if (spec.animation().curve()==CollapseSpec.Curve.EASE) t=t*t*(3-2*t);
             progress=from+((expanded?1:0)-from)*t;
             if (expanded && progress > .98f && focused == this) contentFocus(true);
         }
-        void hover(boolean next,long now) {
-            if (hovered!=next) { hovered=next; hoveredAt=now; }
-            if (placement.pinned() || !spec.autoHide() || this==focused || this==captured || gesture!=null && gesture.window==this) return;
-            if (next && spec.expandOnHover() && now-hoveredAt>=spec.openDelayMs()*1_000_000L) expand();
-            if (!next && now-hoveredAt>=spec.closeDelayMs()*1_000_000L) collapse();
+        boolean protectedInteraction(){return placement.pinned()||this==focused||this==captured||gesture!=null&&gesture.window==this;}
+        void holdHoverClock(){hover.update(host.nowNanos(),hover.inside(),true,expanded,spec.expandOnHover(),0,0);}
+        boolean drawIndicator(RenderService.Context context,Rect bounds,long now,UiPreferences preferences,boolean lowPower){
+            if(indicatorFailed)return false;
+            var size=indicator.measure(new IndicatorConstraints(Math.max(0,(int)bounds.width()),Math.max(0,(int)bounds.height())));
+            if(indicatorFailed||size.width()==0||size.height()==0)return false;
+            indicator.render(context,(int)bounds.x(),(int)bounds.y(),size.width(),size.height(),1,
+                    new IndicatorContext(now,progress,preferences.reducedMotion(),lowPower));
+            return !indicatorFailed;
         }
         void contentFocus(boolean value) {
             if (contentFocused == value) return;

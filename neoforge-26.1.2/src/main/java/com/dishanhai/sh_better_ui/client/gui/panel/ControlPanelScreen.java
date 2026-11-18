@@ -230,6 +230,10 @@ public final class ControlPanelScreen extends Screen {
             case INDEX -> {
                 toolButton(com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen.label("title"), GraphicIcon.SETTINGS, this::openCustomFonts);
                 toolButton(label("section.overview"), GraphicIcon.INFO, () -> showToolPage(ToolPage.OVERVIEW));
+                var dockExample = toolButton(Component.translatable("sh_better_ui.native.dock_example.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().dockExampleScreen(this)));
+                dockExample.active = ShBetterUiApi.settings().dockExampleAvailable();
+                refreshRows.add(() -> dockExample.active = ShBetterUiApi.settings().dockExampleAvailable());
                 toolButton(label("section.links"), GraphicIcon.GITHUB, () -> showToolPage(ToolPage.LINKS));
                 var shortcut = toolButton(label("section.shortcut"), GraphicIcon.KEYBOARD, this::openKeyBindings);
                 shortcut.setTooltip(Tooltip.create(label("shortcut.manage.tooltip")));
