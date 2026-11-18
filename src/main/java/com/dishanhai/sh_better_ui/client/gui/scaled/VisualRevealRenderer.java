@@ -86,9 +86,16 @@ public final class VisualRevealRenderer extends RenderType {
     static VisualEffectResult drawTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width,
                                           int height, RevealProfile profile, float radius, RevealDirection direction) {
         graphics.flush();
+        return GuiStateGuard.call(() -> drawTextureIsolated(graphics, texture, x, y, width, height, profile, radius, direction));
+    }
+
+    private static VisualEffectResult drawTextureIsolated(GuiGraphics graphics, ResourceLocation texture, int x, int y,
+                                                          int width, int height, RevealProfile profile, float radius,
+                                                          RevealDirection direction) {
         if (shader == null) {
             // 归一化纹理范围是整张图，源尺寸与绘制尺寸彼此独立。
             graphics.blit(texture, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
+            graphics.flush();
             return FALLBACK;
         }
 
@@ -127,7 +134,7 @@ public final class VisualRevealRenderer extends RenderType {
         shader.safeGetUniform("Size").set((float) width, (float) height);
         color("InnerColor", innerArgb);
         color("OuterColor", outerArgb);
-        quad(graphics, TYPE, x, y, width, height, graphics.pose().last().pose());
+        GuiStateGuard.draw(() -> quad(graphics, TYPE, x, y, width, height, graphics.pose().last().pose()));
         return DRAWN;
     }
 

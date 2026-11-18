@@ -7,6 +7,7 @@ import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.OwnershipLease;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
+import com.dishanhai.sh_better_ui.kernel.internal.GuiRenderBindings;
 import com.mojang.blaze3d.pipeline.TextureTarget;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -113,38 +114,32 @@ final class BlackHoleBackdropRenderer extends RenderType {
         var key = BlackHoleGeometryPlan.key(p, pixelsX, pixelsY, (float) area.width() / area.height());
         g.flush();
         WaveRenderState state = WaveRenderState.capture();
-        int active = GlStateManager._getActiveTexture();
-        RenderSystem.activeTexture(GL13.GL_TEXTURE0);
-        int texture0 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        RenderSystem.activeTexture(GL13.GL_TEXTURE1);
-        int texture1 = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
-        RenderSystem.activeTexture(GL13.GL_TEXTURE0);
-        try {
-            Slot display = find(key);
-            offscreen(g, key, p, phase);
-            display = find(key);
-            if (display == null) return false; // never display half-built or unrelated geometry
-            display.used = ++useSequence;
-            int width = key.width(), height = key.height();
-            int bw = Math.min(BLOOM_CAPACITY, width);
-            int bh = Math.max(1, Math.round((float) height * bw / width));
-            if (bh > BLOOM_CAPACITY) { bh = BLOOM_CAPACITY; bw = Math.max(1, Math.round((float) width * bh / height)); }
-            compositeShader.setSampler("Scene", scene);
-            compositeShader.setSampler("Bloom", bloomB == null ? scene : bloomB);
-            compositeShader.safeGetUniform("ContentScale").set((float) width / scene.width, (float) height / scene.height,
-                    (float) bw / BLOOM_CAPACITY, (float) bh / BLOOM_CAPACITY);
-            compositeShader.safeGetUniform("Finish").set(1f / width, 1f / height, p.brightness() <= 0 ? 0 : p.glow(), p.opacity());
-            VisualRevealRenderer.quad(g, COMPOSITE, area.x(), area.y(), area.width(), area.height(), pose);
-            return true;
-        } catch (RuntimeException failure) {
-            releaseBundle(); failedUntilReload = true;
-            ShBetterUi.LOGGER.warn("Disabling black-hole targets until resource reload", failure);
-            return false;
+        try (var bindings = new GuiRenderBindings()) {
+            try {
+                RenderSystem.activeTexture(GL13.GL_TEXTURE0);
+                offscreen(g, key, p, phase);
+                Slot display = find(key);
+                if (display == null) return false; // never display half-built or unrelated geometry
+                display.used = ++useSequence;
+                int width = key.width(), height = key.height();
+                int bw = Math.min(BLOOM_CAPACITY, width);
+                int bh = Math.max(1, Math.round((float) height * bw / width));
+                if (bh > BLOOM_CAPACITY) { bh = BLOOM_CAPACITY; bw = Math.max(1, Math.round((float) width * bh / height)); }
+                compositeShader.setSampler("Scene", scene);
+                compositeShader.setSampler("Bloom", bloomB == null ? scene : bloomB);
+                compositeShader.safeGetUniform("ContentScale").set((float) width / scene.width, (float) height / scene.height,
+                        (float) bw / BLOOM_CAPACITY, (float) bh / BLOOM_CAPACITY);
+                compositeShader.safeGetUniform("Finish").set(1f / width, 1f / height, p.brightness() <= 0 ? 0 : p.glow(), p.opacity());
+                VisualRevealRenderer.quad(g, COMPOSITE, area.x(), area.y(), area.width(), area.height(), pose);
+                return true;
+            } catch (RuntimeException failure) {
+                releaseBundle(); failedUntilReload = true;
+                ShBetterUi.LOGGER.warn("Disabling black-hole targets until resource reload", failure);
+                return false;
+            } finally {
+                clearSamplers();
+            }
         } finally {
-            clearSamplers();
-            RenderSystem.activeTexture(GL13.GL_TEXTURE1); RenderSystem.bindTexture(texture1);
-            RenderSystem.activeTexture(GL13.GL_TEXTURE0); RenderSystem.bindTexture(texture0);
-            RenderSystem.activeTexture(active);
             state.restore();
         }
     }

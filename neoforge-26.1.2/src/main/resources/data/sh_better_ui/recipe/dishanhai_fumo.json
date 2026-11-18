@@ -1,0 +1,26 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:not",
+      "value": {
+        "type": "neoforge:mod_loaded",
+        "modid": "sh_common_lib"
+      }
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " W ",
+    "WPW",
+    "BWB"
+  ],
+  "key": {
+    "W": "minecraft:white_wool",
+    "P": "minecraft:purple_dye",
+    "B": "minecraft:black_wool"
+  },
+  "result": {
+    "id": "sh_better_ui:dishanhai_fumo"
+  }
+}
