@@ -28,7 +28,9 @@ public final class ClientOnlineMusic implements OnlineMusicService, AutoCloseabl
     }
     @Override public OnlineMusicPlayer open() { return open(List.of(new NeteaseSource(), new QQMusicSource())); }
     @Override public OnlineMusicPlayer open(List<OnlineMusicSource> sources) {
-        var player = new OnlinePlayerSession(sources, new MusicCredentialStore(java.nio.file.Path.of("config", "sh_better_ui", "music-accounts")));
+        var player = new OnlinePlayerSession(sources, Mp3Output::new, new MusicHttp()::audio,
+                new MusicCredentialStore(java.nio.file.Path.of("config", "sh_better_ui", "music-accounts")),
+                new MusicQueueStore(java.nio.file.Path.of("config", "sh_better_ui", "music-queue.bin")));
         player.restoreSavedCredentials();
         return player;
     }

@@ -27,6 +27,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private final Map<String, Long> accountGenerations = new HashMap<>();
     private final OnlineMusicSearch searchIndex = new OnlineMusicSearch();
     private final MusicCredentialStore credentialStore;
+    private final MusicQueueStore queueStore;
     private final ScheduledThreadPoolExecutor loginWorker = new ScheduledThreadPoolExecutor(1, task -> {
         var thread = new Thread(task, "shb-music-login"); thread.setDaemon(true); return thread;
     });
@@ -58,7 +59,12 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         this(providers, outputs, download, null);
     }
     OnlinePlayerSession(List<OnlineMusicSource> providers, Supplier<PlaybackOutput> outputs, Download download, MusicCredentialStore store) {
+        this(providers, outputs, download, store, null);
+    }
+    OnlinePlayerSession(List<OnlineMusicSource> providers, Supplier<PlaybackOutput> outputs, Download download,
+                        MusicCredentialStore store, MusicQueueStore queueStore) {
         this.outputs = outputs; this.download = download;
+        this.queueStore = queueStore;
         this.credentialStore = store;
         loginWorker.setRemoveOnCancelPolicy(true);
         queueWorker.setRemoveOnCancelPolicy(true);
@@ -422,6 +428,40 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         private final PlaybackOrder order = new PlaybackOrder();
         private long attachedGeneration = -1, undoGeneration;
         private PlaybackOrder.Saved undoOrder;
+        @Override public boolean supportsCheckpoints() { return queueStore != null; }
+        private MusicQueueStore checkpointStore() {
+            requireOpen();
+            if (queueStore == null) throw new UnsupportedOperationException("Queue checkpoints unavailable");
+            return queueStore;
+        }
+        @Override public void saveCheckpoint() throws java.io.IOException {
+            MusicQueueStore store; MusicQueueStore.Saved saved;
+            synchronized (OnlinePlayerSession.this) { store = checkpointStore(); saved = new MusicQueueStore.Saved(tracks, order.mode()); }
+            store.save(saved);
+        }
+        @Override public boolean restoreCheckpoint() throws java.io.IOException {
+            MusicQueueStore store; List<OnlineTrack> previous; Mode previousMode; int previousIndex; long request;
+            synchronized (OnlinePlayerSession.this) {
+                store = checkpointStore(); previous = tracks; previousMode = order.mode(); previousIndex = index; request = generation;
+            }
+            var saved = store.load();
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                if (saved.isEmpty()) return false;
+                if (tracks != previous || order.mode() != previousMode || index != previousIndex || generation != request)
+                    throw new java.io.IOException("Queue changed while loading the checkpoint; retry explicitly");
+                for (var song : saved.get().tracks()) validateTrack(song);
+                cancelQueueProgress();
+                tracks = saved.get().tracks(); index = -1; undoTracks = null; undoOrder = null; attachedGeneration = -1;
+                order.mode(saved.get().mode()); order.reset(tracks.size(), -1);
+                return true;
+            }
+        }
+        @Override public void deleteCheckpoint() throws java.io.IOException {
+            MusicQueueStore store;
+            synchronized (OnlinePlayerSession.this) { store = checkpointStore(); }
+            store.delete();
+        }
         @Override public Snapshot snapshot() {
             synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null, order.mode(),
                     order.canPrevious(), order.canNext()); }
