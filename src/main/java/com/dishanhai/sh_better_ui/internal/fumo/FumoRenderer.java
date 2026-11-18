@@ -8,7 +8,6 @@ import net.minecraft.client.renderer.block.BlockRenderDispatcher;
 import net.minecraft.client.renderer.blockentity.BlockEntityRenderer;
 import net.minecraft.client.renderer.blockentity.BlockEntityRendererProvider;
 import net.minecraft.world.inventory.InventoryMenu;
-import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
 
 /** Draws the baked plush in an entity render layer while it dances. */
@@ -38,9 +37,9 @@ public final class FumoRenderer implements BlockEntityRenderer<DishanhaiFumoBloc
         var state = plush.getBlockState();
         if (level == null || !state.getValue(DishanhaiFumoBlock.DANCING)) return;
 
-        float swing = FumoMotion.swing(level.getGameTime(), partialTick);
+        float squash = FumoMotion.squash(level.getGameTime(), partialTick);
         pose.pushPose();
-        FumoMotion.apply(pose, state.getValue(BlockStateProperties.HORIZONTAL_FACING), swing);
+        FumoMotion.apply(pose, squash);
         blocks.getModelRenderer().renderModel(pose.last(), buffers.getBuffer(LAYER), state,
                 blocks.getBlockModel(state), 1, 1, 1, light, overlay);
         pose.popPose();

@@ -12,81 +12,59 @@
   },
   "elements": [
     {
-      "name": "Right outsole",
-      "from": [8.875,0,2.15],
-      "to": [13.125,0.65,9.75],
+      "name": "Right seated leg",
+      "from": [8.87,0.42,5.3],
+      "to": [11.73,2.86,8.94],
+      "rotation": {"origin": [10.3,0,6.4],"axis": "y","angle": -22.5},
       "faces": {
-        "north": {"uv": [2, 7.5, 3, 8], "texture": "#skin"},
-        "east": {"uv": [2, 7.5, 3, 8], "texture": "#skin"},
-        "south": {"uv": [2, 7.5, 3, 8], "texture": "#skin"},
+        "north": {"uv": [1, 5.5, 2, 7.5], "texture": "#skin"},
+        "east": {"uv": [0, 5.5, 1, 7.5], "texture": "#skin"},
+        "south": {"uv": [3, 5.5, 4, 7.5], "texture": "#skin"},
+        "west": {"uv": [2, 5.5, 3, 7.5], "texture": "#skin"},
+        "up": {"uv": [1, 5.5, 2, 7.25], "texture": "#skin"},
+        "down": {"uv": [2, 5.5, 3, 7.25], "texture": "#skin"}
+      }
+    },
+    {
+      "name": "Right plush foot",
+      "from": [8.77,0,3.11],
+      "to": [11.83,2.6,6.01],
+      "rotation": {"origin": [10.3,0,6.4],"axis": "y","angle": -22.5},
+      "faces": {
+        "north": {"uv": [2, 4, 3, 5], "texture": "#skin"},
+        "east": {"uv": [0, 7.5, 1, 8], "texture": "#skin"},
+        "south": {"uv": [3, 7.5, 4, 8], "texture": "#skin"},
         "west": {"uv": [2, 7.5, 3, 8], "texture": "#skin"},
-        "up": {"uv": [2, 7.5, 3, 8], "texture": "#skin"},
-        "down": {"uv": [2, 7.5, 3, 8], "texture": "#skin"}
+        "up": {"uv": [1, 8, 2, 7.25], "texture": "#skin"},
+        "down": {"uv": [1, 7.5, 2, 8], "texture": "#skin"}
       }
     },
     {
-      "name": "Right shoe",
-      "from": [9,0.65,2.35],
-      "to": [13,2.1,9.55],
+      "name": "Left seated leg",
+      "from": [4.27,0.42,5.3],
+      "to": [7.13,2.86,8.94],
+      "rotation": {"origin": [5.7,0,6.4],"axis": "y","angle": 22.5},
       "faces": {
-        "north": {"uv": [2, 4, 3, 5], "texture": "#skin"},
-        "east": {"uv": [0, 5, 1, 8], "texture": "#skin", "rotation": 90},
-        "south": {"uv": [1, 4, 2, 5], "texture": "#skin"},
-        "west": {"uv": [2, 5, 3, 8], "texture": "#skin", "rotation": 270},
-        "up": {"uv": [1, 5, 2, 8], "texture": "#skin"},
-        "down": {"uv": [3, 5, 4, 8], "texture": "#skin", "rotation": 180}
+        "north": {"uv": [5, 13.5, 6, 15.5], "texture": "#skin"},
+        "east": {"uv": [4, 13.5, 5, 15.5], "texture": "#skin"},
+        "south": {"uv": [7, 13.5, 8, 15.5], "texture": "#skin"},
+        "west": {"uv": [6, 13.5, 7, 15.5], "texture": "#skin"},
+        "up": {"uv": [5, 13.5, 6, 15.25], "texture": "#skin"},
+        "down": {"uv": [6, 13.5, 7, 15.25], "texture": "#skin"}
       }
     },
     {
-      "name": "Right ankle",
-      "from": [9.3,2.1,5.25],
-      "to": [12.7,3.1,9.4],
+      "name": "Left plush foot",
+      "from": [4.17,0,3.11],
+      "to": [7.23,2.6,6.01],
+      "rotation": {"origin": [5.7,0,6.4],"axis": "y","angle": 22.5},
       "faces": {
-        "north": {"uv": [2, 4, 3, 5], "texture": "#skin"},
-        "east": {"uv": [0, 5, 1, 8], "texture": "#skin", "rotation": 90},
-        "south": {"uv": [1, 4, 2, 5], "texture": "#skin"},
-        "west": {"uv": [2, 5, 3, 8], "texture": "#skin", "rotation": 270},
-        "up": {"uv": [1, 5, 2, 8], "texture": "#skin"},
-        "down": {"uv": [3, 5, 4, 8], "texture": "#skin", "rotation": 180}
-      }
-    },
-    {
-      "name": "Left outsole",
-      "from": [2.875,0,2.15],
-      "to": [7.125,0.65,9.75],
-      "faces": {
-        "north": {"uv": [6, 15.5, 7, 16], "texture": "#skin"},
-        "east": {"uv": [6, 15.5, 7, 16], "texture": "#skin"},
-        "south": {"uv": [6, 15.5, 7, 16], "texture": "#skin"},
+        "north": {"uv": [6, 12, 7, 13], "texture": "#skin"},
+        "east": {"uv": [4, 15.5, 5, 16], "texture": "#skin"},
+        "south": {"uv": [7, 15.5, 8, 16], "texture": "#skin"},
         "west": {"uv": [6, 15.5, 7, 16], "texture": "#skin"},
-        "up": {"uv": [6, 15.5, 7, 16], "texture": "#skin"},
-        "down": {"uv": [6, 15.5, 7, 16], "texture": "#skin"}
-      }
-    },
-    {
-      "name": "Left shoe",
-      "from": [3,0.65,2.35],
-      "to": [7,2.1,9.55],
-      "faces": {
-        "north": {"uv": [6, 12, 7, 13], "texture": "#skin"},
-        "east": {"uv": [4, 13, 5, 16], "texture": "#skin", "rotation": 90},
-        "south": {"uv": [5, 12, 6, 13], "texture": "#skin"},
-        "west": {"uv": [6, 13, 7, 16], "texture": "#skin", "rotation": 270},
-        "up": {"uv": [5, 13, 6, 16], "texture": "#skin"},
-        "down": {"uv": [7, 13, 8, 16], "texture": "#skin", "rotation": 180}
-      }
-    },
-    {
-      "name": "Left ankle",
-      "from": [3.3,2.1,5.25],
-      "to": [6.7,3.1,9.4],
-      "faces": {
-        "north": {"uv": [6, 12, 7, 13], "texture": "#skin"},
-        "east": {"uv": [4, 13, 5, 16], "texture": "#skin", "rotation": 90},
-        "south": {"uv": [5, 12, 6, 13], "texture": "#skin"},
-        "west": {"uv": [6, 13, 7, 16], "texture": "#skin", "rotation": 270},
-        "up": {"uv": [5, 13, 6, 16], "texture": "#skin"},
-        "down": {"uv": [7, 13, 8, 16], "texture": "#skin", "rotation": 180}
+        "up": {"uv": [5, 16, 6, 15.25], "texture": "#skin"},
+        "down": {"uv": [5, 15.5, 6, 16], "texture": "#skin"}
       }
     },
     {
