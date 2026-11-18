@@ -175,6 +175,8 @@ def sharedSources = [
         'client/gui/text/TextEffectClusters.java',
         'client/gui/text/ShanhaiTextAPI.java',
         'client/gui/text/GtshTextFrames.java',
+        'client/gui/text/GtshOptionalText.java',
+        'client/gui/text/TooltipTextLayout.java',
         'client/gui/text/TextPalettes.java',
         'client/gui/text/UiShortcutKeycaps.java',
         'client/lyrics/common/style/ColorMath.java',
@@ -238,6 +240,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/text/NativeFormattedTextTest.java")
         include("${packagePath}/client/gui/text/ShanhaiTextAPITest.java")
         include("${packagePath}/client/gui/text/GtshTextFramesTest.java")
+        include("${packagePath}/client/gui/text/GtshOptionalTextTest.java")
+        include("${packagePath}/client/gui/text/TooltipTextLayoutTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
         include("${packagePath}/client/gui/scaled/UiKeyframeAnimationTest.java")

@@ -100,7 +100,7 @@ gradle.beforeProject { p ->
                 systemProperty 'shbui.widgetSmoke.layoutScale', layoutScale
                 programArguments.addAll('--width', longLabels ? '1280' : '1080', '--height', longLabels ? '960' : '720')
             } else {
-                programArguments.addAll('--width', '800', '--height', '480')
+                programArguments.addAll('--width', '800', '--height', formattedText ? '700' : '480')
             }
             if (backend != 'default') programArguments.addAll('--graphicsBackend', backend)
             if (vulkanFallback) {

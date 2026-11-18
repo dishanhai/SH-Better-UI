@@ -2,6 +2,10 @@
 package com.dishanhai.shbui_widgets_smoke;
 
 import com.dishanhai.sh_better_ui.client.gui.text.UiTextEffects;
+import com.dishanhai.sh_better_ui.client.gui.text.UiTextTooltip;
+import com.dishanhai.sh_better_ui.client.gui.text.TooltipTextLayout;
+import net.minecraft.client.gui.screens.inventory.tooltip.ClientTooltipComponent;
+import org.joml.Vector2i;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.Screenshot;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -29,6 +33,7 @@ final class FormattedTextSmoke {
     private static long firstCapture;
     private static boolean pending, secondPhase;
     private static int[] baselineProbe, baselinePalette;
+    private static int[][] baselineTooltips;
 
     static void frame(Minecraft client) {
         if (WidgetSmokePlatform.hasOverlay(client)) return;
@@ -58,10 +63,15 @@ final class FormattedTextSmoke {
             try (image) {
                 int[] probe = region(image, scale, 18, 40, 360, 18);
                 int[] palette = region(image, scale, 18, 112, 360, 21);
+                int[][] tooltips = new int[3][];
+                for (int column = 0; column < 3; column++) {
+                    tooltips[column] = region(image, scale, 18 + column * 126, 261, 104, 42);
+                }
                 image.writeToFile(client.gameDirectory.toPath().resolve("formatted-text-" + stage + ".png"));
                 if (stage == 0) {
                     baselineProbe = probe;
                     baselinePalette = palette;
+                    baselineTooltips = tooltips;
                     firstCapture = Util.getMillis();
                     secondPhase = true;
                     stage = 1;
@@ -70,7 +80,14 @@ final class FormattedTextSmoke {
                     int paletteChanged = differences(baselinePalette, palette);
                     require(probeChanged > 40, "native callback pixels unchanged: " + probeChanged);
                     require(paletteChanged > 40, "wall-clock palette pixels unchanged: " + paletteChanged);
+                    int[] tooltipChanges = new int[3];
+                    for (int column = 0; column < 3; column++) {
+                        tooltipChanges[column] = differences(baselineTooltips[column], tooltips[column]);
+                        require(tooltipChanges[column] > 8, "tooltip column " + column + " pixels unchanged");
+                    }
                     String result = "PASS native String/Component/FCS hooks; width=" + screen.measuredWidth
+                            + " tooltipNativeContainers=3 tooltipWidth=" + screen.tooltipWidth
+                            + " tooltipChanged=" + java.util.Arrays.toString(tooltipChanges)
                             + " wrappedLines=" + screen.wrapped.size() + " hookCalls=" + java.util.Arrays.toString(calls)
                             + " probeChanged=" + probeChanged + " paletteChanged=" + paletteChanged
                             + " elapsedMs=" + (Util.getMillis() - firstCapture) + " backend=" + WidgetSmokePlatform.backend()
@@ -116,7 +133,8 @@ final class FormattedTextSmoke {
                 Component.literal("FCS 𠀀 e\u0301 עברית العربية"), IDS[2]).getVisualOrderText();
         private final Component animated = UiTextEffects.parse("&~$rainbow-动态色板与波动 Animation e\u0301 🌊");
         private List<FormattedCharSequence> wrapped;
-        private int measuredWidth, drawn;
+        private int measuredWidth, drawn, tooltipWidth;
+        private List<List<ClientTooltipComponent>> tooltips;
 
         Probe() { super(Component.literal("GTSH formatted text migration")); }
 
@@ -129,6 +147,25 @@ final class FormattedTextSmoke {
             wrapped = font.split(UiTextEffects.parse("&~$rainbow-换行仍保留色板与样式，每行保持独立字形簇。Wrapped native lines keep their animation and width."), 210);
             require(wrapped.size() > 1, "expected wrapped native lines");
             for (var line : wrapped) require(font.width(line) <= 210, "wrapped line exceeds native width");
+            List<FormattedCharSequence> tooltipLines = List.of(
+                    UiTextEffects.parse("&~$rainbow-山海 e\u0301").getVisualOrderText(),
+                    Component.literal("Native bold").withStyle(Style.EMPTY.withBold(true)).getVisualOrderText(),
+                    Component.literal("🌊 FCS").getVisualOrderText());
+            tooltipWidth = 104;
+            for (var line : tooltipLines) require(font.width(line) < tooltipWidth, "tooltip probe exceeds column");
+            tooltips = java.util.Arrays.stream(TooltipTextLayout.Alignment.values())
+                    .map(alignment -> UiTextTooltip.lines(tooltipLines, alignment, tooltipWidth)).toList();
+            var left = new TooltipTextLayout(tooltipLines, TooltipTextLayout.Alignment.LEFT, tooltipWidth);
+            var center = new TooltipTextLayout(tooltipLines, TooltipTextLayout.Alignment.CENTER, tooltipWidth);
+            var right = new TooltipTextLayout(tooltipLines, TooltipTextLayout.Alignment.RIGHT, tooltipWidth);
+            require(left.offset(0, font::width) == 0, "left tooltip offset");
+            require(center.offset(0, font::width) > 0, "center tooltip offset");
+            require(right.offset(0, font::width) == 2 * center.offset(0, font::width), "right tooltip offset");
+            require(left.offset(0, font::width) == 0, "independent same-text instances interfered");
+            for (var rows : tooltips) for (var row : rows) {
+                require(row.getWidth(font) == tooltipWidth, "native tooltip width contract");
+                require(row.getHeight(font) == 10, "native text tooltip height contract");
+            }
         }
 
         @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mx, int my, float delta) {
@@ -142,6 +179,15 @@ final class FormattedTextSmoke {
             graphics.text(font, "Native wrap / width verified", 18, 144, 0xff9ca3af, false);
             int y = 160;
             for (var line : wrapped) { graphics.text(font, line, 18, y, 0xffffffff, false); y += 13; }
+            graphics.text(font, "Instance tooltips / same text, independent alignment", 18, 222, 0xff9ca3af, false);
+            String[] labels = {"LEFT", "CENTER", "RIGHT"};
+            for (int column = 0; column < tooltips.size(); column++) {
+                int left = 18 + column * 126;
+                graphics.text(font, labels[column], left, 240, 0xff9ca3af, false);
+                graphics.tooltip(font, tooltips.get(column), left, 261,
+                        (guiWidth, guiHeight, mouseX, mouseY, tooltipW, tooltipH) -> new Vector2i(mouseX, mouseY), null);
+            }
+            graphics.text(font, "Native containers; GUI scale 2; FCS markers retained", 18, 313, 0xff9ca3af, false);
             drawn++;
         }
     }

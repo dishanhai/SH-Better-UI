@@ -117,7 +117,7 @@ across physical line boundaries.
 | ShanhaiTextAPI source facade | Added in the opt-in compatibility slice below; SHBUI namespace, not binary compatibility |
 | Speed/direction/time locks | Added for facade snapshots only; existing explicit frame-time API is unchanged |
 | Concat overloads, default-style format, start/end colors | Added in the compatibility facade; exact differences documented below |
-| External GTL wrappers | Not implemented without verified bundled dependency contracts |
+| External GTL wrappers | Optional runtime delegation added below; exact signatures statically verified, real-provider runtime pending |
 | Raw markup in already-shaped bare FCS | Intentionally not reparsed; parse before bidi shaping |
 | Duplicate registry IDs | Namespaced registration/cleanup; duplicate IDs throw rather than return old definition |
 | Unmarked text and unknown markup | Remain unchanged/literal, unlike GTSH implicit ultimate-color behavior |
@@ -166,14 +166,14 @@ Deliberate corrections and limits:
   tooltip centering side channel is not recreated; the host still owns alignment.
 - Live FCS/WOBBLE and randomized meta modes use SHBUI's engine, not GTSH's global
   render-context caches or identical random registry/seed identity.
-- External GTLCore and GTLAdditions wrappers remain unimplemented: the exact
-  bundled GTLCore `1.2.3.2-fix4` and GTLAdditions contracts were not established.
+- External GTLCore/GTLAdditions support was initially deferred. The subsequent
+  optional-provider slice below verifies exact signatures without bundling the libraries.
 - This facade does not install new KubeJS 26.x, GuideMe or FTB integrations.
 
 ### Compatibility-slice verification
 
-The facade covers 72 of the upstream API's 83 distinct public method names; the
-11 omitted names are the external GTLCore/GTLAdditions wrappers. Method-name
+At this slice the facade covered 72 of the upstream API's 83 distinct public method names; the
+11 deferred names were the external GTLCore/GTLAdditions wrappers. Method-name
 coverage is not an overall migration completion percentage or exact binary parity.
 
 After cross-review, malformed `§` plus supplementary characters was corrected and
@@ -189,3 +189,105 @@ This adds 19 tests per target over the native-renderer slice. Independent
 cross-review confirmed the Unicode correction and found no remaining blocking
 issues. The prior real-game smoke covers the renderer; this additional snapshot
 API slice was verified by the tests above, not a new visual screenshot run.
+
+## Optional GTL provider wrappers
+
+All 11 external wrapper names are now exposed by the facade, bringing its method
+name surface to all 83 upstream names. This is not proof of full migration or
+runtime compatibility: these 11 calls require an installed, compatible provider.
+The bridge delegates to that provider rather than copying its algorithms,
+shipping its JARs, or returning a similar-looking fallback. Existing native
+SHBUI functionality does not load or require either provider.
+
+`gtlCoreAvailable()` / `gtlAdditionsAvailable()` inspect the public method shapes
+without initializing the provider. They report signature availability, not
+successful runtime integration. Missing classes, wrong signatures or class-file
+linkage failures yield false. Calling an unavailable operation throws a diagnostic
+exception. Provider execution failures retain their original cause and are not
+misreported as a missing dependency. Only successful method resolutions are cached.
+
+### Exact source-artifact inspection
+
+The following files were downloaded outside the project solely for static
+inspection from [GTSH's libs](https://github.com/dishanhai/gtl_shanhai-dishanhai/tree/master/libs).
+Their sizes and Git blob hashes were verified before `javap` / metadata inspection:
+
+| Artifact | Bytes | Git blob | Text implementation class version |
+| --- | ---: | --- | --- |
+| gtlcore-1.2.3.2-fix4.jar | 13,069,272 | `399807a82dc467658ac7bcb39ad32184a4b4448e` | 61 (Java 17) |
+| gtladditions-3.3.1Custom.jar | 40,680,482 | `858316fb76356cfb8c40e363bd8f35099aa4c2fe` | 65 (Java 21) |
+
+The exact bytecode confirms the seven public static `TextUtil` methods and the
+four `CommonUtils` methods (two static and two via public static final `INSTANCE`)
+used by the bridge. Component subtypes are accepted as return types; arguments
+and returned objects are passed through unchanged.
+
+Both JAR metadata files declare LGPLv3.0 and Forge 47 / Minecraft 1.20.1. This
+change copies neither implementation nor binaries and does not remove upstream
+license requirements from anyone distributing those dependencies. The Additions
+custom class requires Java 21 despite its 1.20.1 metadata, and declares further
+GTLCore / SGJourney / client Oculus dependencies. It cannot load on a Java 17
+runtime. Neither old Forge artifact is an accepted NeoForge 1.21.1/26.x provider.
+
+No code from these JARs was executed. Contract fixtures verify SHBUI's dispatch,
+not real-provider game behavior. Actual installed-mod integration remains pending
+on a supported Minecraft/loader/Java/dependency combination.
+
+## Instance-scoped tooltip alignment
+
+`UiTextTooltip.lines(...)` produces native `ClientTooltipComponent` rows sharing
+one immutable `TooltipTextLayout`. Select LEFT, CENTER or RIGHT and an optional
+minimum width in native GUI units. `UiTextTooltip.wrap(font, component, width,
+alignment)` normalizes before native wrapping, preserving styles and visual order.
+Submit the returned rows through the host's native tooltip API. The caller owns
+screen placement, available width, showing/closing the tooltip and reveal updates.
+Rebuild the rows when changing reveal content or wrapping; no global registration
+or cleanup is needed. Alignments apply to these text rows, not unrelated image or
+item rows added by a different tooltip contributor.
+
+This deliberately replaces, rather than reproduces, GTSH's global
+`CENTER_TARGETS`/`CENTER_CONTAINER_WIDTH` matching by text content. Identical text
+in separate tooltip instances cannot inherit one another's alignment. The 26.x
+adapter restores its pose in `finally`; the older adapter submits float offsets
+without mutating the caller's pose. The host applies GUI scale once. No global
+Font mixin, string-content cache or tooltip event interception is introduced.
+
+### Third-party 26.x adaptation inventory
+
+GuideME and FTB Library do have 26.1.2 upstream source variants:
+[GuideME v26.1.17-beta](https://github.com/AppliedEnergistics/GuideME/releases/tag/v26.1.17-beta)
+uses `LineTextRun.render(RenderContext)` and `RenderContext.renderText`, not the
+old adapter's `renderBatch`/`renderTextInBatch` entry points. The
+[FTB Library dev parser](https://github.com/FTBTeam/FTB-Library/blob/dev/common/src/main/java/dev/ftb/mods/ftblibrary/util/TextComponentParser.java)
+retains the `parse(String, Function)` / `parse0` shapes. This is source inspection,
+not a version-pinned binary integration test. Dedicated 26.x adapters and actual
+mod-page validation remain a separate slice; old adapters must not be enabled
+blindly against the changed GuideME renderer.
+
+### Optional-provider and tooltip verification
+
+After independent review, the final combined tree passed
+`test kernelTest verifyLibraryJar` on all three targets:
+
+| Target | Tests | Skipped | Failures/errors | Kernel tests | Library verification |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Forge 1.20.1 | 1,884 | 5 | 0 | 541 passed | passed |
+| NeoForge 1.21.1 | 1,896 | 5 | 0 | 541 passed | passed |
+| NeoForge 26.1.2 | 843 | 5 | 0 | 541 passed | passed |
+
+Seven optional-provider contract tests and five tooltip tests were added per
+version. The provider tests use explicit fixtures, including missing/linkage
+failures, covariant Component returns, static/INSTANCE dispatch, lazy loading,
+original argument/object identity and provider exceptions/initialization errors.
+They do not execute the external artifacts.
+
+The real NeoForge 26.1.2 OpenGL client then passed the extended formatted-text
+smoke. It displayed three native tooltip containers with identical text and
+LEFT/CENTER/RIGHT alignment, at GUI scale 2 and 104-unit text width. Native
+width/height and independent-offset assertions passed. Two actual framebuffer
+screenshots 568ms apart were visually inspected; each tooltip region changed
+468 pixels, confirming visible animated text in all three containers. The
+original native-text probe changed 814 pixels and the built-in palette region
+1682 pixels. The game exited normally; build exit 0. This validates explicit
+native tooltip rows, not automatic third-party tooltip interception or real GTL
+provider execution.

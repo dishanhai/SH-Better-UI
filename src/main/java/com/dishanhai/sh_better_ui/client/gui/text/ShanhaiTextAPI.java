@@ -21,7 +21,29 @@ import java.util.Locale;
 public final class ShanhaiTextAPI {
     private static final GtshTextFrames FRAMES = new GtshTextFrames(System::currentTimeMillis);
 
+    private static final GtshOptionalText OPTIONAL = new GtshOptionalText();
+
     private ShanhaiTextAPI() {}
+
+    /** Signature availability only; not proof that an installed mod is compatible with this game version. */
+    public static boolean gtlCoreAvailable() { return OPTIONAL.available(GtshOptionalText.Provider.CORE); }
+    public static boolean gtlAdditionsAvailable() { return OPTIONAL.available(GtshOptionalText.Provider.ADDITIONS); }
+
+    public static String gtlRainbow(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.RAINBOW, text); }
+    public static String gtlDarkPurplishRed(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.DARK_PURPLISH_RED, text); }
+    public static String gtlWhiteBlue(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.WHITE_BLUE, text); }
+    public static String gtlPurplishRed(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.PURPLISH_RED, text); }
+    public static String gtlGolden(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.GOLDEN, text); }
+    public static String gtlDarkGreen(String text) { return (String) OPTIONAL.invoke(GtshOptionalText.Operation.DARK_GREEN, text); }
+    public static String gtlFormat(String text, ChatFormatting[] colors, double intervalMs) {
+        return (String) OPTIONAL.invoke(GtshOptionalText.Operation.FORMAT, text, colors, intervalMs);
+    }
+    public static Component addRainbow(String text) { return (Component) OPTIONAL.invoke(GtshOptionalText.Operation.ADD_RAINBOW, text); }
+    public static Component addObfuscatedRainbow(String text) { return (Component) OPTIONAL.invoke(GtshOptionalText.Operation.ADD_OBFUSCATED_RAINBOW, text); }
+    public static Component addObfuscatedDelete(String text) { return (Component) OPTIONAL.invoke(GtshOptionalText.Operation.ADD_OBFUSCATED_DELETE, text); }
+    public static Component addRainbowOn(MutableComponent component) {
+        return (Component) OPTIONAL.invoke(GtshOptionalText.Operation.ADD_RAINBOW_ON, component);
+    }
 
     /** These controls affect only this facade's construction-time snapshots, never the global renderer. */
     public static synchronized void setSpeed(long millis) { FRAMES.setSpeed(millis); }
