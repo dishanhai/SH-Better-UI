@@ -88,3 +88,14 @@ GPU artwork/system-output capture/global HUD remain separate migrations.
 Forge 1.20.1 and NeoForge 1.21.1 each pass 35 targeted account, background queue
 and frame-bridge tests (zero failures/errors/skips), with production/test
 compilation and Forge reobfuscation. These are not full old-platform test runs.
+
+## Native Screen Dock spring follow-up
+
+Screen Dock now accepts `CollapseSpec.Curve.SPRING` using the existing shared
+interruptible spring implementation. The window privately owns and releases its
+track, so existing render/input grants remain sufficient. Timed LINEAR/EASE
+behavior and layout persistence are unchanged. Reversal preserves the current
+position and velocity; progress is bounded, zero duration is immediate, and
+reduced-motion changes settle the current target. Controlled progress remains
+rejected by MiniWindowSpec. This does not migrate HUD windows or glass Dock
+compositing. See `neoforge-26.1.2/DOCK-INDICATORS.md` for the example and boundary.

@@ -38,6 +38,7 @@ public final class NativeDockExampleScreen extends Screen {
     }).bounds(x,y,width,20).build());}
     private void createWindow(){
         window=example.dock.createMiniWindow(example.context,scope,MiniWindowSpec.builder("sh_better_ui:dock_example/window")
+                .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,240,200,false,false))
                 .title(label("sample")).compactSize(28,80).size(240,160).outsideClickCloses(true)
                 .compactIndicator(()->new ProgressIndicator(24,72,()->progress,0xff80caff,0xff304355))
                 .content(()->(draw,view)->{

@@ -611,7 +611,7 @@
   "sh_better_ui.correctness.inspector.tab_hint.page_layout": "控制項邊界與焦點",
   "sh_better_ui.correctness.inspector.tab_hint.page_protocol": "連線能力、權限與 Trace",
   "sh_better_ui.native.dock_example.title": "Dock 指示器範例",
-  "sh_better_ui.native.dock_example.help": "僅示範進度，並非音樂或實際工作。懸停左側標籤展開；拖曳標題、拖曳角落調整大小，Esc 取消手勢。Tab 與 Enter 操作按鈕。",
+  "sh_better_ui.native.dock_example.help": "彈簧展開；僅示範進度，並非音樂或實際工作。懸停左側標籤展開；拖曳標題、拖曳角落調整大小，Esc 取消手勢。Tab 與 Enter 操作按鈕。",
   "sh_better_ui.native.dock_example.sample": "示範進度",
   "sh_better_ui.native.dock_example.expand": "開啟 / 展開",
   "sh_better_ui.native.dock_example.collapse": "摺疊",

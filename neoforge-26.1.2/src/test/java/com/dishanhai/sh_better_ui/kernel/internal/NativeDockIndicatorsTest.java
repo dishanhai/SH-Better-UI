@@ -132,4 +132,19 @@ final class NativeDockIndicatorsTest {
         }
     }
 
+    @Test void springHoverRepeatedFramesKeepOneTransitionAndRespectLeaveDelay()throws Exception {
+        try(var preferences=new NativeAnimationPreferences();var f=new Fixture()){
+            var window=f.dock.createMiniWindow(f.module,f.tree,f.spec("spring_hover")
+                    .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,240,200,false,false)).build());
+            f.prepare();var bounds=window.snapshot().orElseThrow().geometry().bounds();double x=bounds.x()+1,y=bounds.y()+1;
+            f.hover(x,y,0);f.hover(x,y,100);assertTrue(window.snapshot().orElseThrow().targetExpanded());
+            for(int i=1;i<=200;i++)f.hover(x,y,100+i*16);
+            assertEquals(CollapseState.EXPANDED,window.snapshot().orElseThrow().state(),"Hover must not restart the spring every frame");
+            f.hover(700,450,3400);f.hover(700,450,3599);assertTrue(window.snapshot().orElseThrow().targetExpanded());
+            f.hover(700,450,3600);assertFalse(window.snapshot().orElseThrow().targetExpanded());
+            for(int i=1;i<=200;i++)f.hover(700,450,3600+i*16);
+            assertEquals(CollapseState.COLLAPSED,window.snapshot().orElseThrow().state());
+        }
+    }
+
 }

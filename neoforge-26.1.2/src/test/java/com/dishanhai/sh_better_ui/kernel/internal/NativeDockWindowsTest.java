@@ -17,7 +17,8 @@ final class NativeDockWindowsTest {
     }
     static final class Fixture implements AutoCloseable {
         final NativeTestClient client = NativeTestClient.install();
-        final KernelHost host = new KernelHost(ModuleDescriptor.Platform.NEOFORGE_26_1_2,new EnginePublication());
+        final java.util.concurrent.atomic.AtomicLong clock = new java.util.concurrent.atomic.AtomicLong();
+        final KernelHost host = new KernelHost(ModuleDescriptor.Platform.NEOFORGE_26_1_2,new EnginePublication(),clock::get,null,SchedulerBudget.DEFAULT);
         final ClientScreens screens = new ClientScreens(host,ModuleDescriptor.Platform.NEOFORGE_26_1_2);
         final ClientDockWindows dock = new ClientDockWindows(host,screens);
         final TestScreen screen = new TestScreen();
@@ -174,7 +175,7 @@ final class NativeDockWindowsTest {
     }
     @Test void unsupportedFeaturesRejectBeforeAllocatingAndCloseIsIdempotent() throws Exception {
         try(var f=new Fixture()) {
-            assertThrows(UnsupportedOperationException.class,()->f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:spring").animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,100,100,true,false)).build()));
+            assertThrows(UnsupportedOperationException.class,()->f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:glass").glass(com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR)).build()));
             assertTrue(f.dock.windows(f.module).isEmpty());
             var window=f.window();window.close();window.close();assertFalse(window.isOpen());
             assertThrows(IllegalStateException.class,window::expand);
@@ -211,8 +212,10 @@ final class NativeDockWindowsTest {
         }
     }
 
-    @Test void shortcutCollapseRestoresParentFocusAndStopsHiddenCharacterInput() throws Exception {
-        try (var f = new Fixture()) {
+    @org.junit.jupiter.params.ParameterizedTest
+    @org.junit.jupiter.params.provider.EnumSource(value=CollapseSpec.Curve.class,names={"LINEAR","SPRING"})
+    void shortcutCollapseRestoresParentFocusAndStopsHiddenCharacterInput(CollapseSpec.Curve curve) throws Exception {
+        try (var preferences=new NativeAnimationPreferences();var f = new Fixture()) {
             var events = new ArrayList<NativeInput>();
             var focuses = new ArrayList<Boolean>();
             var parentControl = net.minecraft.client.gui.components.Button.builder(Component.literal("Parent"), button -> {}).build();
@@ -225,24 +228,24 @@ final class NativeDockWindowsTest {
             };
             var window = f.dock.createMiniWindow(f.module, f.tree, MiniWindowSpec.builder("example:shortcut")
                     .autoHide(false).shortcut(75, 2)
-                    .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL, CollapseSpec.Curve.LINEAR, 0, 0, false, false))
+                    .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL, curve, 240, 240, false, false))
                     .content(() -> content).build());
             var shortcut = new NativeInput.Key(NativeInput.KeyAction.PRESS, 75, 0, 2);
             f.prepare();
-            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertTrue(f.dock.input(f.screen, shortcut)); for(int i=0;i<100;i++)advance(f,16);
             assertNull(f.screen.getFocused());
             assertEquals(List.of(true), focuses);
             assertTrue(f.dock.input(f.screen, new NativeInput.Character('a', 0)));
             assertEquals(1, events.size());
 
-            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertTrue(f.dock.input(f.screen, shortcut)); for(int i=0;i<100;i++)advance(f,16);
             assertSame(parentControl, f.screen.getFocused());
             assertEquals(List.of(true, false), focuses, "A collapse shortcut must not refocus hidden content");
             assertFalse(window.snapshot().orElseThrow().focused());
             assertFalse(f.dock.input(f.screen, new NativeInput.Character('b', 0)));
             assertEquals(1, events.size(), "Hidden content must not receive characters");
 
-            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertTrue(f.dock.input(f.screen, shortcut)); for(int i=0;i<100;i++)advance(f,16);
             assertEquals(List.of(true, false, true), focuses);
             assertTrue(f.dock.input(f.screen, new NativeInput.Character('c', 0)));
             assertEquals(2, events.size(), "Reopening restores normal content input");
@@ -276,6 +279,60 @@ final class NativeDockWindowsTest {
             assertFalse(window.snapshot().orElseThrow().pointerCaptured());
             f.dock.input(f.screen,pointer(NativeInput.PointerAction.RELEASE,180,180));f.prepare();
             assertEquals(60,window.snapshot().orElseThrow().geometry().placement().x());
+        }
+    }
+
+    private static MiniWindowHandle springWindow(Fixture f, long duration) {
+        // The existing window permissions suffice: deliberately no animation-property claim.
+        return f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:spring")
+                .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,duration,duration,false,false)).build());
+    }
+    private static void advance(Fixture f,long ms){f.clock.addAndGet(ms*1_000_000L);f.prepare();}
+    @Test void springReversalIsContinuousAndSettlesWithBoundedGeometry() throws Exception {
+        try(var preferences=new NativeAnimationPreferences();var f=new Fixture()){
+            var window=springWindow(f,240);f.prepare();window.expand();advance(f,80);
+            float before=window.snapshot().orElseThrow().progress();assertTrue(before>0&&before<1);
+            window.collapse();f.prepare();assertEquals(before,window.snapshot().orElseThrow().progress(),.00001f);
+            advance(f,16);float reversing=window.snapshot().orElseThrow().progress();
+            window.expand();f.prepare();assertEquals(reversing,window.snapshot().orElseThrow().progress(),.00001f);
+            var springField=window.getClass().getDeclaredField("spring");springField.setAccessible(true);
+            var motion=(com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation)springField.get(window);
+            for(int i=0;i<400;i++){
+                advance(f,16);var snap=window.snapshot().orElseThrow();assertTrue(snap.progress()>=0&&snap.progress()<=1);
+                if(motion.running())assertEquals(CollapseState.EXPANDING,snap.state(),"Clamping must not publish a premature terminal state");
+            }
+            assertEquals(CollapseState.EXPANDED,window.snapshot().orElseThrow().state());
+            assertEquals(1,window.snapshot().orElseThrow().progress());
+            window.collapse();for(int i=0;i<400;i++)advance(f,16);
+            assertEquals(CollapseState.COLLAPSED,window.snapshot().orElseThrow().state());
+            assertEquals(0,window.snapshot().orElseThrow().progress());
+        }
+    }
+    @Test void zeroDurationSpringAndMidFlightReducedMotionSnapToEndpoints() throws Exception {
+        try(var preferences=new NativeAnimationPreferences();var f=new Fixture()){
+            var immediate=springWindow(f,0);f.prepare();immediate.expand();f.prepare();
+            assertEquals(CollapseState.EXPANDED,immediate.snapshot().orElseThrow().state());
+            immediate.collapse();f.prepare();assertEquals(0,immediate.snapshot().orElseThrow().progress());immediate.close();
+            var window=springWindow(f,240);f.prepare();window.expand();advance(f,64);
+            assertTrue(window.snapshot().orElseThrow().progress()<1);
+            var type=com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelSettings.class;
+            var change=type.getDeclaredMethod("withDisplay",boolean.class,boolean.class,boolean.class);change.setAccessible(true);
+            var state=type.getDeclaredField("settings");state.setAccessible(true);
+            state.set(null,change.invoke(type.getMethod("current").invoke(null),false,true,false));
+            f.prepare();assertEquals(CollapseState.EXPANDED,window.snapshot().orElseThrow().state());
+            window.collapse();f.prepare();assertEquals(CollapseState.COLLAPSED,window.snapshot().orElseThrow().state());
+        }
+    }
+    @Test void springClosesWithWindowAndTreeAndReopeningOwnsFreshTrack() throws Exception {
+        try(var preferences=new NativeAnimationPreferences();var f=new Fixture()){
+            var first=springWindow(f,240);f.prepare();first.expand();advance(f,64);
+            var field=first.getClass().getDeclaredField("spring");field.setAccessible(true);
+            var old=(com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation)field.get(first);
+            first.close();assertFalse(old.running());assertThrows(IllegalStateException.class,first::expand);
+            var second=springWindow(f,240);f.prepare();assertNotSame(old,field.get(second));
+            assertEquals(0,second.snapshot().orElseThrow().progress());second.expand();advance(f,64);
+            var next=(com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation)field.get(second);
+            f.tree.close();assertFalse(second.isOpen());assertFalse(next.running());assertTrue(f.dock.windows(f.module).isEmpty());
         }
     }
 
