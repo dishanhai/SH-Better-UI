@@ -46,6 +46,11 @@ public final class SettingsApi {
 
     public boolean musicActivityAvailable() { return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.musicActivityAvailable(); }
 
+    public boolean dockExampleAvailable() { return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.dockExampleAvailable(); }
+    public Screen dockExampleScreen(@Nullable Screen parent) {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.dockExampleScreen(parent);
+    }
+
     public Screen musicSettingsScreen(@Nullable Screen parent) {
         return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.musicSettingsScreen(parent);
     }

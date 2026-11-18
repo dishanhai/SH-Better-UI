@@ -53,6 +53,7 @@ public final class ClientUiKernel {
     private static ClientTextReadability text;
     private static ClientHud hud;
     private static ClientDockWindows dock;
+    private static NativeDockExample dockExample;
     private static ClientLiveActivities liveActivities;
     private static NativeMusicActivity musicActivity;
     private static boolean frameOpen;
@@ -73,6 +74,7 @@ public final class ClientUiKernel {
         var textReadability = new ClientTextReadability(kernel, clientScreens, readbacks);
         var clientHud = new ClientHud(kernel, readbacks);
         var clientDock = new ClientDockWindows(kernel, clientScreens);
+        var nativeDockExample = new NativeDockExample(clientScreens, clientDock);
         var clientActivities = new ClientLiveActivities(kernel, liveSettings);
         var nativeMusic = new NativeMusicActivity(true, () -> clientActivities.runtime().policy().notifications(),
                 () -> clientActivities.runtime().diagnostics().activities() < clientActivities.runtime().policy().maxActivities(),
@@ -85,6 +87,7 @@ public final class ClientUiKernel {
         });
         var candidates = new ArrayList<>(NativeModuleSources.discover(modSources()));
         candidates.add(nativeMusic.candidate());
+        candidates.add(nativeDockExample.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIPlatform.KEY, clientScreens));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
@@ -115,6 +118,7 @@ public final class ClientUiKernel {
         text = textReadability;
         hud = clientHud;
         dock = clientDock;
+        dockExample = nativeDockExample;
         liveActivities = clientActivities;
         musicActivity = nativeMusic;
         screens.sync(minecraft);
@@ -212,6 +216,12 @@ public final class ClientUiKernel {
         }
     }
 
+    public static boolean dockExampleAvailable() { return dockExample != null && dockExample.available(); }
+    public static Screen dockExampleScreen(Screen parent) {
+        if (!dockExampleAvailable()) throw new IllegalStateException("Native dock example is unavailable");
+        return new NativeDockExampleScreen(parent, dockExample);
+    }
+
     public static boolean musicActivityAvailable() { return musicActivity != null && musicActivity.available(); }
 
     public static Screen musicSettingsScreen(Screen parent) {
@@ -301,6 +311,7 @@ public final class ClientUiKernel {
         musicActivity = null;
         if (dock != null) dock.closeAll();
         dock = null;
+        dockExample = null;
         host = null;
         if (frameOpen && kernel != null) kernel.finishNativeFrame();
         frameOpen = false;
