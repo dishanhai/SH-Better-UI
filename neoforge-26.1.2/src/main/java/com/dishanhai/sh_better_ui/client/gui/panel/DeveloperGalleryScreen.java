@@ -119,6 +119,7 @@ public final class DeveloperGalleryScreen extends Screen {
     private @Nullable UiButton codeButton;
     private @Nullable Component dialogResult;
     private UiButton back;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glassControls;
     private UiPreferences preferences;
     private UiPreferences effectPreferences;
     private UiTheme theme;
@@ -259,6 +260,8 @@ public final class DeveloperGalleryScreen extends Screen {
     @Override
     protected void init() {
         cancelGesture();
+        if (glassControls != null) glassControls.close();
+        glassControls = ShBetterUiApi.controls().glass(previewPreferences());
         if (scrollable != null) scrollOffset = scrollable.scrollOffset();
         scrollable = null;
         slider = null;
@@ -608,18 +611,23 @@ public final class DeveloperGalleryScreen extends Screen {
 
     private UiButton demoToggle(Bounds area, boolean value, Function<Boolean, Component> caption,
                                 Consumer<Boolean> changed, UiStyle style) {
-        var control = ShBetterUiApi.controls().toggle(area, value, preferences, style, caption, enabled -> {
+        Consumer<Boolean> requested = enabled -> {
             changed.accept(enabled);
             if (toggle != null) toggle.setValue(enabled);
             triggerImmediateNarration(true);
-        });
+        };
+        var control = sample == Sample.LIQUID_GLASS
+                ? glassControls.toggle(area, value, caption, requested)
+                : ShBetterUiApi.controls().toggle(area, value, preferences, style, caption, requested);
         toggle = control;
         return addRenderableWidget(control.button());
     }
 
     private UiSlider demoSlider(Bounds area, int maximum, int value, IntFunction<Component> caption,
                                 IntConsumer changed) {
-        var control = ShBetterUiApi.controls().slider(area, 0, maximum, 5, value, preferences, caption, changed);
+        var control = sample == Sample.LIQUID_GLASS
+                ? glassControls.slider(area, 0, maximum, 5, value, caption, changed)
+                : ShBetterUiApi.controls().slider(area, 0, maximum, 5, value, preferences, caption, changed);
         control.setOnCommit(ignored -> {}, changed);
         slider = addRenderableWidget(control);
         return control;
@@ -798,6 +806,7 @@ public final class DeveloperGalleryScreen extends Screen {
     @Override
     public void removed() {
         cancelGesture();
+        if (glassControls != null) glassControls.close();
         if (sample == Sample.FRAME_TIMELINE) timeline.pause();
     }
 
