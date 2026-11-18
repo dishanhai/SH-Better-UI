@@ -23,6 +23,10 @@ class NativeDockExampleTest {
             var window=dock.windows(example.context).getFirst();
             screen.width=400;screen.init();assertSame(window,dock.windows(example.context).getFirst());
             dock.prepare(screen);assertTrue(window.snapshot().isPresent());
+            var compact=window.snapshot().orElseThrow().geometry().bounds();
+            assertTrue(screen.helpLeft()>=compact.x()+compact.width()+4,
+                    "Initial compact tab must not overlap help text");
+            assertTrue(screen.helpLeft()+screen.helpWidth()<=screen.width-20);
             screen.removed();assertFalse(window.isOpen());assertTrue(dock.windows(example.context).isEmpty());
             screen.init();assertEquals(1,dock.windows(example.context).size());
             assertNotSame(window,dock.windows(example.context).getFirst());screen.removed();dock.closeAll();

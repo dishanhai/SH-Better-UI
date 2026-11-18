@@ -50,9 +50,12 @@ public final class NativeDockExampleScreen extends Screen {
     private void updateButtons(){if(collapse!=null){boolean open=window!=null&&window.isOpen();collapse.active=open;reset.active=open;close.active=open;}}
     @Override public void tick(){ticks++;progress=(ticks%200)/200.0;updateButtons();}
     @Override public void extractBackground(GuiGraphicsExtractor graphics,int x,int y,float partial){}
+    // Reserve the initial 28px compact tab plus its outer inset and a readable gap.
+    int helpLeft(){return 40;}
+    int helpWidth(){return Math.max(1,width-helpLeft()-20);}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float partial){
         graphics.fill(0,0,width,height,0xff151b25);graphics.centeredText(font,title,width/2,10,0xffffffff);
-        int y=28;for(var line:font.split(label("help"),Math.max(1,width-40))){graphics.text(font,line,20,y,0xffd3e1ee,false);y+=font.lineHeight+2;}
+        int y=28;for(var line:font.split(label("help"),helpWidth())){graphics.text(font,line,helpLeft(),y,0xffd3e1ee,false);y+=font.lineHeight+2;}
         super.extractRenderState(graphics,mouseX,mouseY,partial);
     }
     @Override public void removed(){if(scope!=null){scope.close();scope=null;}window=null;}
