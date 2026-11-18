@@ -184,6 +184,7 @@ public final class ControlPanelScreen extends Screen {
                 glassParameters.setPreview(label("glass_parameters.tooltip"));
             }
             case 1 -> {
+                toolButton(com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen.label("title"), GraphicIcon.SETTINGS, this::openCustomFonts);
                 toggle("contrast", "contrast.tooltip", ControlPanelSettings::highContrast,
                         (settings, enabled) -> settings.withDisplay(enabled, settings.reducedMotion(), settings.widgetBlur()));
                 toggle("motion", "motion.tooltip", ControlPanelSettings::reducedMotion,
@@ -218,9 +219,14 @@ public final class ControlPanelScreen extends Screen {
         positionRows();
     }
 
+    private void openCustomFonts() {
+        ControlPanelPlatform.show(minecraft, new com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen(this));
+    }
+
     private void initTools() {
         switch (toolPage) {
             case INDEX -> {
+                toolButton(com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen.label("title"), GraphicIcon.SETTINGS, this::openCustomFonts);
                 toolButton(label("section.overview"), GraphicIcon.INFO, () -> showToolPage(ToolPage.OVERVIEW));
                 toolButton(label("section.links"), GraphicIcon.GITHUB, () -> showToolPage(ToolPage.LINKS));
                 var shortcut = toolButton(label("section.shortcut"), GraphicIcon.KEYBOARD, this::openKeyBindings);

@@ -2634,6 +2634,12 @@
   "sh_better_ui.native_preferences.font": "Custom font",
   "sh_better_ui.native_preferences.font_detail": "Import local TTF or get open fonts (applied separately).",
   "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings.",
+  "sh_better_ui.custom_font.native_scope": "Only music and MP controls using the SHBUI font change. Minecraft’s default font is unchanged. Local static TTF only, up to 32 MiB; nothing is uploaded.",
+  "sh_better_ui.custom_font.native_sample_label": "Live font sample: regular, then semibold",
+  "sh_better_ui.custom_font.native_sample": "Music · 山海 · ABC 0123456789",
+  "sh_better_ui.custom_font.native_back": "Back",
+  "sh_better_ui.custom_font.native_invalid_path": "Enter a valid local TTF file path.",
+  "sh_better_ui.custom_font.native_restore_detail": "Disable SHBUI-generated font packs and reload the built-in music font? Other selected resource packs stay enabled.",
   "sh_better_ui.online_music.view.library": "Library",
   "sh_better_ui.online_music.refresh.library": "Your library",
   "sh_better_ui.online_music.library.sign_in": "Sign in to this source"

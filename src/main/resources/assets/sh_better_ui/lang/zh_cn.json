@@ -2634,6 +2634,12 @@
   "sh_better_ui.native_preferences.font": "自定义字体",
   "sh_better_ui.native_preferences.font_detail": "导入本地 TTF 或获取开放字体（独立应用）。",
   "sh_better_ui.custom_font.small": "请减小 GUI 缩放以显示字体设置。",
+  "sh_better_ui.custom_font.native_scope": "只影响使用 SHBUI 字体的音乐与 MP 控件，不替换 Minecraft 默认字体。仅本地静态 TTF，最大 32 MiB；不会上传文件。",
+  "sh_better_ui.custom_font.native_sample_label": "当前字体预览：常规、半粗体",
+  "sh_better_ui.custom_font.native_sample": "音乐 · 山海 · ABC 0123456789",
+  "sh_better_ui.custom_font.native_back": "返回",
+  "sh_better_ui.custom_font.native_invalid_path": "请输入有效的本地 TTF 文件路径。",
+  "sh_better_ui.custom_font.native_restore_detail": "停用 SHBUI 生成的字体资源包，并重载内置音乐字体？其他已选资源包保持启用。",
   "sh_better_ui.online_music.view.library": "音乐库",
   "sh_better_ui.online_music.refresh.library": "我的音乐库",
   "sh_better_ui.online_music.library.sign_in": "登录此音乐平台"

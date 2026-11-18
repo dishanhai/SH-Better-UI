@@ -32,6 +32,13 @@ public final class NativeTestClient implements AutoCloseable {
         unsafeField.setAccessible(true);
         var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
         client = (Minecraft) unsafe.allocateInstance(Minecraft.class);
+        var options = (net.minecraft.client.Options) unsafe.allocateInstance(net.minecraft.client.Options.class);
+        var highContrast = net.minecraft.client.Options.class.getDeclaredField("highContrast");
+        highContrast.setAccessible(true);
+        highContrast.set(options, net.minecraft.client.OptionInstance.createBoolean("options.highContrast", false));
+        var optionsField = Minecraft.class.getDeclaredField("options");
+        optionsField.setAccessible(true);
+        optionsField.set(client, options);
         var font = Minecraft.class.getDeclaredField("font");
         font.setAccessible(true);
         font.set(client, font());
@@ -42,6 +49,7 @@ public final class NativeTestClient implements AutoCloseable {
         try {
             RenderSystem.initRenderThread();
             singleton.set(null, client);
+            client.setLastInputType(net.minecraft.client.InputType.MOUSE);
         } catch (Throwable failure) {
             renderThread.set(null, previousRenderThread);
             singleton.set(null, previousClient);
@@ -63,9 +71,19 @@ public final class NativeTestClient implements AutoCloseable {
         var splitter = new StringSplitter((codePoint, style) -> 5f);
         return new Font(null) {
             @Override public StringSplitter getSplitter() { return splitter; }
+            @Override public String plainSubstrByWidth(String text, int width) {
+                return splitter.plainHeadByWidth(text, width, Style.EMPTY);
+            }
+            @Override public String plainSubstrByWidth(String text, int width, boolean backwards) {
+                return backwards ? splitter.plainTailByWidth(text, width, Style.EMPTY)
+                        : splitter.plainHeadByWidth(text, width, Style.EMPTY);
+            }
             @Override public int width(String text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedCharSequence text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedText text) { return (int) Math.ceil(splitter.stringWidth(text)); }
+            @Override public List<FormattedText> splitIgnoringLanguage(FormattedText text, int width) {
+                return splitter.splitLines(text, width, Style.EMPTY);
+            }
             @Override public List<FormattedCharSequence> split(FormattedText text, int width) {
                 return splitter.splitLines(text, width, Style.EMPTY).stream().map(Language.getInstance()::getVisualOrder).toList();
             }
