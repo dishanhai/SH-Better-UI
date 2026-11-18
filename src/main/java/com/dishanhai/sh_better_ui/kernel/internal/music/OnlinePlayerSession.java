@@ -422,6 +422,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         private final PlaybackOrder order = new PlaybackOrder();
         private long attachedGeneration = -1, undoGeneration;
         private PlaybackOrder.Saved undoOrder;
+        private List<Integer> undoPositions;
         @Override public Snapshot snapshot() {
             synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null, order.mode(),
                     order.canPrevious(), order.canNext()); }
@@ -472,12 +473,42 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         }
         private void remember() {
             undoTracks = tracks; undoIndex = index; undoGeneration = generation; undoOrder = order.save();
+            undoPositions = new ArrayList<>();
+            for (int i = 0; i < tracks.size(); i++) undoPositions.add(i);
+        }
+        @Override public boolean supportsEditing() { return true; }
+        @Override public void append(List<OnlineTrack> additions) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                var added = List.copyOf(additions);
+                if (added.isEmpty()) return;
+                for (var song : added) validateTrack(song);
+                remember();
+                var copy = new ArrayList<>(tracks); copy.addAll(added);
+                for (int i = 0; i < added.size(); i++) undoPositions.add(-1);
+                tracks = List.copyOf(copy); order.reset(tracks.size(), index);
+            }
+        }
+        @Override public void move(int from, int to) {
+            synchronized (OnlinePlayerSession.this) {
+                requireOpen();
+                if (from < 0 || to < 0 || from >= tracks.size() || to >= tracks.size() || from == to) return;
+                remember();
+                var copy = new ArrayList<>(tracks); copy.add(to, copy.remove(from));
+                undoPositions.add(to, undoPositions.remove(from));
+                tracks = List.copyOf(copy);
+                if (index == from) index = to;
+                else if (from < index && index <= to) index--;
+                else if (to <= index && index < from) index++;
+                order.reset(tracks.size(), index);
+            }
         }
         @Override public void remove(int selected) {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= tracks.size()) return;
                 remember(); var copy = new ArrayList<>(tracks); copy.remove(selected); tracks = List.copyOf(copy);
+                undoPositions.remove(selected);
                 if (selected == index) { index = -1; attachedGeneration = -1; cancelQueueProgress(); }
                 else if (selected < index) index--;
                 order.reset(tracks.size(), index);
@@ -486,16 +517,16 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         @Override public void clear() {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen(); if (tracks.isEmpty()) return;
-                remember(); tracks = List.of(); index = -1; order.reset(0, -1); attachedGeneration = -1; cancelQueueProgress();
+                remember(); undoPositions.clear(); tracks = List.of(); index = -1; order.reset(0, -1); attachedGeneration = -1; cancelQueueProgress();
             }
         }
         @Override public void undo() {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen(); if (undoTracks == null) return;
                 boolean advancing = queueTask != null;
-                var selected = index >= 0 ? tracks.get(index) : null;
-                tracks = undoTracks; index = selected == null ? undoIndex : tracks.indexOf(selected);
-                undoTracks = null;
+                int restoredIndex = index < 0 || attachedGeneration != generation ? -1 : undoPositions.get(index);
+                tracks = undoTracks; index = restoredIndex;
+                undoTracks = null; undoPositions = null;
                 if (generation == undoGeneration) {
                     index = undoIndex;
                     if (order.mode() == undoOrder.mode()) order.restore(undoOrder);
@@ -525,7 +556,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             workers.shutdownNow();
             loginWorker.shutdownNow();
             queueWorker.shutdownNow();
-            queue.tracks = List.of(); queue.undoTracks = null; queue.index = -1; queue.order.reset(0, -1);
+            queue.tracks = List.of(); queue.undoTracks = null; queue.undoPositions = null; queue.index = -1; queue.order.reset(0, -1);
             for (var provider : sources.values()) {
                 try { provider.credentials(""); } catch (UnsupportedOperationException ignored) { }
             }
