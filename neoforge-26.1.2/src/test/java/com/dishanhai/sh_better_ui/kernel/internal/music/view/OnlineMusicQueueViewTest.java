@@ -19,10 +19,12 @@ class OnlineMusicQueueViewTest {
     private static final OnlineTrack B = new OnlineTrack("qq", "2", "2", "Second", "Artist", "", 1000);
     private static class Fixture {
         OnlineTrack playing;
+        OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
         int paused,closed,seeks;
         OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
+            case "queue" -> persistent;
             case "seek" -> {seeks++;yield null;}
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
@@ -32,7 +34,9 @@ class OnlineMusicQueueViewTest {
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
             default -> null;
         });
-        final OnlineMusicViewImpl view = new OnlineMusicViewImpl(player);
+        final OnlineMusicViewImpl view;
+        Fixture() { this(null); }
+        Fixture(OnlineMusicQueue persistent) { this.persistent=persistent; view=new OnlineMusicViewImpl(player); }
     }
     private static Object field(Object owner,String name) throws Exception { var f=owner.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(owner); }
     private static net.minecraft.client.gui.components.Tooltip tooltip(net.minecraft.client.gui.components.AbstractWidget widget) throws Exception {
@@ -288,5 +292,59 @@ class OnlineMusicQueueViewTest {
         var host=new Host();host.width=360;host.height=340;f.view.layout(host);
         var queue=(PlayerQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
         assertTrue(((MusicTextControl)field(f.view,"queuePrevious")).visible);
+    }
+    private static final class ModeQueue implements OnlineMusicQueue {
+        Mode mode=Mode.SEQUENTIAL;int changes;
+        public boolean supportsModes(){return true;}
+        public Mode mode(){return mode;}
+        public void mode(Mode value){mode=value;changes++;}
+        public Snapshot snapshot(){return new Snapshot(List.of(A,B),0,false,mode,false,true);}
+        public void replace(List<OnlineTrack> songs,int selected){}
+        public void select(int selected){}
+        public void next(){} public void previous(){} public void remove(int selected){}
+        public void clear(){} public void undo(){}
+    }
+    @Test void queueModeButtonCyclesAllModesWithoutPlaybackAndPersistsAcrossRelayout() throws Exception {
+        var backend=new ModeQueue();var f=new Fixture(backend);var host=new Host();f.view.layout(host);queuePage(f.view);
+        var control=(MusicTextControl)field(f.view,"queuePlaybackMode");
+        assertTrue(control.visible);assertTrue(control.active);
+        for(var mode:List.of(OnlineMusicQueue.Mode.REPEAT_ALL,OnlineMusicQueue.Mode.REPEAT_ONE,OnlineMusicQueue.Mode.SHUFFLE,OnlineMusicQueue.Mode.SEQUENTIAL)){
+            control.onPress();assertEquals(mode,backend.mode);
+        }
+        control.onPress();f.view.layout(host);queuePage(f.view);
+        assertEquals(OnlineMusicQueue.Mode.REPEAT_ALL,backend.mode);
+        assertEquals(5,backend.changes);assertNull(f.playing);assertEquals(0,f.paused);
+    }
+    @Test void legacyQueueModeControlIsDisabledAndHiddenStageCannotActivateIt() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());queuePage(f.view);
+        var control=(MusicTextControl)field(f.view,"queuePlaybackMode");assertFalse(control.active);control.onPress();
+        var stage=(MusicTextControl)field(f.view,"stagePlaybackMode");assertFalse(stage.visible);stage.onPress();
+        assertNull(f.playing);assertEquals(0,f.paused);
+    }
+    @Test void immersiveQueueModeUsesSameBackendAndHidesOnReturnToLyrics() throws Exception {
+        var backend=new ModeQueue();var f=new Fixture(backend);f.view.layout(new Host());
+        call(f.view,"enterImmersive",new Class<?>[]{});
+        var pageField=f.view.getClass().getDeclaredField("stagePage");pageField.setAccessible(true);
+        var queuePage=Arrays.stream(pageField.getType().getEnumConstants()).filter(v->v.toString().equals("QUEUE")).findFirst().orElseThrow();
+        call(f.view,"setStagePage",new Class<?>[]{pageField.getType()},queuePage);
+        var control=(MusicTextControl)field(f.view,"stagePlaybackMode");assertTrue(control.visible);control.onPress();
+        assertEquals(OnlineMusicQueue.Mode.REPEAT_ALL,backend.mode);
+        var lyrics=Arrays.stream(pageField.getType().getEnumConstants()).filter(v->v.toString().equals("LYRICS")).findFirst().orElseThrow();
+        call(f.view,"setStagePage",new Class<?>[]{pageField.getType()},lyrics);
+        assertFalse(control.visible);control.onPress();assertEquals(1,backend.changes);
+    }
+    @Test void modeHeaderFitsCompactQueueWithoutOverlappingLocate() throws Exception {
+        for(int[] size:new int[][]{{208,240},{393,270},{590,406},{960,540}}){
+            var f=new Fixture(new ModeQueue());var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            var mode=(MusicTextControl)field(f.view,"queuePlaybackMode");var locate=(MusicTextControl)field(f.view,"queueLocate");
+            assertTrue(mode.getX()>=0);assertTrue(mode.getWidth()>=12);
+            assertTrue(mode.getX()+mode.getWidth()<=locate.getX());assertTrue(locate.getX()+locate.getWidth()<=size[0]);
+        }
+    }
+    @Test void suspendingViewCancelsArmedModeKeyWithoutChangingOrder() throws Exception {
+        var backend=new ModeQueue();var f=new Fixture(backend);f.view.layout(new Host());queuePage(f.view);
+        var mode=(MusicTextControl)field(f.view,"queuePlaybackMode");mode.setFocused(true);
+        assertTrue(mode.keyPressed(new net.minecraft.client.input.KeyEvent(32,0,0)));f.view.suspend();assertFalse(mode.keyReleased(new net.minecraft.client.input.KeyEvent(32,0,0)));
+        assertEquals(0,backend.changes);
     }
 }
