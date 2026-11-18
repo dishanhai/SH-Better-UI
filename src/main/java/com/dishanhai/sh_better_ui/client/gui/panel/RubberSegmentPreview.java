@@ -26,6 +26,7 @@ final class RubberSegmentPreview implements PreviewScene {
     }
 
     private UiRubberSegment control;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glass;
 
     @Override
     public void layout(PreviewContext host) {
@@ -33,17 +34,26 @@ final class RubberSegmentPreview implements PreviewScene {
         var area = host.viewport();
         int width = Math.min(224, area.width());
         if (width < 76 || area.height() < 28) return;
-        control = host.add(ShBetterUiApi.controls().rubberSegment(
+        glass = ShBetterUiApi.controls().glass(host.preferences());
+        control = host.add(glass.segmented(
                 new Bounds(area.x() + (area.width() - width) / 2, area.y() + (area.height() - 28) / 2, width, 28),
-                Component.translatable(KEY + "period"), PERIODS, selected, host.preferences(), index -> {
+                Component.translatable(KEY + "period"), PERIODS, selected, index -> {
                     if (host.interactive()) selected = index;
                     else control.select(selected);
                 }));
     }
 
     @Override
+    public void render(com.dishanhai.sh_better_ui.client.api.UiFrame frame) {
+        if (control == null) return;
+        GalleryPreviewLayout.drawBackdrop(frame.graphics(), control.getX(), control.getY(),
+                control.getWidth(), control.getHeight());
+    }
+
+    @Override
     public void suspend() {
-        if (control != null) control.cancelDrag();
+        if (glass != null) glass.close();
+        glass = null;
         control = null;
     }
 

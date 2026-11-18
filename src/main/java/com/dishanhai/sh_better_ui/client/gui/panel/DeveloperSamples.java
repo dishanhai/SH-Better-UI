@@ -453,12 +453,13 @@ enum DeveloperSamples {
             // Call cancelInteraction() before removing/suspending the editor.
             """),
     MEDIA_CARD("media_card", 32, 80, MediaCardPreview::new, """
-            var card = ShBetterUiApi.controls().mediaCard(new Bounds(x, y, 240, 64),
-                    Component.literal("Album title"), Component.literal("Artist"),
-                    ShBetterUiApi.settings().preferences(), this::togglePlayback);
+            var glass = ShBetterUiApi.controls().glass(ShBetterUiApi.settings().preferences());
+            var card = glass.mediaCard(new Bounds(x, y, 240, 64),
+                    Component.literal("Album title"), Component.literal("Artist"), this::togglePlayback);
             addRenderableWidget(card);
             // Reflect confirmed playback state, including asynchronous failures.
             card.setPlaying(player.isPlaying());
+            // Close glass when the layout is removed or rebuilt.
             """),
     RUBBER_SEGMENT("rubber_segment", 30, 64, RubberSegmentPreview::new, """
             import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;

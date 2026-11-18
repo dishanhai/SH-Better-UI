@@ -100,6 +100,7 @@ final class LiquidGlassPreview implements PreviewScene {
     private Bounds canvas;
     private int statusY;
     private UiPreferences preferences;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glassControls;
     private UiButton sectionButton;
     private UiButton compareButton;
     private UiButton targetButton;
@@ -122,6 +123,8 @@ final class LiquidGlassPreview implements PreviewScene {
 
     @Override
     public void layout(PreviewContext host) {
+        if (glassControls != null) glassControls.close();
+        glassControls = new com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls(host.preferences());
         pending = null;
         canvas = null;
         font = host.font();
@@ -251,8 +254,8 @@ final class LiquidGlassPreview implements PreviewScene {
                     realAnchor = now;
                     speed = value;
                 }));
-        seek = host.add(new UiSlider(new Bounds(x, y + ROW + GAP, width, ROW), 0, fixture.frameCount() - 1, 1,
-                timeline.sample(virtualTime(PageTransition.nowMs())).index(), preferences,
+        seek = host.add(glassControls.slider(new Bounds(x, y + ROW + GAP, width, ROW), 0, fixture.frameCount() - 1, 1,
+                timeline.sample(virtualTime(PageTransition.nowMs())).index(),
                 index -> text("frame", index, fixture.frameCount() - 1), timeline::seek));
         list.add(seek);
     }
@@ -312,7 +315,7 @@ final class LiquidGlassPreview implements PreviewScene {
         int lower = sliderValue(min, places), upper = sliderValue(max, places);
         IntUnaryOperator position = inverted ? value -> lower + upper - value : value -> value;
         int initial = position.applyAsInt(sliderValue((Number) draft.values(editingB).get(id), places));
-        var widget = host.add(new UiSlider(bounds, lower, upper, sliderValue(stepSize, places), initial, preferences,
+        var widget = host.add(glassControls.slider(bounds, lower, upper, sliderValue(stepSize, places), initial,
                 next -> label.apply(next, places), next -> edit(id, BigDecimal.valueOf(position.applyAsInt(next), places).doubleValue())));
         return new Field(id, widget, next -> widget.setValue(position.applyAsInt(sliderValue((Number) next, places))));
     }
@@ -354,7 +357,7 @@ final class LiquidGlassPreview implements PreviewScene {
             draft.swap();
             syncControls();
         }));
-        divider = host.add(new UiSlider(cell(x, y + ROW + GAP, width, 0, 2), 0, 100, 1, split, preferences,
+        divider = host.add(glassControls.slider(cell(x, y + ROW + GAP, width, 0, 2), 0, 100, 1, split,
                 value -> text("divider", value), value -> split = value));
         list.add(divider);
         difference = button(host, cell(x, y + ROW + GAP, width, 1, 2), text("difference", 0),
@@ -597,6 +600,7 @@ final class LiquidGlassPreview implements PreviewScene {
 
     @Override
     public void suspend() {
+        if (glassControls != null) glassControls.close();
         pending = null;
         if (timeline != null) timeline.pause(virtualTime(PageTransition.nowMs()));
         tuning.clear();
@@ -613,7 +617,7 @@ final class LiquidGlassPreview implements PreviewScene {
     }
 
     private UiButton button(PreviewContext host, Bounds area, Component title, Runnable action) {
-        return GalleryPreviewLayout.addButton(host, area, title, null, () -> { if (active()) action.run(); });
+        return host.add(glassControls.button(area, title, false, ignored -> { if (active()) action.run(); }));
     }
 
     private <T> CycleButton<T> cycle(PreviewContext host, Bounds area, Component title, List<T> choices, T value,

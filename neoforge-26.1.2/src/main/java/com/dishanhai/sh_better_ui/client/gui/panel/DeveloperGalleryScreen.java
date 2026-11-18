@@ -119,6 +119,7 @@ public final class DeveloperGalleryScreen extends Screen {
     private @Nullable UiButton codeButton;
     private @Nullable Component dialogResult;
     private UiButton back;
+    private com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glassControls;
     private UiPreferences preferences;
     private UiPreferences effectPreferences;
     private UiTheme theme;
@@ -259,6 +260,8 @@ public final class DeveloperGalleryScreen extends Screen {
     @Override
     protected void init() {
         cancelGesture();
+        if (glassControls != null) glassControls.close();
+        glassControls = ShBetterUiApi.controls().glass(previewPreferences());
         if (scrollable != null) scrollOffset = scrollable.scrollOffset();
         scrollable = null;
         slider = null;
@@ -608,18 +611,23 @@ public final class DeveloperGalleryScreen extends Screen {
 
     private UiButton demoToggle(Bounds area, boolean value, Function<Boolean, Component> caption,
                                 Consumer<Boolean> changed, UiStyle style) {
-        var control = ShBetterUiApi.controls().toggle(area, value, preferences, style, caption, enabled -> {
+        Consumer<Boolean> requested = enabled -> {
             changed.accept(enabled);
             if (toggle != null) toggle.setValue(enabled);
             triggerImmediateNarration(true);
-        });
+        };
+        var control = sample == Sample.LIQUID_GLASS
+                ? glassControls.toggle(area, value, caption, requested)
+                : ShBetterUiApi.controls().toggle(area, value, preferences, style, caption, requested);
         toggle = control;
         return addRenderableWidget(control.button());
     }
 
     private UiSlider demoSlider(Bounds area, int maximum, int value, IntFunction<Component> caption,
                                 IntConsumer changed) {
-        var control = ShBetterUiApi.controls().slider(area, 0, maximum, 5, value, preferences, caption, changed);
+        var control = sample == Sample.LIQUID_GLASS
+                ? glassControls.slider(area, 0, maximum, 5, value, caption, changed)
+                : ShBetterUiApi.controls().slider(area, 0, maximum, 5, value, preferences, caption, changed);
         control.setOnCommit(ignored -> {}, changed);
         slider = addRenderableWidget(control);
         return control;
@@ -798,6 +806,7 @@ public final class DeveloperGalleryScreen extends Screen {
     @Override
     public void removed() {
         cancelGesture();
+        if (glassControls != null) glassControls.close();
         if (sample == Sample.FRAME_TIMELINE) timeline.pause();
     }
 
@@ -1080,6 +1089,7 @@ public final class DeveloperGalleryScreen extends Screen {
         SHREDDER("shredder", GraphicIcon.DELETE, GalleryShredderSample::new),
         HOLD_BUTTON("hold_button", GraphicIcon.RUN, GalleryHoldButtonSample::new),
         SLOSH_GAUGE(SloshGaugeDemo.ID, GraphicIcon.ORGANIZE, GallerySloshGaugeSample::new),
+        MEDIA_CARD("media_card", GraphicIcon.MUSIC, GalleryMediaCardSample::new),
         RUBBER_SEGMENT("rubber_segment", GraphicIcon.ORGANIZE, GalleryRubberSegmentSample::new),
         JELLY_RADIO(JellyRadioDemo.ID, GraphicIcon.ORGANIZE, GalleryJellyRadioSample::new),
         PILL_NAV(PillNavDemo.ID, GraphicIcon.ORGANIZE, GalleryPillNavSample::new),
@@ -1149,7 +1159,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case GLASS_CONFIRMATION, PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
+                case MEDIA_CARD, GLASS_CONFIRMATION, PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
                 case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
                         STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
                         DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
@@ -1190,7 +1200,7 @@ public final class DeveloperGalleryScreen extends Screen {
                 case LOCAL_MODAL -> 25;
                 case LIVE_ACTIVITY -> 26;
                 case CODE_SLOTS -> -1;
-                case PROMPT_BAR -> 32;
+                case MEDIA_CARD, PROMPT_BAR -> 32;
                 case SHREDDER -> 28;
                 case BELL_TOGGLE, GLIDE_SELECT -> 29;
                 case RUBBER_SEGMENT -> 30;

@@ -13,11 +13,12 @@ import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.network.chat.ClickEvent;
 
-/** Read-only structured document host. Resource textures remain owned by Minecraft. */
+/** Read-only resource-pack document host. Owns and releases its bounded animated-media cache. */
 public final class NativeRichDocumentScreen extends Screen {
     private final Screen parent;
     private final RichDocument document;
     private NativeRichDocumentView view;
+    private com.dishanhai.sh_better_ui.client.visual.NativeRichMedia media;
     private int scroll, maxScroll, left, top, bottom, contentWidth;
     private net.minecraft.locale.Language language;
 
@@ -28,6 +29,8 @@ public final class NativeRichDocumentScreen extends Screen {
     }
 
     @Override protected void init() {
+        clearWidgets();
+        if (media == null) media = new com.dishanhai.sh_better_ui.client.visual.NativeRichMedia();
         contentWidth = Math.max(32, Math.min(520, width - 32));
         left = Math.max(0, (width - contentWidth) / 2);
         top = 56;
@@ -35,7 +38,11 @@ public final class NativeRichDocumentScreen extends Screen {
         view = new NativeRichDocumentView(font, document, contentWidth);
         language = net.minecraft.locale.Language.getInstance();
         addRenderableWidget(Button.builder(Component.translatable("sh_better_ui.native.rich_document.refresh"),
-                button -> rebuildWidgets()).bounds(8, 28, Math.min(160, Math.max(20, width - 16)), 20).build());
+                button -> {
+                    if (com.dishanhai.sh_better_ui.kernel.internal.NativePort.screen(minecraft) != this) return;
+                    media.refresh();
+                    rebuildWidgets();
+                }).bounds(8, 28, Math.min(160, Math.max(20, width - 16)), 20).build());
         maxScroll = Math.max(0, view.height() - (bottom - top));
         scroll = Math.min(scroll, maxScroll);
         int buttonWidth = Math.min(100, Math.max(20, (width - 24) / 2));
@@ -54,7 +61,8 @@ public final class NativeRichDocumentScreen extends Screen {
         graphics.centeredText(font, title, width / 2, 10, 0xffe7edf7);
         graphics.enableScissor(left, top, Math.min(width, left + contentWidth), bottom);
         view.render(graphics, left, top - scroll, top, bottom,
-                id -> minecraft.getResourceManager().getResource(id).isPresent());
+                id -> minecraft.getResourceManager().getResource(id).isPresent(), media,
+                net.minecraft.util.Util.getMillis(), com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.configured().reducedMotion());
         graphics.disableScissor();
         if (maxScroll > 0 && bottom > top) {
             int track = bottom - top;
@@ -93,6 +101,10 @@ public final class NativeRichDocumentScreen extends Screen {
     }
     @Override public Component getNarrationMessage() {
         return net.minecraft.network.chat.CommonComponents.joinForNarration(getTitle(), view == null ? Component.empty() : view.narration());
+    }
+
+    @Override public void removed() {
+        if (media != null) { media.close(); media = null; }
     }
 
     @Override public boolean isPauseScreen() { return false; }

@@ -12,6 +12,21 @@ import java.util.concurrent.atomic.AtomicReference;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MpThemeBrowserTest {
+    @Test void displaySuitesAreDiscoverableBeforeOtherRegisteredThemes() {
+        try(var live=new ThemeManager()) {
+            var draft=new AtomicReference<>(ThemeSettings.DEFAULT);
+            try(var browser=new MpThemeBrowser(live,draft::get,draft::set,id->false)) {
+                assertEquals(DisplayStyleSuites.IDS,browser.themeIds().subList(1,1+DisplayStyleSuites.IDS.size()));
+                assertEquals(browser.themeIds().size(),browser.themeIds().stream().distinct().count());
+                for(var id:DisplayStyleSuites.IDS) {
+                    assertTrue(browser.select(id));
+                    assertEquals(id,draft.get().registeredThemeId());
+                }
+                assertEquals(com.dishanhai.sh_better_ui.theme.accessibility.ThemePreferences.DEFAULT,live.preferences());
+            }
+        }
+    }
+
     @Test void registeredCardsArePagedInsideViewportAndNeverChangeLiveManager() {
         try(var live=new ThemeManager()) {
             var draft=new AtomicReference<>(ThemeSettings.DEFAULT);

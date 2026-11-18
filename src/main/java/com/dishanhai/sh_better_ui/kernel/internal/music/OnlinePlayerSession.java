@@ -360,9 +360,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return new Snapshot(track, current, position, duration, lyricsState, lyrics,
                 current == State.FAILED && failure == Failure.NONE ? Failure.AUDIO : failure, preview);
     }
-    record MediaObservation(Snapshot snapshot, long offsetMs) {}
+    record MediaObservation(Snapshot snapshot, long offsetMs, long generation) {}
     /** Called on the bridge worker, under one session lock, never on the render thread. */
-    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset); }
+    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset, generation); }
+    /** Identity of the current playback attempt; reads share the playback mutation lock. */
+    synchronized long playbackGeneration() { return generation; }
     @Override public LyricFeed lyricFeed() {
         return new LyricFeed() {
             @Override public Frame frame() {

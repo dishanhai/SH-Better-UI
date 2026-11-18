@@ -52,7 +52,7 @@ public final class ControlPanelScreen extends Screen {
     private static final int TOOLS_TAB = 3;
     private static final int FOOTER_TAB_ORDER = 1;
     private static final List<ThemeSettings.Mode> THEMES = List.of(ThemeSettings.Mode.DARK, ThemeSettings.Mode.LIGHT,
-            ThemeSettings.Mode.LIQUID_GLASS, ThemeSettings.Mode.HUD_GLASS);
+            ThemeSettings.Mode.LIQUID_GLASS, ThemeSettings.Mode.HUD_GLASS, ThemeSettings.Mode.CUSTOM);
     private static final List<UiSectionBar.Section> TABS = List.of(
             new UiSectionBar.Section(label("section.glass"), GraphicIcon.BLUR),
             new UiSectionBar.Section(label("section.display"), GraphicIcon.MONITOR),
@@ -184,6 +184,7 @@ public final class ControlPanelScreen extends Screen {
                 glassParameters.setPreview(label("glass_parameters.tooltip"));
             }
             case 1 -> {
+                toolButton(com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen.label("title"), GraphicIcon.SETTINGS, this::openCustomFonts);
                 toggle("contrast", "contrast.tooltip", ControlPanelSettings::highContrast,
                         (settings, enabled) -> settings.withDisplay(enabled, settings.reducedMotion(), settings.widgetBlur()));
                 toggle("motion", "motion.tooltip", ControlPanelSettings::reducedMotion,
@@ -198,7 +199,9 @@ public final class ControlPanelScreen extends Screen {
                         label("theme.mode"), modes, THEMES.indexOf(draft.theme().mode()), preferences,
                         index -> edit(draft.withTheme(draft.theme().withMode(THEMES.get(index)))));
                 refreshRows.add(() -> segment.select(THEMES.indexOf(draft.theme().mode())));
-                rows.add(segment);
+                rows.add(addRenderableWidget(segment));
+                toolButton(NativeAppearanceScreen.label("title"),GraphicIcon.CUSTOM_THEME,()->
+                        ControlPanelPlatform.show(minecraft,new NativeAppearanceScreen(this,draft.theme(),this::appearanceApplied)));
             }
             case TOOLS_TAB -> initTools();
             default -> throw new IllegalStateException("Invalid panel tab");
@@ -218,10 +221,19 @@ public final class ControlPanelScreen extends Screen {
         positionRows();
     }
 
+    private void openCustomFonts() {
+        ControlPanelPlatform.show(minecraft, new com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen(this));
+    }
+
     private void initTools() {
         switch (toolPage) {
             case INDEX -> {
+                toolButton(com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen.label("title"), GraphicIcon.SETTINGS, this::openCustomFonts);
                 toolButton(label("section.overview"), GraphicIcon.INFO, () -> showToolPage(ToolPage.OVERVIEW));
+                var dockExample = toolButton(Component.translatable("sh_better_ui.native.dock_example.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().dockExampleScreen(this)));
+                dockExample.active = ShBetterUiApi.settings().dockExampleAvailable();
+                refreshRows.add(() -> dockExample.active = ShBetterUiApi.settings().dockExampleAvailable());
                 toolButton(label("section.links"), GraphicIcon.GITHUB, () -> showToolPage(ToolPage.LINKS));
                 var shortcut = toolButton(label("section.shortcut"), GraphicIcon.KEYBOARD, this::openKeyBindings);
                 shortcut.setTooltip(Tooltip.create(label("shortcut.manage.tooltip")));
@@ -243,6 +255,8 @@ public final class ControlPanelScreen extends Screen {
                 refreshRows.add(() -> musicSettings.active = ShBetterUiApi.settings().musicActivityAvailable());
                 toolButton(Component.translatable("sh_better_ui.native.rich_document.title"), GraphicIcon.CODE,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().richDocumentExample(this)));
+                toolButton(Component.translatable("sh_better_ui.rich_text_editor.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().richDocumentEditor(this)));
                 toolButton(Component.translatable("sh_better_ui.native.markdown.title"), GraphicIcon.CODE,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().markdownScreen(this)));
             }
@@ -361,6 +375,11 @@ public final class ControlPanelScreen extends Screen {
         control.button().setTooltip(Tooltip.create(label(hint)));
         rows.add(addRenderableWidget(control.button()));
         refreshRows.add(() -> control.setValue(value.test(draft)));
+    }
+
+    void appearanceApplied(ThemeSettings applied) {
+        // Child Apply persisted only appearance; preserve unsaved parent display/glass edits.
+        saved=saved.withTheme(applied);draft=draft.withTheme(applied);beforeReset=null;status=draft.equals(saved)?label("saved"):null;
     }
 
     private void openGlassParameters() {
@@ -623,6 +642,8 @@ public final class ControlPanelScreen extends Screen {
         BackgroundBlur.request(graphics,
                 new UiPreferences(preferences.highContrast(), preferences.reducedMotion(), draft.backgroundBlur()));
         graphics.fill(0, 0, width, height, 0x30121A26);
+        com.dishanhai.sh_better_ui.client.gui.scaled.NativeAppearanceBackground.draw(
+                graphics,width,height,draft.theme(),preferences,System.nanoTime()/1_000_000L);
         ControlPanelPlatform.subtitles(minecraft);
     }
 

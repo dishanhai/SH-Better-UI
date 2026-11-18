@@ -22,6 +22,11 @@ public final class UiMediaCard extends AbstractWidget {
     private final Runnable onActivate;
     private final DarkModeTheme.Interaction motion = DarkModeTheme.Interaction.control();
     private boolean selected, playing, held;
+    private boolean liquidGlass;
+    private final GlassMediaStyle glassStyle = new GlassMediaStyle();
+    /** Explicit kit opt-in; false preserves the global theme behavior. */
+    public void setLiquidGlass(boolean enabled) { liquidGlass = enabled; }
+    public boolean isLiquidGlass() { return liquidGlass; }
 
     public UiMediaCard(Bounds area, Component title, Component subtitle, UiPreferences preferences, Runnable onActivate) {
         super(area.x(), area.y(), area.width(), area.height(), Objects.requireNonNull(title));
@@ -71,17 +76,34 @@ public final class UiMediaCard extends AbstractWidget {
         if (!enabled() || !Minecraft.getInstance().isWindowActive()) cancelInteraction();
         if (width < MIN_WIDTH || height < MIN_HEIGHT) return;
         var state = motion.sample(isHovered(), held, isFocused(), active, preferences, PageTransition.nowMs());
-        if (UiTheme.current().liquidGlass()) {
+        if (liquidGlass) {
+            drawGlass(g);
+        } else if (UiTheme.current().liquidGlass()) {
             LiquidGlassTheme.button(g, getX(), getY(), width, height, state, preferences, true,
                     false, selected, 0, () -> drawContent(g));
         } else {
             DarkModeTheme.button(g, getX(), getY(), width, height, state, false, selected, 0, () -> drawContent(g));
         }
     }
+    private void drawGlass(GuiGraphics g) {
+        int fill = active ? DarkModeTheme.surfaceColor() : DarkModeTheme.backgroundColor();
+        var palette = glassStyle.palette(fill, DarkModeTheme.textColor(), DarkModeTheme.secondaryTextColor(), false);
+        boolean optical = LiquidGlassTheme.useBackdrop(preferences)
+                && com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.paintHudGlass(g,
+                    GlassMediaStyle.surface(getX(), getY(), width, height, palette.title()));
+        palette = glassStyle.palette(fill, palette.title(), palette.subtitle(), optical);
+        int edge = isFocused() || selected || isHovered() || preferences.highContrast() ? palette.title() : DarkModeTheme.borderColor();
+        RoundedCorners.draw(g, getX(), getY(), width, height, 9, isFocused() ? 2 : 1, edge, palette.fill());
+        if (held) g.fill(getX() + 12, getY() + height - 3, getX() + width - 12, getY() + height - 2, palette.title());
+        drawContent(g, palette.title(), palette.subtitle());
+    }
     private void drawContent(GuiGraphics g) {
+        drawContent(g, active ? DarkModeTheme.textColor() : DarkModeTheme.mutedTextColor(),
+                active ? DarkModeTheme.secondaryTextColor() : DarkModeTheme.mutedTextColor());
+    }
+    private void drawContent(GuiGraphics g, int ink, int secondary) {
         var font = Minecraft.getInstance().font;
         int side = Math.min(48, height - 16), x = getX() + 8, y = getY() + (height - side) / 2;
-        int ink = active ? DarkModeTheme.textColor() : DarkModeTheme.mutedTextColor();
         // Bounded vector cover; no texture loading, GPU allocation or network requests.
         DarkModeTheme.rounded(g, x, y, side, side, 5, 1, DarkModeTheme.borderColor(), DarkModeTheme.backgroundColor());
         int c = side / 2;
@@ -89,11 +111,21 @@ public final class UiMediaCard extends AbstractWidget {
         g.fill(x + c - 2, y + c - 2, x + c + 2, y + c + 2, ink);
         int textX = x + side + 8, available = Math.max(0, getX() + width - 34 - textX);
         int line = font.lineHeight;
-        g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), available), textX, getY() + height / 2 - line - 2, ink, false);
-        g.drawString(font, font.plainSubstrByWidth(subtitle.getString(), available), textX, getY() + height / 2 + 2, active ? DarkModeTheme.secondaryTextColor() : ink, false);
+        drawLabel(g, font, getMessage(), available, textX, getY() + height / 2 - line - 2, ink);
+        drawLabel(g, font, subtitle, available, textX, getY() + height / 2 + 2, secondary);
         int ax = getX() + width - 23, ay = getY() + height / 2 - 5;
         if (playing) { g.fill(ax, ay, ax + 3, ay + 10, ink); g.fill(ax + 6, ay, ax + 9, ay + 10, ink); }
         else for (int i = 0; i < 9; i++) g.fill(ax + i, ay + i / 2, ax + i + 1, ay + 10 - i / 2, ink);
+    }
+    private void drawLabel(GuiGraphics graphics, net.minecraft.client.gui.Font font, Component text,
+                           int available, int x, int y, int color) {
+        if (liquidGlass || UiTheme.current().liquidGlass()) {
+            var glyphs = net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text, available));
+            graphics.drawString(font, GlassTextInk.apply(glyphs, color, true), x, y, color, false);
+        } else {
+            // Keep the pre-existing ordinary rendering path unchanged.
+            graphics.drawString(font, font.plainSubstrByWidth(text.getString(), available), x, y, color, false);
+        }
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput output) {
         output.add(NarratedElementType.TITLE, description());
