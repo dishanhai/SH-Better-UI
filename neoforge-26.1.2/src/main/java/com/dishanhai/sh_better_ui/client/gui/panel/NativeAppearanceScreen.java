@@ -5,6 +5,8 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.NativeAppearanceBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.dishanhai.sh_better_ui.theme.DisplayStyleSuites;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.*;
@@ -42,13 +44,20 @@ public final class NativeAppearanceScreen extends Screen {
         int available=Math.max(9,Math.min(360,width-24));
         var content=LinearLayout.vertical().spacing(6);
         content.addChild(new MultiLineTextWidget(label("scope"),font).setMaxWidth(available));
+        content.addChild(new MultiLineTextWidget(label("suites"),font).setMaxWidth(available));
+        for(String id:DisplayStyleSuites.IDS) content.addChild(button("suite:"+id,
+                label("choice",Component.translatable("sh_better_ui.theme.dynamic."+id.substring(id.indexOf(':')+1)),
+                        draft.state().mode()==ThemeSettings.Mode.CUSTOM && draft.state().themeId().equals(id)?Component.literal("●"):Component.literal("○")),available,
+                ()->selectSuite(id)));
+        content.addChild(button("suite:original",label("original_palette"),available,
+                ()->selectSuite("")));
         for(var mode:ThemeSettings.Mode.values()) content.addChild(button("mode:"+mode,
                 label("mode",Component.translatable("sh_better_ui.panel.theme.mode."+mode.name().toLowerCase(Locale.ROOT)),
                         draft.state().mode()==mode?Component.literal("●"):Component.literal("○")),available,
                 ()->{draft.mode(mode);validate();init();}));
         content.addChild(new MultiLineTextWidget(label("palette_hint"),font).setMaxWidth(available));
         if(draft.state().mode()==ThemeSettings.Mode.CUSTOM){
-            content.addChild(button("base",label("base",Component.translatable("sh_better_ui.panel.theme.mode."+draft.state().base().name().toLowerCase(Locale.ROOT))),available,
+            if(draft.state().themeId().isEmpty()) content.addChild(button("base",label("base",Component.translatable("sh_better_ui.panel.theme.mode."+draft.state().base().name().toLowerCase(Locale.ROOT))),available,
                     ()->{draft.base(draft.state().base()==ThemeSettings.Base.DARK?ThemeSettings.Base.LIGHT:ThemeSettings.Base.DARK);validate();init();}));
             String[] names={"background","surface","border","text","accent"};
             for(int i=0;i<names.length;i++){
@@ -79,6 +88,11 @@ public final class NativeAppearanceScreen extends Screen {
         if(restored!=null && body!=null && !focus.equals("back")&&!focus.equals("apply")){body.setFocused(restored);setFocused(body);}
         else setInitialFocus(restored==null?back:restored);
         validate();
+    }
+    private void selectSuite(String id){
+        validate();if(!valid)return;
+        try{draft.suite(id);validate();init();}
+        catch(IllegalArgumentException capacity){status=Component.translatable("sh_better_ui.custom_theme.palette_capacity");}
     }
     private void validate(){
         try{preview=draft.value();valid=true;status=label(draft.dirty()?"unsaved":"saved");}
@@ -113,8 +127,41 @@ public final class NativeAppearanceScreen extends Screen {
     }
     private static final class Preview extends Screen {
         private final Screen parent;private final ThemeSettings theme;
+        private com.dishanhai.sh_better_ui.theme.ThemeManager manager;
+        private final java.util.List<UiButton> samples=new java.util.ArrayList<>();
+        private boolean selected=true;
         Preview(Screen parent,ThemeSettings theme){super(label("preview"));this.parent=parent;this.theme=theme;}
-        @Override protected void init(){addRenderableWidget(Button.builder(label("back"),b->onClose()).bounds(Math.max(0,(width-100)/2),Math.max(0,height-26),Math.min(100,width),20).build());}
+        @Override protected void init(){
+            release();manager=new com.dishanhai.sh_better_ui.theme.ThemeManager();
+            String id=theme.selectedThemeId();
+            manager.preferences(manager.preferences().withFixedTheme(manager.registry().find(id).isPresent()?id:(theme.light()?com.dishanhai.sh_better_ui.theme.BuiltinThemes.LIGHT_ID:com.dishanhai.sh_better_ui.theme.BuiltinThemes.DARK))
+                    .withReducedMotion(true).withHighContrast(UiPreferences.configured().highContrast()));
+            var palette=UiTheme.resolve(theme);
+            manager.global().configure(builder->builder
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.PRIMARY,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.accent()))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.ON_PRIMARY,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.readable(0xffffffff,palette.accent(),palette.background()|0xff000000,4.5)))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.BORDER,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.border()))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.BACKGROUND,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.background()))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.SURFACE,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.surface()))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.TEXT,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.text()))
+                    .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.ACCENT,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.accent())));
+            manager.preferences(manager.preferences().withReducedMotion(UiPreferences.configured().reducedMotion()));
+            int w=Math.max(1,Math.min(240,width-24));
+            var content=LinearLayout.vertical().spacing(6);
+            for(int i=0;i<4;i++){
+                int sample=i;
+                var button=new UiButton(0,0,w,22,label("sample."+i),b->{if(sample==2){selected=!selected;((UiButton)b).setSelected(selected);}},UiPreferences.configured(),i==1);
+                button.bindTheme(manager.global());
+                if(i==2)button.setSelected(selected);
+                if(i==3)button.active=false;
+                samples.add(content.addChild(button));
+            }
+            var layout=new ScrollableLayout(minecraft,content,Math.max(1,height-70));layout.setMinWidth(w);layout.arrangeElements();
+            layout.setPosition((width-layout.getWidth())/2,30);layout.visitWidgets(this::addRenderableWidget);
+            addRenderableWidget(Button.builder(label("back"),b->onClose()).bounds(Math.max(0,(width-100)/2),Math.max(0,height-26),Math.min(100,width),20).build());
+        }
+        private void release(){for(var sample:samples)sample.unbindTheme();samples.clear();if(manager!=null){manager.close();manager=null;}}
+        @Override public void removed(){release();}
         @Override public void extractBackground(GuiGraphicsExtractor graphics,int x,int y,float tick){
             if(minecraft.level==null)extractPanorama(graphics,tick);
             var preferences=UiPreferences.configured();
@@ -123,14 +170,10 @@ public final class NativeAppearanceScreen extends Screen {
             graphics.fill(0,0,width,height,0x30121A26);
         }
         @Override public void extractRenderState(GuiGraphicsExtractor graphics,int x,int y,float tick){
+            var palette=UiTheme.resolve(theme);
+            graphics.fill(0,0,width,height,palette.background());
             NativeAppearanceBackground.draw(graphics,width,height,theme,UiPreferences.configured(),System.nanoTime()/1_000_000L);
-            var palette=UiTheme.resolve(theme);int w=Math.max(1,Math.min(280,width-20)),h=Math.min(90,Math.max(1,height-60));int left=(width-w)/2,top=(height-h)/2;
-            graphics.fill(left,top,left+w,top+h,palette.surface());
-            graphics.centeredText(font,label("preview_only"),width/2,top+12,palette.text());
-            int[] colors={palette.background(),palette.surface(),palette.border(),palette.text(),palette.accent()};
-            int cell=Math.max(1,(w-24)/5);
-            for(int i=0;i<colors.length;i++)graphics.fill(left+12+i*cell,top+h-22,left+12+(i+1)*cell-1,top+h-9,colors[i]);
-            graphics.text(font,font.plainSubstrByWidth(label("swatches").getString(),Math.max(1,w-24)),left+12,top+30,palette.text(),false);
+            graphics.centeredText(font,label("preview_only"),width/2,12,palette.text());
             UiTheme.preview(palette,()->super.extractRenderState(graphics,x,y,tick));
         }
         @Override public boolean isPauseScreen(){return false;}

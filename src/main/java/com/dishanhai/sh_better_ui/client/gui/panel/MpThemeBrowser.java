@@ -43,7 +43,8 @@ public final class MpThemeBrowser implements AutoCloseable {
         var settings = draft.get();
         if (!registryChanged && settings.equals(previousDraft)) return false;
         var nextIds = new ArrayList<String>(); nextIds.add("");
-        source.registry().themes().keySet().stream().filter(id -> !hidden.test(id)).sorted().forEach(nextIds::add);
+        DisplayStyleSuites.IDS.stream().filter(id -> !hidden.test(id) && source.registry().find(id).isPresent()).forEach(nextIds::add);
+        source.registry().themes().keySet().stream().filter(id -> !hidden.test(id) && !DisplayStyleSuites.matches(id)).sorted().forEach(nextIds::add);
         boolean listChanged = !nextIds.equals(ids);
         registry = source.registry(); tokens = source.tokenCatalog(); ids = List.copyOf(nextIds);
         var nextPalettes = new LinkedHashMap<String, UiTheme>();

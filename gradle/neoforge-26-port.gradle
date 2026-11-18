@@ -135,6 +135,7 @@ def sharedSources = [
         'client/gui/scaled/SpringTable.java',
         'client/gui/scaled/TabScrollState.java',
         'client/gui/scaled/ThemeButtonStyle.java',
+        'client/gui/scaled/DisplaySuiteButtonPaint.java',
         'client/gui/scaled/UiAttention.java',
         'client/gui/scaled/UiLatticeLoader.java',
         'client/gui/scaled/UiBranchedMenu.java',
@@ -206,6 +207,8 @@ kotlin.sourceSets.main.kotlin {
 sourceSets.test {
     java {
         srcDir('../src/test/java')
+        include("${packagePath}/theme/DisplayStyleSuitesTest.java")
+        include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
