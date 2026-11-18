@@ -111,11 +111,21 @@ public final class UiMediaCard extends AbstractWidget {
         g.fill(x + c - 2, y + c - 2, x + c + 2, y + c + 2, ink);
         int textX = x + side + 8, available = Math.max(0, getX() + width - 34 - textX);
         int line = font.lineHeight;
-        g.drawString(font, font.plainSubstrByWidth(getMessage().getString(), available), textX, getY() + height / 2 - line - 2, ink, false);
-        g.drawString(font, font.plainSubstrByWidth(subtitle.getString(), available), textX, getY() + height / 2 + 2, secondary, false);
+        drawLabel(g, font, getMessage(), available, textX, getY() + height / 2 - line - 2, ink);
+        drawLabel(g, font, subtitle, available, textX, getY() + height / 2 + 2, secondary);
         int ax = getX() + width - 23, ay = getY() + height / 2 - 5;
         if (playing) { g.fill(ax, ay, ax + 3, ay + 10, ink); g.fill(ax + 6, ay, ax + 9, ay + 10, ink); }
         else for (int i = 0; i < 9; i++) g.fill(ax + i, ay + i / 2, ax + i + 1, ay + 10 - i / 2, ink);
+    }
+    private void drawLabel(GuiGraphics graphics, net.minecraft.client.gui.Font font, Component text,
+                           int available, int x, int y, int color) {
+        if (liquidGlass || UiTheme.current().liquidGlass()) {
+            var glyphs = net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text, available));
+            graphics.drawString(font, GlassTextInk.apply(glyphs, color, true), x, y, color, false);
+        } else {
+            // Keep the pre-existing ordinary rendering path unchanged.
+            graphics.drawString(font, font.plainSubstrByWidth(text.getString(), available), x, y, color, false);
+        }
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput output) {
         output.add(NarratedElementType.TITLE, description());

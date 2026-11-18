@@ -196,6 +196,7 @@ public final class UiRubberSegment extends AbstractWidget {
                 var label = Language.getInstance().getVisualOrder(font.width(option.label()) <= width - 6
                         ? option.label() : FormattedText.composite(font.substrByWidth(option.label(),
                                 Math.max(0, width - 6 - font.width(CommonComponents.ELLIPSIS))), CommonComponents.ELLIPSIS));
+                label = GlassTextInk.apply(label, color, liquidGlass);
                 graphics.drawString(font, label, center - font.width(label) / 2,
                         y + (height - font.lineHeight) / 2, color, false);
             }
