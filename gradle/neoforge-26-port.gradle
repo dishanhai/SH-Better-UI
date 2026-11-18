@@ -207,8 +207,6 @@ kotlin.sourceSets.main.kotlin {
 sourceSets.test {
     java {
         srcDir('../src/test/java')
-        include("${packagePath}/theme/DisplayStyleSuitesTest.java")
-        include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
@@ -233,6 +231,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/*InputTest.java")
         include("${packagePath}/client/gui/panel/ControlPanelSettingsTest.java")
         include("${packagePath}/client/gui/panel/NativeAppearanceScreenTest.java")
+        include("${packagePath}/theme/DisplayStyleSuitesTest.java")
+        include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
         include("${packagePath}/client/gui/scaled/NativeAppearanceBackgroundTest.java")
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
