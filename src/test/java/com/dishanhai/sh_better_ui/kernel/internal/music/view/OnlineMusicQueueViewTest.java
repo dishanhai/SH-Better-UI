@@ -291,6 +291,43 @@ class OnlineMusicQueueViewTest {
         assertEquals(true,field(f.view,"queueEditing"));
         assertTrue(((MusicTextControl)field(f.view,"queueClear")).visible);
     }
+    @Test void compactFeedbackUsesVisibleTitleAndPlaybackFailureTakesPriority() throws Exception {
+        var f=new Fixture();var host=new Host();host.width=208;host.height=240;f.view.layout(host);
+        var feedback=(OnlineMusicFeedback)field(f.view,"interactionFeedback");
+        feedback.show(net.minecraft.network.chat.Component.literal("Action received"),System.nanoTime()/1_000_000L);
+        call(f.view,"updateMiniMetadata",new Class<?>[]{OnlineMusicPlayer.Snapshot.class},f.player.snapshot());
+        var title=(MusicTextControl)field(f.view,"nowPlaying");assertEquals("Action received",title.getMessage().getString());
+        var failed=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.FAILED,0,1000,OnlineMusicPlayer.LyricsState.EMPTY,LyricTimeline.empty(),OnlineMusicPlayer.Failure.AUDIO,false);
+        call(f.view,"updateMiniMetadata",new Class<?>[]{OnlineMusicPlayer.Snapshot.class},failed);
+        assertTrue(title.getMessage().getString().contains("failure.audio"));
+        feedback.clear();f.playing=A;call(f.view,"updateMiniMetadata",new Class<?>[]{OnlineMusicPlayer.Snapshot.class},f.player.snapshot());
+        assertEquals(A.title(),title.getMessage().getString());
+    }
+    @Test void actionFailureUsesSanitizedFeedbackAndSuspendClearsIt() throws Exception {
+        var f=new Fixture(); f.view.layout(new Host());
+        call(f.view,"perform",new Class<?>[]{net.minecraft.network.chat.Component.class,Runnable.class},
+                net.minecraft.network.chat.Component.literal("Import credentials"),(Runnable)()->{throw new IllegalArgumentException("secret-cookie");});
+        var feedback=(OnlineMusicFeedback)field(f.view,"interactionFeedback");
+        var message=feedback.current(System.nanoTime()/1_000_000L).getString();
+        assertTrue(message.contains("feedback.failed"));assertFalse(message.contains("secret-cookie"));
+        f.view.suspend();assertEquals("",feedback.current(System.nanoTime()/1_000_000L).getString());
+    }
+    @Test void queueButtonAcknowledgesCurrentLabelWithoutClaimingRemoteSuccess() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());queuePage(f.view);
+        var edit=(MusicTextControl)field(f.view,"queueEdit");
+        var actionName=edit.getMessage().copy();
+        assertEquals(true,field(f.view,"queueEditing"));
+        edit.onPress();
+        assertEquals(false,field(f.view,"queueEditing"));
+        var feedback=(OnlineMusicFeedback)field(f.view,"interactionFeedback");
+        var message=feedback.current(System.nanoTime()/1_000_000L);
+        var acknowledgement=assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class,message.getContents());
+        assertEquals("sh_better_ui.online_music.feedback.requested",acknowledgement.getKey());
+        assertArrayEquals(new Object[]{actionName},acknowledgement.getArgs());
+        var action=assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class,actionName.getContents());
+        assertEquals("sh_better_ui.online_music.queue.done",action.getKey());
+        assertFalse(feedback.isError(System.nanoTime()/1_000_000L));
+    }
     @Test void queueEditorReturnsWithoutLosingPlaybackOrScroll() throws Exception {
         var f = new Fixture(new EditableQueue()); f.playing=A; var host=new Host(); f.view.layout(host); queuePage(f.view);
         var edit=(MusicTextControl)field(f.view,"queueEdit");

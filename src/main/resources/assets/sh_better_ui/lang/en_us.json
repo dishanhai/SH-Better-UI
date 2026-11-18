@@ -2796,5 +2796,15 @@
   "sh_better_ui.online_music.queue.move_down": "Move %s down",
   "sh_better_ui.online_music.queue.edit": "Edit queue",
   "sh_better_ui.online_music.queue.done": "Done",
-  "sh_better_ui.online_music.library.track_count": "%s tracks"
+  "sh_better_ui.online_music.library.track_count": "%s tracks",
+  "sh_better_ui.online_music.feedback.requested": "Requested: %s",
+  "sh_better_ui.online_music.feedback.failed": "Action failed. Try again.",
+  "sh_better_ui.online_music.feedback.like_cancelled": "Stopped waiting. Refresh to confirm the change.",
+  "sh_better_ui.online_music.feedback.account_ready": "Account loaded",
+  "sh_better_ui.online_music.feedback.library_ready": "Library loaded",
+  "sh_better_ui.online_music.feedback.search_ready": "Search complete",
+  "sh_better_ui.music_overlay.task.playback_loading": "Loading track",
+  "sh_better_ui.music_overlay.task.playback_ready": "Playback started",
+  "sh_better_ui.music_overlay.task.playback_failed": "Playback failed. Open the player for details.",
+  "sh_better_ui.online_music.feedback.seek": "Seek to %s"
 }

@@ -83,10 +83,10 @@ public final class NativeMusicOverlay implements UIModule {
                 for (var update : tasks.observe(ShBetterUiApi.music().getFrame())) {
                     if (update.cancel()) island.cancelNotice(update.id());
                     else island.notify(new IslandNoticeQueue.Notice(update.id(),text("task."+update.messageKey()).getString(),
-                            update.detail(),-1,update.ttlMs(),update.messageKey().equals("provider_unavailable")?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs()));
+                            update.detail(),-1,update.ttlMs(),(update.messageKey().equals("provider_unavailable") || update.messageKey().equals("playback_failed"))?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs()));
                 }
             } else {
-                tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER);
+                tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER); island.cancelNotice(MusicIslandTaskAdapter.PLAYBACK);
             }
             if (hidden) return;
             var full = MusicOverlayLayout.panel(frame.width(),frame.height(),true,value.islandScale(),value.islandX(),value.islandY());

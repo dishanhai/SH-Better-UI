@@ -1928,5 +1928,15 @@
   "sh_better_ui.settings_detail.keep_editing": "繼續編輯",
   "sh_better_ui.online_music.queue.edit": "編輯佇列",
   "sh_better_ui.online_music.queue.done": "完成",
-  "sh_better_ui.online_music.library.track_count": "%s 首歌曲"
+  "sh_better_ui.online_music.library.track_count": "%s 首歌曲",
+  "sh_better_ui.online_music.feedback.requested": "操作：%s",
+  "sh_better_ui.online_music.feedback.failed": "操作未完成，請重試。",
+  "sh_better_ui.online_music.feedback.like_cancelled": "已停止等待，請重新整理確認變更。",
+  "sh_better_ui.online_music.feedback.account_ready": "帳號資料已載入",
+  "sh_better_ui.online_music.feedback.library_ready": "音樂庫已載入",
+  "sh_better_ui.online_music.feedback.search_ready": "搜尋完成",
+  "sh_better_ui.music_overlay.task.playback_loading": "正在載入歌曲",
+  "sh_better_ui.music_overlay.task.playback_ready": "播放已開始",
+  "sh_better_ui.music_overlay.task.playback_failed": "播放失敗，請開啟播放器查看。",
+  "sh_better_ui.online_music.feedback.seek": "跳轉至 %s"
 }

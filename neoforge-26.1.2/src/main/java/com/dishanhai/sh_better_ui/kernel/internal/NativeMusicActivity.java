@@ -122,9 +122,10 @@ public final class NativeMusicActivity implements UIModule {
         if (!Objects.equals(identity, next)) {
             endActivity(); clearNotices(); identity = next;
         }
+        publishNotices(frame, settings, now);
         var session = frame.snapshot().session();
         visibility.observe(next, session != null && session.status() == MusicSnapshot.PlaybackStatus.PLAYING, now / 1_000_000);
-        if (next == null || !visibility.active()) { endActivity(); clearNotices(); return; }
+        if (next == null || !visibility.active()) { endActivity(); return; }
         var content = withControls(content(frame, now), frame);
         // Respect explicit dismissal until a new track/source or disable/re-enable cycle.
         if (handle == null && activityAdmission.getAsBoolean()) {
@@ -147,18 +148,23 @@ public final class NativeMusicActivity implements UIModule {
                 handle.requestPresentation(expanded ? SurfacePresentation.EXPANDED : SurfacePresentation.COMPACT);
             }
         }
+    }
+    private void publishNotices(MusicService.Frame frame, MusicOverlaySettings settings, long now) {
         var updates = tasks.observe(frame);
         if (!settings.taskNotices() || !notificationsEnabled.getAsBoolean()) { clearNotices(); return; }
+        var replaced = new HashSet<String>();
         for (var update : updates) {
             var previous = notices.get(update.id());
             if (update.cancel()) {
                 notices.remove(update.id());
+                if (previous != null) replaced.add(update.id());
                 if (previous != null && !previous.snapshot().lifecycle().terminal()) previous.dismiss();
                 continue;
             }
             if (!notificationAdmission.getAsBoolean()) continue;
             // Coalesce bursty status changes; the optional notice must not flood the shared queue.
-            if (lastNotice != Long.MIN_VALUE && now - lastNotice < 1_000_000_000L) continue;
+            if (previous == null && !replaced.contains(update.id()) && !update.messageKey().equals("playback_failed")
+                    && lastNotice != Long.MIN_VALUE && now - lastNotice < 1_000_000_000L) continue;
             var id = UiId.parse("sh_better_ui:music/notice/" + update.id().substring(update.id().indexOf(':') + 1));
             var notice = new ActivityService.Content(ActivityService.Text.key("sh_better_ui.music_overlay.task." + update.messageKey()),
                     ActivityService.Text.literal(bounded(update.detail())), null, -1, false, List.of(), List.of());

@@ -21,7 +21,21 @@ class OnlineMusicFrameBridgeTest {
         assertEquals(MusicSnapshot.PlaybackStatus.PAUSED, frame(OnlineMusicPlayer.State.PAUSED).snapshot().session().status());
         assertEquals(MusicSnapshot.PlaybackStatus.BUFFERING, frame(OnlineMusicPlayer.State.LOADING).snapshot().session().status());
         for (var state : new OnlineMusicPlayer.State[]{OnlineMusicPlayer.State.CLOSED, OnlineMusicPlayer.State.IDLE,
-                OnlineMusicPlayer.State.ENDED, OnlineMusicPlayer.State.FAILED}) assertNull(frame(state));
+                OnlineMusicPlayer.State.ENDED}) assertNull(frame(state));
+    }
+    @Test void failureWithdrawsSongAndControlsButExposesBoundedRealFailure() {
+        var failed = frame(OnlineMusicPlayer.State.FAILED);
+        assertEquals(MusicSnapshot.State.TEMPORARILY_UNAVAILABLE, failed.snapshot().state());
+        assertNull(failed.snapshot().session());
+        assertEquals(MusicService.LyricsState.NO_TRACK, failed.lyrics().state());
+        var window = new OnlineMusicFrameBridge.FailureWindow();
+        assertTrue(window.visible(OnlineMusicPlayer.State.FAILED, "attempt1", 100));
+        assertTrue(window.visible(OnlineMusicPlayer.State.FAILED, "attempt1", 5_000_000_099L));
+        assertFalse(window.visible(OnlineMusicPlayer.State.FAILED, "attempt1", 5_000_000_100L));
+        assertFalse(window.visible(OnlineMusicPlayer.State.FAILED, "attempt1", 9_000_000_100L));
+        assertTrue(window.visible(OnlineMusicPlayer.State.FAILED, "attempt2", 9_000_000_101L));
+        assertFalse(window.visible(OnlineMusicPlayer.State.CLOSED, "attempt2", 9_000_000_102L));
+        assertFalse(window.visible(OnlineMusicPlayer.State.IDLE, "attempt2", 9_000_000_103L));
     }
     @Test void immutableMetadataAndPreviewUseSongRelativeClock() {
         var current = OnlineMusicFrameBridge.frame(sample(OnlineMusicPlayer.State.PAUSED, true), 45000, "session", 3, 1000);
@@ -46,6 +60,28 @@ class OnlineMusicFrameBridgeTest {
         assertSame(online, frames.select(system, 3000));
         second.close(); second.publish(online, 4000);
         assertSame(system, frames.select(system, 4001));
+    }
+    @Test void workerFailureWindowTemporarilyOwnsIslandThenRestoresSystemAndCloseClears() {
+        var frames = new ForegroundMusicFrames(); var clock=new java.util.concurrent.atomic.AtomicLong(1000);
+        var snapshot=new java.util.concurrent.atomic.AtomicReference<>(sample(OnlineMusicPlayer.State.FAILED,false));
+        OnlineMusicPlayer player=(OnlineMusicPlayer)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{OnlineMusicPlayer.class},(proxy,method,args)->{
+                    if(method.getName().equals("snapshot"))return snapshot.get();
+                    throw new AssertionError("Observer must not invoke "+method.getName());
+                });
+        var system=frame(OnlineMusicPlayer.State.PLAYING);
+        var bridge=new OnlineMusicFrameBridge(player,frames.acquire(),clock::get,false);
+        bridge.observe();
+        assertEquals(MusicSnapshot.State.TEMPORARILY_UNAVAILABLE,frames.select(system,clock.get()).snapshot().state());
+        assertNull(frames.select(system,clock.get()).snapshot().session());
+        clock.addAndGet(4_999_999_999L); bridge.observe();
+        assertNotSame(system,frames.select(system,clock.get()));
+        clock.incrementAndGet(); bridge.observe(); assertSame(system,frames.select(system,clock.get()));
+        clock.incrementAndGet(); bridge.observe(); assertSame(system,frames.select(system,clock.get()));
+        snapshot.set(sample(OnlineMusicPlayer.State.IDLE,false));bridge.observe();
+        snapshot.set(sample(OnlineMusicPlayer.State.FAILED,false));bridge.observe();
+        assertNotSame(system,frames.select(system,clock.get()));
+        bridge.close(); bridge.observe(); assertSame(system,frames.select(system,clock.get()));
     }
     @Test void stopImmediatelyReleasesSelectionAndPauseDoesNotAdvance() {
         var frames = new ForegroundMusicFrames(); var lease = frames.acquire();

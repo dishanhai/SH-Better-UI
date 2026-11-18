@@ -2796,5 +2796,15 @@
   "sh_better_ui.online_music.queue.move_down": "下移 %s",
   "sh_better_ui.online_music.queue.edit": "编辑队列",
   "sh_better_ui.online_music.queue.done": "完成",
-  "sh_better_ui.online_music.library.track_count": "%s 首歌曲"
+  "sh_better_ui.online_music.library.track_count": "%s 首歌曲",
+  "sh_better_ui.online_music.feedback.requested": "操作：%s",
+  "sh_better_ui.online_music.feedback.failed": "操作未完成，请重试。",
+  "sh_better_ui.online_music.feedback.like_cancelled": "已停止等待，请刷新确认更改。",
+  "sh_better_ui.online_music.feedback.account_ready": "账号资料已加载",
+  "sh_better_ui.online_music.feedback.library_ready": "音乐库已加载",
+  "sh_better_ui.online_music.feedback.search_ready": "搜索完成",
+  "sh_better_ui.music_overlay.task.playback_loading": "正在加载歌曲",
+  "sh_better_ui.music_overlay.task.playback_ready": "播放已开始",
+  "sh_better_ui.music_overlay.task.playback_failed": "播放失败，请打开播放器查看。",
+  "sh_better_ui.online_music.feedback.seek": "跳转至 %s"
 }

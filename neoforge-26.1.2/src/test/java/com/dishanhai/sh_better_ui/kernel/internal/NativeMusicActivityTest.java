@@ -122,6 +122,31 @@ final class NativeMusicActivityTest {
         frame.set(sample("one", MusicSnapshot.PlaybackStatus.STOPPED)); tick(1);
         assertFalse(live.hasResources());
     }
+    @Test void terminalOnlineFailureReleasesActivityButPublishesOneNoticeWithoutSession() {
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.BUFFERING)); tick(0);
+        frame.set(new MusicService.Frame(new MusicSnapshot("sh_better_ui:online_music", MusicSnapshot.State.TEMPORARILY_UNAVAILABLE, null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK, LyricTimeline.empty()), 1));
+        tick(50);
+        assertEquals(0, live.diagnostics().activities());
+        assertEquals(1, live.diagnostics().notifications());
+        assertEquals("sh_better_ui.music_overlay.task.playback_failed", live.plan().primary().content().title().value());
+        assertTrue(live.plan().primary().content().controls().isEmpty());
+        long instance=live.plan().primary().instance(); tick(100);
+        assertEquals(instance,live.plan().primary().instance());
+        music.settings(music.settings().withIsland(false));tick(101);assertFalse(live.hasResources());
+        host.close();music.advance();assertFalse(live.hasResources());
+    }
+    @Test void bufferingCompletionReplacesNoticeDespiteFastTransitionAndDisabledNoticesStayQuiet() {
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.BUFFERING)); tick(0);
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.PLAYING)); tick(50);
+        assertEquals(1,live.diagnostics().notifications());
+        assertTrue(live.plan().waiting().contains(UiId.parse("sh_better_ui:music/notice/playback"))
+                || live.plan().primary().id().equals(UiId.parse("sh_better_ui:music/notice/playback")));
+        music.settings(music.settings().withTaskNotices(false));tick(51);
+        assertEquals(0,live.diagnostics().notifications());assertEquals(1,live.diagnostics().activities());
+    }
     private void capacity(int activities, int notifications) {
         var p = live.policy();
         live.policy(new LiveSurfaceRuntime.Policy(p.enabled(), p.compact(), p.expanded(), p.split(), p.notifications(),
