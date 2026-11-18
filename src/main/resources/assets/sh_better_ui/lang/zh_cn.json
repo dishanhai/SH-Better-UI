@@ -2640,5 +2640,22 @@
   "sh_better_ui.glass_confirmation.launch": "打开玻璃确认弹窗",
   "sh_better_ui.glass_confirmation.title": "确认演示操作",
   "sh_better_ui.glass_confirmation.details": "这只是演示，不会修改文件或账号数据。按 Escape 或取消可返回而不确认。使用 Page Up、Page Down 或滚轮阅读完整内容。",
-  "sh_better_ui.glass_confirmation.status": "已确认：%s · 背景点击：%s"
+  "sh_better_ui.glass_confirmation.status": "已确认：%s · 背景点击：%s",
+  "sh_better_ui.online_music.library.sign_in": "登录此音乐平台",
+  "sh_better_ui.native.markdown.title": "Markdown 文档",
+  "sh_better_ui.native.markdown.next_link": "下一链接",
+  "sh_better_ui.native.markdown.copy": "复制 Markdown",
+  "sh_better_ui.live.dismiss": "隐藏活动",
+  "sh_better_ui.live.open_details": "打开实时活动",
+  "sh_better_ui.native.rich_document.refresh": "刷新文档",
+  "sh_better_ui.native.rich_document.copy": "复制文本",
+  "sh_better_ui.native.rich_document.title": "结构富文档",
+  "sh_better_ui.native.rich_document.example_text": "资源图片与样式文本：",
+  "sh_better_ui.native.music_settings.title": "音乐灵动岛设置",
+  "sh_better_ui.native.music_settings.description": "音乐岛默认关闭，仅在有可用播放状态时显示。",
+  "sh_better_ui.native.music_settings.island": "音乐岛：%s",
+  "sh_better_ui.native.music_settings.notices": "任务提示：%s",
+  "sh_better_ui.native.music_settings.notice_hint": "任务提示需要启用音乐岛，并遵守全局通知设置。",
+  "sh_better_ui.native.music_settings.player": "打开音乐播放器",
+  "sh_better_ui.native.music_settings.activity": "管理实时活动"
 }

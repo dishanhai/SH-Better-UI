@@ -2640,5 +2640,22 @@
   "sh_better_ui.glass_confirmation.launch": "Open glass confirmation",
   "sh_better_ui.glass_confirmation.title": "Confirm demonstration",
   "sh_better_ui.glass_confirmation.details": "This is a demonstration only. Confirming changes no files or account data. Escape or Cancel returns without confirming. Use Page Up, Page Down, or the scroll wheel to read the full message.",
-  "sh_better_ui.glass_confirmation.status": "Confirmed: %s · Background clicks: %s"
+  "sh_better_ui.glass_confirmation.status": "Confirmed: %s · Background clicks: %s",
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source",
+  "sh_better_ui.native.markdown.title": "Markdown document",
+  "sh_better_ui.native.markdown.next_link": "Next link",
+  "sh_better_ui.native.markdown.copy": "Copy Markdown",
+  "sh_better_ui.live.dismiss": "Hide activity",
+  "sh_better_ui.live.open_details": "Open live activities",
+  "sh_better_ui.native.rich_document.refresh": "Refresh document",
+  "sh_better_ui.native.rich_document.copy": "Copy text",
+  "sh_better_ui.native.rich_document.title": "Structured document",
+  "sh_better_ui.native.rich_document.example_text": "Resource image and styled text: ",
+  "sh_better_ui.native.music_settings.title": "Music island settings",
+  "sh_better_ui.native.music_settings.description": "The music island is off by default and appears only for an available playback session.",
+  "sh_better_ui.native.music_settings.island": "Music island: %s",
+  "sh_better_ui.native.music_settings.notices": "Task notices: %s",
+  "sh_better_ui.native.music_settings.notice_hint": "Task notices require the island and follow global notification settings.",
+  "sh_better_ui.native.music_settings.player": "Open music player",
+  "sh_better_ui.native.music_settings.activity": "Manage live activities"
 }

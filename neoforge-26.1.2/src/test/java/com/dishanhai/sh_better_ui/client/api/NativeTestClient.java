@@ -66,6 +66,9 @@ public final class NativeTestClient implements AutoCloseable {
             @Override public int width(String text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedCharSequence text) { return (int) Math.ceil(splitter.stringWidth(text)); }
             @Override public int width(FormattedText text) { return (int) Math.ceil(splitter.stringWidth(text)); }
+            @Override public List<FormattedText> splitIgnoringLanguage(FormattedText text, int width) {
+                return splitter.splitLines(text, width, Style.EMPTY);
+            }
             @Override public List<FormattedCharSequence> split(FormattedText text, int width) {
                 return splitter.splitLines(text, width, Style.EMPTY).stream().map(Language.getInstance()::getVisualOrder).toList();
             }
