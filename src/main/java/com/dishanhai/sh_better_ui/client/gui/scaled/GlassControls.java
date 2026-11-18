@@ -25,12 +25,13 @@ import java.util.function.IntFunction;
  * addRenderableWidget(glass.button(area, Component.literal("Play"), true, pressed -> play()));
  * // Screen.removed() and before rebuilding: glass.close();
  * }</pre>
- * Only button, confirmed toggle and integer slider are currently included. Cards, menus and
- * segmented navigation retain their existing APIs; this suite does not claim to migrate them.
+ * Button, confirmed toggle, integer slider and single-choice segmented controls are included.
+ * Cards and menus retain their existing APIs; this suite does not claim to migrate them.
  */
 public final class GlassControls implements AutoCloseable {
     private final List<UiButton> buttons = new ArrayList<>();
     private final List<UiSlider> sliders = new ArrayList<>();
+    private final List<UiRubberSegment> segments = new ArrayList<>();
     private UiPreferences preferences;
     private boolean closed;
 
@@ -68,11 +69,22 @@ public final class GlassControls implements AutoCloseable {
         return control;
     }
 
+    /** Native single-choice selector. Pointer release and keyboard selection invoke onChange. */
+    public UiRubberSegment segmented(Bounds area, Component name, List<UiSectionBar.Section> options,
+                                      int selected, IntConsumer onChange) {
+        requireOpen();
+        var control = new UiRubberSegment(area, name, options, selected, preferences, onChange);
+        control.setLiquidGlass(true);
+        segments.add(control);
+        return control;
+    }
+
     public void setPreferences(UiPreferences preferences) {
         requireOpen();
         this.preferences = Objects.requireNonNull(preferences, "preferences");
         buttons.forEach(button -> button.setPreferences(preferences));
         sliders.forEach(slider -> slider.setPreferences(preferences));
+        segments.forEach(segment -> segment.setPreferences(preferences));
     }
 
     public boolean isClosed() { return closed; }
@@ -83,6 +95,8 @@ public final class GlassControls implements AutoCloseable {
         // Invalidate every old hit target before invoking consumer cancellation callbacks.
         sliders.forEach(slider -> { slider.active = false; slider.visible = false; });
         buttons.forEach(button -> { button.active = false; button.visible = false; });
+        segments.forEach(segment -> { segment.active = false; segment.visible = false; });
+        segments.forEach(UiRubberSegment::cancelDrag);
         RuntimeException failure = null;
         for (var slider : sliders) {
             try { slider.cancelEdit(); }
@@ -98,6 +112,7 @@ public final class GlassControls implements AutoCloseable {
         }
         sliders.clear();
         buttons.clear();
+        segments.clear();
         if (failure != null) throw failure;
     }
 

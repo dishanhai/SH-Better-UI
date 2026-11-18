@@ -33,6 +33,9 @@ public final class UiRubberSegment extends AbstractWidget {
     private final RubberSegmentState state;
     private final Tooltip[] tooltips;
     private UiPreferences preferences;
+    private boolean liquidGlass;
+    private final GlassSegmentStyle.Scrim trackScrim = new GlassSegmentStyle.Scrim();
+    private final GlassSegmentStyle.Scrim thumbScrim = new GlassSegmentStyle.Scrim();
     private @Nullable Tooltip currentTooltip;
 
     public UiRubberSegment(Bounds area, Component name, List<UiSectionBar.Section> options, int selected,
@@ -45,6 +48,10 @@ public final class UiRubberSegment extends AbstractWidget {
         setPreferences(preferences);
         syncBounds();
     }
+
+    /** Opt-in optical track and thumb. Disabled preferences retain an opaque presentation. */
+    public void setLiquidGlass(boolean enabled) { liquidGlass = enabled; }
+    public boolean isLiquidGlass() { return liquidGlass; }
 
     public int selectedIndex() { return state.selected(); }
 
@@ -140,19 +147,22 @@ public final class UiRubberSegment extends AbstractWidget {
         var theme = UiTheme.current();
         int track = (isActive() ? theme.surface() : theme.background()) | 0xFF000000;
         int thumb = (isActive() ? theme.accent() : theme.border()) | 0xFF000000;
-        int ink = readable(theme.text(), track);
-        int thumbInk = readable(theme.background(), thumb);
+        int ink = readable(theme.text(), track) | 0xff000000;
+        int thumbInk = readable(theme.background(), thumb) | 0xff000000;
         int border = isFocused() ? ContrastPolicy.readable(theme.accent(), track, track, 3)
                 : preferences.highContrast() ? ink : theme.border();
         int x = getX() + INSET;
         int y = getY() + INSET;
         int height = getHeight() - 2 * INSET;
-        RoundedCorners.draw(graphics, getX(), getY(), getWidth(), getHeight(), 8, isFocused() ? 2 : 1, border, track);
         long frameTime = now();
         var edges = state.sample(frameTime, reduced());
         int left = x + (int) Math.round(edges.left());
         int right = x + (int) Math.round(edges.right());
-        if (right > left) RoundedCorners.draw(graphics, left, y, right - left, height, 6, 0, thumb, thumb);
+        boolean optical = paintGlass(graphics, left, right, ink, thumbInk);
+        RoundedCorners.draw(graphics, getX(), getY(), getWidth(), getHeight(), 8, isFocused() ? 2 : 1,
+                border, trackScrim.tint(track, ink, optical));
+        if (right > left) RoundedCorners.draw(graphics, left, y, right - left, height, 6, 0,
+                thumb, thumbScrim.tint(thumb, thumbInk, optical));
         for (int i = 0; i < options.size(); i++) {
             int slotLeft = x + state.edge(i);
             int slotRight = x + state.edge(i + 1);
@@ -169,6 +179,22 @@ public final class UiRubberSegment extends AbstractWidget {
             int marker = center >= left && center < right ? thumbInk : ink;
             graphics.fill(center - 2, y + height - 2, center + 2, y + height - 1, marker);
         }
+    }
+
+    private boolean paintGlass(GuiGraphicsExtractor graphics, int left, int right, int ink, int thumbInk) {
+        var settings = com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelSettings.current();
+        if (!liquidGlass || !preferences.useBackdropBlur() || !settings.glassEnabled()) return false;
+        // One boundary before either surface or any foreground, never one capture per thumb.
+        if (com.dishanhai.sh_better_ui.client.blur.BackdropCapture.request(graphics) == null) return false;
+        var surfaces = GlassSegmentStyle.surfaces(getX(), getY(), getWidth(), getHeight(), left, right, ink, thumbInk);
+        boolean painted = true;
+        for (var draw : surfaces) {
+            var region = draw.region();
+            painted &= com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface.drawPrepared(graphics,
+                    (int) region.x(), (int) region.y(), (int) region.width(), (int) region.height(), region.radius(),
+                    (draw.material().foreground().fallbackArgb() & 0x00ffffff) | 0x40000000, 0, settings.optics(draw.material().optics()), preferences, 1);
+        }
+        return painted;
     }
 
     private void drawClipped(GuiGraphicsExtractor graphics, int index, int slotLeft, int slotRight, int left, int right,

@@ -70,4 +70,27 @@ class GlassControlsTest {
             assertTrue(changes.isEmpty());
         }
     }
+    @Test void segmentedOptInSelectionAndLifetimeAreOwnedByTheSuite() {
+        var changes = new ArrayList<Integer>();
+        var options = List.of(new UiSectionBar.Section(Component.literal("One"),
+                        com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon.DOCUMENT),
+                new UiSectionBar.Section(Component.literal("Two"),
+                        com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon.ORGANIZE));
+        var kit = new GlassControls(UiPreferences.DEFAULT);
+        var segment = kit.segmented(AREA, Component.literal("Period"), options, 0, changes::add);
+        var ordinary = new UiRubberSegment(AREA, Component.literal("Period"), options, 0,
+                UiPreferences.DEFAULT, changes::add);
+        assertTrue(segment.isLiquidGlass());
+        assertFalse(ordinary.isLiquidGlass());
+        segment.select(1);
+        kit.setPreferences(new UiPreferences(true, true, false, UiPreferences.DEFAULT.feedback()));
+        assertEquals(1, segment.selectedIndex());
+        assertTrue(changes.isEmpty());
+        kit.close();
+        assertFalse(segment.visible);
+        assertFalse(segment.active);
+        assertFalse(segment.cancelDrag());
+        assertThrows(IllegalStateException.class,
+                () -> kit.segmented(AREA, Component.literal("Closed"), options, 0, changes::add));
+    }
 }
