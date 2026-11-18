@@ -56,6 +56,8 @@ def sharedSources = [
         'client/lyrics/core/sync/PlayerSnapshot.java',
         'client/gui/panel/OnlineMusicGalleryPreview.java',
         'kernel/api/AnimationService.java',
+        'kernel/api/AccessibilityService.java',
+        'kernel/internal/ClientAccessibility.java',
         'kernel/api/dock/CollapseHandle.java',
         'kernel/api/dock/CollapseListener.java',
         'kernel/api/dock/CollapseService.java',
@@ -235,6 +237,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
         include("${packagePath}/client/gui/scaled/UiKeyframeAnimationTest.java")
         include("${packagePath}/kernel/internal/NativeAnimationServicesTest.java")
+        include("${packagePath}/kernel/internal/NativeAccessibilityServiceTest.java")
         include("${packagePath}/kernel/internal/NativeAnimationFixture.java")
         include("${packagePath}/kernel/internal/NativeAnimationPreferences.java")
         include("${packagePath}/kernel/internal/NativeAnimationExampleTest.java")

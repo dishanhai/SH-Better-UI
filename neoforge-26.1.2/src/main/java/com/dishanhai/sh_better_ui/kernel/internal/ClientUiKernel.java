@@ -101,6 +101,7 @@ public final class ClientUiKernel {
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ANIMATION, clientAnimation, UIApis.SCOPED_ANIMATION));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COLLAPSE, clientCollapse, new CapabilityKey(UIApis.COLLAPSE.id())));
         candidates.add(nativeAnimationExample.candidate());
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ACCESSIBILITY, new ClientAccessibility(kernel), UIApis.MINECRAFT_NARRATION));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.HUD, clientHud, UIApis.NATIVE_HUD));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.WINDOWS, clientDock, new CapabilityKey(UIApis.WINDOWS.id())));
