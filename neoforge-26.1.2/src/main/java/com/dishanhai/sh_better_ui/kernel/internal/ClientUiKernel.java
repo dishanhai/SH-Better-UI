@@ -48,6 +48,9 @@ public final class ClientUiKernel {
     private static KernelHost host;
     private static ClientMaterialCatalog catalog;
     private static ClientScreens screens;
+    private static ClientAnimation animation;
+    private static ClientCollapse collapse;
+    private static NativeAnimationExample animationExample;
     private static ClientReadabilitySamples samples;
     private static ClientTextReadability text;
     private static ClientHud hud;
@@ -64,6 +67,9 @@ public final class ClientUiKernel {
         var kernel = new KernelHost(PLATFORM, EnginePublication.CLIENT);
         kernel.storage(config.resolve("sh_better_ui/modules"));
         var clientScreens = new ClientScreens(kernel, PLATFORM);
+        var clientAnimation = new ClientAnimation(kernel);
+        var clientCollapse = new ClientCollapse(kernel, clientAnimation);
+        var nativeAnimationExample = new NativeAnimationExample(clientScreens);
         var readbacks = new ClientReadabilitySamples(kernel);
         var textReadability = new ClientTextReadability(kernel, clientScreens, readbacks);
         var clientHud = new ClientHud(kernel, readbacks);
@@ -74,6 +80,9 @@ public final class ClientUiKernel {
         var candidates = new ArrayList<>(NativeModuleSources.discover(modSources()));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIPlatform.KEY, clientScreens));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ANIMATION, clientAnimation, UIApis.SCOPED_ANIMATION));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COLLAPSE, clientCollapse, new CapabilityKey(UIApis.COLLAPSE.id())));
+        candidates.add(nativeAnimationExample.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.HUD, clientHud, UIApis.NATIVE_HUD));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ONLINE_MUSIC,
@@ -90,6 +99,9 @@ public final class ClientUiKernel {
         host = kernel;
         catalog = materialCatalog;
         screens = clientScreens;
+        animation = clientAnimation;
+        collapse = clientCollapse;
+        animationExample = nativeAnimationExample;
         samples = readbacks;
         text = textReadability;
         hud = clientHud;
@@ -114,7 +126,12 @@ public final class ClientUiKernel {
     static void beginExtraction() {
         if (host == null || frameOpen || !host.canBeginNativeFrame()) return;
         screens.sync(Minecraft.getInstance());
-        host.beginNativeFrame(() -> {}, phase -> {});
+        host.beginNativeFrame(() -> {}, phase -> {
+            if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.ANIMATION) {
+                animation.update();
+                collapse.update();
+            }
+        });
         frameOpen = true;
         samples.begin();
         text.beginFrame();
@@ -206,8 +223,17 @@ public final class ClientUiKernel {
         text = null;
         hud = null;
         catalog = null;
+        animation = null;
+        collapse = null;
+        animationExample = null;
         try { if (kernel != null) kernel.close(); }
         finally { com.dishanhai.sh_better_ui.client.music.ClientMusic.close(); }
+    }
+
+    public static boolean animationExampleAvailable() { return animationExample != null && animationExample.available(); }
+    public static Screen animationExampleScreen(Screen parent) {
+        if (!animationExampleAvailable()) throw new IllegalStateException("Native animation example is unavailable");
+        return new NativeAnimationExampleScreen(parent, animationExample);
     }
 
     private static List<NativeModuleSources.Source> modSources() {

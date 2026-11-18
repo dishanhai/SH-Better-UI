@@ -223,6 +223,10 @@ public final class ControlPanelScreen extends Screen {
             case INDEX -> {
                 toolButton(label("section.overview"), GraphicIcon.INFO, () -> showToolPage(ToolPage.OVERVIEW));
                 toolButton(label("section.links"), GraphicIcon.GITHUB, () -> showToolPage(ToolPage.LINKS));
+                var animationExample = toolButton(Component.translatable("sh_better_ui.native.animation_example.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().animationExampleScreen(this)));
+                animationExample.active = ShBetterUiApi.settings().animationExampleAvailable();
+                refreshRows.add(() -> animationExample.active = ShBetterUiApi.settings().animationExampleAvailable());
                 var shortcut = toolButton(label("section.shortcut"), GraphicIcon.KEYBOARD, this::openKeyBindings);
                 shortcut.setTooltip(Tooltip.create(label("shortcut.manage.tooltip")));
                 refreshRows.add(() -> {

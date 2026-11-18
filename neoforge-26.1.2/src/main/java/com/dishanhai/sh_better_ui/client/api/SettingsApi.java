@@ -41,6 +41,11 @@ public final class SettingsApi {
         return new DeveloperPanelScreen(parent, preferences);
     }
 
+    public boolean animationExampleAvailable() { return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.animationExampleAvailable(); }
+    public Screen animationExampleScreen(@Nullable Screen parent) {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.animationExampleScreen(parent);
+    }
+
     /** Built-in and registered extension preview IDs, in gallery order. */
     public List<String> developerSampleIds() { return DeveloperGalleryScreen.sampleIds(); }
 

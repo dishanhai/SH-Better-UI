@@ -48,6 +48,13 @@ def sharedSources = [
         'client/lyrics/common/hud/LyricFeed.java',
         'client/lyrics/core/sync/PlayerSnapshot.java',
         'client/gui/panel/OnlineMusicGalleryPreview.java',
+        'kernel/api/AnimationService.java',
+        'kernel/api/dock/CollapseHandle.java',
+        'kernel/api/dock/CollapseListener.java',
+        'kernel/api/dock/CollapseService.java',
+        'kernel/api/dock/CollapseSpec.java',
+        'kernel/api/dock/CollapseState.java',
+        'kernel/internal/ClientAnimation.java',
         'client/api/preview/DeveloperPreviewProvider.java',
         'client/api/preview/PreviewRegistry.java',
         'kernel/api/config/ConfigPage.java',
@@ -193,6 +200,11 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
         include("${packagePath}/client/gui/scaled/UiKeyframeAnimationTest.java")
+        include("${packagePath}/kernel/internal/NativeAnimationServicesTest.java")
+        include("${packagePath}/kernel/internal/NativeAnimationFixture.java")
+        include("${packagePath}/kernel/internal/NativeAnimationPreferences.java")
+        include("${packagePath}/kernel/internal/NativeAnimationExampleTest.java")
+        include("${packagePath}/kernel/internal/NativeCollapseTest.java")
         include("${packagePath}/client/gui/scaled/NavigationRailStateTest.java")
         include("${packagePath}/client/gui/scaled/PopupMotionTest.java")
         include("${packagePath}/client/gui/scaled/UiPromptBarTest.java")
