@@ -16,6 +16,10 @@ kotlin { jvmToolchain(25) }
 def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
+        'kernel/internal/live/SurfaceTransition.java',
+        'config/MusicOverlaySettings.java',
+        'client/gui/scaled/MusicIslandCapsuleState.java',
+        'client/gui/scaled/MusicIslandTaskAdapter.java',
         'client/gui/scaled/UiNavigationRail.java',
         'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
@@ -159,6 +163,14 @@ def sharedSources = [
         'client/lyrics/core/lyric/LyricWord.java',
         'client/lyrics/core/lyric/TtmlParser.java',
         'client/lyrics/core/sync/TrackIdentity.java',
+        'kernel/api/dock/WindowService.java',
+        'kernel/api/dock/DockService.java',
+        'kernel/api/dock/MiniWindowSpec.java',
+        'kernel/api/dock/MiniWindowHandle.java',
+        'kernel/api/dock/WindowContent.java',
+        'kernel/api/dock/WindowSnapshot.java',
+        'kernel/api/dock/CollapseSpec.java',
+        'kernel/api/dock/CollapseState.java',
         'kernel/api/text/TextReadabilityPalette.java',
         'kernel/internal/BuiltinService.java',
         'kernel/internal/ClientDeveloperPreviews.java',
@@ -176,6 +188,7 @@ sourceSets.main.java {
                 new File(file('../neoforge-26.1.2/src/main/java'), entry.path).isFile()) return true
         !entry.isDirectory() && entry.file.toPath().startsWith(sharedJava.toPath()) &&
                 !sharedSources.contains(entry.path) && !entry.path.startsWith("${packagePath}/theme/") &&
+                !entry.path.startsWith("${packagePath}/kernel/api/dock/indicator/") &&
                 !entry.path.startsWith("${packagePath}/kernel/api/music/") &&
                 !entry.path.startsWith("${packagePath}/kernel/internal/music/") &&
                 !entry.path.startsWith("${packagePath}/client/lyrics/core/capability/")
@@ -219,9 +232,19 @@ sourceSets.test {
         include("${packagePath}/client/music/MusicServiceTest.java")
         include("${packagePath}/client/music/NativeMusicFramesTest.java")
         include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
+        include("${packagePath}/kernel/internal/NativeDockWindowsTest.java")
+        include("${packagePath}/kernel/internal/NativeLiveActivityTest.java")
+        include("${packagePath}/kernel/internal/NativeActivityMotionTest.java")
+        include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
+        include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
+        include("${packagePath}/client/gui/panel/NativeRichDocumentScreenTest.java")
+        include("${packagePath}/kernel/internal/NativeMusicSettingsScreenTest.java")
+        include("${packagePath}/kernel/internal/live/SurfaceTransitionTest.java")
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
+        include("${packagePath}/client/api/MarkdownApiTest.java")
+        include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")
         include("${packagePath}/kernel/api/music/**")
     }
     compileClasspath += sourceSets.main.compileClasspath
@@ -300,6 +323,21 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/MotionApi.class",
                     "${packagePath}/client/api/InteractionApi.class",
                     "${packagePath}/client/api/SearchApi.class",
+                    "${packagePath}/client/api/RichDocumentsApi.class",
+                    "${packagePath}/client/visual/NativeRichDocumentView.class",
+                    "${packagePath}/client/gui/panel/NativeRichDocumentScreen.class",
+                    "${packagePath}/client/gui/panel/NativeMusicSettingsScreen.class",
+                    "${packagePath}/kernel/internal/NativeMusicActivity.class",
+                    "${packagePath}/kernel/internal/NativeActivityMotion.class",
+                    "${packagePath}/client/api/MarkdownApi.class",
+                    "${packagePath}/client/api/LinkApi.class",
+                    "${packagePath}/client/visual/MarkdownView.class",
+                    "${packagePath}/client/gui/panel/MarkdownExampleScreen.class",
+                    "${packagePath}/kernel/internal/ClientDockWindows.class",
+                    "${packagePath}/kernel/internal/ClientLiveActivities.class",
+                    "${packagePath}/kernel/internal/NativeActivityScreen.class",
+                    "${packagePath}/kernel/api/dock/WindowService.class",
+                    "${packagePath}/kernel/api/dock/DockService.class",
                     "${packagePath}/kernel/api/music/MusicLyricsView.class",
                     "${packagePath}/kernel/api/music/control/MusicSeekControl.class",
                     "${packagePath}/kernel/internal/music/view/OnlineMusicScreen.class",

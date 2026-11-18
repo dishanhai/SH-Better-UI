@@ -428,14 +428,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void buildQueue() {
         var c = layout.content();
-        queueLocate = button(new Bounds(layout.sourceBar().right() - 88, layout.sourceBar().y(), 88, 20), label("queue.locate"), () -> {
-            queueFirst = Math.max(0, queue.index() - visibleRows / 2); updateQueueRows();
-        }, queueControls);
-        queueAppend = button(new Bounds(layout.sourceBar().x(), layout.sourceBar().y(), 24, 20), label("queue.append_current"), () -> {
+        queueAppend = button(new Bounds(layout.sourceBar().right() - 60, layout.sourceBar().y(), 24, 20), label("queue.append_current"), () -> {
             if (queueAppendTrack != null) queue.append(queueAppendTrack);
             updateQueueRows(); updateScrollRegions();
         }, queueControls);
         queueAppend.setIcon(GraphicIcon.ADD);
+        queueLocate = button(new Bounds(layout.sourceBar().right() - 24, layout.sourceBar().y(), 24, 20), label("queue.locate"), () -> {
+            queueFirst = Math.max(0, queue.index() - visibleRows / 2); updateQueueRows();
+        }, queueControls);
+        queueLocate.setIcon(GraphicIcon.SEARCH); queueLocate.setPreview(label("queue.locate"));
         for (var row : musicRows()) {
             int slot = queueRows.size();
             int editWidth = queue.supportsEditing() ? 84 : 28;
@@ -1324,6 +1325,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return MpTypography.text(Component.translatable(TEXT + key, args)); }
-    @Override public void suspend() { if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); cancelSearch(); cancelSuggestions(); cancelLogin(); cancelLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; if (ownsPlayer) player.pause(); }
+    @Override public void suspend() { for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); cancelSearch(); cancelSuggestions(); cancelLogin(); cancelLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; if (ownsPlayer) player.pause(); }
     @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
 }

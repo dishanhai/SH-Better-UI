@@ -117,6 +117,29 @@ class OnlineMusicQueueViewTest {
         ((MusicTextControl)downs.get(last)).onPress();assertEquals(moved,queue.tracks.get(last+2));
         assertEquals(2,field(f.view,"queueFirst"));assertEquals(2,queue.moves);
     }
+    @Test void suspendingCancelsArmedQueueEditsBeforeKeyboardOrPointerRelease() throws Exception {
+        for(String name:List.of("queueAppend","queueUps","queueDowns")) for(boolean pointer:List.of(false,true)) {
+            var queue=new EditableQueue();var f=new Fixture(queue);f.playing=A;f.view.layout(new Host());queuePage(f.view);
+            var value=field(f.view,name);var control=value instanceof List<?> list?(MusicTextControl)list.get(name.equals("queueUps")?1:0):(MusicTextControl)value;
+            control.setFocused(true);assertTrue(control.active);assertTrue(control.visible);
+            if(pointer) assertTrue(control.mouseClicked(control.getX()+2,control.getY()+2,0));
+            else assertTrue(control.keyPressed(32,0,0));
+            assertTrue(control.isArmed());f.view.suspend();assertFalse(control.isArmed());
+            if(pointer) assertFalse(control.mouseReleased(control.getX()+2,control.getY()+2,0));
+            else assertFalse(control.keyReleased(32,0,0));
+            assertEquals(0,queue.moves);assertEquals(0,queue.appends);assertEquals(List.of(A,B),queue.tracks);
+        }
+    }
+    @Test void queueHeaderEditsReserveThePlaybackModeRegionAtCompactSizes() throws Exception {
+        for(int[] size:new int[][]{{208,240},{360,340},{800,600}}) {
+            var f=new Fixture(new EditableQueue());var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            var source=((OnlineMusicLayout)field(f.view,"layout")).sourceBar();
+            var append=(MusicTextControl)field(f.view,"queueAppend");var locate=(MusicTextControl)field(f.view,"queueLocate");
+            int modeRight=source.x()+Math.max(12,source.width()-96);
+            assertTrue(append.getX()>=modeRight);assertTrue(append.getX()+append.getWidth()<=locate.getX());
+            assertTrue(locate.getX()+locate.getWidth()<=source.right());assertEquals(24,locate.getWidth());
+        }
+    }
     @Test void changingVisibleQueueCancelsArmedEditControls() throws Exception {
         var queue=new EditableQueue(); var f=new Fixture(queue);f.view.layout(new Host());queuePage(f.view);
         var down=(MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
