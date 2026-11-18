@@ -39,6 +39,8 @@ public final class NativeDockExampleScreen extends Screen {
     private void createWindow(){
         window=example.dock.createMiniWindow(example.context,scope,MiniWindowSpec.builder("sh_better_ui:dock_example/window")
                 .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,240,200,false,false))
+                .glass(com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(
+                        com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR))
                 .title(label("sample")).compactSize(28,80).size(240,160).outsideClickCloses(true)
                 .compactIndicator(()->new ProgressIndicator(24,72,()->progress,0xff80caff,0xff304355))
                 .content(()->(draw,view)->{
@@ -55,7 +57,12 @@ public final class NativeDockExampleScreen extends Screen {
     int helpLeft(){return 40;}
     int helpWidth(){return Math.max(1,width-helpLeft()-20);}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float partial){
-        graphics.fill(0,0,width,height,0xff151b25);graphics.centeredText(font,title,width/2,10,0xffffffff);
+        graphics.fill(0,0,width,height,0xff151b25);
+        // Synthetic reference bars make the optical plate visible; these are not application data.
+        for(int x=0;x<width;x+=48)graphics.fill(x,48,Math.min(width,x+24),Math.max(48,height-60),
+                (x/48)%2==0?0xff316da0:0xffa9573e);
+        graphics.fill(32,22,width,68,0xe0151b25);
+        graphics.centeredText(font,title,width/2,10,0xffffffff);
         int y=28;for(var line:font.split(label("help"),helpWidth())){graphics.text(font,line,helpLeft(),y,0xffd3e1ee,false);y+=font.lineHeight+2;}
         super.extractRenderState(graphics,mouseX,mouseY,partial);
     }

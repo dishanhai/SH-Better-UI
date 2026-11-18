@@ -97,5 +97,7 @@ track, so existing render/input grants remain sufficient. Timed LINEAR/EASE
 behavior and layout persistence are unchanged. Reversal preserves the current
 position and velocity; progress is bounded, zero duration is immediate, and
 reduced-motion changes settle the current target. Controlled progress remains
-rejected by MiniWindowSpec. This does not migrate HUD windows or glass Dock
-compositing. See `neoforge-26.1.2/DOCK-INDICATORS.md` for the example and boundary.
+rejected by MiniWindowSpec. Screen Dock additionally accepts glass materials through
+one shared same-frame backdrop and rounded optical plates with readable opaque
+fallbacks. Quality FALLBACK forces opaque rendering; other tiers use the native
+fixed shader budget. This does not migrate HUD windows or the full GlassService. See `neoforge-26.1.2/DOCK-INDICATORS.md` for the example and boundary.

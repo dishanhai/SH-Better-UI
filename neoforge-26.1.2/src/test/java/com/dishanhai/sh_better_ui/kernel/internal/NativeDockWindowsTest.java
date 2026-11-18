@@ -173,9 +173,70 @@ final class NativeDockWindowsTest {
             assertEquals(160,window.snapshot().orElseThrow().geometry().bounds().x());
         }
     }
-    @Test void unsupportedFeaturesRejectBeforeAllocatingAndCloseIsIdempotent() throws Exception {
+    @Test void glassPolicyHonorsPlayerSettingsAndMaterialQuality() {
+        var regular=com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR);
+        var prefs=com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT;
+        assertTrue(ClientDockWindows.optical(regular,prefs,true));
+        assertFalse(ClientDockWindows.optical(regular,prefs,false));
+        assertFalse(ClientDockWindows.optical(regular,new com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences(true,false,true),true));
+        assertFalse(ClientDockWindows.optical(regular,new com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences(false,false,false),true));
+        var fallback=new com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial(regular.variant(),regular.optics(),
+                com.dishanhai.sh_better_ui.kernel.api.glass.GlassQuality.FALLBACK,
+                com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.Foreground.DARK);
+        assertFalse(ClientDockWindows.optical(fallback,prefs,true));
+        assertEquals(0xff000000,ClientDockWindows.foreground(fallback));
+        assertEquals(0xffffffff,ClientDockWindows.foreground(regular));
+        var colors=new ArrayList<Integer>();
+        ClientDockWindows.inkText(Component.literal("R").withStyle(style->style.withColor(0xff0000).withBold(true)),0xffffffff)
+                .accept((i,style,c)->{colors.add(style.getColor().getValue());assertTrue(style.isBold());return true;});
+        assertFalse(colors.isEmpty());assertTrue(colors.stream().allMatch(c->(c&0xffffff)==0xffffff));
+        ClientDockWindows.inkText(Component.literal("§cR"),0xff000000)
+                .accept((i,style,c)->{assertEquals(0,style.getColor().getValue()&0xffffff);return true;});
+    }
+    @Test void glassTitlePreservesNativeCodePointsAndNonColorStyles() throws Exception {
         try(var f=new Fixture()) {
-            assertThrows(UnsupportedOperationException.class,()->f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:glass").glass(com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR)).build()));
+            // Font.substrByWidth reads its private splitter rather than getSplitter().
+            // Supply deterministic glyph advances but retain the real styled headByWidth algorithm.
+            var splitter=new net.minecraft.client.StringSplitter((codePoint,style)->6f);
+            var testFont=new net.minecraft.client.gui.Font(null) {
+                @Override public net.minecraft.network.chat.FormattedText substrByWidth(
+                        net.minecraft.network.chat.FormattedText text,int width) {
+                    return splitter.headByWidth(text,width,net.minecraft.network.chat.Style.EMPTY);
+                }
+            };
+            var fontField=net.minecraft.client.Minecraft.class.getDeclaredField("font");
+            fontField.setAccessible(true);fontField.set(f.client.client(),testFont);
+            var font=new net.minecraft.network.chat.FontDescription.Resource(net.minecraft.resources.Identifier.parse("sh_better_ui:mp_ui"));
+            var title=Component.literal("Bold §z unknown 😀").withStyle(style->style.withBold(true).withFont(font).withColor(0xff0000));
+            var baseline=net.minecraft.locale.Language.getInstance().getVisualOrder(f.client.client().font.substrByWidth(title,500));
+            var expectedPoints=new ArrayList<Integer>();var expectedStyles=new ArrayList<net.minecraft.network.chat.Style>();
+            baseline.accept((i,style,c)->{expectedPoints.add(c);expectedStyles.add(style);return true;});
+            var actualPoints=new ArrayList<Integer>();var actualStyles=new ArrayList<net.minecraft.network.chat.Style>();
+            var glass=com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR);
+            ClientDockWindows.titleText(title,500,glass).accept((i,style,c)->{actualPoints.add(c);actualStyles.add(style);return true;});
+            assertEquals(expectedPoints,actualPoints);assertTrue(actualPoints.contains(0x1f600));
+            assertFalse(actualStyles.isEmpty());
+            for(int i=0;i<actualStyles.size();i++) {
+                assertEquals(expectedStyles.get(i).withColor(0xffffffff),actualStyles.get(i));
+                assertTrue(actualStyles.get(i).isBold());assertEquals(font,actualStyles.get(i).getFont());
+            }
+        }
+    }
+    @Test void glassCaptureOncePerPresentedFrameAndNeverForHiddenClosedOrDisabledWindows() throws Exception {
+        try(var f=new Fixture()) {
+            var material=com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial.preset(com.dishanhai.sh_better_ui.kernel.api.glass.GlassVariant.REGULAR);
+            for(int i=0;i<2;i++) f.dock.createMiniWindow(f.module,f.tree,MiniWindowSpec.builder("example:glass"+i).glass(material).build());
+            f.prepare();var calls=new java.util.concurrent.atomic.AtomicInteger();
+            var prefs=com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences.DEFAULT;
+            assertTrue(f.dock.prepareGlass(prefs,true,()->{calls.incrementAndGet();return true;}));assertEquals(1,calls.get());
+            f.prepare();assertFalse(f.dock.prepareGlass(prefs,true,()->{calls.incrementAndGet();return false;}));assertEquals(2,calls.get());
+            assertFalse(f.dock.prepareGlass(prefs,false,()->{calls.incrementAndGet();return true;}));assertEquals(2,calls.get());
+            f.dock.suspend();assertFalse(f.dock.prepareGlass(prefs,true,()->{calls.incrementAndGet();return true;}));
+            f.dock.closeAll();f.prepare();assertFalse(f.dock.prepareGlass(prefs,true,()->{calls.incrementAndGet();return true;}));assertEquals(2,calls.get());
+        }
+    }
+    @Test void closeIsIdempotent() throws Exception {
+        try(var f=new Fixture()) {
             assertTrue(f.dock.windows(f.module).isEmpty());
             var window=f.window();window.close();window.close();assertFalse(window.isOpen());
             assertThrows(IllegalStateException.class,window::expand);
