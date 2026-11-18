@@ -9,6 +9,14 @@ import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.dock.*;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
+import net.minecraft.client.gui.components.AbstractContainerWidget;
+import net.minecraft.client.gui.components.AbstractWidget;
+import net.minecraft.client.gui.components.MultiLineTextWidget;
+import net.minecraft.client.gui.components.ScrollableLayout;
+import net.minecraft.client.gui.layouts.LinearLayout;
+import net.minecraft.client.gui.narration.NarrationElementOutput;
+import net.minecraft.client.gui.narration.NarratedElementType;
+import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -20,10 +28,13 @@ public final class NativeAnimationExampleScreen extends Screen {
     private AnimationService.Track track;
     private CollapseHandle fold;
     private boolean target=true,paused;
+    private AbstractContainerWidget body;
+    private AbstractWidget preview;
     NativeAnimationExampleScreen(Screen parent,NativeAnimationExample example){super(label("title"));this.parent=parent;this.example=example;}
     public static Component label(String key){return Component.translatable("sh_better_ui.native.animation_example."+key);}
     @Override protected void init(){
-        clearWidgets();
+        double scroll=body==null?0:body.scrollAmount();
+        clearWidgets();body=null;preview=null;
         if(scope==null || !scope.isOpen()){
             scope=example.mount(this);target=true;paused=false;
             track=example.context.engine().require(UIApis.ANIMATION).bind(example.context,scope,
@@ -31,6 +42,31 @@ public final class NativeAnimationExampleScreen extends Screen {
             fold=example.context.engine().require(UIApis.COLLAPSE).create(example.context,scope,
                     new CollapseSpec(CollapseSpec.Direction.HORIZONTAL,CollapseSpec.Curve.SPRING,240,200,false,false));
             track.blend(1,0,3000,InterruptibleAnimation.BlendCurve.LINEAR);fold.expand();
+        }
+        int contentWidth=Math.max(1,Math.min(520,width-24));
+        if(height>112 && width>=40){
+            var content=LinearLayout.vertical().spacing(8);
+            content.addChild(new MultiLineTextWidget(label("help"),font).setMaxWidth(contentWidth));
+            preview=content.addChild(new AbstractWidget(0,0,contentWidth,82,label("title")){
+                @Override protected void extractWidgetRenderState(GuiGraphicsExtractor graphics,int mouseX,int mouseY,float partial){
+                    int x=getX(),y=getY(),w=getWidth();
+                    graphics.text(font,Component.translatable("sh_better_ui.native.animation_example.track",Math.round(track.value()*100),paused),x,y,0xffffffff,false);
+                    graphics.fill(x,y+16,x+w,y+22,0xff304355);
+                    graphics.fill(x,y+16,x+Math.round(w*Math.clamp(track.value(),0,1)),y+22,0xff80caff);
+                    graphics.text(font,Component.translatable("sh_better_ui.native.animation_example.fold",fold.state().name(),Math.round(fold.progress()*100)),x,y+40,0xffffffff,false);
+                    graphics.fill(x,y+56,x+w,y+68,0xff304355);
+                    graphics.fill(x,y+56,x+Math.round(w*fold.progress()),y+68,0xff80d6a0);
+                }
+                @Override protected void updateWidgetNarration(NarrationElementOutput output){
+                    output.add(NarratedElementType.TITLE,Component.translatable("sh_better_ui.native.animation_example.track",Math.round(track.value()*100),paused)
+                            .append(" ").append(Component.translatable("sh_better_ui.native.animation_example.fold",fold.state().name(),Math.round(fold.progress()*100))));
+                }
+            });
+            var viewport=new ScrollableLayout(minecraft,content,height-112);
+            viewport.setMinWidth(contentWidth);viewport.arrangeElements();
+            viewport.setPosition((width-viewport.getWidth())/2,28);
+            viewport.visitWidgets(widget->body=(AbstractContainerWidget)addRenderableWidget(widget));
+            body.setScrollAmount(scroll);
         }
         int w=Math.max(1,Math.min(170,(width-24)/2)),left=Math.max(0,(width-w*2-4)/2),y=Math.max(0,height-76);
         button(left,y,w,"collapse",fold::toggle);
@@ -46,18 +82,20 @@ public final class NativeAnimationExampleScreen extends Screen {
     @Override public void extractBackground(GuiGraphicsExtractor graphics,int x,int y,float partial){}
     @Override public void extractRenderState(GuiGraphicsExtractor graphics,int x,int y,float partial){
         graphics.fill(0,0,width,height,0xff151b25);graphics.centeredText(font,title,width/2,10,0xffffffff);
-        int top=28;for(var line:font.split(label("help"),Math.max(1,width-24))){graphics.text(font,line,12,top,0xffd3e1ee,false);top+=font.lineHeight+2;}
-        int availableBottom=Math.max(top,height-84),barWidth=Math.max(1,width-32);
-        if(top+36<availableBottom){
-            graphics.text(font,Component.translatable("sh_better_ui.native.animation_example.track",Math.round(track.value()*100),paused),16,top+4,0xffffffff,false);
-            graphics.fill(16,top+18,16+barWidth,top+24,0xff304355);
-            graphics.fill(16,top+18,16+Math.round(barWidth*Math.clamp(track.value(),0,1)),top+24,0xff80caff);
-        }
-        if(top+72<availableBottom){
-            graphics.text(font,Component.translatable("sh_better_ui.native.animation_example.fold",fold.state().name(),Math.round(fold.progress()*100)),16,top+38,0xffffffff,false);
-            graphics.fill(16,top+52,16+Math.round(barWidth*fold.progress()),top+64,0xff80d6a0);
-        }
         super.extractRenderState(graphics,x,y,partial);
+    }
+    @Override public boolean keyPressed(KeyEvent event){
+        if(body!=null){
+            double next=switch(event.key()){
+                case 266 -> body.scrollAmount()-Math.max(16,body.getHeight()-12);
+                case 267 -> body.scrollAmount()+Math.max(16,body.getHeight()-12);
+                case 268 -> 0;
+                case 269 -> Double.MAX_VALUE;
+                default -> -1;
+            };
+            if(next>=0 || event.key()==266){body.setScrollAmount(Math.max(0,next));return true;}
+        }
+        return super.keyPressed(event);
     }
     @Override public void removed(){if(scope!=null){scope.close();scope=null;}track=null;fold=null;}
     @Override public void onClose(){if(NativePort.screen(minecraft)==this)NativePort.show(minecraft,parent);}

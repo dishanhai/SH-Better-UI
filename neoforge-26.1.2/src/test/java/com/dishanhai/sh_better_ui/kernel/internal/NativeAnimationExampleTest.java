@@ -24,7 +24,24 @@ class NativeAnimationExampleTest {
             track.pause();time.set(2_000_000_000L);frame(host,animation,collapse);assertEquals(.5f,track.value(),.0001f);
             track.resume();time.set(3_500_000_000L);frame(host,animation,collapse);assertEquals(1f,track.value(),.0001f);
             screen.width=320;screen.init();assertSame(track,field(screen,"track"));
-            assertEquals(6,screen.children().size());
+            assertEquals(6,screen.children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance).count());
+            screen.height=180;screen.init();
+            var body=(net.minecraft.client.gui.components.AbstractContainerWidget)field(screen,"body");
+            var preview=(net.minecraft.client.gui.components.AbstractWidget)field(screen,"preview");
+            assertNotNull(body);assertNotNull(preview);assertSame(track,field(screen,"track"));
+            assertTrue(body.getX()>=0 && body.getX()+body.getWidth()<=320);
+            int footerTop=screen.children().stream().filter(net.minecraft.client.gui.components.Button.class::isInstance)
+                    .map(net.minecraft.client.gui.components.Button.class::cast).mapToInt(net.minecraft.client.gui.components.Button::getY).min().orElseThrow();
+            assertTrue(body.getY()+body.getHeight()<footerTop,"Scrollable body must stay above the fixed footer");
+            assertTrue(preview.visible);assertEquals(82,preview.getHeight(),"Both demo bars remain in the scroll content");
+            assertTrue(screen.keyPressed(new net.minecraft.client.input.KeyEvent(269,0,0)));
+            assertTrue(body.scrollAmount()>0,"Short-height content can reach its second bar");
+            screen.width=300;screen.init();
+            body=(net.minecraft.client.gui.components.AbstractContainerWidget)field(screen,"body");
+            assertTrue(body.scrollAmount()>0);assertSame(track,field(screen,"track"));
+            assertTrue(screen.keyPressed(new net.minecraft.client.input.KeyEvent(268,0,0)));assertEquals(0,body.scrollAmount());
+            assertTrue(screen.mouseScrolled(body.getX()+10,body.getY()+10,0,-1));
+            assertTrue(body.scrollAmount()>0,"Pointer wheel scrolls the visible body");
             screen.removed();assertFalse(track.isActive());
             screen.init();assertNotSame(track,field(screen,"track"));screen.removed();
         }
