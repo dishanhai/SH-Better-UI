@@ -264,6 +264,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
         include("${packagePath}/client/gui/panel/GallerySampleInputTest.java")
+        include("${packagePath}/client/gui/panel/NativeFeedbackScreenTest.java")
         include("${packagePath}/client/gui/panel/ShredderDemoTest.java")
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")

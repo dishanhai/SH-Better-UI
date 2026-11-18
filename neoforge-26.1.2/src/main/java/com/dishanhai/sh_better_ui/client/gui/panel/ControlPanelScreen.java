@@ -191,6 +191,8 @@ public final class ControlPanelScreen extends Screen {
                         (settings, enabled) -> settings.withDisplay(settings.highContrast(), enabled, settings.widgetBlur()));
                 toggle("widget_blur", "widget_blur.tooltip", ControlPanelSettings::widgetBlur,
                         (settings, enabled) -> settings.withDisplay(settings.highContrast(), settings.reducedMotion(), enabled));
+                toolButton(NativeFeedbackScreen.label("title"), GraphicIcon.SETTINGS, () ->
+                        ControlPanelPlatform.show(minecraft,new NativeFeedbackScreen(this,draft.feedback(),this::feedbackApplied)));
             }
             case 2 -> {
                 var modes = THEMES.stream().map(mode -> new UiSectionBar.Section(
@@ -223,6 +225,11 @@ public final class ControlPanelScreen extends Screen {
 
     private void openCustomFonts() {
         ControlPanelPlatform.show(minecraft, new com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen(this));
+    }
+
+    void feedbackApplied(com.dishanhai.sh_better_ui.config.ControlFeedbackSettings feedback){
+        saved=saved.withFeedback(feedback);draft=draft.withFeedback(feedback);beforeReset=null;
+        status=draft.equals(saved)?label("saved"):null;
     }
 
     private void initTools() {

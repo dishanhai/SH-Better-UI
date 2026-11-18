@@ -91,14 +91,19 @@ class ControlPanelScreenTest {
             var browserField = ControlPanelScreen.class.getDeclaredField("themeBrowser"); browserField.setAccessible(true);
             browserField.set(screen, browser);
             switchTab(screen, "themes");
+            var remount = ControlPanelScreen.class.getDeclaredMethod("remountThemePage", int.class); remount.setAccessible(true);
+            int pageSize = Math.toIntExact(screen.children().stream().filter(UiThemePreviewCard.class::isInstance).count());
+            int targetIndex = browser.themeIds().indexOf("a:target");
+            assertTrue(targetIndex >= 0);
+            if (browser.page(targetIndex / pageSize)) remount.invoke(screen, 0);
             var card = screen.children().stream().filter(UiThemePreviewCard.class::isInstance)
                     .map(UiThemePreviewCard.class::cast).filter(c -> c.themeId().equals("a:target")).findFirst().orElseThrow();
             screen.setFocused(card);
-            var remount = ControlPanelScreen.class.getDeclaredMethod("remountThemePage", int.class); remount.setAccessible(true);
             remount.invoke(screen, 0);
             assertNotSame(card, screen.getFocused());
             assertEquals("a:target", ((UiThemePreviewCard) screen.getFocused()).themeId());
             manager.replaceResourceThemes(java.util.List.of(), java.util.List.of()); browser.refresh();
+            browser.page(-browser.pageIndex());
             remount.invoke(screen, 0);
             assertInstanceOf(UiThemePreviewCard.class, screen.getFocused());
             assertTrue(screen.children().contains(screen.getFocused()));

@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeOverrides;
 import com.dishanhai.sh_better_ui.config.ThemePaletteArchive;
+import com.dishanhai.sh_better_ui.config.ControlFeedbackSettings;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
 import org.jspecify.annotations.Nullable;
 
@@ -19,7 +20,7 @@ import java.util.Properties;
 /** Saved 26.x client options. The screen edits a separate draft until Apply succeeds. */
 public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, boolean reducedMotion,
                                    boolean backgroundBlur, boolean widgetBlur, boolean glassEnabled,
-                                   int glassBlur, int glassRefraction, int glassRim) {
+                                   int glassBlur, int glassRefraction, int glassRim, ControlFeedbackSettings feedback) {
     public static final int MAX_GLASS_SCALE = 200;
     public static final ControlPanelSettings DEFAULT = new ControlPanelSettings(ThemeSettings.DEFAULT.withBackgroundEffect("nativeBackdrop"),
             false, false, true, true, true, 100, 100, 100);
@@ -29,15 +30,24 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
 
     public ControlPanelSettings {
         Objects.requireNonNull(theme, "theme");
+        Objects.requireNonNull(feedback, "feedback");
         if (!validScale(glassBlur) || !validScale(glassRefraction) || !validScale(glassRim)) {
             throw new IllegalArgumentException("Glass scale is outside [0, 200]");
         }
     }
 
+    /** Compatibility constructor for callers predating configurable control feedback. */
+    public ControlPanelSettings(ThemeSettings theme, boolean highContrast, boolean reducedMotion,
+                                boolean backgroundBlur, boolean widgetBlur, boolean glassEnabled,
+                                int glassBlur, int glassRefraction, int glassRim) {
+        this(theme, highContrast, reducedMotion, backgroundBlur, widgetBlur, glassEnabled,
+                glassBlur, glassRefraction, glassRim, ControlFeedbackSettings.DEFAULT);
+    }
+
     public static ControlPanelSettings current() { return settings; }
 
     public UiPreferences preferences(boolean vanillaHighContrast) {
-        return new UiPreferences(highContrast || vanillaHighContrast, reducedMotion, widgetBlur);
+        return new UiPreferences(highContrast || vanillaHighContrast, reducedMotion, widgetBlur, feedback);
     }
 
     public GlassOptics optics(GlassOptics preset) {
@@ -51,17 +61,22 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
 
     ControlPanelSettings withTheme(ThemeSettings next) {
         return new ControlPanelSettings(next, highContrast, reducedMotion, backgroundBlur, widgetBlur,
-                glassEnabled, glassBlur, glassRefraction, glassRim);
+                glassEnabled, glassBlur, glassRefraction, glassRim, feedback);
     }
 
     ControlPanelSettings withDisplay(boolean contrast, boolean motion, boolean blur) {
         return new ControlPanelSettings(theme, contrast, motion, backgroundBlur, blur,
-                glassEnabled, glassBlur, glassRefraction, glassRim);
+                glassEnabled, glassBlur, glassRefraction, glassRim, feedback);
     }
 
     ControlPanelSettings withGlass(boolean background, boolean enabled, int blur, int refraction, int rim) {
         return new ControlPanelSettings(theme, highContrast, reducedMotion, background, widgetBlur,
-                enabled, blur, refraction, rim);
+                enabled, blur, refraction, rim, feedback);
+    }
+
+    ControlPanelSettings withFeedback(ControlFeedbackSettings next) {
+        return new ControlPanelSettings(theme, highContrast, reducedMotion, backgroundBlur, widgetBlur,
+                glassEnabled, glassBlur, glassRefraction, glassRim, next);
     }
 
     static synchronized void load(Path configDirectory) {
@@ -79,7 +94,13 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
                     flag(properties, "glassEnabled", DEFAULT.glassEnabled),
                     scale(properties, "glassBlur", DEFAULT.glassBlur),
                     scale(properties, "glassRefraction", DEFAULT.glassRefraction),
-                    scale(properties, "glassRim", DEFAULT.glassRim));
+                    scale(properties, "glassRim", DEFAULT.glassRim),
+                    new ControlFeedbackSettings(
+                            flag(properties, "hoverAnimation", ControlFeedbackSettings.DEFAULT.hoverAnimation()),
+                            flag(properties, "pressAnimation", ControlFeedbackSettings.DEFAULT.pressAnimation()),
+                            flag(properties, "selectionPulse", ControlFeedbackSettings.DEFAULT.selectionPulse()),
+                            boundedNumber(properties, "tooltipDelayMs", ControlFeedbackSettings.DEFAULT.tooltipDelayMs(),
+                                    ControlFeedbackSettings.MAX_TOOLTIP_DELAY_MS)));
         } catch (IOException | IllegalArgumentException failure) {
             LOGGER.log(System.Logger.Level.WARNING, "Could not read the SHBUI control panel settings.", failure);
         }
@@ -103,6 +124,10 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
             properties.setProperty("glassBlur", Integer.toString(draft.glassBlur));
             properties.setProperty("glassRefraction", Integer.toString(draft.glassRefraction));
             properties.setProperty("glassRim", Integer.toString(draft.glassRim));
+            properties.setProperty("hoverAnimation", Boolean.toString(draft.feedback.hoverAnimation()));
+            properties.setProperty("pressAnimation", Boolean.toString(draft.feedback.pressAnimation()));
+            properties.setProperty("selectionPulse", Boolean.toString(draft.feedback.selectionPulse()));
+            properties.setProperty("tooltipDelayMs", Integer.toString(draft.feedback.tooltipDelayMs()));
             try (var output = Files.newOutputStream(temporary)) {
                 properties.store(output, "SH-Better-UI NeoForge 26 client options");
             }
@@ -167,11 +192,15 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
     }
 
     private static int scale(Properties properties, String key, int fallback) {
+        return boundedNumber(properties, key, fallback, MAX_GLASS_SCALE);
+    }
+
+    private static int boundedNumber(Properties properties, String key, int fallback, int maximum) {
         String value = properties.getProperty(key);
         if (value == null) return fallback;
         try {
             int number = Integer.parseInt(value);
-            return validScale(number) ? number : fallback;
+            return number >= 0 && number <= maximum ? number : fallback;
         } catch (NumberFormatException invalid) {
             return fallback;
         }
