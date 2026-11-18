@@ -22,6 +22,10 @@ public final class UIApis {
     public static final CapabilityKey NATIVE_HUD = new CapabilityKey(HUD.id());
     public static final ServiceKey<ComputerStatusService> COMPUTER_STATUS = ComputerStatusService.KEY;
     public static final CapabilityKey COMPUTER_STATUS_READ = ComputerStatusService.CAPABILITY;
+    public static final ServiceKey<AnimationService> ANIMATION = key("animation", AnimationService.class);
+    public static final CapabilityKey SCOPED_ANIMATION = new CapabilityKey(ANIMATION.id());
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.dock.CollapseService> COLLAPSE =
+            key("collapse", com.dishanhai.sh_better_ui.kernel.api.dock.CollapseService.class);
     public static final ServiceKey<TextReadabilityService> TEXT_READABILITY =
             key("text_readability", TextReadabilityService.class);
     public static final CapabilityKey TEXT_READABILITY_POLICY = new CapabilityKey(TEXT_READABILITY.id());
