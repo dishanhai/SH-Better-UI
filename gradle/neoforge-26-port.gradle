@@ -19,6 +19,8 @@ def sharedSources = [
         'kernel/internal/live/SurfaceTransition.java',
         'config/MusicOverlaySettings.java',
         'client/gui/scaled/MusicIslandCapsuleState.java',
+        'client/gui/scaled/MusicHudLayout.java',
+        'client/gui/scaled/MusicOverlayLayout.java',
         'client/gui/scaled/MusicIslandTaskAdapter.java',
         'client/gui/scaled/UiNavigationRail.java',
         'client/gui/scaled/NavigationRailState.java',
@@ -220,6 +222,8 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/SpringTableTest.java")
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
         include("${packagePath}/client/gui/scaled/HudTextPaletteTest.java")
+        include("${packagePath}/client/gui/scaled/MusicHudLayoutTest.java")
+        include("${packagePath}/client/gui/scaled/MusicOverlayLayoutTest.java")
         include("${packagePath}/client/gui/scaled/UiBranchedMenuTest.java")
         include("${packagePath}/client/gui/scaled/TabScrollStateTest.java")
         include("${packagePath}/client/gui/scaled/UiTimelineTest.java")
@@ -238,6 +242,7 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/NativeLiveActivityTest.java")
         include("${packagePath}/kernel/internal/NativeActivityMotionTest.java")
         include("${packagePath}/kernel/internal/NativeMusicArtworkTest.java")
+        include("${packagePath}/kernel/internal/NativeMusicHudTest.java")
         include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
         include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
         include("${packagePath}/client/gui/panel/NativeRichDocumentScreenTest.java")
@@ -337,6 +342,8 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/gui/panel/NativeMusicSettingsScreen.class",
                     "${packagePath}/kernel/internal/NativeMusicActivity.class",
                     "${packagePath}/kernel/internal/NativeMusicArtwork.class",
+                    "${packagePath}/kernel/internal/NativeMusicHud.class",
+                    "${packagePath}/kernel/internal/music/view/NativeHudLyrics.class",
                     "${packagePath}/kernel/internal/NativeDockPlacements.class",
                     "${packagePath}/kernel/internal/music/OnlineCoverFrames.class",
                     "${packagePath}/kernel/internal/NativeActivityMotion.class",

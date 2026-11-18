@@ -55,6 +55,8 @@ public final class ClientUiKernel {
     private static ClientDockWindows dock;
     private static ClientLiveActivities liveActivities;
     private static NativeMusicActivity musicActivity;
+    private static NativeMusicHud musicHud;
+    private static com.dishanhai.sh_better_ui.client.music.MusicService.Frame musicFrame;
     private static boolean frameOpen;
 
     private ClientUiKernel() {}
@@ -117,6 +119,7 @@ public final class ClientUiKernel {
         dock = clientDock;
         liveActivities = clientActivities;
         musicActivity = nativeMusic;
+        musicHud = new NativeMusicHud(clientActivities.artwork());
         screens.sync(minecraft);
         com.dishanhai.sh_better_ui.client.music.ClientMusic.start(config);
     }
@@ -144,11 +147,23 @@ public final class ClientUiKernel {
         }
         host.beginNativeFrame(() -> {}, phase -> {
             if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.MEASURE) {
-                if (musicActivity != null) musicActivity.advance();
+                musicFrame = com.dishanhai.sh_better_ui.client.music.ClientMusic.frame();
+                if (musicActivity != null) {
+                    if (musicHud != null) {
+                        var client = Minecraft.getInstance(); var window = client.getWindow();
+                        musicHud.prepare(musicActivity, musicFrame, NativeMusicHud.sceneVisible(client),
+                                window.getGuiScaledWidth(), window.getGuiScaledHeight(), client.font.lineHeight);
+                    }
+                    musicActivity.advance();
+                }
                 if (liveActivities != null) liveActivities.advance();
             }
         });
         frameOpen = true;
+        // RenderFrame.Pre reaches this even when F1 or a cancelled RenderGuiEvent.Pre suppresses HUD Post.
+        // Upload/release once, before any Screen/HUD extraction can retain the shared cover texture.
+        if (liveActivities != null && musicFrame != null) liveActivities.prepareArtwork(musicFrame,
+                musicHud != null && musicHud.visible(), NativeMusicHud.sceneVisible(Minecraft.getInstance()));
         samples.begin();
         text.beginFrame();
     }
@@ -196,6 +211,8 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
+        if (liveActivities != null) liveActivities.invalidateArtwork();
         if (dock != null) dock.closeAll();
         if (screens != null) screens.logout(event.getConnection());
     }
@@ -208,6 +225,7 @@ public final class ClientUiKernel {
             var client = Minecraft.getInstance();
             if (NativePort.screen(client) == null) host.renderNativeFrame(null);
             hud.draw(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false), client.level);
+            if (musicHud != null) musicHud.draw(event.getGuiGraphics());
             if (liveActivities != null) liveActivities.drawHud(event.getGuiGraphics());
         }
     }
@@ -287,6 +305,7 @@ public final class ClientUiKernel {
                     if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();
+                    if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
                     if (liveActivities != null) liveActivities.invalidateArtwork();
                     if (liveActivities != null) liveActivities.settings(LiveSurfaceConfig.load(
                             Minecraft.getInstance().gameDirectory.toPath().resolve("config")));
@@ -299,6 +318,7 @@ public final class ClientUiKernel {
         if (liveActivities != null) liveActivities.close();
         liveActivities = null;
         musicActivity = null;
+        musicHud = null; musicFrame = null;
         if (dock != null) dock.closeAll();
         dock = null;
         host = null;
