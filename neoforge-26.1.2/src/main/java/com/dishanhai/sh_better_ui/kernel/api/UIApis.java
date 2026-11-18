@@ -9,6 +9,10 @@ import com.dishanhai.sh_better_ui.kernel.api.text.TextReadabilityService;
 public final class UIApis {
     public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService> ONLINE_MUSIC =
             com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService.KEY;
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.dock.WindowService> WINDOWS =
+            key("windows", com.dishanhai.sh_better_ui.kernel.api.dock.WindowService.class);
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.dock.DockService> DOCK =
+            key("dock", com.dishanhai.sh_better_ui.kernel.api.dock.DockService.class);
     public static final ServiceKey<UIPlatform> PLATFORM = UIPlatform.KEY;
     public static final ServiceKey<MaterialCatalog> MATERIAL_CATALOG = MaterialCatalog.KEY;
     public static final CapabilityKey MATERIAL_DISCOVERY = new CapabilityKey(MATERIAL_CATALOG.id());
@@ -21,6 +25,10 @@ public final class UIApis {
     public static final ServiceKey<TextReadabilityService> TEXT_READABILITY =
             key("text_readability", TextReadabilityService.class);
     public static final CapabilityKey TEXT_READABILITY_POLICY = new CapabilityKey(TEXT_READABILITY.id());
+
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.live.ActivityService> ACTIVITIES = com.dishanhai.sh_better_ui.kernel.api.live.ActivityService.KEY;
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.live.NotificationService> NOTIFICATIONS = com.dishanhai.sh_better_ui.kernel.api.live.NotificationService.KEY;
+    public static final ServiceKey<com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceService> LIVE_SURFACES = com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceService.KEY;
 
     private UIApis() {}
 
