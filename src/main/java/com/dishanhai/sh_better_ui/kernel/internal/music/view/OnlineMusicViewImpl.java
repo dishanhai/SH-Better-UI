@@ -61,7 +61,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private final List<OnlineLyricButton> lyricRows = new ArrayList<>();
     private final PlayerQueue queue;
     private final List<AbstractWidget> queueControls = new ArrayList<>();
-    private final List<MusicTextControl> queueRows = new ArrayList<>(), queueRemoves = new ArrayList<>();
+    private final List<MusicTextControl> queueRows = new ArrayList<>(), queueRemoves = new ArrayList<>(), queueUps = new ArrayList<>(), queueDowns = new ArrayList<>();
+    private MusicTextControl queueAppend;
+    private OnlineTrack queueAppendTrack;
+    private List<OnlineTrack> boundQueueTracks = List.of();
+    private int boundQueueFirst = -1;
     private OnlineMusicScrollRegion queueScroll;
     private MusicTextControl queuePrevious, queueNext, queueUndo, queueClear, queueLocate;
     private int queueFirst;
@@ -135,7 +139,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); navigation.clear();
         host = context; layout = OnlineMusicLayout.of(context.viewport()); stage = null; queryField = null;
         stageControls.clear(); stageQueueRows.clear(); stageLyricKey=null;
-        queueControls.clear(); queueRows.clear(); queueRemoves.clear();
+        queueControls.clear(); queueRows.clear(); queueRemoves.clear(); queueUps.clear(); queueDowns.clear(); boundQueueFirst = -1;
         sourceSegments=null;resultIdentities.clear();
         libraryHeaderControls.clear();librarySources=null;libraryGroups=null;
         searchControls.clear(); lyricControls.clear(); accountControls.clear(); detailControls.clear(); libraryControls.clear();
@@ -427,11 +431,22 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         queueLocate = button(new Bounds(layout.sourceBar().right() - 88, layout.sourceBar().y(), 88, 20), label("queue.locate"), () -> {
             queueFirst = Math.max(0, queue.index() - visibleRows / 2); updateQueueRows();
         }, queueControls);
+        queueAppend = button(new Bounds(layout.sourceBar().x(), layout.sourceBar().y(), 24, 20), label("queue.append_current"), () -> {
+            if (queueAppendTrack != null) queue.append(queueAppendTrack);
+            updateQueueRows(); updateScrollRegions();
+        }, queueControls);
+        queueAppend.setIcon(GraphicIcon.ADD);
         for (var row : musicRows()) {
             int slot = queueRows.size();
-            var play = button(new Bounds(row.x(), row.y(), row.width() - 28, row.height()), Component.empty(),
+            int editWidth = queue.supportsEditing() ? 84 : 28;
+            var play = button(new Bounds(row.x(), row.y(), row.width() - editWidth, row.height()), Component.empty(),
                     () -> { queue.select(queueFirst + slot); updateQueueRows(); }, queueControls);
             play.setLeadingIcon(GraphicIcon.RUN); play.setVariant(MusicTextControl.Variant.ROW);queueRows.add(play);
+            var up = button(new Bounds(row.right() - 80, row.y(), 24, row.height()), Component.literal("↑"),
+                    () -> moveQueueRow(slot, -1), queueControls);
+            var down = button(new Bounds(row.right() - 52, row.y(), 24, row.height()), Component.literal("↓"),
+                    () -> moveQueueRow(slot, 1), queueControls);
+            queueUps.add(up); queueDowns.add(down);
             var remove = button(new Bounds(row.right() - 24, row.y(), 24, row.height()), label("queue.remove"),
                     () -> { queue.remove(queueFirst + slot); updateQueueRows(); updateScrollRegions(); }, queueControls);
             remove.setIcon(GraphicIcon.REMOVE); queueRemoves.add(remove);
@@ -450,15 +465,38 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 () -> { queue.clear(); updateQueueRows(); updateScrollRegions(); }, queueControls);
         queueClear.setPreview(label("queue.clear_hint"));
     }
+    private void moveQueueRow(int slot, int direction) {
+        int from = queueFirst + slot;
+        if (boundQueueFirst == queueFirst && boundQueueTracks.equals(queue.tracks())) queue.move(from, from + direction);
+        updateQueueRows(); updateScrollRegions();
+    }
     private void updateQueueRows() {
         if (queuePrevious == null) return;
         queueFirst = Math.min(queueFirst, Math.max(0, queue.tracks().size() - visibleRows));
+        var tracks = queue.tracks();
+        if (boundQueueFirst != queueFirst || !boundQueueTracks.equals(tracks)) {
+            for (var control : queueControls) if (control instanceof MusicTextControl text) text.cancelInteraction();
+            boundQueueTracks = tracks; boundQueueFirst = queueFirst;
+        }
+        var trackToAppend = player.snapshot().track();
+        if (!java.util.Objects.equals(queueAppendTrack, trackToAppend)) queueAppend.cancelInteraction();
+        queueAppendTrack = trackToAppend;
+        queueAppend.setVisible(!immersive && page == Page.QUEUE && queue.supportsEditing());
+        queueAppend.setAvailable(queueAppendTrack != null);
+        queueAppend.setPreview(queueAppendTrack == null ? label("queue.append_current") : label("queue.append_track", queueAppendTrack.title()));
         for (int slot = 0; slot < queueRows.size(); slot++) {
             int i = queueFirst + slot;
             var row = queueRows.get(slot); var remove = queueRemoves.get(slot);
-            row.visible = remove.visible = page == Page.QUEUE && i < queue.tracks().size();
+            row.visible = remove.visible = !immersive && page == Page.QUEUE && i < queue.tracks().size();
             row.active = remove.active = row.visible;
+            var up = queueUps.get(slot); var down = queueDowns.get(slot);
+            up.setVisible(row.visible && queue.supportsEditing()); down.setVisible(up.visible);
+            up.setAvailable(i > 0); down.setAvailable(i + 1 < tracks.size());
             if (i >= queue.tracks().size()) continue;
+            up.setPreview(label("queue.move_up", tracks.get(i).title()));
+            up.setSecondary(label("queue.move_up", tracks.get(i).title()));
+            down.setPreview(label("queue.move_down", tracks.get(i).title()));
+            down.setSecondary(label("queue.move_down", tracks.get(i).title()));
             var track = queue.tracks().get(i);
             var caption=MpTypography.text((i + 1) + " · " + track.title());if(!row.getMessage().equals(caption))row.rebind(caption);
             row.setSecondary(MpTypography.text(track.artist()+" · "+time(track.durationMs())));
@@ -653,7 +691,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (exitControl != null) { exitControl.visible = !immersive; if (immersive) exitControl.cancelInteraction(); }
         searchControls.forEach(w -> w.visible = page == Page.SEARCH);
         lyricControls.forEach(w -> w.visible = page == Page.LYRICS);
-        queueControls.forEach(w -> w.visible = page == Page.QUEUE);
+        queueControls.forEach(w -> w.visible = !immersive && page == Page.QUEUE);
         accountControls.forEach(w -> w.visible = page == Page.ACCOUNTS && !accountDetail);
         detailControls.forEach(w -> w.visible = page == Page.ACCOUNTS && accountDetail);
         libraryControls.forEach(w -> w.visible = page == Page.LIBRARY);

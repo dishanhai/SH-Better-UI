@@ -12,10 +12,12 @@ class OnlineMusicQueueViewTest {
     private static final OnlineTrack B = new OnlineTrack("qq", "2", "2", "Second", "Artist", "", 1000);
     private static class Fixture {
         OnlineTrack playing;
+        OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
         int paused,closed,seeks;
         OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
+            case "queue" -> persistent;
             case "seek" -> {seeks++;yield null;}
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
@@ -25,7 +27,9 @@ class OnlineMusicQueueViewTest {
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
             default -> null;
         });
-        final OnlineMusicViewImpl view = new OnlineMusicViewImpl(player);
+        final OnlineMusicViewImpl view;
+        Fixture() { this(null); }
+        Fixture(OnlineMusicQueue queue) { persistent = queue; view = new OnlineMusicViewImpl(player); }
     }
     private static Object field(Object owner,String name) throws Exception { var f=owner.getClass().getDeclaredField(name); f.setAccessible(true); return f.get(owner); }
     private static void call(Object owner,String name,Class<?>[] types,Object... args) throws Exception { var m=owner.getClass().getDeclaredMethod(name,types);m.setAccessible(true);m.invoke(owner,args); }
@@ -58,6 +62,55 @@ class OnlineMusicQueueViewTest {
         @Override public boolean interactive() { return true; }
         @Override public <T extends net.minecraft.client.gui.components.AbstractWidget> T add(T widget) { widgets.add(widget);return widget; }
         @Override public <T extends net.minecraft.client.gui.components.AbstractWidget> T addOverlay(T widget) { return add(widget); }
+    }
+
+    private static class EditableQueue implements OnlineMusicQueue {
+        List<OnlineTrack> tracks = List.of(A, B);
+        List<OnlineTrack> previous;
+        int index, moves, appends;
+        public boolean supportsEditing() { return true; }
+        public Snapshot snapshot() { return new Snapshot(tracks, index, previous != null); }
+        public void append(List<OnlineTrack> additions) { previous = tracks; var copy = new ArrayList<>(tracks); copy.addAll(additions); tracks = List.copyOf(copy); appends++; }
+        public void move(int from, int to) { previous = tracks; var copy = new ArrayList<>(tracks); copy.add(to, copy.remove(from)); tracks = List.copyOf(copy); index = to; moves++; }
+        public void undo() { tracks = previous; previous = null; }
+        public void replace(List<OnlineTrack> tracks, int selected) { this.tracks = tracks; index = selected; }
+        public void select(int selected) { index = selected; }
+        public void next() {} public void previous() {} public void remove(int selected) {} public void clear() {}
+    }
+    @Test void editableQueueControlsDelegateWithoutInterruptingPlaybackAndUndo() throws Exception {
+        var queue = new EditableQueue(); var f = new Fixture(queue); f.playing = A;
+        f.view.layout(new Host()); queuePage(f.view);
+        var up = (MusicTextControl)((List<?>)field(f.view,"queueUps")).get(0);
+        var down = (MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
+        assertFalse(up.active); assertTrue(down.active); down.onPress();
+        assertEquals(List.of(B,A),queue.tracks); assertEquals(1,queue.moves);
+        ((MusicTextControl)field(f.view,"queueUndo")).onPress(); assertEquals(List.of(A,B),queue.tracks);
+        var append = (MusicTextControl)field(f.view,"queueAppend"); assertTrue(append.active); append.onPress();
+        assertEquals(List.of(A,B,A),queue.tracks); assertEquals(1,queue.appends);
+        assertEquals(A,f.playing); assertEquals(0,f.paused); assertEquals(0,f.closed);
+        call(f.view,"enterImmersive",new Class<?>[0]); call(f.view,"updateQueueRows",new Class<?>[0]);
+        assertFalse(append.visible); assertFalse(down.visible);
+    }
+    @Test void editControlsAreHiddenForLegacyQueuesAndBoundedAtSmallSizes() throws Exception {
+        var legacy = new Fixture(); legacy.view.layout(new Host()); queuePage(legacy.view);
+        assertFalse(((MusicTextControl)field(legacy.view,"queueAppend")).visible);
+        assertTrue(((List<?>)field(legacy.view,"queueUps")).stream().noneMatch(w->((MusicTextControl)w).visible));
+        for(int[] size:new int[][]{{208,240},{360,340},{800,600}}) {
+            var f = new Fixture(new EditableQueue()); var host = new Host(); host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
+            int right=-1;
+            for(String name:List.of("queueRows","queueUps","queueDowns","queueRemoves")) {
+                var w=(MusicTextControl)((List<?>)field(f.view,name)).get(0);
+                assertTrue(w.visible);assertTrue(w.getWidth()>0);assertTrue(w.getX()>=right);right=w.getX()+w.getWidth();assertTrue(right<=size[0]);
+            }
+            assertFalse(((MusicTextControl)field(f.view,"queueAppend")).active);
+        }
+    }
+    @Test void changingVisibleQueueCancelsArmedEditControls() throws Exception {
+        var queue=new EditableQueue(); var f=new Fixture(queue);f.view.layout(new Host());queuePage(f.view);
+        var down=(MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
+        down.setFocused(true);assertTrue(down.keyPressed(32,0,0));
+        queue.tracks=List.of(B,A);call(f.view,"updateQueueRows",new Class<?>[0]);
+        assertFalse(down.isArmed());assertFalse(down.keyReleased(32,0,0));assertEquals(0,queue.moves);
     }
 
     @Test void primaryLyricsEntrancesUseStageAndRestoreTheirOrigin() throws Exception {

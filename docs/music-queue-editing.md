@@ -28,3 +28,16 @@ playback. PR #47's session cache and #48's mode UI remain separate work.
 MuoniumPlayer's queue-reorder identity tests informed the duplicate-entry and stale
 selection review; this implementation does not copy MP source. Reference:
 https://github.com/zihe114514/MuoniumPlayer-multiversion
+
+## Queue page controls (follow-up)
+
+For players advertising `supportsEditing()`, the queue page exposes per-entry
+up/down buttons and an add-current-track button in the header. Adding does not
+replace the queue or start playback; duplicates are intentional. Edge moves are
+disabled. Existing undo applies to these edits. Unsupported legacy queues retain
+the prior layout without nonfunctional editing controls.
+
+The controls support keyboard activation and named narration/tooltips, cancel
+armed interactions when the visible queue changes, and hide in the immersive
+player. This slice does not add drag-and-drop, search-result multi-selection,
+queue persistence, or real-account/device validation.

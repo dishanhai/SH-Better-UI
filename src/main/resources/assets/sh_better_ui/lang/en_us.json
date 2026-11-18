@@ -2636,5 +2636,9 @@
   "sh_better_ui.custom_font.small": "Reduce GUI scale to show font settings.",
   "sh_better_ui.online_music.view.library": "Library",
   "sh_better_ui.online_music.refresh.library": "Your library",
-  "sh_better_ui.online_music.library.sign_in": "Sign in to this source"
+  "sh_better_ui.online_music.library.sign_in": "Sign in to this source",
+  "sh_better_ui.online_music.queue.append_current": "Add current track to queue",
+  "sh_better_ui.online_music.queue.append_track": "Add %s to queue",
+  "sh_better_ui.online_music.queue.move_up": "Move %s up",
+  "sh_better_ui.online_music.queue.move_down": "Move %s down"
 }

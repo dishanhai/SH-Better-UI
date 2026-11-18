@@ -1769,5 +1769,9 @@
   "sh_better_ui.custom_font.small": "请减小 GUI 缩放以显示字体设置。",
   "sh_better_ui.online_music.view.library": "音樂庫",
   "sh_better_ui.online_music.refresh.library": "我的音樂庫",
-  "sh_better_ui.online_music.library.sign_in": "登入此音樂平台"
+  "sh_better_ui.online_music.library.sign_in": "登入此音樂平台",
+  "sh_better_ui.online_music.queue.append_current": "將目前歌曲附加至佇列",
+  "sh_better_ui.online_music.queue.append_track": "將 %s 附加至佇列",
+  "sh_better_ui.online_music.queue.move_up": "上移 %s",
+  "sh_better_ui.online_music.queue.move_down": "下移 %s"
 }
