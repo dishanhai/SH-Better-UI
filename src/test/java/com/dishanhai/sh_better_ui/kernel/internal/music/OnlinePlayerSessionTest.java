@@ -60,9 +60,10 @@ class OnlinePlayerSessionTest {
             session.pause();
             await(() -> frames.select(null, System.nanoTime()).snapshot().session().status()
                     == com.dishanhai.sh_better_ui.client.music.MusicSnapshot.PlaybackStatus.PAUSED);
+            assertEquals(id, frames.select(null, System.nanoTime()).snapshot().session().id(), "pause keeps the playback attempt");
             session.play(track("second"));
             await(() -> frames.select(null, System.nanoTime()).snapshot().session().track().key().equals("test:second"));
-            assertEquals(id, frames.select(null, System.nanoTime()).snapshot().session().id());
+            assertNotEquals(id, frames.select(null, System.nanoTime()).snapshot().session().id(), "new playback revokes old action targets");
             session.stop(); await(() -> frames.select(null, System.nanoTime()) == null);
         }
     }

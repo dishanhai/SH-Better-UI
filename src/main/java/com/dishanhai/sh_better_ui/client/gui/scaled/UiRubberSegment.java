@@ -31,6 +31,9 @@ public final class UiRubberSegment extends AbstractWidget {
     private final RubberSegmentState state;
     private final Tooltip[] tooltips;
     private UiPreferences preferences;
+    private boolean liquidGlass;
+    private final GlassSegmentStyle.Scrim trackScrim = new GlassSegmentStyle.Scrim();
+    private final GlassSegmentStyle.Scrim thumbScrim = new GlassSegmentStyle.Scrim();
 
     public UiRubberSegment(Bounds area, Component name, List<UiSectionBar.Section> options, int selected,
                            UiPreferences preferences, IntConsumer onChange) {
@@ -42,6 +45,10 @@ public final class UiRubberSegment extends AbstractWidget {
         setPreferences(preferences);
         syncBounds();
     }
+
+    /** Opt-in optical track and thumb. Disabled preferences retain an opaque presentation. */
+    public void setLiquidGlass(boolean enabled) { liquidGlass = enabled; }
+    public boolean isLiquidGlass() { return liquidGlass; }
 
     public int selectedIndex() { return state.selected(); }
 
@@ -132,19 +139,22 @@ public final class UiRubberSegment extends AbstractWidget {
         var theme = UiTheme.current();
         int track = (active ? theme.surface() : theme.background()) | 0xFF000000;
         int thumb = (active ? theme.accent() : theme.border()) | 0xFF000000;
-        int ink = readable(theme.text(), track);
-        int thumbInk = readable(theme.background(), thumb);
+        int ink = readable(theme.text(), track) | 0xff000000;
+        int thumbInk = readable(theme.background(), thumb) | 0xff000000;
         int border = isFocused() ? ContrastPolicy.readable(theme.accent(), track, track, 3)
                 : preferences.highContrast() ? ink : theme.border();
         int x = getX() + INSET;
         int y = getY() + INSET;
         int height = getHeight() - 2 * INSET;
-        RoundedCorners.draw(graphics, getX(), getY(), getWidth(), getHeight(), 8, isFocused() ? 2 : 1, border, track);
         long frameTime = now();
         var edges = state.sample(frameTime, reduced());
         int left = x + (int) Math.round(edges.left());
         int right = x + (int) Math.round(edges.right());
-        if (right > left) RoundedCorners.draw(graphics, left, y, right - left, height, 6, 0, thumb, thumb);
+        boolean optical = paintGlass(graphics, left, right, ink, thumbInk);
+        RoundedCorners.draw(graphics, getX(), getY(), getWidth(), getHeight(), 8, isFocused() ? 2 : 1,
+                border, trackScrim.tint(track, ink, optical));
+        if (right > left) RoundedCorners.draw(graphics, left, y, right - left, height, 6, 0,
+                thumb, thumbScrim.tint(thumb, thumbInk, optical));
         for (int i = 0; i < options.size(); i++) {
             int slotLeft = x + state.edge(i);
             int slotRight = x + state.edge(i + 1);
@@ -161,6 +171,12 @@ public final class UiRubberSegment extends AbstractWidget {
             int marker = center >= left && center < right ? thumbInk : ink;
             graphics.fill(center - 2, y + height - 2, center + 2, y + height - 1, marker);
         }
+    }
+
+    private boolean paintGlass(GuiGraphics graphics, int left, int right, int ink, int thumbInk) {
+        if (!liquidGlass || !LiquidGlassTheme.useBackdrop(preferences)) return false;
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.paintHudGlassBatch(graphics,
+                GlassSegmentStyle.surfaces(getX(), getY(), getWidth(), getHeight(), left, right, ink, thumbInk));
     }
 
     private void drawClipped(GuiGraphics graphics, int index, int slotLeft, int slotRight, int left, int right,
@@ -180,6 +196,7 @@ public final class UiRubberSegment extends AbstractWidget {
                 var label = Language.getInstance().getVisualOrder(font.width(option.label()) <= width - 6
                         ? option.label() : FormattedText.composite(font.substrByWidth(option.label(),
                                 Math.max(0, width - 6 - font.width(CommonComponents.ELLIPSIS))), CommonComponents.ELLIPSIS));
+                label = GlassTextInk.apply(label, color, liquidGlass);
                 graphics.drawString(font, label, center - font.width(label) / 2,
                         y + (height - font.lineHeight) / 2, color, false);
             }

@@ -3,7 +3,9 @@
   "version": "1.0.0",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "build": "node scripts/build.mjs",
     "serve": "node scripts/serve.mjs",
@@ -11,6 +13,7 @@
     "test:browser": "node tests/browser.mjs",
     "test:material-effects-browser": "node tests/material-effects-browser.mjs",
     "test:rich-text-browser": "node tests/rich-text-browser.mjs",
-    "fixture": "node scripts/fixture.mjs"
+    "fixture": "node scripts/fixture.mjs",
+    "test:liquid-glass-browser": "node tests/liquid-glass-browser.mjs"
   }
 }

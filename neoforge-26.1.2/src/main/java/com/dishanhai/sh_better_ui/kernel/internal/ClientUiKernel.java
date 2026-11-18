@@ -53,8 +53,11 @@ public final class ClientUiKernel {
     private static ClientTextReadability text;
     private static ClientHud hud;
     private static ClientDockWindows dock;
+    private static NativeDockExample dockExample;
     private static ClientLiveActivities liveActivities;
     private static NativeMusicActivity musicActivity;
+    private static NativeMusicHud musicHud;
+    private static com.dishanhai.sh_better_ui.client.music.MusicService.Frame musicFrame;
     private static boolean frameOpen;
 
     private ClientUiKernel() {}
@@ -73,6 +76,7 @@ public final class ClientUiKernel {
         var textReadability = new ClientTextReadability(kernel, clientScreens, readbacks);
         var clientHud = new ClientHud(kernel, readbacks);
         var clientDock = new ClientDockWindows(kernel, clientScreens);
+        var nativeDockExample = new NativeDockExample(clientScreens, clientDock);
         var clientActivities = new ClientLiveActivities(kernel, liveSettings);
         var nativeMusic = new NativeMusicActivity(true, () -> clientActivities.runtime().policy().notifications(),
                 () -> clientActivities.runtime().diagnostics().activities() < clientActivities.runtime().policy().maxActivities(),
@@ -85,6 +89,7 @@ public final class ClientUiKernel {
         });
         var candidates = new ArrayList<>(NativeModuleSources.discover(modSources()));
         candidates.add(nativeMusic.candidate());
+        candidates.add(nativeDockExample.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIPlatform.KEY, clientScreens));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
@@ -115,14 +120,19 @@ public final class ClientUiKernel {
         text = textReadability;
         hud = clientHud;
         dock = clientDock;
+        dockExample = nativeDockExample;
         liveActivities = clientActivities;
         musicActivity = nativeMusic;
+        musicHud = new NativeMusicHud(clientActivities.artwork());
         screens.sync(minecraft);
         com.dishanhai.sh_better_ui.client.music.ClientMusic.start(config);
     }
 
     @SubscribeEvent
-    public static void frame(RenderFrameEvent.Pre event) { beginExtraction(); }
+    public static void frame(RenderFrameEvent.Pre event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.prepareAll(Util.getMillis());
+        beginExtraction();
+    }
 
     @SubscribeEvent
     public static void frameEnd(RenderFrameEvent.Post event) {
@@ -144,11 +154,23 @@ public final class ClientUiKernel {
         }
         host.beginNativeFrame(() -> {}, phase -> {
             if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.MEASURE) {
-                if (musicActivity != null) musicActivity.advance();
+                musicFrame = com.dishanhai.sh_better_ui.client.music.ClientMusic.frame();
+                if (musicActivity != null) {
+                    if (musicHud != null) {
+                        var client = Minecraft.getInstance(); var window = client.getWindow();
+                        musicHud.prepare(musicActivity, musicFrame, NativeMusicHud.sceneVisible(client),
+                                window.getGuiScaledWidth(), window.getGuiScaledHeight(), client.font.lineHeight);
+                    }
+                    musicActivity.advance();
+                }
                 if (liveActivities != null) liveActivities.advance();
             }
         });
         frameOpen = true;
+        // RenderFrame.Pre reaches this even when F1 or a cancelled RenderGuiEvent.Pre suppresses HUD Post.
+        // Upload/release once, before any Screen/HUD extraction can retain the shared cover texture.
+        if (liveActivities != null && musicFrame != null) liveActivities.prepareArtwork(musicFrame,
+                musicHud != null && musicHud.visible(), NativeMusicHud.sceneVisible(Minecraft.getInstance()));
         samples.begin();
         text.beginFrame();
     }
@@ -196,6 +218,8 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
+        if (liveActivities != null) liveActivities.invalidateArtwork();
         if (dock != null) dock.closeAll();
         if (screens != null) screens.logout(event.getConnection());
     }
@@ -208,8 +232,15 @@ public final class ClientUiKernel {
             var client = Minecraft.getInstance();
             if (NativePort.screen(client) == null) host.renderNativeFrame(null);
             hud.draw(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false), client.level);
+            if (musicHud != null) musicHud.draw(event.getGuiGraphics());
             if (liveActivities != null) liveActivities.drawHud(event.getGuiGraphics());
         }
+    }
+
+    public static boolean dockExampleAvailable() { return dockExample != null && dockExample.available(); }
+    public static Screen dockExampleScreen(Screen parent) {
+        if (!dockExampleAvailable()) throw new IllegalStateException("Native dock example is unavailable");
+        return new NativeDockExampleScreen(parent, dockExample);
     }
 
     public static boolean musicActivityAvailable() { return musicActivity != null && musicActivity.available(); }
@@ -284,9 +315,12 @@ public final class ClientUiKernel {
     public static void reload(AddClientReloadListenersEvent event) {
         event.addListener(Identifier.fromNamespaceAndPath(ShBetterUi.MOD_ID, "material_catalog"),
                 (ResourceManagerReloadListener) resources -> {
+                    com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.resourcesReloaded();
                     if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();
+                    if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
+                    if (liveActivities != null) liveActivities.invalidateArtwork();
                     if (liveActivities != null) liveActivities.settings(LiveSurfaceConfig.load(
                             Minecraft.getInstance().gameDirectory.toPath().resolve("config")));
                 });
@@ -294,12 +328,15 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void stop(ClientStoppingEvent event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.closeAll();
         var kernel = host;
         if (liveActivities != null) liveActivities.close();
         liveActivities = null;
         musicActivity = null;
+        musicHud = null; musicFrame = null;
         if (dock != null) dock.closeAll();
         dock = null;
+        dockExample = null;
         host = null;
         if (frameOpen && kernel != null) kernel.finishNativeFrame();
         frameOpen = false;

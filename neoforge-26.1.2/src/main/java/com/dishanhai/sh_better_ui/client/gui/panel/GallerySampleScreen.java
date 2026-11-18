@@ -46,6 +46,7 @@ abstract class GallerySampleScreen extends Screen {
     private Bounds panel;
     private boolean expanded;
     private int revision;
+    private net.minecraft.client.gui.components.events.GuiEventListener pointerCapture;
 
     GallerySampleScreen(DeveloperGalleryScreen parent, String id) {
         this(parent, id, Component.translatable(KEY + "sample." + id));
@@ -60,6 +61,7 @@ abstract class GallerySampleScreen extends Screen {
     @Override
     protected final void init() {
         revision++;
+        pointerCapture = null;
         preferences = parent.previewPreferences();
         theme = UiTheme.current();
         beforeSampleInit();
@@ -173,6 +175,10 @@ abstract class GallerySampleScreen extends Screen {
 
     @Override
     public boolean mouseReleased(MouseButtonEvent event) {
+        if (event.button() == 0 && pointerCapture != null) {
+            var captured = pointerCapture; pointerCapture = null; setDragging(false);
+            return children().contains(captured) && captured.mouseReleased(event);
+        }
         if (getFocused() instanceof UiPillNav nav && nav.mouseReleased(event)) {
             setDragging(false);
             return true;
@@ -254,7 +260,17 @@ abstract class GallerySampleScreen extends Screen {
             if (child instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiCardNav nav) nav.pointerDown(event.x(), event.y());
         }
         int before = revision;
-        boolean handled = super.mouseClicked(event, doubleClick);
+        boolean handled = false;
+        // Scroll canvases deliberately reject non-rail clicks; keep looking for the row below.
+        for (var child : java.util.List.copyOf(children())) {
+            if (!child.mouseClicked(event, doubleClick)) continue;
+            handled = true;
+            if (ControlPanelPlatform.screen(minecraft) == this && children().contains(child)) {
+                setFocused(child);
+                if (event.button() == 0) { pointerCapture = child; setDragging(true); }
+            }
+            break;
+        }
         if (revision != before) {
             setDragging(false);
             if (fullscreenButton != null) setInitialFocus(fullscreenButton);
@@ -262,6 +278,10 @@ abstract class GallerySampleScreen extends Screen {
         }
         restoreUsableFocus();
         return handled;
+    }
+
+    @Override public void setFocused(net.minecraft.client.gui.components.events.GuiEventListener listener) {
+        if (getFocused() != listener) super.setFocused(listener);
     }
 
     private void restoreUsableFocus() {
@@ -293,6 +313,7 @@ abstract class GallerySampleScreen extends Screen {
     }
 
     private void cancelEdits() {
+        pointerCapture = null;
         for (var child : children()) {
             if (child instanceof UiSlider slider) slider.cancelEdit();
             if (child instanceof UiSloshGauge gauge) gauge.cancelDrag();

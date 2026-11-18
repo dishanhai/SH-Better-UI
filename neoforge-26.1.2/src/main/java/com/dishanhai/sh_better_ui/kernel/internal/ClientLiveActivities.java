@@ -20,6 +20,7 @@ public final class ClientLiveActivities implements AutoCloseable {
     private final LiveSurfaceRuntime runtime;
     private final KernelHost host;
     private final NativeActivityMotion motion = new NativeActivityMotion();
+    private final NativeMusicArtwork artwork = new NativeMusicArtwork();
     private LiveSurfaceSettings settings;
     private SurfacePlacement.Result placement = SurfacePlacement.Result.HIDDEN;
     private NativeActivityScreen details;
@@ -70,6 +71,18 @@ public final class ClientLiveActivities implements AutoCloseable {
 
     void detailClosed(NativeActivityScreen screen) {
         if (details == screen) { details = null; runtime.collapse(); }
+    }
+
+    public void invalidateArtwork() { artwork.invalidate(); }
+
+    NativeMusicArtwork artwork() { return artwork; }
+    /** Single upload/release point before extracting either the music card or island. */
+    void prepareArtwork(com.dishanhai.sh_better_ui.client.music.MusicService.Frame frame, boolean hudVisible, boolean sceneVisible) {
+        var cover = frame.snapshot().session() == null ? null : frame.snapshot().session().artwork();
+        var icon = NativeMusicArtwork.icon(cover);
+        var primary = runtime.plan().primary();
+        boolean islandNeeds = primary != null && icon != null && icon.equals(primary.content().icon()) && runtime.policy().enabled();
+        artwork.beginFrame(sceneVisible && (hudVisible || islandNeeds) ? cover : null);
     }
 
     private void suspend() {
@@ -169,7 +182,7 @@ public final class ClientLiveActivities implements AutoCloseable {
                 (float) area.radius(), 1, tokens.focus(), tokens.surface());
     }
 
-    static void paintContent(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode) {
+    void paintContent(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode) {
         int x = (int) area.x(), y = (int) area.y(), width = (int) area.width(), height = (int) area.height();
         var font = Minecraft.getInstance().font;
         graphics.enableScissor(x, y, x + width, y + height);
@@ -182,9 +195,15 @@ public final class ClientLiveActivities implements AutoCloseable {
             }
             int left = x + 8;
             if (content.icon() != null && width >= 100) {
-                var id = Identifier.tryParse(content.icon().toString());
-                if (id != null && Minecraft.getInstance().getResourceManager().getResource(id).isPresent()) {
-                    graphics.blit(RenderPipelines.GUI_TEXTURED, id, left, y + Math.max(0, (height - 16) / 2), 0f, 0f, 16, 16, 16, 16, (tokens.title() & 0xff000000) | 0xffffff);
+                var nativeCover = artwork.texture(content.icon());
+                var id = nativeCover == null ? Identifier.tryParse(content.icon().toString()) : nativeCover.id();
+                boolean knownResource = nativeCover == null && !NativeMusicArtwork.isCover(content.icon()) && id != null
+                        && Minecraft.getInstance().getResourceManager().getResource(id).isPresent();
+                if (nativeCover != null || knownResource) {
+                    int imageWidth = nativeCover == null ? 16 : Math.max(1, 16 * nativeCover.width() / Math.max(nativeCover.width(),nativeCover.height()));
+                    int imageHeight = nativeCover == null ? 16 : Math.max(1, 16 * nativeCover.height() / Math.max(nativeCover.width(),nativeCover.height()));
+                    graphics.blit(RenderPipelines.GUI_TEXTURED, id, left + (16-imageWidth)/2, y + Math.max(0, (height-imageHeight)/2),
+                            0f, 0f, imageWidth, imageHeight, imageWidth, imageHeight, (tokens.title() & 0xff000000) | 0xffffff);
                     left += 22;
                 }
             }
@@ -213,6 +232,7 @@ public final class ClientLiveActivities implements AutoCloseable {
     @Override public void close() {
         if (closed) return;
         closed = true;
+        artwork.close();
         var screen = details;
         if (screen != null && NativePort.screen(Minecraft.getInstance()) == screen) screen.onClose();
         details = null;

@@ -11,9 +11,43 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiHistory;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerTracker;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ViewportTransform;
 
-/** Renderer-independent interaction state. Hosts route native input and own cancellation and drawing. This is the supported 26.x subset of the shared API. */
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiConfirmation;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import net.minecraft.client.gui.GuiGraphicsExtractor;
+import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
+
+/** Native confirmation screens and renderer-independent interaction state. Other controllers remain host-owned. */
 public final class InteractionApi {
     InteractionApi() {}
+
+    public boolean confirm(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm) {
+        return UiConfirmation.open(parent, prompt, preferences, context, restoreFocus, onConfirm);
+    }
+
+    public boolean confirm(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm, GraphicIcon icon) {
+        return UiConfirmation.open(parent, prompt, preferences, context, restoreFocus, onConfirm, icon);
+    }
+
+    /** Native isolated confirmation with an explicit optical surface; ordinary confirm is unchanged. */
+    public boolean confirmGlass(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm) {
+        return UiConfirmation.openGlass(parent, prompt, preferences, context, restoreFocus, onConfirm);
+    }
+
+    public boolean confirmGlass(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm, GraphicIcon icon) {
+        return UiConfirmation.openGlass(parent, prompt, preferences, context, restoreFocus, onConfirm, icon);
+    }
 
     public UiPointerTracker pointerTracker() { return new UiPointerTracker(); }
 

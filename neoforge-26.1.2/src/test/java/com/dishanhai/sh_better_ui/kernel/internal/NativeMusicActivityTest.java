@@ -7,6 +7,7 @@ import com.dishanhai.sh_better_ui.config.MusicOverlaySettings;
 import com.dishanhai.sh_better_ui.kernel.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.live.*;
 import org.junit.jupiter.api.*;
+import com.dishanhai.sh_better_ui.kernel.api.music.*;
 import java.util.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
@@ -16,6 +17,21 @@ final class NativeMusicActivityTest {
     private final AtomicReference<MusicService.Frame> frame = new AtomicReference<>(sample("one", MusicSnapshot.PlaybackStatus.PLAYING));
     private final AtomicInteger opened = new AtomicInteger();
     private ModuleContext other;
+    private OnlineMusicService.BackgroundControls transport;
+    private OnlineMusicService.BackgroundCommand dispatched;
+    private final OnlineMusicService online = new OnlineMusicService() {
+        public Optional<BackgroundControls> backgroundControls(BackgroundTarget target) {
+            return transport != null && transport.target().equals(target) ? Optional.of(transport) : Optional.empty();
+        }
+        public boolean controlBackground(BackgroundTarget target, BackgroundCommand command, double fraction) {
+            if (backgroundControls(target).isEmpty()) return false;
+            dispatched = command; return true;
+        }
+        public OnlineMusicPlayer open() { throw new AssertionError("Activity must not create players"); }
+        public OnlineMusicPlayer open(List<OnlineMusicSource> sources) { return open(); }
+        public OnlineMusicView view() { throw new AssertionError("Activity must not mount music views"); }
+        public OnlineMusicView view(OnlineMusicPlayer player) { return view(); }
+    };
     private KernelHost host;
     private LiveSurfaceRuntime live;
     private NativeMusicActivity music;
@@ -26,7 +42,7 @@ final class NativeMusicActivityTest {
                 () -> live.diagnostics().activities() < live.policy().maxActivities(),
                 () -> live.diagnostics().notifications() < live.policy().maxNotifications(), opened::incrementAndGet);
         var platforms = Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2);
-        host.start(List.of(BuiltinService.candidate(platforms, ActivityService.KEY, live, ActivityService.CAPABILITY),
+        host.start(List.of(BuiltinService.candidate(platforms, OnlineMusicService.KEY, online), BuiltinService.candidate(platforms, ActivityService.KEY, live, ActivityService.CAPABILITY),
                 BuiltinService.candidate(platforms, NotificationService.KEY, live, NotificationService.CAPABILITY), music.candidate(),
                 new ModuleDiscovery.Candidate("other", "test", new UIModule() {
                     public ModuleDescriptor descriptor() { return ModuleDescriptor.builder().id(UiId.parse("other:test"))
@@ -137,6 +153,20 @@ final class NativeMusicActivityTest {
         assertEquals(1, live.diagnostics().activities());
         assertEquals(1, live.diagnostics().notifications());
         assertEquals(NativeMusicActivity.ID, live.plan().primary().id());
+    }
+    @Test void availableTransportAddsOnlyRealControlsAndSeek() {
+        transport = new OnlineMusicService.BackgroundControls(new OnlineMusicService.BackgroundTarget("session", "one"),
+                true, false, true, true, true);
+        enable();
+        var snapshot = live.plan().primary();
+        assertEquals(4, snapshot.content().controls().size());
+        assertTrue(snapshot.content().seekable());
+        assertTrue(live.dispatch(snapshot, new ActivityService.Action(UiId.parse("sh_better_ui:music/pause"), -1)));
+        tick(1); assertEquals(OnlineMusicService.BackgroundCommand.PAUSE, dispatched);
+        dispatched = null;
+        assertTrue(live.dispatch(live.plan().primary(), new ActivityService.Action(ActivityService.SEEK, .5)));
+        frame.set(sample("two", MusicSnapshot.PlaybackStatus.PLAYING)); tick(2);
+        assertNull(dispatched, "Queued old-track transport must not reach the service");
     }
     @Test void contentBoundsUserMetadataWithoutSplittingSurrogatePair() {
         var original = sample("one", MusicSnapshot.PlaybackStatus.PAUSED);

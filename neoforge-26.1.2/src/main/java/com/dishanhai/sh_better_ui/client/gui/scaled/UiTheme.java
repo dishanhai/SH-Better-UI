@@ -21,6 +21,19 @@ public record UiTheme(boolean light, int background, int surface, int border, in
     private static final UiTheme GLASS = fromTokens(BuiltinThemes.liquidGlassSnapshot());
     private static final UiTheme CLEAR_GLASS = fromTokens(BuiltinThemes.hudGlassSnapshot());
 
+    private static final java.util.Map<String, UiTheme> REGISTERED = registered();
+    private static java.util.Map<String,UiTheme> registered() {
+        var catalog=new java.util.LinkedHashMap<String, com.dishanhai.sh_better_ui.theme.token.ThemeToken<?>>();
+        for(var token:ThemeTokens.all()) catalog.put(token.id(),token);
+        var registry=BuiltinThemes.registry();
+        var result=new java.util.LinkedHashMap<String,UiTheme>();
+        var resolver=new com.dishanhai.sh_better_ui.theme.ThemeResolver();
+        for(String id:registry.themes().keySet()) result.put(id,fromTokens(resolver.resolve(registry,catalog,java.util.List.of(id),null)));
+        return java.util.Map.copyOf(result);
+    }
+
+    static boolean isPreviewActive() { return PREVIEW.get() != null; }
+
     public static UiTheme current() {
         var preview = PREVIEW.get();
         return preview == null ? resolve(ControlPanelSettings.current().theme()) : preview;
@@ -31,6 +44,7 @@ public record UiTheme(boolean light, int background, int surface, int border, in
         if (settings.mode() == ThemeSettings.Mode.HUD_GLASS) return CLEAR_GLASS;
         UiTheme base = settings.light() ? LIGHT : DARK;
         if (settings.mode() != ThemeSettings.Mode.CUSTOM) return base;
+        base=REGISTERED.getOrDefault(settings.registeredThemeId(),base);
         int mask = (settings.background().isEmpty() ? 0 : BACKGROUND)
                 | (settings.surface().isEmpty() ? 0 : SURFACE)
                 | (settings.border().isEmpty() ? 0 : BORDER)
@@ -38,7 +52,7 @@ public record UiTheme(boolean light, int background, int surface, int border, in
                 | (settings.accent().isEmpty() ? 0 : ACCENT);
         return new UiTheme(base.light, rgb(settings.background(), base.background), rgb(settings.surface(), base.surface),
                 rgb(settings.border(), base.border), rgb(settings.text(), base.text), rgb(settings.accent(), base.accent),
-                mask);
+                mask | base.overrides);
     }
 
     public static void preview(UiTheme theme, Runnable extract) {

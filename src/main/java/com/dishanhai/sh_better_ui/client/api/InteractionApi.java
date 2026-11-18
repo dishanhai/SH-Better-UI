@@ -75,6 +75,19 @@ public final class InteractionApi {
         return UiConfirmation.open(parent, prompt, preferences, context, restoreFocus, onConfirm, icon);
     }
 
+    /** Native isolated confirmation with an explicit optical surface; ordinary confirm is unchanged. */
+    public boolean confirmGlass(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm) {
+        return UiConfirmation.openGlass(parent, prompt, preferences, context, restoreFocus, onConfirm);
+    }
+
+    public boolean confirmGlass(Screen parent, UiConfirmation.Prompt prompt, UiPreferences preferences,
+                           Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
+                           Runnable onConfirm, GraphicIcon icon) {
+        return UiConfirmation.openGlass(parent, prompt, preferences, context, restoreFocus, onConfirm, icon);
+    }
+
     public UiBottomSheet bottomSheet(int initialAnchor, float... anchorHeights) {
         return new UiBottomSheet(initialAnchor, anchorHeights);
     }

@@ -46,4 +46,29 @@ class NativeRichDocumentViewTest {
                     new RichDocument(List.of(new ImageNode(id("huge"), id("textures/large.png"),5000,1,"Large"))),200));
         }
     }
+    @Test void animatedResourcesKeepStableLayoutAndAlternativeWithoutLegacyOptIn() throws Exception {
+        try(var client=NativeTestClient.install()) {
+            for(String extension:List.of("gif","apng","png")) {
+                var image=new ImageNode(id("media"),id("textures/sample."+extension),128,32,"Accessible media");
+                assertTrue(NativeRichDocumentView.isResourceMedia(image));
+                assertEquals(extension.equals("png"),NativeRichDocumentView.isStaticImage(image));
+                var view=new NativeRichDocumentView(client.client().font,new RichDocument(List.of(image)),200);
+                assertEquals("Accessible media",view.narration().getString());
+                var fragment=view.layout().lines().getFirst().fragments().getFirst();
+                assertEquals(fragment.bounds().height()*4,fragment.bounds().width());
+            }
+            assertFalse(NativeRichDocumentView.isResourceMedia(new ImageNode(id("bad"),id("other/movie.gif"),1,1,"No")));
+            assertFalse(NativeRichDocumentView.isResourceMedia(new ImageNode(id("bad"),id("textures/movie.mp4"),1,1,"No")));
+        }
+    }
+    @Test void bundledAnimationIsOriginalBoundedFourFrameResource() throws Exception {
+        try(var input=getClass().getResourceAsStream("/assets/sh_better_ui/textures/gui/rich/native-motion.gif")) {
+            assertNotNull(input);
+            var sheet=RichMediaDecoder.decode(input.readAllBytes(),null);
+            assertEquals(4,sheet.frames().size());
+            assertNotEquals(sheet.frameAt(0,false),sheet.frameAt(400,false));
+            assertEquals(sheet.frameAt(0,false),sheet.frameAt(400,true));
+        }
+    }
+
 }

@@ -16,9 +16,20 @@ public interface OnlineMusicQueue {
                     index >= 0 && index + 1 < tracks.size());
         }
     }
+    /** Whether this queue implements mode selection; legacy queues remain sequential. */
+    default boolean supportsModes() { return false; }
     default Mode mode() { return Mode.SEQUENTIAL; }
     /** Changes order without starting or resuming playback. Explicit next skips a repeat-one track. */
     default void mode(Mode mode) { throw new UnsupportedOperationException("Queue modes unavailable"); }
+    /** True when append and move are implemented without interrupting playback. */
+    default boolean supportsEditing() { return false; }
+    /** Adds explicit tracks at the end without starting playback, including on an empty queue.
+     * Duplicate entries are retained. Empty input is a no-op. */
+    default void append(List<OnlineTrack> tracks) { throw new UnsupportedOperationException("Queue editing unavailable"); }
+    /** Moves one entry to its final zero-based index without changing the audible entry.
+     * Invalid indices and identical positions are no-ops. Edits reset shuffle history;
+     * undo restores it if playback has not advanced. */
+    default void move(int from, int to) { throw new UnsupportedOperationException("Queue editing unavailable"); }
     /** Explicit local metadata storage, separate from credential persistence. */
     default boolean supportsCheckpoints() { return false; }
     /** Saves IDs, display metadata and mode only. Never saves credentials, stream/artwork URL fields or audio. */
