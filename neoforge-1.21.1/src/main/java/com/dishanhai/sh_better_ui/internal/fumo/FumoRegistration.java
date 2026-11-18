@@ -25,11 +25,16 @@ public final class FumoRegistration {
                     properties -> new DishanhaiFumoBlock(properties, FumoRegistration::fumoEntityType));
     private static final net.neoforged.neoforge.registries.DeferredItem<net.minecraft.world.item.BlockItem> FUMO_ITEM =
             ITEMS.registerSimpleBlockItem(FUMO);
+    private static final net.neoforged.neoforge.registries.DeferredBlock<DishanhaiFumoBlock> BEIBEIPUO_FUMO =
+            BLOCKS.registerBlock(DishanhaiFumoBlock.BEIBEIPUO_ID,
+                    properties -> new DishanhaiFumoBlock(properties, FumoRegistration::fumoEntityType));
+    private static final net.neoforged.neoforge.registries.DeferredItem<net.minecraft.world.item.BlockItem> BEIBEIPUO_FUMO_ITEM =
+            ITEMS.registerSimpleBlockItem(BEIBEIPUO_FUMO);
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
             DeferredRegister.create(Registries.BLOCK_ENTITY_TYPE, ShBetterUi.MOD_ID);
     private static final DeferredHolder<BlockEntityType<?>, BlockEntityType<DishanhaiFumoBlock.DanceEntity>> FUMO_ENTITY =
             BLOCK_ENTITIES.register(DishanhaiFumoBlock.ID,
-                    () -> BlockEntityType.Builder.of(FumoRegistration::newDanceEntity, FUMO.get()).build(null));
+                    () -> BlockEntityType.Builder.of(FumoRegistration::newDanceEntity, FUMO.get(), BEIBEIPUO_FUMO.get()).build(null));
 
     private FumoRegistration() {}
 
@@ -48,7 +53,10 @@ public final class FumoRegistration {
         ITEMS.register(bus);
         BLOCK_ENTITIES.register(bus);
         bus.addListener((BuildCreativeModeTabContentsEvent event) -> {
-            if (event.getTabKey().equals(CreativeModeTabs.COLORED_BLOCKS)) event.accept(FUMO_ITEM.get());
+            if (event.getTabKey().equals(CreativeModeTabs.COLORED_BLOCKS)) {
+                event.accept(FUMO_ITEM.get());
+                event.accept(BEIBEIPUO_FUMO_ITEM.get());
+            }
         });
         if (FMLEnvironment.dist == Dist.CLIENT) {
             bus.addListener((EntityRenderersEvent.RegisterRenderers event) ->

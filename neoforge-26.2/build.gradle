@@ -32,7 +32,9 @@ processResources {
         include('sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
                 'assets/sh_better_ui/shaders/core/gallery_material.*', 'assets/sh_better_ui/shaders/core/gallery_spatial*',
                 'assets/sh_better_ui/items/dishanhai_fumo.json', 'data/sh_better_ui/recipe/dishanhai_fumo.json',
-                'data/sh_better_ui/loot_table/blocks/dishanhai_fumo.json')
+                'data/sh_better_ui/loot_table/blocks/dishanhai_fumo.json',
+                'assets/sh_better_ui/items/beibeipuo_fumo.json', 'data/sh_better_ui/recipe/beibeipuo_fumo.json',
+                'data/sh_better_ui/loot_table/blocks/beibeipuo_fumo.json')
     }
 }
 

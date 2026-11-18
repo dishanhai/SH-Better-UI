@@ -12,6 +12,8 @@ import net.minecraft.client.renderer.blockentity.state.BlockEntityRenderState;
 import net.minecraft.client.renderer.feature.ModelFeatureRenderer;
 import net.minecraft.client.renderer.state.level.CameraRenderState;
 import net.minecraft.client.renderer.texture.OverlayTexture;
+import net.minecraft.core.Direction;
+import net.minecraft.world.level.block.state.properties.BlockStateProperties;
 import net.minecraft.world.phys.Vec3;
 
 /** Submits the dancing plush through the same model path as vanilla block displays. */
@@ -49,24 +51,23 @@ public final class FumoRenderer implements BlockEntityRenderer<DishanhaiFumoBloc
             state.model.clear();
             return;
         }
-        state.squash = DishanhaiFumoBlock.squash(level.getGameTime(), partialTick);
+        state.swing = FumoMotion.swing(level.getGameTime(), partialTick);
+        state.facing = block.getValue(BlockStateProperties.HORIZONTAL_FACING);
         blocks.update(state.model, block, DISPLAY_CONTEXT);
     }
 
     @Override
     public void submit(State state, PoseStack pose, SubmitNodeCollector collector, CameraRenderState camera) {
         if (state.model.isEmpty()) return;
-        float squash = state.squash;
         pose.pushPose();
-        pose.translate(0.5, 0.08F * squash, 0.5);
-        pose.scale(1 + 0.18F * squash, 1 - 0.27F * squash, 1 + 0.12F * squash);
-        pose.translate(-0.5, 0, -0.5);
+        FumoMotion.apply(pose, state.facing, state.swing);
         state.model.submit(pose, collector, state.lightCoords, OverlayTexture.NO_OVERLAY, 0);
         pose.popPose();
     }
 
     public static final class State extends BlockEntityRenderState {
         private final BlockModelRenderState model = new BlockModelRenderState();
-        private float squash;
+        private Direction facing;
+        private float swing;
     }
 }

@@ -1,5 +1,8 @@
 {
-  "block.sh_better_ui.dishanhai_fumo": "山海 Fumo",
+  "block.sh_better_ui.dishanhai_fumo": "dishanhai",
+  "block.sh_better_ui.beibeipuo_fumo": "BeiBeiPuo",
+  "subtitles.sh_better_ui.beibeipuo_fumo": "BeiBeiPuo 播放音乐",
+  "subtitles.sh_better_ui.dishanhai_fumo": "dishanhai 播放音乐",
   "key.sh_better_ui.music_island": "展开 / 收起音乐灵动岛",
   "sh_better_ui.online_music.view.scroll_search": "滚动搜索结果",
   "sh_better_ui.online_music.view.scroll_library": "滚动歌单与歌曲",

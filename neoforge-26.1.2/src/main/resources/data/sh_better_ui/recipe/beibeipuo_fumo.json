@@ -1,0 +1,26 @@
+{
+  "neoforge:conditions": [
+    {
+      "type": "neoforge:not",
+      "value": {
+        "type": "neoforge:mod_loaded",
+        "modid": "sh_common_lib"
+      }
+    }
+  ],
+  "type": "minecraft:crafting_shaped",
+  "category": "misc",
+  "pattern": [
+    " B ",
+    "BGB",
+    "WBW"
+  ],
+  "key": {
+    "W": "minecraft:white_wool",
+    "B": "minecraft:black_wool",
+    "G": "minecraft:gray_dye"
+  },
+  "result": {
+    "id": "sh_better_ui:beibeipuo_fumo"
+  }
+}

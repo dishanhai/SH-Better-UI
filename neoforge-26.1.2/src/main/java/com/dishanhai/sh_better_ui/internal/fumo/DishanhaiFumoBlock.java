@@ -3,8 +3,6 @@ package com.dishanhai.sh_better_ui.internal.fumo;
 
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.Direction;
-import net.minecraft.sounds.SoundEvents;
-import net.minecraft.sounds.SoundSource;
 import net.minecraft.world.InteractionResult;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.item.context.BlockPlaceContext;
@@ -39,25 +37,29 @@ import java.util.function.Supplier;
 /** A seated plush with horizontal placement and vanilla waterlogging. */
 public final class DishanhaiFumoBlock extends Block implements SimpleWaterloggedBlock, EntityBlock {
     public static final String ID = "dishanhai_fumo";
+    public static final String BEIBEIPUO_ID = "beibeipuo_fumo";
     public static final BooleanProperty DANCING = BooleanProperty.create("dancing");
-    private static final int NOTE_TICKS = 5;
-    private static final int[] MELODY = {6, 10, 13, 10, 8, 11, 15, -1, 13, 10, 8, 10, 11, 8, 6, -1};
+    // The model extends above the block; keep the interaction shape within this cell.
     private static final VoxelShape NORTH = Shapes.or(
-            box(2.5, 0, 2, 13.5, 3.5, 10.5),
-            box(1.5, 3.5, 5, 14.5, 8, 11.5),
-            box(2.5, 8, 3, 13.5, 16, 13));
+            box(3, 0, 2.25, 13, 3, 9.75),
+            box(4, 2.25, 6, 12, 11, 13),
+            box(1, 4, 6.5, 15, 10.75, 12.5),
+            box(2.5, 10.75, 5, 13.5, 16, 14));
     private static final VoxelShape EAST = Shapes.or(
-            box(5.5, 0, 2.5, 14, 3.5, 13.5),
-            box(4.5, 3.5, 1.5, 11, 8, 14.5),
-            box(3, 8, 2.5, 13, 16, 13.5));
+            box(6.25, 0, 3, 13.75, 3, 13),
+            box(3, 2.25, 4, 10, 11, 12),
+            box(3.5, 4, 1, 9.5, 10.75, 15),
+            box(2, 10.75, 2.5, 11, 16, 13.5));
     private static final VoxelShape SOUTH = Shapes.or(
-            box(2.5, 0, 5.5, 13.5, 3.5, 14),
-            box(1.5, 3.5, 4.5, 14.5, 8, 11),
-            box(2.5, 8, 3, 13.5, 16, 13));
+            box(3, 0, 6.25, 13, 3, 13.75),
+            box(4, 2.25, 3, 12, 11, 10),
+            box(1, 4, 3.5, 15, 10.75, 9.5),
+            box(2.5, 10.75, 2, 13.5, 16, 11));
     private static final VoxelShape WEST = Shapes.or(
-            box(2, 0, 2.5, 10.5, 3.5, 13.5),
-            box(5, 3.5, 1.5, 11.5, 8, 14.5),
-            box(3, 8, 2.5, 13, 16, 13.5));
+            box(2.25, 0, 3, 9.75, 3, 13),
+            box(6, 2.25, 4, 13, 11, 12),
+            box(6.5, 4, 1, 12.5, 10.75, 15),
+            box(5, 10.75, 2.5, 14, 16, 13.5));
 
     private final Supplier<? extends BlockEntityType<DanceEntity>> entityType;
 
@@ -131,22 +133,8 @@ public final class DishanhaiFumoBlock extends Block implements SimpleWaterlogged
 
     @Override
     public <T extends BlockEntity> BlockEntityTicker<T> getTicker(Level level, BlockState state, BlockEntityType<T> type) {
-        return !level.isClientSide() && state.getValue(DANCING) && type == entityType.get()
-                ? (world, pos, current, entity) -> playNote(world, pos) : null;
-    }
-
-    private static void playNote(Level level, BlockPos pos) {
-        long tick = level.getGameTime();
-        if (tick % NOTE_TICKS != 0) return;
-        int note = MELODY[Math.floorMod(tick / NOTE_TICKS, MELODY.length)];
-        if (note < 0) return;
-        float pitch = (float) Math.pow(2.0, (note - 12) / 12.0);
-        level.playSound(null, pos, SoundEvents.NOTE_BLOCK_PLING.value(), SoundSource.RECORDS, 0.22F, pitch);
-    }
-
-    public static float squash(long tick, float partialTick) {
-        double beat = (Math.floorMod(tick, NOTE_TICKS * 2) + partialTick) / (NOTE_TICKS * 2);
-        return (float) ((1.0 - Math.cos(beat * Math.PI * 2.0)) * 0.5);
+        return level.isClientSide() && state.getValue(DANCING) && type == entityType.get()
+                ? (world, pos, current, entity) -> FumoMusic.playNearby((DanceEntity) entity) : null;
     }
 
     public static final class DanceEntity extends BlockEntity {

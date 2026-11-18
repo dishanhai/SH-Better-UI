@@ -28,11 +28,16 @@ public final class FumoRegistration {
             () -> new DishanhaiFumoBlock(BlockBehaviour.Properties.of(), FumoRegistration::fumoEntityType));
     private static final RegistryObject<BlockItem> FUMO_ITEM = ITEMS.register(DishanhaiFumoBlock.ID,
             () -> new BlockItem(FUMO.get(), new Item.Properties()));
+    private static final RegistryObject<DishanhaiFumoBlock> BEIBEIPUO_FUMO = BLOCKS.register(
+            DishanhaiFumoBlock.BEIBEIPUO_ID,
+            () -> new DishanhaiFumoBlock(BlockBehaviour.Properties.of(), FumoRegistration::fumoEntityType));
+    private static final RegistryObject<BlockItem> BEIBEIPUO_FUMO_ITEM = ITEMS.register(
+            DishanhaiFumoBlock.BEIBEIPUO_ID, () -> new BlockItem(BEIBEIPUO_FUMO.get(), new Item.Properties()));
     private static final DeferredRegister<BlockEntityType<?>> BLOCK_ENTITIES =
             DeferredRegister.create(ForgeRegistries.BLOCK_ENTITY_TYPES, ShBetterUi.MOD_ID);
     private static final RegistryObject<BlockEntityType<DishanhaiFumoBlock.DanceEntity>> FUMO_ENTITY =
             BLOCK_ENTITIES.register(DishanhaiFumoBlock.ID,
-                    () -> BlockEntityType.Builder.of(FumoRegistration::newDanceEntity, FUMO.get()).build(null));
+                    () -> BlockEntityType.Builder.of(FumoRegistration::newDanceEntity, FUMO.get(), BEIBEIPUO_FUMO.get()).build(null));
 
     private FumoRegistration() {}
 
@@ -51,7 +56,10 @@ public final class FumoRegistration {
         ITEMS.register(bus);
         BLOCK_ENTITIES.register(bus);
         bus.addListener((BuildCreativeModeTabContentsEvent event) -> {
-            if (event.getTabKey().equals(CreativeModeTabs.COLORED_BLOCKS)) event.accept(FUMO_ITEM.get());
+            if (event.getTabKey().equals(CreativeModeTabs.COLORED_BLOCKS)) {
+                event.accept(FUMO_ITEM.get());
+                event.accept(BEIBEIPUO_FUMO_ITEM.get());
+            }
         });
         if (FMLEnvironment.dist == Dist.CLIENT) {
             bus.addListener((EntityRenderersEvent.RegisterRenderers event) ->
