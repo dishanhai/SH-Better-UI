@@ -453,12 +453,13 @@ enum DeveloperSamples {
             // Call cancelInteraction() before removing/suspending the editor.
             """),
     MEDIA_CARD("media_card", 32, 80, MediaCardPreview::new, """
-            var card = ShBetterUiApi.controls().mediaCard(new Bounds(x, y, 240, 64),
-                    Component.literal("Album title"), Component.literal("Artist"),
-                    ShBetterUiApi.settings().preferences(), this::togglePlayback);
+            var glass = ShBetterUiApi.controls().glass(ShBetterUiApi.settings().preferences());
+            var card = glass.mediaCard(new Bounds(x, y, 240, 64),
+                    Component.literal("Album title"), Component.literal("Artist"), this::togglePlayback);
             addRenderableWidget(card);
             // Reflect confirmed playback state, including asynchronous failures.
             card.setPlaying(player.isPlaying());
+            // Close glass when the layout is removed or rebuilt.
             """),
     RUBBER_SEGMENT("rubber_segment", 30, 64, RubberSegmentPreview::new, """
             import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
@@ -516,6 +517,12 @@ enum DeveloperSamples {
                 return (key == GLFW.GLFW_KEY_ESCAPE && search.dismissSuggestions())
                         || super.keyPressed(key, scan, modifiers);
             }
+            """),
+    GLASS_CONFIRMATION("glass_confirmation", 24, 40, GlassConfirmationPreview::new, """
+            ShBetterUiApi.interactions().confirmGlass(parent,
+                    new UiConfirmation.Prompt(title, details, confirmLabel, cancelLabel),
+                    preferences, this::drawInertContext, () -> currentTriggerButton, this::confirmOnce);
+            // Context is drawing only. Query a fresh trigger after the parent rebuilds.
             """),
     DIALOG("dialog", 23, () -> ControlPreviewScenes::dialog, DeveloperPanelScreen.DIALOG_CODE),
     TOAST("toast", 24, 64, ControlPreviewScenes.Toast::new, DeveloperPanelScreen.TOAST_CODE),

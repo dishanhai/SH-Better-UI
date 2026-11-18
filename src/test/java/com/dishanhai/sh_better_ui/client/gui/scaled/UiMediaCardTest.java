@@ -80,4 +80,20 @@ class UiMediaCardTest {
         assertEquals(Component.translatable("sh_better_ui.media_card.selected").getString(),
                 spoken.get(net.minecraft.client.gui.narration.NarratedElementType.HINT));
     }
+    @Test void closingKitDuringPressAndHidingDuringPressCannotActivate() {
+        var calls = new AtomicInteger();
+        var kit = new GlassControls(UiPreferences.DEFAULT);
+        var card = kit.mediaCard(new Bounds(10,20,180,64), Component.literal("Title"), Component.literal("Artist"), calls::incrementAndGet);
+        card.mouseClicked(30,40,0);
+        kit.close();
+        assertFalse(card.mouseReleased(30,40,0));
+        assertEquals(0,calls.get());
+        var other = card(calls);
+        other.mouseClicked(30,40,0);
+        other.visible = false;
+        other.mouseReleased(30,40,0);
+        other.visible = true;
+        assertFalse(other.mouseReleased(30,40,0));
+        assertEquals(0,calls.get());
+    }
 }

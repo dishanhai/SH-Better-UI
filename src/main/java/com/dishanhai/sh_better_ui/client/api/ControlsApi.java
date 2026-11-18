@@ -60,6 +60,11 @@ import java.util.function.Supplier;
 
 /** 山海：原生控件工厂、实时状态与加载提示。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** Screen-owned native glass widgets. Close the suite when its layout is removed or rebuilt. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glass(UiPreferences preferences) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls(preferences);
+    }
+
     /** Setting-card decoration. Register widgets() separately and render the card before its children. */
     public com.dishanhai.sh_better_ui.client.gui.scaled.UiSettingCard settingCard(Font font, Bounds area,
             Component title, Component description, net.minecraft.client.gui.components.AbstractWidget primary,

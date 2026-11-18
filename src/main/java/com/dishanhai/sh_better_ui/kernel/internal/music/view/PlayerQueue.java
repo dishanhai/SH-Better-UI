@@ -11,11 +11,25 @@ final class PlayerQueue {
     private final SessionPlayQueue local = new SessionPlayQueue();
 
     PlayerQueue(OnlineMusicPlayer player) { this.player = player; persistent = player.queue(); }
+    boolean supportsModes() { return persistent != null && persistent.supportsModes(); }
+    OnlineMusicQueue.Mode mode() { return persistent == null ? OnlineMusicQueue.Mode.SEQUENTIAL : persistent.snapshot().mode(); }
+    OnlineMusicQueue.Mode nextMode() {
+        return switch (mode()) {
+            case SEQUENTIAL -> OnlineMusicQueue.Mode.REPEAT_ALL;
+            case REPEAT_ALL -> OnlineMusicQueue.Mode.REPEAT_ONE;
+            case REPEAT_ONE -> OnlineMusicQueue.Mode.SHUFFLE;
+            case SHUFFLE -> OnlineMusicQueue.Mode.SEQUENTIAL;
+        };
+    }
+    void cycleMode() { if (supportsModes()) persistent.mode(nextMode()); }
     List<OnlineTrack> tracks() { return persistent == null ? local.tracks() : persistent.snapshot().tracks(); }
     int index() { return persistent == null ? local.index() : persistent.snapshot().index(); }
     boolean canPrevious() { return persistent == null ? local.canPrevious() : persistent.snapshot().canPrevious(); }
     boolean canNext() { return persistent == null ? local.canNext() : persistent.snapshot().canNext(); }
     boolean canUndo() { return persistent == null ? local.canUndo() : persistent.snapshot().canUndo(); }
+    boolean supportsEditing() { return persistent != null && persistent.supportsEditing(); }
+    void append(OnlineTrack track) { if (supportsEditing()) persistent.append(List.of(track)); }
+    void move(int from, int to) { if (supportsEditing()) persistent.move(from, to); }
     void replace(List<OnlineTrack> tracks, int selected) {
         if (persistent == null) local.replace(tracks, selected).ifPresent(player::play); else persistent.replace(tracks, selected);
     }

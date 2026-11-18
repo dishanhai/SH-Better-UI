@@ -58,6 +58,108 @@ class BackgroundPlayQueueTest {
         Thread.sleep(180); assertEquals(count, rig.outputs.size());
     }
 
+    @Test void appendToIdleNeverStartsNetworkOrAudioAndCanUndo() {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue();
+            assertTrue(queue.supportsEditing()); queue.append(List.of(A,A,B));
+            assertEquals(List.of(A,A,B), queue.snapshot().tracks());
+            assertEquals(-1, queue.snapshot().index());
+            assertEquals(State.IDLE, rig.player.snapshot().state());
+            assertTrue(rig.source.resolved.isEmpty()); assertTrue(rig.outputs.isEmpty());
+            queue.undo(); assertTrue(queue.snapshot().tracks().isEmpty());
+        }
+    }
+    @Test void appendRetainsPausedOutputAndNaturalEndUsesNewEntry() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A), 0);
+            var output = rig.output(0); rig.player.pause();
+            queue.append(List.of(B));
+            assertEquals(State.PAUSED, rig.player.snapshot().state());
+            assertFalse(output.closed); assertEquals(1, rig.outputs.size());
+            rig.player.resume(); output.state = State.ENDED; rig.output(1);
+            assertEquals(B, rig.player.snapshot().track());
+        }
+    }
+    @Test void moveKeepsExactDuplicateEntryAndUpdatesNaturalSuccessor() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,A,B,C), 1);
+            var output = rig.output(0); queue.move(1, 2);
+            assertEquals(List.of(A,B,A,C), queue.snapshot().tracks());
+            assertEquals(2, queue.snapshot().index()); assertFalse(output.closed);
+            queue.undo(); assertEquals(1, queue.snapshot().index());
+            queue.move(0, 3); assertEquals(0, queue.snapshot().index());
+            output.state = State.ENDED; rig.output(1);
+            assertEquals(B, rig.player.snapshot().track());
+        }
+    }
+    @Test void editsPreserveModeAndUndoRestoresShuffleNavigation() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B,C), 0); rig.output(0);
+            queue.mode(OnlineMusicQueue.Mode.SHUFFLE); queue.next(); rig.output(1);
+            int selected = queue.snapshot().index(); assertTrue(queue.snapshot().canPrevious());
+            queue.append(List.of(A)); assertEquals(OnlineMusicQueue.Mode.SHUFFLE, queue.mode());
+            assertFalse(queue.snapshot().canPrevious()); queue.undo();
+            assertTrue(queue.snapshot().canPrevious()); assertEquals(selected, queue.snapshot().index());
+            queue.previous(); rig.output(2); assertEquals(A, rig.player.snapshot().track());
+        }
+    }
+    @Test void undoAfterAdvanceRestoresExactDuplicatePosition() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B,A,C), 0); rig.output(0);
+            queue.move(0,1); queue.next(); var output = rig.output(1);
+            queue.undo(); assertEquals(2, queue.snapshot().index()); assertFalse(output.closed);
+            queue.next(); rig.output(2); assertEquals(C, rig.player.snapshot().track());
+        }
+    }
+    @Test void undoAfterPlayingAppendedDuplicateDetachesWithoutInterruptingAudio() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B), 0); rig.output(0);
+            queue.append(List.of(A)); queue.select(2); var output = rig.output(1);
+            queue.undo(); assertEquals(-1, queue.snapshot().index());
+            assertEquals(List.of(A,B), queue.snapshot().tracks()); assertFalse(output.closed);
+            output.state = State.ENDED; noAdvance(rig,2);
+        }
+    }
+
+    @Test void editDuringLoadingPreservesSelectionAndCompletion() throws Exception {
+        var entered = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var source = new Source() {
+            @Override public Stream resolve(OnlineTrack track) throws Exception {
+                entered.countDown(); release.await(); return super.resolve(track);
+            }
+        };
+        try (var rig = new Rig(source)) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B), 0);
+            assertTrue(entered.await(3,TimeUnit.SECONDS));
+            queue.move(0,1); queue.append(List.of(C)); release.countDown();
+            var output = rig.output(0); assertEquals(1,queue.snapshot().index());
+            assertEquals(A,rig.player.snapshot().track()); output.state = State.ENDED;
+            rig.output(1); assertEquals(C,rig.player.snapshot().track());
+        } finally { release.countDown(); }
+    }
+    @Test void undoAfterDirectPlaybackDoesNotReattachOldQueue() throws Exception {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.replace(List.of(A,B),0); rig.output(0);
+            queue.append(List.of(C)); rig.player.play(C); var output = rig.output(1);
+            queue.undo(); assertEquals(-1,queue.snapshot().index());
+            assertFalse(output.closed); output.state = State.ENDED; noAdvance(rig,2);
+        }
+    }
+
+    @Test void invalidAppendIsAtomicAndNoOpEditsKeepUndo() {
+        try (var rig = new Rig()) {
+            var queue = rig.player.queue(); queue.append(List.of(A));
+            var before = queue.snapshot();
+            var unknown = new OnlineTrack("unknown", "x", "x", "x", "", "", 1);
+            assertThrows(IllegalArgumentException.class, () -> queue.append(List.of(B,unknown)));
+            assertEquals(before, queue.snapshot());
+            queue.append(List.of()); queue.move(-1,0); queue.move(0,1); queue.move(0,0);
+            assertEquals(before, queue.snapshot()); rig.player.close();
+            assertThrows(IllegalStateException.class, () -> queue.append(List.of(A)));
+            assertThrows(IllegalStateException.class, () -> queue.move(0,0));
+        }
+    }
+
     @Test void naturalEndAdvancesWithoutRenderingOrSnapshotPollingAndStopsAtLast() throws Exception {
         try (var rig = new Rig()) {
             rig.player.queue().replace(List.of(A,B,C), 0);

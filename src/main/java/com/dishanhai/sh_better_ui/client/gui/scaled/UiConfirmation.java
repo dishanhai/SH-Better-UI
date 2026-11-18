@@ -44,6 +44,24 @@ public final class UiConfirmation {
     public static boolean open(Screen parent, Prompt prompt, UiPreferences preferences,
                                Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
                                Runnable onConfirm, GraphicIcon icon) {
+        return openStyled(parent, prompt, preferences, context, restoreFocus, onConfirm, icon, false);
+    }
+
+    public static boolean openGlass(Screen parent, Prompt prompt, UiPreferences preferences,
+                                    Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
+                                    Runnable onConfirm) {
+        return openGlass(parent, prompt, preferences, context, restoreFocus, onConfirm, GraphicIcon.WARNING);
+    }
+
+    public static boolean openGlass(Screen parent, Prompt prompt, UiPreferences preferences,
+                                    Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
+                                    Runnable onConfirm, GraphicIcon icon) {
+        return openStyled(parent, prompt, preferences, context, restoreFocus, onConfirm, icon, true);
+    }
+
+    private static boolean openStyled(Screen parent, Prompt prompt, UiPreferences preferences,
+                                    Consumer<GuiGraphics> context, Supplier<? extends GuiEventListener> restoreFocus,
+                                    Runnable onConfirm, GraphicIcon icon, boolean glass) {
         Minecraft client = Minecraft.getInstance();
         if (parent == null || client.screen != parent) return false;
         Objects.requireNonNull(prompt);
@@ -51,41 +69,24 @@ public final class UiConfirmation {
         Objects.requireNonNull(restoreFocus);
         Objects.requireNonNull(onConfirm);
         var choice = new Choice(client, parent, restoreFocus, onConfirm);
-        var screen = new ConfirmationScreen(prompt, preferences, context, choice, icon);
-        choice.screen = screen;
+        var screen = new ConfirmationScreen(prompt, preferences, context, choice, icon, glass);
+        choice.state.attach(screen);
         client.setScreen(screen);
         return client.screen == screen;
     }
 
     private static final class Choice {
-        private final Minecraft client;
-        private final Screen parent;
-        private final Supplier<? extends GuiEventListener> restoreFocus;
-        private final Runnable onConfirm;
-        private Screen screen;
-
+        private final ConfirmationChoice<Screen> state;
         private Choice(Minecraft client, Screen parent, Supplier<? extends GuiEventListener> restoreFocus,
                        Runnable onConfirm) {
-            this.client = client;
-            this.parent = parent;
-            this.restoreFocus = restoreFocus;
-            this.onConfirm = onConfirm;
+            state = new ConfirmationChoice<>(parent, () -> client.screen, client::setScreen, () -> {
+                GuiEventListener target = restoreFocus.get();
+                if (client.screen == parent && target != null && parent.children().contains(target)
+                        && (!(target instanceof net.minecraft.client.gui.components.AbstractWidget widget)
+                            || widget.active && widget.visible)) parent.setFocused(target);
+            }, onConfirm);
         }
-
-        private void finish(boolean confirmed) {
-            if (screen == null || client.screen != screen) return;
-            Screen modal = screen;
-            screen = null;
-            try {
-                client.setScreen(parent);
-            } finally {
-                if (client.screen == modal) screen = modal;
-            }
-            if (client.screen != parent) return;
-            GuiEventListener target = restoreFocus.get();
-            if (target != null && parent.children().contains(target)) parent.setFocused(target);
-            if (confirmed) onConfirm.run();
-        }
+        private void finish(boolean confirmed) { state.finish(confirmed); }
     }
 
     private static final class ConfirmationScreen extends ConfirmScreen {
@@ -94,6 +95,9 @@ public final class UiConfirmation {
         private final Choice choice;
         private final Prompt prompt;
         private final GraphicIcon icon;
+        private final boolean glass;
+        private int titleInk, detailInk;
+        private final ConfirmationGlassPaint painter = new ConfirmationGlassPaint();
         private Button confirmButton, cancelButton;
         private List<FormattedCharSequence> titleLines, detailLines;
         private int headingInset;
@@ -102,13 +106,14 @@ public final class UiConfirmation {
         private int scrollLine;
 
         private ConfirmationScreen(Prompt prompt, UiPreferences preferences, Consumer<GuiGraphics> context,
-                                   Choice choice, GraphicIcon icon) {
+                                   Choice choice, GraphicIcon icon, boolean glass) {
             super(choice::finish, prompt.title(), prompt.details(), prompt.confirm(), prompt.cancel());
             this.preferences = preferences;
             this.context = context;
             this.choice = choice;
             this.prompt = prompt;
             this.icon = icon;
+            this.glass = glass;
         }
 
         @Override
@@ -136,6 +141,8 @@ public final class UiConfirmation {
         @Override
         public void onClose() { choice.finish(false); }
 
+        @Override public void removed() { choice.state.abandon(); super.removed(); }
+
         // NeoForge 还会在 init 后调用此方法，保留取消按钮作为安全的默认焦点。
         protected void setInitialFocus() {
             if (cancelButton != null && getFocused() != cancelButton) setInitialFocus(cancelButton);
@@ -155,9 +162,10 @@ public final class UiConfirmation {
                 if (index == titleLines.size()) continue;
                 boolean heading = index < titleLines.size();
                 var line = heading ? titleLines.get(index) : detailLines.get(index - titleLines.size() - 1);
+                if (glass) line = ConfirmationGlassStyle.ink(line, heading ? titleInk : detailInk);
                 int x = heading && headingInset > 0 ? headingX + headingInset : (width - font.width(line)) / 2;
                 graphics.drawString(font, line, x,
-                        textTop() + row * lineHeight(), heading ? DarkModeTheme.textColor() : DarkModeTheme.secondaryTextColor(),
+                        textTop() + row * lineHeight(), heading ? titleInk : detailInk,
                         false);
             }
             confirmButton.render(graphics, mouseX, mouseY, partialTick);
@@ -166,6 +174,10 @@ public final class UiConfirmation {
 
         @Override
         public boolean keyPressed(int key, int scanCode, int modifiers) {
+            if (key == GLFW.GLFW_KEY_TAB) {
+                setFocused(getFocused() == cancelButton ? confirmButton : cancelButton);
+                return true;
+            }
             if (key == GLFW.GLFW_KEY_PAGE_UP && scroll(-visibleLines())) return true;
             if (key == GLFW.GLFW_KEY_PAGE_DOWN && scroll(visibleLines())) return true;
             return super.keyPressed(key, scanCode, modifiers);
@@ -197,12 +209,19 @@ public final class UiConfirmation {
         }
 
         private void drawLayer(GuiGraphics graphics) {
+            titleInk = DarkModeTheme.textColor();
+            detailInk = DarkModeTheme.secondaryTextColor();
             DarkModeTheme.background(graphics, 0, 0, width, height);
             if (context != null) context.accept(graphics);
             graphics.fill(0, 0, width, height, 0xA00F172A);
             int top = Math.max(2, textTop() - 10);
             int bottom = Math.min(height - 2, buttonY + 34);
             if (bottom <= top || width <= 16) return;
+            if (glass) {
+                var palette = painter.draw(graphics, 8, top, width - 16, bottom - top, preferences);
+                titleInk = palette.title(); detailInk = palette.details();
+                return;
+            }
             if (context != null && preferences.useBackdropBlur()) {
                 GlassBlur.backdrop(graphics, new GuiRect(8, top, width - 16, bottom - top));
             }

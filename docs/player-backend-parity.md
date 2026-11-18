@@ -36,8 +36,17 @@ A one-entry shuffle repeats at EOF, but explicit Next is unavailable.
 The snapshot now includes mode and mode-aware Previous/Next availability. The
 existing three-argument constructor remains available for legacy view-local
 queues. The default mode remains sequential. Modes are session-local, not saved
-across game restarts. Existing theme pages do **not** gain a mode toggle in this
-backend-only slice; consumers can call the API, with page integration separate.
+across game restarts. The regular queue header and immersive queue header now expose mode selection.
+Click cycles Sequential → Repeat all → Repeat one → Shuffle; the tooltip describes
+the next mode. Both controls read the same session-owned state, including after
+layout changes or reopening a borrowed view. Unsupported third-party queues show
+an unavailable sequential control via `supportsModes()` (default false).
+
+The normal header uses the short mode name to fit compact English labels; the
+immersive header and tooltip include the full playback label. English, Simplified
+Chinese and Traditional Chinese strings are supplied. Hide/suspend/relayout
+cancel armed interactions. This targets the existing Forge 1.20.1 / NeoForge 1.21.1
+player views; the separate 26.1.2 native Activity UI is not changed here.
 
 Failure handling remains fail-stop: network, unavailable stream, login and output
 failures do not silently skip tracks or loop failures. A repeat begins a fresh
