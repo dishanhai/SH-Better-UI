@@ -62,6 +62,10 @@ public final class WidgetsSmoke {
     public static void capture(RenderFrameEvent.Post event) {
         var minecraft = Minecraft.getInstance();
         if (!started) return;
+        if (Boolean.getBoolean("shbui.widgetSmoke.formattedText")) {
+            FormattedTextSmoke.frame(minecraft);
+            return;
+        }
         if (Boolean.getBoolean("shbui.widgetSmoke.onlineMusic")) {
             OnlineMusicLayoutSmoke.frame(minecraft);
             return;

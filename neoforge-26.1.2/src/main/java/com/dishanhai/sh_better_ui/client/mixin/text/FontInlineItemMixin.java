@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.client.mixin.text;
 
 import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
+import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
 import com.dishanhai.sh_better_ui.client.gui.text.UiTextEffects;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
@@ -30,6 +31,8 @@ abstract class FontInlineItemMixin {
 
     @Inject(method = "width(Ljava/lang/String;)I", at = @At("HEAD"), cancellable = true)
     private void shbui$richStringWidth(String text, CallbackInfoReturnable<Integer> result) {
-        if (text != null && text.contains("<rich:")) result.setReturnValue(((Font) (Object) this).width(UiRichText.parse(text)));
+        var legacy = UiFormattedText.parseLegacy(text);
+        if (legacy != null) result.setReturnValue(((Font) (Object) this).width(UiRichText.prepare(legacy)));
+        else if (text != null && text.contains("<rich:")) result.setReturnValue(((Font) (Object) this).width(UiRichText.parse(text)));
     }
 }

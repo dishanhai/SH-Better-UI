@@ -20,6 +20,43 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 /** 山海：验证混合视觉序列、Unicode 码点及偏好回退。 */
 class UiFormattedTextTest {
     @Test
+    void continuousCombiningLinesDoNotMistakeLineIndexResetForBidi() {
+        Style marked = Style.EMPTY.withInsertion("fcs:rainbow");
+        var lines = UiFormattedText.colorizeLines(List.of(
+                FormattedCharSequence.forward("e\u0301A", marked), FormattedCharSequence.forward("BC", marked)),
+                0xffffffff, 137, UiPreferences.DEFAULT, UiTextEffects.Timing.DEFAULT);
+        var expected = collect(UiFormattedText.colorize(FormattedCharSequence.forward("e\u0301ABC", marked),
+                0xffffffff, 137, UiPreferences.DEFAULT));
+        assertEquals(expected.subList(0, 3), collect(lines.get(0)));
+        assertEquals(expected.subList(3, 5), collect(lines.get(1)));
+        var indices = new ArrayList<Integer>();
+        lines.get(1).accept((index, style, cp) -> { indices.add(index); return true; });
+        assertEquals(List.of(0, 1), indices);
+    }
+
+    @Test
+    void effectsUseGraphemeOrdinalsWithoutDiscardingNativeStyles() {
+        var effect = ResourceLocation.tryParse("test:formatted_graphemes");
+        var seen = new ArrayList<UiTextEffects.GlyphContext>();
+        UiTextEffects.registerEffect(effect, context -> {
+            seen.add(context);
+            return new UiTextEffects.Glyph(0x110000 + context.index(), context.index(), 0, false, false);
+        });
+        try {
+            var source = UiTextEffects.apply(Component.literal("e\u0301👩\u200d🚀!")
+                    .withStyle(Style.EMPTY.withBold(true).withItalic(true)), effect).getVisualOrderText();
+            var frame = collect(UiFormattedText.colorize(source, 0xffffffff, 1234, UiPreferences.DEFAULT));
+            assertEquals(List.of(0, 0, 1, 1, 1, 2), seen.stream().map(UiTextEffects.GlyphContext::index).toList());
+            assertTrue(seen.stream().allMatch(context -> context.length() == 3));
+            assertTrue(frame.stream().allMatch(glyph -> glyph.style().isBold() && glyph.style().isItalic()));
+            assertEquals(frame.get(0).style().getColor(), frame.get(1).style().getColor());
+            assertEquals(frame.get(2).style().getColor(), frame.get(4).style().getColor());
+        } finally {
+            UiTextEffects.unregister(effect);
+        }
+    }
+
+    @Test
     void continuousLinesMatchOneVisualRunWithTheSameClockAndDirection() {
         Style marked = Style.EMPTY.withInsertion("fcs:rainbow");
         var timing = new UiTextEffects.Timing(137, true);

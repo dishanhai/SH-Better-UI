@@ -152,10 +152,17 @@ public final class UiFormattedText {
                 }
             }
         }
-        for (int i = 0; i < glyphs.size(); i++) {
-            Glyph glyph = glyphs.get(i);
-            font.drawInBatch(glyph.sequence(), positions[i], y + glyph.y(), argb, shadow,
+        int[] clusters = TextEffectClusters.ordinals(
+                glyphs.stream().mapToInt(Glyph::codePoint).toArray(),
+                glyphs.stream().mapToInt(Glyph::index).toArray());
+        for (int from = 0; from < glyphs.size();) {
+            Glyph first = glyphs.get(from);
+            int to = from + 1;
+            while (to < glyphs.size() && clusters[to] == clusters[from]
+                    && glyphs.get(to).x() == first.x() && glyphs.get(to).y() == first.y()) to++;
+            font.drawInBatch(sequence(glyphs.subList(from, to)), positions[from], y + first.y(), argb, shadow,
                     pose, buffers, mode, 0, light);
+            from = to;
         }
         return (int) cursor + (shadow ? 1 : 0);
     }
@@ -172,16 +179,31 @@ public final class UiFormattedText {
         return glyphs == null ? text : sequence(glyphs);
     }
 
-    /** 相邻行边界的同一效果段共享长度、时钟和码点索引。 */
+    /** 相邻行边界的同一效果段共享长度、时钟和视觉字形簇索引。 */
     public static List<FormattedCharSequence> colorizeLines(List<FormattedCharSequence> lines, int argb,
             long timeMillis, UiPreferences preferences, UiTextEffects.Timing timing) {
         var glyphs = new ArrayList<Glyph>();
         int[] ends = new int[lines.size() + 1];
+        var originalIndices = new ArrayList<Integer>();
+        int lineOffset = 0;
         for (int i = 0; i < lines.size(); i++) {
-            glyphs.addAll(collectGlyphs(lines.get(i)));
+            var line = collectGlyphs(lines.get(i));
+            int nextOffset = lineOffset;
+            for (Glyph glyph : line) {
+                originalIndices.add(glyph.index());
+                int index = lineOffset + glyph.index();
+                glyphs.add(new Glyph(index, glyph.codePoint(), glyph.style(), 0, 0, false));
+                nextOffset = Math.max(nextOffset, index + Character.charCount(glyph.codePoint()));
+            }
+            lineOffset = nextOffset;
             ends[i + 1] = glyphs.size();
         }
-        sample(glyphs, argb, timeMillis, preferences, timing, true);
+        sample(glyphs, argb, timeMillis, preferences, timing, true, null, ends);
+        for (int i = 0; i < glyphs.size(); i++) {
+            Glyph glyph = glyphs.get(i);
+            glyphs.set(i, new Glyph(originalIndices.get(i), glyph.codePoint(), glyph.style(),
+                    glyph.x(), glyph.y(), glyph.outline()));
+        }
         var output = new ArrayList<FormattedCharSequence>(lines.size());
         for (int i = 0; i < lines.size(); i++) {
             output.add(sequence(glyphs.subList(ends[i], ends[i + 1])));
@@ -294,12 +316,28 @@ public final class UiFormattedText {
 
     private static void sample(List<Glyph> glyphs, int argb, long timeMillis, UiPreferences preferences,
                                UiTextEffects.Timing timing, boolean legacy, boolean[] colorEffects) {
+        sample(glyphs, argb, timeMillis, preferences, timing, legacy, colorEffects, new int[0]);
+    }
+
+    private static void sample(List<Glyph> glyphs, int argb, long timeMillis, UiPreferences preferences,
+                               UiTextEffects.Timing timing, boolean legacy, boolean[] colorEffects, int[] lineEnds) {
         for (int from = 0; from < glyphs.size();) {
             String marker = glyphs.get(from).style().getInsertion();
             int to = from + 1;
             while (to < glyphs.size() && Objects.equals(marker, glyphs.get(to).style().getInsertion())) to++;
             UiTextEffects.Format format = UiTextEffects.format(glyphs.get(from).style(), legacy);
             if (format != null) {
+                int[] points = new int[to - from];
+                int[] indices = new int[to - from];
+                for (int i = from; i < to; i++) {
+                    points[i - from] = glyphs.get(i).codePoint();
+                    indices[i - from] = glyphs.get(i).index();
+                }
+                final int runStart = from, runEnd = to;
+                int[] breaks = java.util.Arrays.stream(lineEnds).filter(end -> end > runStart && end < runEnd)
+                        .map(end -> end - runStart).toArray();
+                int[] clusters = TextEffectClusters.ordinals(points, indices, breaks);
+                int clusterCount = clusters[clusters.length - 1] + 1;
                 for (int i = from; i < to; i++) {
                     Glyph glyph = glyphs.get(i);
                     Style style = glyph.style().withInsertion(null);
@@ -308,7 +346,7 @@ public final class UiFormattedText {
                         continue;
                     }
                     int rgb = style.getColor() == null ? argb & 0xffffff : style.getColor().getValue();
-                    UiTextEffects.Glyph sample = UiTextEffects.sample(format, rgb, i - from, to - from,
+                    UiTextEffects.Glyph sample = UiTextEffects.sample(format, rgb, clusters[i - from], clusterCount,
                             glyph.codePoint(), timeMillis, preferences.reducedMotion(), timing, style.getColor() != null);
                     boolean colorEffect = colorEffects != null
                             && hasColorEffect(format, style, preferences.reducedMotion());
