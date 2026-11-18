@@ -1088,6 +1088,7 @@ public final class DeveloperGalleryScreen extends Screen {
         SHREDDER("shredder", GraphicIcon.DELETE, GalleryShredderSample::new),
         HOLD_BUTTON("hold_button", GraphicIcon.RUN, GalleryHoldButtonSample::new),
         SLOSH_GAUGE(SloshGaugeDemo.ID, GraphicIcon.ORGANIZE, GallerySloshGaugeSample::new),
+        MEDIA_CARD("media_card", GraphicIcon.MUSIC, GalleryMediaCardSample::new),
         RUBBER_SEGMENT("rubber_segment", GraphicIcon.ORGANIZE, GalleryRubberSegmentSample::new),
         JELLY_RADIO(JellyRadioDemo.ID, GraphicIcon.ORGANIZE, GalleryJellyRadioSample::new),
         PILL_NAV(PillNavDemo.ID, GraphicIcon.ORGANIZE, GalleryPillNavSample::new),
@@ -1157,7 +1158,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
         Category category() {
             return switch (this) {
-                case PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
+                case MEDIA_CARD, PAGINATION, PILL_NAV, JELLY_RADIO, HUD_SHORTCUT_KEYCAPS -> Category.CONTROLS;
                 case BUTTON, TOGGLE, SLIDER, DISCLOSURE, BRANCHED_MENU, GLIDE_SELECT, SECTIONS, SCROLLABLE_SECTIONS, UNDERLINED_TABS,
                         STEPPER, CAPSULE_TOGGLE, MODE_INDICATORS, TEXT_DETAILS, CODE_SLOTS, PROMPT_BAR, FUSE_BUTTON, SEARCH, DIALOG, FRAME_TIMELINE,
                         DYNAMIC_STATUS, LOADING_SPINNER, LOADING_PROGRESS, LOADING_SKELETON, SLIDE_CONFIRM, SHREDDER,
@@ -1198,7 +1199,7 @@ public final class DeveloperGalleryScreen extends Screen {
                 case LOCAL_MODAL -> 25;
                 case LIVE_ACTIVITY -> 26;
                 case CODE_SLOTS -> -1;
-                case PROMPT_BAR -> 32;
+                case MEDIA_CARD, PROMPT_BAR -> 32;
                 case SHREDDER -> 28;
                 case BELL_TOGGLE, GLIDE_SELECT -> 29;
                 case RUBBER_SEGMENT -> 30;

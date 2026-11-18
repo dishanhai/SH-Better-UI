@@ -93,4 +93,17 @@ class GlassControlsTest {
         assertThrows(IllegalStateException.class,
                 () -> kit.segmented(AREA, Component.literal("Closed"), options, 0, changes::add));
     }
+    @Test void mediaCardOptInAndConfirmedStateSurvivePreferencesButNotClosedLayout() {
+        var area = new Bounds(0, 0, 180, 64);
+        var kit = new GlassControls(UiPreferences.DEFAULT);
+        var card = kit.mediaCard(area, Component.literal("Title"), Component.literal("Artist"), () -> {});
+        var ordinary = new UiMediaCard(area, Component.empty(), Component.empty(), UiPreferences.DEFAULT, () -> {});
+        assertTrue(card.isLiquidGlass()); assertFalse(ordinary.isLiquidGlass());
+        card.setPlaying(true); card.setSelected(true);
+        kit.setPreferences(new UiPreferences(true, true, false, UiPreferences.DEFAULT.feedback()));
+        assertTrue(card.isPlaying()); assertTrue(card.isSelected());
+        kit.close(); kit.close();
+        assertFalse(card.active); assertFalse(card.visible);
+        assertThrows(IllegalStateException.class, () -> kit.mediaCard(area, Component.empty(), Component.empty(), () -> {}));
+    }
 }

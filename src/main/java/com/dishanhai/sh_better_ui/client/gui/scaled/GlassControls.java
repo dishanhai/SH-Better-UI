@@ -26,12 +26,13 @@ import java.util.function.IntFunction;
  * // Screen.removed() and before rebuilding: glass.close();
  * }</pre>
  * Button, confirmed toggle, integer slider and single-choice segmented controls are included.
- * Cards and menus retain their existing APIs; this suite does not claim to migrate them.
+ * Media cards are included; menus retain their existing APIs.
  */
 public final class GlassControls implements AutoCloseable {
     private final List<UiButton> buttons = new ArrayList<>();
     private final List<UiSlider> sliders = new ArrayList<>();
     private final List<UiRubberSegment> segments = new ArrayList<>();
+    private final List<UiMediaCard> mediaCards = new ArrayList<>();
     private UiPreferences preferences;
     private boolean closed;
 
@@ -79,12 +80,22 @@ public final class GlassControls implements AutoCloseable {
         return control;
     }
 
+    /** Requests activation only. The host confirms playing/selection on the returned card. */
+    public UiMediaCard mediaCard(Bounds area, Component title, Component subtitle, Runnable onActivate) {
+        requireOpen();
+        var control = new UiMediaCard(area, title, subtitle, preferences, onActivate);
+        control.setLiquidGlass(true);
+        mediaCards.add(control);
+        return control;
+    }
+
     public void setPreferences(UiPreferences preferences) {
         requireOpen();
         this.preferences = Objects.requireNonNull(preferences, "preferences");
         buttons.forEach(button -> button.setPreferences(preferences));
         sliders.forEach(slider -> slider.setPreferences(preferences));
         segments.forEach(segment -> segment.setPreferences(preferences));
+        mediaCards.forEach(card -> card.setPreferences(preferences));
     }
 
     public boolean isClosed() { return closed; }
@@ -96,6 +107,7 @@ public final class GlassControls implements AutoCloseable {
         sliders.forEach(slider -> { slider.active = false; slider.visible = false; });
         buttons.forEach(button -> { button.active = false; button.visible = false; });
         segments.forEach(segment -> { segment.active = false; segment.visible = false; });
+        mediaCards.forEach(card -> { card.active = false; card.visible = false; card.cancelInteraction(); });
         segments.forEach(UiRubberSegment::cancelDrag);
         RuntimeException failure = null;
         for (var slider : sliders) {
@@ -113,6 +125,7 @@ public final class GlassControls implements AutoCloseable {
         sliders.clear();
         buttons.clear();
         segments.clear();
+        mediaCards.clear();
         if (failure != null) throw failure;
     }
 
