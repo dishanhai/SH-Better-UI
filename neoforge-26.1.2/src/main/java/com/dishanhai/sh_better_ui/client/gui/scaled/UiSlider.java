@@ -33,6 +33,7 @@ public final class UiSlider extends AbstractSliderButton {
     private final IntFunction<Component> label;
     private final IntConsumer onChange;
     private UiPreferences preferences;
+    private boolean liquidGlass;
     private int currentValue;
     private int keyDirection;
     private int messageValue;
@@ -61,6 +62,11 @@ public final class UiSlider extends AbstractSliderButton {
         this.onChange = Objects.requireNonNull(onChange);
         setValue(value);
     }
+
+    /** Opt into a real optical backdrop independently of the global visual theme. */
+    public void setLiquidGlass(boolean enabled) { liquidGlass = enabled; }
+
+    public boolean isLiquidGlass() { return liquidGlass; }
 
     public int value() {
         return currentValue;
@@ -222,7 +228,7 @@ public final class UiSlider extends AbstractSliderButton {
         int outline = isFocused() || dragging ? text : preferences.highContrast() ? muted
                 : ARGB.multiplyAlpha(theme.border(), alpha);
         var settings = ControlPanelSettings.current();
-        boolean optical = theme.liquidGlass() && settings.glassEnabled() && preferences.useBackdropBlur()
+        boolean optical = (liquidGlass || theme.liquidGlass()) && settings.glassEnabled() && preferences.useBackdropBlur()
                 && LiquidGlassSurface.drawPrepared(graphics, x, y, width, height, 5,
                         0x84000000 | (theme.surface() & 0xFFFFFF), 0,
                         settings.optics(GlassMaterial.preset(GlassVariant.REGULAR).optics()), preferences, alpha);

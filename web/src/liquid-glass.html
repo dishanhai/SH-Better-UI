@@ -1,0 +1,85 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'self'; style-src 'self'; img-src 'self'; base-uri 'none'; object-src 'none'; form-action 'self'">
+<title>SHBUI · Liquid Glass Kit</title>
+<link rel="stylesheet" href="liquid-glass/kit.css">
+<link rel="stylesheet" href="liquid-glass/showcase.css">
+</head>
+<body>
+<main class="lg-kit" id="glass-kit">
+<header>
+<div class="eyebrow">SHBUI / UUK DESIGN SYSTEM</div>
+<h1>清晰的内容。<br>轻盈的控制。</h1>
+<p class="intro">液态玻璃控件套件的 Web 交互参考。保留语义、键盘与清晰前景；游戏内由原生 UUK 负责渲染，不嵌入浏览器。</p>
+<p class="caption">此页控件为 CSS 透明材质，不宣称背景物理折射。<a href="index.html">打开真实 WebGL 光学预览 →</a>
+</p>
+</header>
+<div class="grid">
+<section class="lg-surface card">
+<h2>播放控制</h2>
+<div class="cover" aria-hidden="true">
+</div>
+<div class="row">
+<div>
+<strong>你的音乐空间</strong>
+<div class="caption">组件交互演示 · 无真实音源</div>
+</div>
+<button class="lg-button" data-open-dialog>详情</button>
+</div>
+<div class="lg-tabs lg-surface" role="tablist" aria-label="播放器栏目" data-glass-tabs>
+<button id="tab-controls" class="lg-segment" role="tab" aria-controls="controls" aria-selected="true">控制</button>
+<button id="tab-library" class="lg-segment" role="tab" aria-controls="library" aria-selected="false" tabindex="-1">资料库</button>
+<button id="tab-queue" class="lg-segment" role="tab" aria-controls="queue" aria-selected="false" tabindex="-1">队列</button>
+</div>
+<div id="controls" role="tabpanel" aria-labelledby="tab-controls">
+<label class="lg-field">音量 <input id="volume" type="range" min="0" max="100" value="65" data-output="volume-value">
+<output id="volume-value" for="volume">65</output>
+</label>
+<div class="lg-toolbar">
+<button class="lg-button" data-primary id="play">播放演示</button>
+<button class="lg-button" disabled>尚无上一首</button>
+</div>
+</div>
+<div id="library" role="tabpanel" aria-labelledby="tab-library" hidden>
+<label class="lg-field">搜索资料库<input class="lg-input" type="search" placeholder="输入歌名或歌手">
+</label>
+<p class="lg-status">这里展示输入样式，不连接音乐账户。</p>
+</div>
+<div id="queue" role="tabpanel" aria-labelledby="tab-queue" hidden>
+<p>队列为空</p>
+<p class="caption">空状态也保留完整导航和返回路径。</p>
+</div>
+</section>
+<section class="lg-surface card">
+<h2>外观与可访问性</h2>
+<label class="lg-field">配色<select data-glass-pref="theme">
+<option value="light">瓷白</option>
+<option value="dark">午夜</option>
+</select>
+</label>
+<label class="lg-switch">透明材质<input type="checkbox" checked data-glass-pref="transparency" data-on="on" data-off="off">
+</label>
+<label class="lg-switch">减少动态<input type="checkbox" data-glass-pref="motion" data-on="off" data-off="on">
+</label>
+<label class="lg-switch">高对比度<input type="checkbox" data-glass-pref="contrast" data-on="high" data-off="normal">
+</label>
+<p class="caption">设置仅作用于本展示，不改游戏配置。系统减少动态偏好始终优先。Tab 导航，左右键切换栏目，Esc 关闭对话框。</p>
+<p class="lg-status" id="play-status" role="status">演示已停止</p>
+</section>
+</div>
+<dialog class="lg-surface" aria-labelledby="dialog-title">
+<h2 id="dialog-title">清晰前景，独立材质</h2>
+<p>文字不会随背景模糊。关闭后焦点返回「详情」，不会丢失当前栏目。</p>
+<form method="dialog">
+<button class="lg-button" autofocus>关闭</button>
+</form>
+</dialog>
+<footer class="caption">原创 SHBUI 控件示例 · <a href="https://github.com/liquefy-ui/liquefy-ui">Liquefy UI 设计参考</a> · 非 Apple 官方组件</footer>
+</main>
+<script type="module" src="liquid-glass/showcase.mjs">
+</script>
+</body>
+</html>

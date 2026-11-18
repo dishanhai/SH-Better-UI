@@ -150,6 +150,7 @@ def sharedSources = [
         'client/gui/scaled/UiTabSelection.java',
         'client/gui/scaled/UiTimeline.java',
         'client/gui/scaled/UiToggleButton.java',
+        'client/gui/scaled/GlassControls.java',
         'client/gui/search/PinyinSearch.java',
         'client/gui/search/SearchIndex.java',
         'client/gui/search/SearchQuery.java',
@@ -273,6 +274,8 @@ sourceSets.test {
         include("${packagePath}/client/api/NativeStateApiTest.java")
         include("${packagePath}/client/api/UiScreenCloseTest.java")
         include("${packagePath}/client/api/NativeTestClient.java")
+        include("${packagePath}/client/gui/scaled/GlassControlsTest.java")
+        include("${packagePath}/client/gui/scaled/NativeGlassControlsLifecycleTest.java")
         include("${packagePath}/client/api/MarkdownApiTest.java")
         include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")
         include("${packagePath}/kernel/api/music/**")
@@ -430,6 +433,7 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/gui/scaled/UiExpansionController.class",
                     "${packagePath}/client/gui/scaled/UiToggleButton.class",
                     "${packagePath}/client/gui/scaled/UiSlider.class",
+                    "${packagePath}/client/gui/scaled/GlassControls.class",
                     "${packagePath}/client/gui/scaled/UiStepper.class",
                     "${packagePath}/client/gui/scaled/UiSectionBar.class",
                     "${packagePath}/client/gui/scaled/UiScrollableSectionBar.class",

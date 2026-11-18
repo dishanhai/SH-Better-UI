@@ -29,6 +29,7 @@ public final class UiSlider extends AbstractSliderButton {
     private final IntFunction<Component> label;
     private final IntConsumer onChange;
     private UiPreferences preferences;
+    private boolean liquidGlass;
     private int currentValue;
     private int keyDirection;
     private int messageValue;
@@ -63,6 +64,11 @@ public final class UiSlider extends AbstractSliderButton {
     public void bindTextReadability(NativeTextReadability.Label label) {
         readableLabel = label;
     }
+
+    /** Opt into a real optical backdrop independently of the global visual theme. */
+    public void setLiquidGlass(boolean enabled) { liquidGlass = enabled; }
+
+    public boolean isLiquidGlass() { return liquidGlass; }
 
     public int value() {
         return currentValue;
@@ -209,7 +215,7 @@ public final class UiSlider extends AbstractSliderButton {
     public void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         int x = getX(), y = getY(), width = getWidth(), height = getHeight();
         if (width <= 2 * TRACK_INSET || height < MIN_HEIGHT) return;
-        LiquidGlassTheme.input(graphics, x, y, width, height, preferences, false, isFocused());
+        LiquidGlassTheme.input(graphics, x, y, width, height, preferences, liquidGlass, isFocused());
 
         int trackX = x + TRACK_INSET;
         int trackWidth = width - 2 * TRACK_INSET;
