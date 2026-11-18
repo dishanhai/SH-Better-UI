@@ -41,6 +41,8 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     }
     /** Whether this session has received credentials; the platform can still expire/revoke them. */
     boolean authenticated(String source);
+    /** Optional persistent queue; null keeps legacy third-party players on a view-local queue. */
+    default OnlineMusicQueue queue() { return null; }
     void play(OnlineTrack track);
     void pause();
     void resume();
@@ -51,6 +53,12 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default float volume() { return 1f; }
     /** Normalized 0..1; implementations reject non-finite values and never amplify above unity. */
     default void volume(float value) { throw new UnsupportedOperationException("Music volume unavailable"); }
+    /** Compressed bytes referenced by cache entries, counted once even if shared with active playback.
+     * Additional playback-only buffers and decoder/device memory are not included. */
+    record AudioCacheInfo(int entries, long retainedBytes, long capacityBytes) {}
+    default AudioCacheInfo audioCacheInfo() { return new AudioCacheInfo(0, 0, 0); }
+    /** Evicts reusable compressed audio without stopping playback. No files or credentials are deleted. */
+    default void clearAudioCache() { throw new UnsupportedOperationException("Audio cache unavailable"); }
     Snapshot snapshot();
     LyricFeed lyricFeed();
     @Override void close();

@@ -12,6 +12,11 @@
 - [ ] 在实际消费实例复验黑洞及其他材质的预览、设置应用、关闭面板返回世界、连续切换、窗口尺寸与 GUI 缩放变化、F3+T 重载；有 Oculus／Iris／OptiFine 时分别检查光影开启与关闭。当前修复未部署消费实例。
 - [ ] 在 NeoForge 1.21.1 客户端执行同等材质视觉验收；原生 GPU 与 Forge 背景回归运行方式见 `docs/RENDER_STATE_VERIFICATION.md`。26.x 使用独立渲染后端，现有精简面板的背景移植仍按下方待办处理。
 
+## 自定义音乐字体（PR #31）
+
+- [ ] 在 Forge 1.20.1 和 NeoForge 1.21.1 客户端验收本地字体拖放／导入、确认与取消、资源重载失败恢复、恢复内置字体、中文缺字回退及 GUI 缩放。当前仅完成冲突修复与自动验证，尚未进行游戏内验收。
+- [ ] 在允许创建符号链接的环境重跑 `LocalFontPackTest.rejectsSymlinkAndBoundedStreamOverflow` 和 Python `FontPackTest.test_symlink_rejected`。本机 Windows 缺少创建符号链接权限（WinError 1314），无法构造这两项测试的夹具。
+
 ## 弃用 API
 
 - [ ] 处理 NeoForge 1.21.1 详细编译提示的其余弃用 API：AE2 和页面服务的区块检查、共享控件的点击回调，以及 JEI 类型化配方接口；需兼顾 Forge 1.20.1。

@@ -45,6 +45,7 @@ import net.minecraftforge.fml.event.lifecycle.FMLClientSetupEvent;
 public final class UiClient {
     private static KeyMapping controlPanelKey;
     private static KeyMapping liveActivitiesKey;
+    private static KeyMapping musicIslandKey;
 
     private UiClient() {
     }
@@ -57,6 +58,9 @@ public final class UiClient {
         ClientUiKernel.nativeScoreboard(ForgePlatformBridge.hasSidebar(minecraft));
         while (liveActivitiesKey != null && liveActivitiesKey.consumeClick()) {
             ClientUiKernel.openLiveActivities(minecraft);
+        }
+        while (musicIslandKey != null && musicIslandKey.consumeClick()) {
+            com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay.toggleIsland();
         }
         MinecraftThemes.tick(minecraft);
         LyricClient.tick(minecraft);
@@ -269,6 +273,9 @@ public final class UiClient {
             liveActivitiesKey = new KeyMapping("key.sh_better_ui.live_activities", KeyConflictContext.IN_GAME,
                     InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_F7, "key.categories.sh_better_ui");
             event.register(liveActivitiesKey);
+            musicIslandKey = new KeyMapping("key.sh_better_ui.music_island", KeyConflictContext.IN_GAME,
+                    InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
+            event.register(musicIslandKey);
         }
 
         @SubscribeEvent

@@ -57,6 +57,11 @@ import java.util.function.IntFunction;
 
 /** 山海：原生控件工厂。创建的控件由宿主注册和更新。 */
 public final class ControlsApi {
+    /** Screen-owned native glass widgets. Close the suite when its layout is removed or rebuilt. */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls glass(UiPreferences preferences) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.GlassControls(preferences);
+    }
+
     /** Manual-activation page navigation. Mount the returned control as one widget. */
     public com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail navigationRail(
             Font font, Bounds area, Component name,
@@ -102,6 +107,11 @@ public final class ControlsApi {
     }
 
     /** Card navigation. Bounds reserve the open viewport; forward outside clicks to pointerDown(). */
+    public com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard mediaCard(Bounds area,
+            Component title, Component subtitle, UiPreferences preferences, Runnable onActivate) {
+        return new com.dishanhai.sh_better_ui.client.gui.scaled.UiMediaCard(area, title, subtitle, preferences, onActivate);
+    }
+
     public UiCardNav cardNav(
             Font font, Bounds area, Component name,
             CardNavControl.Link logo, List<CardNavControl.Item> items,

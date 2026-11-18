@@ -285,6 +285,9 @@ public final class UiButton extends Button {
     private ThemeButtonStyle.Paint palette(UiPreferences effective, boolean focused, boolean enabled,
                                           float hover, float press, long now) {
         var theme = UiTheme.current();
+        var suite=DisplaySuiteButtonPaint.sample(ControlPanelSettings.current().theme(),theme,style,
+                UiTheme.isPreviewActive(),primary,selected,enabled,effective.highContrast(),hover,press);
+        if(suite!=null)return suite;
         boolean contrast = effective.highContrast();
         boolean glass = style == UiStyle.LIQUID_GLASS || style == UiStyle.DEFAULT && theme.liquidGlass();
         int background = theme.background(0xFF0F172A) | 0xFF000000;

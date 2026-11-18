@@ -9,12 +9,13 @@ import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 
 final class OnlineMusicViewPaint {
+    private static Component styled(Component text) { return MpTypography.SEMIBOLD.equals(text.getStyle().getFont()) ? text : MpTypography.text(text); }
     static void clip(UiFrame ui, Bounds bounds) { ui.graphics().enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom()); }
     static void unclip(UiFrame ui) { ui.graphics().disableScissor(); }
     static boolean editing(UiSlider slider) { return slider.isPointerEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
-        var value = font.substrByWidth(text, Math.max(0, width));
+        var value = font.substrByWidth(styled(text), Math.max(0, width));
         ink(ui, font, net.minecraft.locale.Language.getInstance().getVisualOrder(value), x, y, color);
     }
     private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
@@ -26,9 +27,21 @@ final class OnlineMusicViewPaint {
         ui.graphics().fill(x - 2, y - 1, x + font.width(text) + 2, y + font.lineHeight + 1, paint.protection());
         ui.graphics().text(font, text, x, y, paint.text(), paint.shadow());
     }
+    static void scaledLine(UiFrame ui, Font font, Component text, int x, int y, int width, int color, float scale) {
+        var line = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(
+                font, styled(text), Math.max(1, (int) (width / scale)));
+        var pose = ui.graphics().pose();
+        pose.pushMatrix();
+        try {
+            pose.translate(x, y);
+            pose.scale(scale, scale);
+            ui.graphics().text(font, line, 0, 0, color, false);
+        } finally { pose.popMatrix(); }
+    }
+
     static void paragraph(UiFrame ui, Font font, Component text, Bounds bounds, int color) {
         int y = bounds.y();
-        for (var line : font.split(text, Math.max(1, bounds.width()))) {
+        for (var line : font.split(styled(text), Math.max(1, bounds.width()))) {
             if (y + font.lineHeight > bounds.bottom()) break;
             ink(ui, font, line, bounds.x(), y, color);
             y += font.lineHeight + 3;

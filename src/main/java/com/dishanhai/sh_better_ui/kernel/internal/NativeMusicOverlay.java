@@ -93,6 +93,37 @@ public final class NativeMusicOverlay implements UIModule {
             island.render(ui,mc.font,MusicOverlayLayout.compact(full,value.islandScale()),full,false);
         } else { tasks.reset(); island.suspend(); restoreIsland=true; }
     }
+    /** Explicit gameplay shortcut; never changes the saved default expansion preference. */
+    public static void toggleIsland() {
+        var mc = Minecraft.getInstance();
+        if (!available() || mc.level == null || mc.player == null || mc.screen != null
+                || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
+        if (!active.settings().islandEnabled() || active.island == null) return;
+        active.island.setExpanded(!active.island.expanded(), PageTransition.nowMs(), UiPreferences.configured().reducedMotion());
+        active.restoreIsland = false;
+    }
+
+    /** Reserve the expansion envelope only while a real island surface is visible. */
+    static java.util.Optional<Bounds> occupiedIslandBounds(int width, int height) {
+        var mc = Minecraft.getInstance();
+        if (!available() || mc.level == null || mc.player == null || mc.screen != null
+                || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown())
+            return java.util.Optional.empty();
+        var value = active.settings();
+        if (!value.islandEnabled()) return java.util.Optional.empty();
+        if (active.island == null) active.island = new LocalMusicIsland(ShBetterUiApi.music());
+        if (active.restoreIsland) {
+            active.island.setExpanded(value.expanded(), PageTransition.nowMs(), UiPreferences.configured().reducedMotion());
+            active.restoreIsland = false;
+        }
+        active.island.setScene(true, false, false, false);
+        active.island.setStyle(value.islandStyle());
+        active.island.setAmbient(value.ambientEnabled() ? IslandAmbientState.Settings.DEFAULT : IslandAmbientState.Settings.DISABLED);
+        if (!active.island.visible(PageTransition.nowMs())) return java.util.Optional.empty();
+        return java.util.Optional.of(MusicOverlayLayout.panel(width, height, true,
+                value.islandScale(), value.islandX(), value.islandY()));
+    }
+
     public static boolean available() { return active != null && active.context.scope().isOpen(); }
     public static void open(Screen parent) { if (available()) Minecraft.getInstance().setScreen(new SettingsScreen(active,parent)); }
     /** Immutable current configuration, only while the scoped native module is active. */

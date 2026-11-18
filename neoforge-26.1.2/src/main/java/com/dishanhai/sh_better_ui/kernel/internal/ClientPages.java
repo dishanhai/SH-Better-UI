@@ -110,7 +110,10 @@ final class ClientPages implements PageService {
         return effective;
     }
 
-    private static void validateActions(UiNode node, UiPageDefinition page) {
+    static void validateActions(UiNode node, UiPageDefinition page) {
+        if (node.properties().containsKey("payloadField")) {
+            throw new IllegalArgumentException("Native 26.x pages expose input through Instance.localValues(), not action payloads");
+        }
         node.action().ifPresent(id -> {
             var action = page.actions().get(id);
             if (action.policy() != UiActionPolicy.LOCAL) throw new IllegalArgumentException("Unsupported action policy");
@@ -166,12 +169,17 @@ final class ClientPages implements PageService {
         }
 
         @Override public Snapshot snapshot() { return snapshot; }
+        @Override public Map<String, UiValue> localValues() {
+            host.assertOwner();
+            return screen.localValues();
+        }
         @Override public CompletionStage<Boolean> displayed() { return displayed.minimalCompletionStage(); }
         @Override public CompletionStage<Snapshot> closed() { return closed.minimalCompletionStage(); }
         @Override public void close() { finish(State.CLOSED, true); }
 
         private void publish() {
             snapshot = new Snapshot(id, pageId, state, data.revision(), data.data(), data.synchronizedData());
+            screen.synchronizeInputs(snapshot);
         }
 
         private void presented() {

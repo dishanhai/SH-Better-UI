@@ -3,6 +3,9 @@ package com.dishanhai.sh_better_ui.client.gui.panel;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
+import com.dishanhai.sh_better_ui.config.ThemeOverrides;
+import com.dishanhai.sh_better_ui.config.ThemePaletteArchive;
+import com.dishanhai.sh_better_ui.config.ControlFeedbackSettings;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassOptics;
 import org.jspecify.annotations.Nullable;
 
@@ -17,9 +20,9 @@ import java.util.Properties;
 /** Saved 26.x client options. The screen edits a separate draft until Apply succeeds. */
 public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, boolean reducedMotion,
                                    boolean backgroundBlur, boolean widgetBlur, boolean glassEnabled,
-                                   int glassBlur, int glassRefraction, int glassRim) {
+                                   int glassBlur, int glassRefraction, int glassRim, ControlFeedbackSettings feedback) {
     public static final int MAX_GLASS_SCALE = 200;
-    public static final ControlPanelSettings DEFAULT = new ControlPanelSettings(ThemeSettings.DEFAULT,
+    public static final ControlPanelSettings DEFAULT = new ControlPanelSettings(ThemeSettings.DEFAULT.withBackgroundEffect("nativeBackdrop"),
             false, false, true, true, true, 100, 100, 100);
     private static final System.Logger LOGGER = System.getLogger(ControlPanelSettings.class.getName());
     private static volatile ControlPanelSettings settings = DEFAULT;
@@ -27,15 +30,24 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
 
     public ControlPanelSettings {
         Objects.requireNonNull(theme, "theme");
+        Objects.requireNonNull(feedback, "feedback");
         if (!validScale(glassBlur) || !validScale(glassRefraction) || !validScale(glassRim)) {
             throw new IllegalArgumentException("Glass scale is outside [0, 200]");
         }
     }
 
+    /** Compatibility constructor for callers predating configurable control feedback. */
+    public ControlPanelSettings(ThemeSettings theme, boolean highContrast, boolean reducedMotion,
+                                boolean backgroundBlur, boolean widgetBlur, boolean glassEnabled,
+                                int glassBlur, int glassRefraction, int glassRim) {
+        this(theme, highContrast, reducedMotion, backgroundBlur, widgetBlur, glassEnabled,
+                glassBlur, glassRefraction, glassRim, ControlFeedbackSettings.DEFAULT);
+    }
+
     public static ControlPanelSettings current() { return settings; }
 
     public UiPreferences preferences(boolean vanillaHighContrast) {
-        return new UiPreferences(highContrast || vanillaHighContrast, reducedMotion, widgetBlur);
+        return new UiPreferences(highContrast || vanillaHighContrast, reducedMotion, widgetBlur, feedback);
     }
 
     public GlassOptics optics(GlassOptics preset) {
@@ -49,17 +61,22 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
 
     ControlPanelSettings withTheme(ThemeSettings next) {
         return new ControlPanelSettings(next, highContrast, reducedMotion, backgroundBlur, widgetBlur,
-                glassEnabled, glassBlur, glassRefraction, glassRim);
+                glassEnabled, glassBlur, glassRefraction, glassRim, feedback);
     }
 
     ControlPanelSettings withDisplay(boolean contrast, boolean motion, boolean blur) {
         return new ControlPanelSettings(theme, contrast, motion, backgroundBlur, blur,
-                glassEnabled, glassBlur, glassRefraction, glassRim);
+                glassEnabled, glassBlur, glassRefraction, glassRim, feedback);
     }
 
     ControlPanelSettings withGlass(boolean background, boolean enabled, int blur, int refraction, int rim) {
         return new ControlPanelSettings(theme, highContrast, reducedMotion, background, widgetBlur,
-                enabled, blur, refraction, rim);
+                enabled, blur, refraction, rim, feedback);
+    }
+
+    ControlPanelSettings withFeedback(ControlFeedbackSettings next) {
+        return new ControlPanelSettings(theme, highContrast, reducedMotion, backgroundBlur, widgetBlur,
+                glassEnabled, glassBlur, glassRefraction, glassRim, next);
     }
 
     static synchronized void load(Path configDirectory) {
@@ -69,7 +86,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
         try (var input = Files.newInputStream(file)) {
             var properties = new Properties();
             properties.load(input);
-            var theme = ThemeSettings.DEFAULT.withMode(mode(properties.getProperty("theme")));
+            var theme = readTheme(properties);
             settings = new ControlPanelSettings(theme, flag(properties, "highContrast", DEFAULT.highContrast),
                     flag(properties, "reducedMotion", DEFAULT.reducedMotion),
                     flag(properties, "backgroundBlur", DEFAULT.backgroundBlur),
@@ -77,7 +94,13 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
                     flag(properties, "glassEnabled", DEFAULT.glassEnabled),
                     scale(properties, "glassBlur", DEFAULT.glassBlur),
                     scale(properties, "glassRefraction", DEFAULT.glassRefraction),
-                    scale(properties, "glassRim", DEFAULT.glassRim));
+                    scale(properties, "glassRim", DEFAULT.glassRim),
+                    new ControlFeedbackSettings(
+                            flag(properties, "hoverAnimation", ControlFeedbackSettings.DEFAULT.hoverAnimation()),
+                            flag(properties, "pressAnimation", ControlFeedbackSettings.DEFAULT.pressAnimation()),
+                            flag(properties, "selectionPulse", ControlFeedbackSettings.DEFAULT.selectionPulse()),
+                            boundedNumber(properties, "tooltipDelayMs", ControlFeedbackSettings.DEFAULT.tooltipDelayMs(),
+                                    ControlFeedbackSettings.MAX_TOOLTIP_DELAY_MS)));
         } catch (IOException | IllegalArgumentException failure) {
             LOGGER.log(System.Logger.Level.WARNING, "Could not read the SHBUI control panel settings.", failure);
         }
@@ -92,7 +115,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
             Files.createDirectories(directory);
             temporary = Files.createTempFile(directory, "control-panel", ".properties.tmp");
             var properties = new Properties();
-            properties.setProperty("theme", draft.theme.mode().name());
+            writeTheme(properties, draft.theme);
             properties.setProperty("highContrast", Boolean.toString(draft.highContrast));
             properties.setProperty("reducedMotion", Boolean.toString(draft.reducedMotion));
             properties.setProperty("backgroundBlur", Boolean.toString(draft.backgroundBlur));
@@ -101,6 +124,10 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
             properties.setProperty("glassBlur", Integer.toString(draft.glassBlur));
             properties.setProperty("glassRefraction", Integer.toString(draft.glassRefraction));
             properties.setProperty("glassRim", Integer.toString(draft.glassRim));
+            properties.setProperty("hoverAnimation", Boolean.toString(draft.feedback.hoverAnimation()));
+            properties.setProperty("pressAnimation", Boolean.toString(draft.feedback.pressAnimation()));
+            properties.setProperty("selectionPulse", Boolean.toString(draft.feedback.selectionPulse()));
+            properties.setProperty("tooltipDelayMs", Integer.toString(draft.feedback.tooltipDelayMs()));
             try (var output = Files.newOutputStream(temporary)) {
                 properties.store(output, "SH-Better-UI NeoForge 26 client options");
             }
@@ -125,6 +152,38 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
         }
     }
 
+    /** Mode-only older 26.x files continue to inherit all absent fields. Dormant legacy data is retained. */
+    static ThemeSettings readTheme(Properties properties) {
+        var defaults = DEFAULT.theme().withMode(mode(properties.getProperty("theme")));
+        try {
+            return new ThemeSettings(defaults.mode(), ThemeSettings.Base.valueOf(properties.getProperty("theme.base", defaults.customBase().name())),
+                    properties.getProperty("theme.background", defaults.background()), properties.getProperty("theme.surface", defaults.surface()),
+                    properties.getProperty("theme.border", defaults.border()), properties.getProperty("theme.text", defaults.text()),
+                    properties.getProperty("theme.accent", defaults.accent()),
+                    new ThemeOverrides(properties.getProperty("theme.effects", "{}")),
+                    properties.getProperty("theme.backgroundEffect", defaults.backgroundEffect()),
+                    properties.getProperty("theme.hudBackgroundEffect", defaults.hudBackgroundEffect()),
+                    Integer.parseInt(properties.getProperty("theme.hudBlurRadius", defaults.hudBlurRadius().toString())),
+                    properties.getProperty("theme.registeredThemeId", ""),
+                    new ThemePaletteArchive(properties.getProperty("theme.paletteArchive", "{}")));
+        } catch (IllegalArgumentException invalid) {
+            LOGGER.log(System.Logger.Level.WARNING, "Invalid saved theme; preserving other client options and using the selected mode defaults.", invalid);
+            return defaults;
+        }
+    }
+    static void writeTheme(Properties properties, ThemeSettings theme) {
+        properties.setProperty("theme", theme.mode().name());
+        properties.setProperty("theme.base", theme.customBase().name());
+        properties.setProperty("theme.background", theme.background()); properties.setProperty("theme.surface", theme.surface());
+        properties.setProperty("theme.border", theme.border()); properties.setProperty("theme.text", theme.text());
+        properties.setProperty("theme.accent", theme.accent()); properties.setProperty("theme.effects", theme.effects().json());
+        properties.setProperty("theme.backgroundEffect", theme.backgroundEffect());
+        properties.setProperty("theme.hudBackgroundEffect", theme.hudBackgroundEffect());
+        properties.setProperty("theme.hudBlurRadius", theme.hudBlurRadius().toString());
+        properties.setProperty("theme.registeredThemeId", theme.registeredThemeId());
+        properties.setProperty("theme.paletteArchive", theme.paletteArchive().json());
+    }
+
     private static boolean flag(Properties properties, String key, boolean fallback) {
         String value = properties.getProperty(key);
         if ("true".equalsIgnoreCase(value)) return true;
@@ -133,11 +192,15 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
     }
 
     private static int scale(Properties properties, String key, int fallback) {
+        return boundedNumber(properties, key, fallback, MAX_GLASS_SCALE);
+    }
+
+    private static int boundedNumber(Properties properties, String key, int fallback, int maximum) {
         String value = properties.getProperty(key);
         if (value == null) return fallback;
         try {
             int number = Integer.parseInt(value);
-            return validScale(number) ? number : fallback;
+            return number >= 0 && number <= maximum ? number : fallback;
         } catch (NumberFormatException invalid) {
             return fallback;
         }
@@ -148,7 +211,7 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
     private static ThemeSettings.Mode mode(@Nullable String value) {
         if (value != null) {
             for (var choice : ThemeSettings.Mode.values()) {
-                if (choice != ThemeSettings.Mode.CUSTOM && choice.name().equals(value)) return choice;
+                if (choice.name().equals(value)) return choice;
             }
         }
         return ThemeSettings.DEFAULT.mode();

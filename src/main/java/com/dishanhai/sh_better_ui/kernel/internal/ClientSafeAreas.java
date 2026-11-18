@@ -24,6 +24,8 @@ final class ClientSafeAreas {
         for (var bounds : registered) add(areas, "sh_better_ui:reservation/" + index++, rect(bounds), Evidence.MODEL, frame);
         index = 0;
         for (var bounds : bosses) add(areas, "minecraft:boss/" + index++, rect(bounds), Evidence.OBSERVED, Math.max(0, frame - 1));
+        NativeMusicOverlay.occupiedIslandBounds(width, height).ifPresent(bounds ->
+                add(areas, "sh_better_ui:music_island", new Rect(bounds.x(), bounds.y(), bounds.width(), bounds.height(), Space.GUI), Evidence.MODEL, frame));
         if (minecraft.level != null) {
             add(areas, "minecraft:hotbar_and_status", new Rect(width / 2d - 97, height - 46, 194, 46, Space.GUI), Evidence.MODEL, frame);
             var chat = minecraft.gui.getChat();

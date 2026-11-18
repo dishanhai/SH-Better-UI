@@ -7,6 +7,7 @@ import com.dishanhai.sh_better_ui.config.LiveSurfaceConfig;
 import com.dishanhai.sh_better_ui.kernel.api.CapabilityKey;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
+import com.dishanhai.sh_better_ui.kernel.api.NativeInput;
 import com.dishanhai.sh_better_ui.kernel.api.UIApis;
 import com.dishanhai.sh_better_ui.kernel.api.ScopeHandle;
 import com.dishanhai.sh_better_ui.kernel.api.UIPlatform;
@@ -48,9 +49,18 @@ public final class ClientUiKernel {
     private static KernelHost host;
     private static ClientMaterialCatalog catalog;
     private static ClientScreens screens;
+    private static ClientAnimation animation;
+    private static ClientCollapse collapse;
+    private static NativeAnimationExample animationExample;
     private static ClientReadabilitySamples samples;
     private static ClientTextReadability text;
     private static ClientHud hud;
+    private static ClientDockWindows dock;
+    private static NativeDockExample dockExample;
+    private static ClientLiveActivities liveActivities;
+    private static NativeMusicActivity musicActivity;
+    private static NativeMusicHud musicHud;
+    private static com.dishanhai.sh_better_ui.client.music.MusicService.Frame musicFrame;
     private static boolean frameOpen;
 
     private ClientUiKernel() {}
@@ -59,23 +69,48 @@ public final class ClientUiKernel {
     public static void start(ClientStartedEvent event) {
         var minecraft = event.getClient();
         Path config = minecraft.gameDirectory.toPath().resolve("config");
-        if (!LiveSurfaceConfig.load(config).kernelEnabled()) return;
+        var liveSettings = LiveSurfaceConfig.load(config);
+        if (!liveSettings.kernelEnabled()) return;
 
         var kernel = new KernelHost(PLATFORM, EnginePublication.CLIENT);
         kernel.storage(config.resolve("sh_better_ui/modules"));
         var clientScreens = new ClientScreens(kernel, PLATFORM);
+        var clientAnimation = new ClientAnimation(kernel);
+        var clientCollapse = new ClientCollapse(kernel, clientAnimation);
+        var nativeAnimationExample = new NativeAnimationExample(clientScreens);
         var readbacks = new ClientReadabilitySamples(kernel);
         var textReadability = new ClientTextReadability(kernel, clientScreens, readbacks);
         var clientHud = new ClientHud(kernel, readbacks);
+        var clientDock = new ClientDockWindows(kernel, clientScreens);
+        var nativeDockExample = new NativeDockExample(clientScreens, clientDock);
+        var clientActivities = new ClientLiveActivities(kernel, liveSettings);
+        var nativeMusic = new NativeMusicActivity(true, () -> clientActivities.runtime().policy().notifications(),
+                () -> clientActivities.runtime().diagnostics().activities() < clientActivities.runtime().policy().maxActivities(),
+                () -> clientActivities.runtime().diagnostics().notifications() < clientActivities.runtime().policy().maxNotifications(),
+                () -> NativePort.show(minecraft, com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.settings()
+                        .onlineMusicScreen(NativePort.screen(minecraft))));
         var materialCatalog = new ClientMaterialCatalog(kernel, PLATFORM, asset -> {
             var id = Identifier.tryParse(asset);
             return id != null && minecraft.getResourceManager().getResource(id).isPresent();
         });
         var candidates = new ArrayList<>(NativeModuleSources.discover(modSources()));
+        candidates.add(nativeMusic.candidate());
+        candidates.add(nativeDockExample.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIPlatform.KEY, clientScreens));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.SCREENS, clientScreens, UIApis.NATIVE_SCREEN));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ANIMATION, clientAnimation, UIApis.SCOPED_ANIMATION));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COLLAPSE, clientCollapse, new CapabilityKey(UIApis.COLLAPSE.id())));
+        candidates.add(nativeAnimationExample.candidate());
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.TEXT_READABILITY, textReadability, UIApis.TEXT_READABILITY_POLICY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.HUD, clientHud, UIApis.NATIVE_HUD));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.WINDOWS, clientDock, new CapabilityKey(UIApis.WINDOWS.id())));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.DOCK, clientDock, new CapabilityKey(UIApis.DOCK.id())));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ACTIVITIES, clientActivities.activities(),
+                com.dishanhai.sh_better_ui.kernel.api.live.ActivityService.CAPABILITY));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.NOTIFICATIONS, clientActivities.notifications(),
+                new CapabilityKey(UIApis.NOTIFICATIONS.id())));
+        candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.LIVE_SURFACES, clientActivities.surfaces(),
+                com.dishanhai.sh_better_ui.kernel.api.live.LiveSurfaceService.CAPABILITY));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.ONLINE_MUSIC,
                 new com.dishanhai.sh_better_ui.kernel.internal.music.ClientOnlineMusic()));
         candidates.add(BuiltinService.candidate(PLATFORMS, UIApis.COMPUTER_STATUS,
@@ -90,14 +125,26 @@ public final class ClientUiKernel {
         host = kernel;
         catalog = materialCatalog;
         screens = clientScreens;
+        animation = clientAnimation;
+        collapse = clientCollapse;
+        animationExample = nativeAnimationExample;
         samples = readbacks;
         text = textReadability;
         hud = clientHud;
+        dock = clientDock;
+        dockExample = nativeDockExample;
+        liveActivities = clientActivities;
+        musicActivity = nativeMusic;
+        musicHud = new NativeMusicHud(clientActivities.artwork());
         screens.sync(minecraft);
+        com.dishanhai.sh_better_ui.client.music.ClientMusic.start(config);
     }
 
     @SubscribeEvent
-    public static void frame(RenderFrameEvent.Pre event) { beginExtraction(); }
+    public static void frame(RenderFrameEvent.Pre event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.prepareAll(Util.getMillis());
+        beginExtraction();
+    }
 
     @SubscribeEvent
     public static void frameEnd(RenderFrameEvent.Post event) {
@@ -113,8 +160,32 @@ public final class ClientUiKernel {
     static void beginExtraction() {
         if (host == null || frameOpen || !host.canBeginNativeFrame()) return;
         screens.sync(Minecraft.getInstance());
-        host.beginNativeFrame(() -> {}, phase -> {});
+        if (dock != null) {
+            var client = Minecraft.getInstance();
+            dock.sync(NativePort.screen(client), client.isWindowActive() && !NativePort.hasOverlay(client));
+        }
+        host.beginNativeFrame(() -> {}, phase -> {
+            if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.MEASURE) {
+                musicFrame = com.dishanhai.sh_better_ui.client.music.ClientMusic.frame();
+                if (musicActivity != null) {
+                    if (musicHud != null) {
+                        var client = Minecraft.getInstance(); var window = client.getWindow();
+                        musicHud.prepare(musicActivity, musicFrame, NativeMusicHud.sceneVisible(client),
+                                window.getGuiScaledWidth(), window.getGuiScaledHeight(), client.font.lineHeight);
+                    }
+                    musicActivity.advance();
+                }
+                if (liveActivities != null) liveActivities.advance();
+            } else if (phase == com.dishanhai.sh_better_ui.kernel.api.UIPhase.ANIMATION) {
+                animation.update();
+                collapse.update();
+            }
+        });
         frameOpen = true;
+        // RenderFrame.Pre reaches this even when F1 or a cancelled RenderGuiEvent.Pre suppresses HUD Post.
+        // Upload/release once, before any Screen/HUD extraction can retain the shared cover texture.
+        if (liveActivities != null && musicFrame != null) liveActivities.prepareArtwork(musicFrame,
+                musicHud != null && musicHud.visible(), NativeMusicHud.sceneVisible(Minecraft.getInstance()));
         samples.begin();
         text.beginFrame();
     }
@@ -139,11 +210,14 @@ public final class ClientUiKernel {
         if (frameOpen && event.getScreen() == NativePort.screen(Minecraft.getInstance())) {
             text.finishScreen(event.getScreen());
             text.discardScreen();
+            if (dock != null && Minecraft.getInstance().isWindowActive() && !NativePort.hasOverlay(Minecraft.getInstance()))
+                dock.draw(event.getScreen(), event.getGuiGraphics(), event.getMouseX(), event.getMouseY(), event.getPartialTick());
         }
     }
 
     @SubscribeEvent
     public static void screenClosed(ScreenEvent.Closing event) {
+        if (dock != null) dock.suspend();
         if (screens != null) screens.closing(event.getScreen());
     }
 
@@ -159,6 +233,9 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
+        if (liveActivities != null) liveActivities.invalidateArtwork();
+        if (dock != null) dock.closeAll();
         if (screens != null) screens.logout(event.getConnection());
     }
 
@@ -170,7 +247,72 @@ public final class ClientUiKernel {
             var client = Minecraft.getInstance();
             if (NativePort.screen(client) == null) host.renderNativeFrame(null);
             hud.draw(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false), client.level);
+            if (musicHud != null) musicHud.draw(event.getGuiGraphics());
+            if (liveActivities != null) liveActivities.drawHud(event.getGuiGraphics());
         }
+    }
+
+    public static boolean dockExampleAvailable() { return dockExample != null && dockExample.available(); }
+    public static Screen dockExampleScreen(Screen parent) {
+        if (!dockExampleAvailable()) throw new IllegalStateException("Native dock example is unavailable");
+        return new NativeDockExampleScreen(parent, dockExample);
+    }
+
+    public static boolean musicActivityAvailable() { return musicActivity != null && musicActivity.available(); }
+
+    public static Screen musicSettingsScreen(Screen parent) {
+        if (!musicActivityAvailable()) throw new IllegalStateException("Native music activity is unavailable");
+        return new com.dishanhai.sh_better_ui.client.gui.panel.NativeMusicSettingsScreen(parent, musicActivity);
+    }
+
+    public static boolean activitiesAvailable() { return host != null && liveActivities != null; }
+
+    public static Screen activityScreen(Screen parent) {
+        if (!activitiesAvailable()) throw new IllegalStateException("Native live activities are unavailable");
+        return liveActivities.details(parent);
+    }
+
+    private static boolean dockInput(Screen screen, NativeInput input) {
+        if (dock == null || !Minecraft.getInstance().isWindowActive() || NativePort.hasOverlay(Minecraft.getInstance())) return false;
+        return dock.input(screen, input);
+    }
+
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockPressed(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.PRESS,
+                event.getMouseX(), event.getMouseY(), event.getButton(), 0, 0))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockReleased(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.RELEASE,
+                event.getMouseX(), event.getMouseY(), event.getButton(), 0, 0))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockDragged(ScreenEvent.MouseDragged.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.DRAG,
+                event.getMouseX(), event.getMouseY(), event.getMouseButton(), event.getDragX(), event.getDragY()))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockScrolled(ScreenEvent.MouseScrolled.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.SCROLL,
+                event.getMouseX(), event.getMouseY(), -1, event.getScrollDeltaX(), event.getScrollDeltaY()))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockKeyPressed(ScreenEvent.KeyPressed.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Key(NativeInput.KeyAction.PRESS,
+                event.getKeyCode(), event.getScanCode(), event.getModifiers()))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockKeyReleased(ScreenEvent.KeyReleased.Pre event) {
+        if (dockInput(event.getScreen(), new NativeInput.Key(NativeInput.KeyAction.RELEASE,
+                event.getKeyCode(), event.getScanCode(), event.getModifiers()))) event.setCanceled(true);
+    }
+    @SubscribeEvent(priority = EventPriority.HIGHEST)
+    public static void dockCharacter(ScreenEvent.CharacterTyped.Pre event) {
+        boolean handled = false;
+        for (char unit : Character.toChars(event.getCodePoint()))
+            handled |= dockInput(event.getScreen(), new NativeInput.Character(unit, 0));
+        if (handled) event.setCanceled(true);
     }
 
     public static ScreenStamp screenStamp(ModuleContext module, ScopeHandle scope) {
@@ -188,14 +330,28 @@ public final class ClientUiKernel {
     public static void reload(AddClientReloadListenersEvent event) {
         event.addListener(Identifier.fromNamespaceAndPath(ShBetterUi.MOD_ID, "material_catalog"),
                 (ResourceManagerReloadListener) resources -> {
+                    com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.resourcesReloaded();
+                    if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();
+                    if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
+                    if (liveActivities != null) liveActivities.invalidateArtwork();
+                    if (liveActivities != null) liveActivities.settings(LiveSurfaceConfig.load(
+                            Minecraft.getInstance().gameDirectory.toPath().resolve("config")));
                 });
     }
 
     @SubscribeEvent
     public static void stop(ClientStoppingEvent event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.closeAll();
         var kernel = host;
+        if (liveActivities != null) liveActivities.close();
+        liveActivities = null;
+        musicActivity = null;
+        musicHud = null; musicFrame = null;
+        if (dock != null) dock.closeAll();
+        dock = null;
+        dockExample = null;
         host = null;
         if (frameOpen && kernel != null) kernel.finishNativeFrame();
         frameOpen = false;
@@ -205,7 +361,17 @@ public final class ClientUiKernel {
         text = null;
         hud = null;
         catalog = null;
-        if (kernel != null) kernel.close();
+        animation = null;
+        collapse = null;
+        animationExample = null;
+        try { if (kernel != null) kernel.close(); }
+        finally { com.dishanhai.sh_better_ui.client.music.ClientMusic.close(); }
+    }
+
+    public static boolean animationExampleAvailable() { return animationExample != null && animationExample.available(); }
+    public static Screen animationExampleScreen(Screen parent) {
+        if (!animationExampleAvailable()) throw new IllegalStateException("Native animation example is unavailable");
+        return new NativeAnimationExampleScreen(parent, animationExample);
     }
 
     private static List<NativeModuleSources.Source> modSources() {

@@ -1,0 +1,213 @@
+/* Author: dishanhai. Original SHBUI styles;
+   see docs/liquid-glass-web-kit.md. */
+.lg-kit {
+  --lg-ink:#172337;
+  --lg-muted:#46556c;
+  --lg-tint:rgba(255,255,255,.58);
+  --lg-edge:rgba(255,255,255,.82);
+  --lg-accent:#245fcb;
+  --lg-solid:#f5f7fc;
+  color:var(--lg-ink);
+  font:16px/1.5 system-ui,sans-serif;
+  color-scheme:light
+}
+
+.lg-kit[data-theme=dark] {
+  --lg-ink:#f4f7ff;
+  --lg-muted:#bdc9df;
+  --lg-tint:rgba(21,31,51,.7);
+  --lg-edge:rgba(255,255,255,.26);
+  --lg-accent:#91b8ff;
+  --lg-solid:#1b2841;
+  color-scheme:dark
+}
+
+.lg-surface {
+  background:var(--lg-tint);
+  border:1px solid var(--lg-edge);
+  border-radius:24px;
+  box-shadow:inset 0 1px 0 #ffffff55,0 12px 36px #1f30521f;
+  backdrop-filter:blur(18px) saturate(1.35);
+  -webkit-backdrop-filter:blur(18px) saturate(1.35)
+}
+
+.lg-kit button,.lg-kit input,.lg-kit select {
+  font:inherit;
+  color:inherit
+}
+.lg-kit button {
+  cursor:pointer
+}
+.lg-button,.lg-segment {
+  border:1px solid var(--lg-edge);
+  background:var(--lg-tint);
+  border-radius:999px;
+  padding:10px 20px;
+  min-height:44px;
+  box-shadow:inset 0 1px 0 #ffffff55;
+  transition:background .16s,transform .16s
+}
+.lg-button:hover,.lg-segment:hover {
+  background:var(--lg-solid)
+}
+.lg-button:active {
+  transform:scale(.97)
+}
+.lg-button:disabled {
+  opacity:.5;
+  cursor:not-allowed;
+  transform:none
+}
+.lg-button[data-primary] {
+  background:var(--lg-accent);
+  color:var(--lg-solid);
+  border-color:transparent
+}
+.lg-kit :focus-visible {
+  outline:3px solid var(--lg-accent);
+  outline-offset:3px
+}
+.lg-field {
+  display:grid;
+  gap:8px
+}
+.lg-input,.lg-kit select {
+  border:1px solid var(--lg-muted);
+  border-radius:12px;
+  background:var(--lg-tint);
+  padding:10px 12px;
+  width:100%;
+  box-sizing:border-box;
+  min-height:44px
+}
+.lg-switch {
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:24px;
+  cursor:pointer
+}
+.lg-switch input {
+  appearance:none;
+  flex:none;
+  width:52px;
+  height:30px;
+  border-radius:99px;
+  border:1px solid var(--lg-muted);
+  background:var(--lg-muted);
+  position:relative;
+  cursor:pointer;
+  transition:background .2s
+}
+.lg-switch input:before {
+  content:'';
+  position:absolute;
+  top:3px;
+  left:3px;
+  width:22px;
+  height:22px;
+  border-radius:50%;
+  background:#fff;
+  box-shadow:0 1px 5px #0003;
+  transition:transform .2s
+}
+.lg-switch input:checked {
+  background:var(--lg-accent);
+  border-color:var(--lg-accent)
+}
+.lg-switch input:checked:before {
+  transform:translateX(22px)
+}
+.lg-kit input[type=range] {
+  width:100%;
+  accent-color:var(--lg-accent);
+  min-height:32px
+}
+.lg-tabs {
+  display:flex;
+  gap:4px;
+  padding:5px;
+  border-radius:99px;
+  flex-wrap:wrap
+}
+.lg-segment {
+  flex:1;
+  border:0;
+  box-shadow:none;
+  background:transparent
+}
+.lg-segment[aria-selected=true] {
+  background:var(--lg-solid);
+  box-shadow:0 3px 10px #18305122
+}
+.lg-kit [hidden] {
+  display:none!important
+}
+.lg-kit dialog {
+  color:var(--lg-ink);
+  max-width:min(440px,calc(100vw - 48px));
+  padding:28px;
+  background:var(--lg-solid)
+}
+.lg-kit dialog::backdrop {
+  background:#111b354d;
+  backdrop-filter:blur(5px)
+}
+.lg-toolbar {
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+  align-items:center
+}
+.lg-status {
+  color:var(--lg-muted);
+  min-height:1.5em
+}
+.lg-kit[data-transparency=off] .lg-surface,.lg-kit[data-transparency=off] .lg-button {
+  background:var(--lg-solid);
+  backdrop-filter:none
+}
+.lg-kit[data-motion=off] * {
+  transition:none!important;
+  animation:none!important
+}
+.lg-kit[data-contrast=high] {
+  --lg-ink:#000;
+  --lg-muted:#222;
+  --lg-tint:#fff;
+  --lg-edge:#000;
+  --lg-accent:#003c9e;
+  --lg-solid:#fff
+}
+.lg-kit[data-contrast=high] .lg-surface {
+  box-shadow:none;
+  backdrop-filter:none
+}
+
+@media(prefers-reduced-motion:reduce) {
+  .lg-kit * {
+  transition:none!important;
+  animation:none!important
+}
+
+}
+@media(prefers-reduced-transparency:reduce) {
+  .lg-kit .lg-surface {
+  background:var(--lg-solid);
+  backdrop-filter:none
+}
+
+}
+@media(forced-colors:active) {
+  .lg-surface,.lg-button,.lg-segment {
+  border:1px solid ButtonText;
+  box-shadow:none
+}
+.lg-switch input {
+  appearance:auto
+}
+.lg-switch input:before {
+  display:none
+}
+
+}
