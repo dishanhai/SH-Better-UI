@@ -2214,6 +2214,8 @@
   "sh_better_ui.automation.planning_edit_blocked": "A request is still being planned. Pause it before editing.",
   "sh_better_ui.automation.default_replacement": "Default UUK: %s",
   "sh_better_ui.automation.preference_failed": "Cannot save terminal UI preferences. Check the config directory.",
+  "sh_better_ui.settings_detail.small": "Enlarge the window to edit settings.",
+  "sh_better_ui.settings_detail.parent_draft_hint": "Apply updates this panel draft only. Save from the main panel to persist.",
   "sh_better_ui.settings_detail.discard_title": "Discard group changes?",
   "sh_better_ui.settings_detail.discard_details": "Only unapplied changes in this secondary page will be discarded. Other groups are kept.",
   "sh_better_ui.settings_detail.discard": "Discard changes",

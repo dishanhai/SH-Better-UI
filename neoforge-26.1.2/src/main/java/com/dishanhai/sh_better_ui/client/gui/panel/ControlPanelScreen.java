@@ -394,27 +394,37 @@ public final class ControlPanelScreen extends Screen {
     }
 
     private void openGlassParameters() {
-        var fields = List.of(
-                glassField("radius", ControlPanelSettings::glassBlur, (s, value) ->
-                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), value, s.glassRefraction(), s.glassRim())),
-                glassField("refraction", ControlPanelSettings::glassRefraction, (s, value) ->
-                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), s.glassBlur(), value, s.glassRim())),
-                glassField("rim", ControlPanelSettings::glassRim, (s, value) ->
-                        s.withGlass(s.backgroundBlur(), s.glassEnabled(), s.glassBlur(), s.glassRefraction(), value)));
-        var page = new ConfigPage<>(label("glass_parameters"), label("glass_parameters.tooltip"), fields, List.of());
-        ControlPanelPlatform.show(minecraft, page.screen(this, draft, value -> {
-            draft = value;
-            beforeReset = null;
-            status = null;
-            return true;
-        }, () -> glassParameters));
+        ControlPanelPlatform.show(minecraft,glassParametersScreen());
     }
 
-    private static ConfigPage.NumberOption<ControlPanelSettings> glassField(String key,
-            ToIntFunction<ControlPanelSettings> read, BiFunction<ControlPanelSettings, Integer, ControlPanelSettings> edit) {
-        return new ConfigPage.NumberOption<>(key, label(key), label(key + ".tooltip"), 0,
-                ControlPanelSettings.MAX_GLASS_SCALE, true, read::applyAsInt,
-                (settings, value) -> edit.apply(settings, (int) value));
+    com.dishanhai.sh_better_ui.client.api.UiScreen glassParametersScreen() {
+        var screen=glassParametersPage().builder().parent(this).build();screen.returnFocus(()->glassParameters);return screen;
+    }
+    com.dishanhai.sh_better_ui.client.api.UiSettingsDetailPage glassParametersPage() {
+        int[] initial={draft.glassBlur(),draft.glassRefraction(),draft.glassRim()};
+        int[] values=initial.clone();int[][] resetSnapshot={null};
+        var fields=new java.util.ArrayList<com.dishanhai.sh_better_ui.client.api.UiSettingsDetailPage.Field>();
+        String[] keys={"radius","refraction","rim"};
+        for(int i=0;i<keys.length;i++){
+            int index=i;String key=keys[i];
+            fields.add(new com.dishanhai.sh_better_ui.client.api.UiSettingsDetailPage.Field(label(key),(bounds,context)->{
+                    var slider=new UiSlider(bounds,0,ControlPanelSettings.MAX_GLASS_SCALE,1,values[index],context.preferences(),
+                            value->label(key).copy().append(": "+value),value->{values[index]=value;resetSnapshot[0]=null;});
+                    slider.setOnCommit(value->{},value->values[index]=value);return slider;
+                }));
+        }
+        var actions=new com.dishanhai.sh_better_ui.client.api.UiSettingsDetailPage.Actions(
+                ()->label(resetSnapshot[0]==null?"reset":"reset.undo"),Component.translatable("gui.cancel"),label("apply"),
+                ()->{
+                    if(resetSnapshot[0]!=null){System.arraycopy(resetSnapshot[0],0,values,0,3);resetSnapshot[0]=null;}
+                    else{resetSnapshot[0]=values.clone();var defaults=ControlPanelSettings.DEFAULT;values[0]=defaults.glassBlur();values[1]=defaults.glassRefraction();values[2]=defaults.glassRim();}
+                },
+                ()->System.arraycopy(initial,0,values,0,3),
+                ()->{draft=draft.withGlass(draft.backgroundBlur(),draft.glassEnabled(),values[0],values[1],values[2]);beforeReset=null;status=null;return null;},
+                ()->!java.util.Arrays.equals(initial,values));
+        return ShBetterUiApi.controls().settingsDetailPage(label("glass_parameters"),List.of(
+                new com.dishanhai.sh_better_ui.client.api.UiSettingsDetailPage.Section(label("glass_parameters"),fields)),actions)
+                .footerHint(Component.translatable("sh_better_ui.settings_detail.parent_draft_hint"));
     }
 
     private UiButton button(int x, int y, int width, Component text, Runnable action, boolean primary) {

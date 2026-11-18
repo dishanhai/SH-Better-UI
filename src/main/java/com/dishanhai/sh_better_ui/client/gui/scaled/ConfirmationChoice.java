@@ -8,14 +8,17 @@ final class ConfirmationChoice<S> {
     private final S parent;
     private final Supplier<S> current;
     private final Consumer<S> show;
-    private final Runnable restore, confirm;
+    private final Runnable restore, confirm, abandoned;
     private S modal;
     private boolean finished;
     ConfirmationChoice(S parent, Supplier<S> current, Consumer<S> show, Runnable restore, Runnable confirm) {
-        this.parent=parent; this.current=current; this.show=show; this.restore=restore; this.confirm=confirm;
+        this(parent,current,show,restore,confirm,()->{});
+    }
+    ConfirmationChoice(S parent, Supplier<S> current, Consumer<S> show, Runnable restore, Runnable confirm, Runnable abandoned) {
+        this.parent=parent; this.current=current; this.show=show; this.restore=restore; this.confirm=confirm;this.abandoned=abandoned;
     }
     void attach(S modal) { this.modal=modal; }
-    void abandon() { finished=true; }
+    void abandon() { if(!finished){finished=true;abandoned.run();} }
     void finish(boolean accepted) {
         if (finished || modal == null || current.get() != modal) return;
         finished=true;

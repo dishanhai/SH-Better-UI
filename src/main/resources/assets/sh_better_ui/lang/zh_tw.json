@@ -1915,5 +1915,11 @@
   "sh_better_ui.online_music.queue.append_current": "將目前歌曲附加至佇列",
   "sh_better_ui.online_music.queue.append_track": "將 %s 附加至佇列",
   "sh_better_ui.online_music.queue.move_up": "上移 %s",
-  "sh_better_ui.online_music.queue.move_down": "下移 %s"
+  "sh_better_ui.online_music.queue.move_down": "下移 %s",
+  "sh_better_ui.settings_detail.small": "請放大視窗以編輯設定。",
+  "sh_better_ui.settings_detail.parent_draft_hint": "套用僅更新主面板草稿；請在主面板套用後儲存。",
+  "sh_better_ui.settings_detail.discard_title": "放棄此組變更？",
+  "sh_better_ui.settings_detail.discard_details": "僅放棄此二級頁面尚未套用的變更，保留其他組。",
+  "sh_better_ui.settings_detail.discard": "放棄變更",
+  "sh_better_ui.settings_detail.keep_editing": "繼續編輯"
 }
