@@ -11,12 +11,16 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 final class NativeDockWindowsTest {
+    static final class TestScreen extends Screen {
+        TestScreen() { super(Component.empty()); }
+        void addParentControl(net.minecraft.client.gui.components.Button button) { addWidget(button); }
+    }
     static final class Fixture implements AutoCloseable {
         final NativeTestClient client = NativeTestClient.install();
         final KernelHost host = new KernelHost(ModuleDescriptor.Platform.NEOFORGE_26_1_2,new EnginePublication());
         final ClientScreens screens = new ClientScreens(host,ModuleDescriptor.Platform.NEOFORGE_26_1_2);
         final ClientDockWindows dock = new ClientDockWindows(host,screens);
-        final Screen screen = new Screen(Component.empty()) {};
+        final TestScreen screen = new TestScreen();
         ModuleContext module; ScopeHandle tree;
         Fixture() throws Exception {
             this(Set.of(UIPermission.REGISTER_RENDER_PASS,UIPermission.CAPTURE_INPUT,UIPermission.BLOCK_VANILLA_INPUT));
@@ -204,6 +208,44 @@ final class NativeDockWindowsTest {
             f.dock.input(f.screen,pointer(NativeInput.PointerAction.DRAG,150,150));
             f.dock.input(f.screen,pointer(NativeInput.PointerAction.RELEASE,150,150));
             assertEquals(1,events.size(),"Collapsed content must never receive the captured gesture");
+        }
+    }
+
+    @Test void shortcutCollapseRestoresParentFocusAndStopsHiddenCharacterInput() throws Exception {
+        try (var f = new Fixture()) {
+            var events = new ArrayList<NativeInput>();
+            var focuses = new ArrayList<Boolean>();
+            var parentControl = net.minecraft.client.gui.components.Button.builder(Component.literal("Parent"), button -> {}).build();
+            f.screen.addParentControl(parentControl);
+            f.screen.setFocused(parentControl);
+            var content = new WindowContent() {
+                @Override public void render(RenderService.Context draw, View view) {}
+                @Override public Response input(NativeInput input, View view) { events.add(input); return Response.FOCUS; }
+                @Override public void focusChanged(boolean focus) { focuses.add(focus); }
+            };
+            var window = f.dock.createMiniWindow(f.module, f.tree, MiniWindowSpec.builder("example:shortcut")
+                    .autoHide(false).shortcut(75, 2)
+                    .animation(new CollapseSpec(CollapseSpec.Direction.HORIZONTAL, CollapseSpec.Curve.LINEAR, 0, 0, false, false))
+                    .content(() -> content).build());
+            var shortcut = new NativeInput.Key(NativeInput.KeyAction.PRESS, 75, 0, 2);
+            f.prepare();
+            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertNull(f.screen.getFocused());
+            assertEquals(List.of(true), focuses);
+            assertTrue(f.dock.input(f.screen, new NativeInput.Character('a', 0)));
+            assertEquals(1, events.size());
+
+            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertSame(parentControl, f.screen.getFocused());
+            assertEquals(List.of(true, false), focuses, "A collapse shortcut must not refocus hidden content");
+            assertFalse(window.snapshot().orElseThrow().focused());
+            assertFalse(f.dock.input(f.screen, new NativeInput.Character('b', 0)));
+            assertEquals(1, events.size(), "Hidden content must not receive characters");
+
+            assertTrue(f.dock.input(f.screen, shortcut)); f.prepare();
+            assertEquals(List.of(true, false, true), focuses);
+            assertTrue(f.dock.input(f.screen, new NativeInput.Character('c', 0)));
+            assertEquals(2, events.size(), "Reopening restores normal content input");
         }
     }
 

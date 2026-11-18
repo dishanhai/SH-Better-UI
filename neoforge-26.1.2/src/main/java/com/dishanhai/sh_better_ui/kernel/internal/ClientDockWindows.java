@@ -138,7 +138,9 @@ final class ClientDockWindows implements WindowService, DockService {
                     for (var window : windows.values()) if (window.owner == screen && window.spec.shortcut() == key.key()
                             && window.spec.shortcutModifiers() == (key.modifiers() & 15)
                             && (key.modifiers() != 0 || screen.getFocused() == null)) {
-                        window.toggle(); focus(window); return true;
+                        window.toggle();
+                        if (window.expanded) focus(window);
+                        return true;
                     }
                     if (key.key() == GLFW.GLFW_KEY_TAB && focused != null) {
                         var choices = windows.values().stream().filter(w -> w.owner == screen && w.isOpen()).toList();
