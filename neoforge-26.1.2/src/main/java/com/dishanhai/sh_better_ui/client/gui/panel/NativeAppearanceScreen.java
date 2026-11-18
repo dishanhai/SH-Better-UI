@@ -125,9 +125,10 @@ public final class NativeAppearanceScreen extends Screen {
             if(NativePort.screen(minecraft)==dialog[0])NativePort.show(minecraft,discard?parent:this);
         },label("discard_title"),label("discard_body"),label("discard"),label("keep_editing"));NativePort.show(minecraft,dialog[0]);
     }
-    private static final class Preview extends Screen {
+    static final class Preview extends Screen {
         private final Screen parent;private final ThemeSettings theme;
         private com.dishanhai.sh_better_ui.theme.ThemeManager manager;
+        private com.dishanhai.sh_better_ui.theme.ThemeScope scope;
         private final java.util.List<UiButton> samples=new java.util.ArrayList<>();
         private boolean selected=true;
         Preview(Screen parent,ThemeSettings theme){super(label("preview"));this.parent=parent;this.theme=theme;}
@@ -137,7 +138,8 @@ public final class NativeAppearanceScreen extends Screen {
             manager.preferences(manager.preferences().withFixedTheme(manager.registry().find(id).isPresent()?id:(theme.light()?com.dishanhai.sh_better_ui.theme.BuiltinThemes.LIGHT_ID:com.dishanhai.sh_better_ui.theme.BuiltinThemes.DARK))
                     .withReducedMotion(true).withHighContrast(UiPreferences.configured().highContrast()));
             var palette=UiTheme.resolve(theme);
-            manager.global().configure(builder->builder
+            scope=manager.global().child("display-suite-preview");
+            scope.configure(builder->builder
                     .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.PRIMARY,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.accent()))
                     .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.ON_PRIMARY,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.readable(0xffffffff,palette.accent(),palette.background()|0xff000000,4.5)))
                     .override(com.dishanhai.sh_better_ui.theme.token.ThemeTokens.BORDER,com.dishanhai.sh_better_ui.theme.token.ColorValue.argb(palette.border()))
@@ -151,7 +153,7 @@ public final class NativeAppearanceScreen extends Screen {
             for(int i=0;i<4;i++){
                 int sample=i;
                 var button=new UiButton(0,0,w,22,label("sample."+i),b->{if(sample==2){selected=!selected;((UiButton)b).setSelected(selected);}},UiPreferences.configured(),i==1);
-                button.bindTheme(manager.global());
+                button.bindTheme(scope);
                 if(i==2)button.setSelected(selected);
                 if(i==3)button.active=false;
                 samples.add(content.addChild(button));
@@ -160,7 +162,7 @@ public final class NativeAppearanceScreen extends Screen {
             layout.setPosition((width-layout.getWidth())/2,30);layout.visitWidgets(this::addRenderableWidget);
             addRenderableWidget(Button.builder(label("back"),b->onClose()).bounds(Math.max(0,(width-100)/2),Math.max(0,height-26),Math.min(100,width),20).build());
         }
-        private void release(){for(var sample:samples)sample.unbindTheme();samples.clear();if(manager!=null){manager.close();manager=null;}}
+        private void release(){for(var sample:samples)sample.unbindTheme();samples.clear();if(scope!=null){scope.close();scope=null;}if(manager!=null){manager.close();manager=null;}}
         @Override public void removed(){release();}
         @Override public void extractBackground(GuiGraphicsExtractor graphics,int x,int y,float tick){
             if(minecraft.level==null)extractPanorama(graphics,tick);

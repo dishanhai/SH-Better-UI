@@ -19,6 +19,7 @@ final class DisplaySuitePreviewScreen extends Screen {
     private final ClientUiSettings settings;
     private final List<UiButton> buttons=new ArrayList<>();
     private ThemeManager manager;
+    private ThemeScope scope;
     private UiTheme palette;
     private int value=45, activations;
     private boolean selected=true;
@@ -48,19 +49,9 @@ final class DisplaySuitePreviewScreen extends Screen {
         if(id==null || manager.registry().find(id).isEmpty())id=settings.theme().light()?BuiltinThemes.LIGHT_ID:BuiltinThemes.DARK;
         manager.preferences(manager.preferences().withFixedTheme(id).withReducedMotion(true).withHighContrast(prefs.highContrast()));
         var resolved=UiTheme.resolve(settings.theme());
-        manager.global().configure(b->{
-            b.override(BACKGROUND,ColorValue.argb(resolved.background()));
-            b.override(SURFACE,ColorValue.argb(resolved.surface()));
-            b.override(BORDER,ColorValue.argb(resolved.border()));
-            b.override(TEXT,ColorValue.argb(resolved.text()));
-            b.override(ACCENT,ColorValue.argb(resolved.accent()));
-            b.override(PRIMARY,ColorValue.argb(resolved.accent()));
-            b.override(ON_PRIMARY,ColorValue.argb(com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.readable(
-                    manager.snapshot().resolve(ON_PRIMARY).argb(),resolved.accent()|0xff000000,
-                    resolved.background()|0xff000000,prefs.highContrast()?7:4.5)));
-        });
+        scope=createPreviewScope(manager,resolved,prefs);
         manager.preferences(manager.preferences().withReducedMotion(prefs.reducedMotion()));
-        palette=UiTheme.fromScope(manager.global());
+        palette=UiTheme.fromScope(scope);
         contentWidth=Math.max(1,Math.min(280,width-24));left=Math.max(0,(width-contentWidth)/2);top=40;
         pages=SamplePages.at(width,height);page=pages.clamp(page);
         for(int i=page*pages.capacity();i<Math.min(5,(page+1)*pages.capacity());i++) {
@@ -90,6 +81,22 @@ final class DisplaySuitePreviewScreen extends Screen {
         var restored=controls.get(focus);
         setInitialFocus(restored!=null&&restored.active?restored:back);
     }
+    /** Used by initialization and the headless scope-isolation regression test. */
+    static ThemeScope createPreviewScope(ThemeManager manager,UiTheme resolved,UiPreferences prefs) {
+        var previewScope=manager.global().child("display-suite-preview");
+        previewScope.configure(b->{
+            b.override(BACKGROUND,ColorValue.argb(resolved.background()));
+            b.override(SURFACE,ColorValue.argb(resolved.surface()));
+            b.override(BORDER,ColorValue.argb(resolved.border()));
+            b.override(TEXT,ColorValue.argb(resolved.text()));
+            b.override(ACCENT,ColorValue.argb(resolved.accent()));
+            b.override(PRIMARY,ColorValue.argb(resolved.accent()));
+            b.override(ON_PRIMARY,ColorValue.argb(com.dishanhai.sh_better_ui.theme.accessibility.ContrastPolicy.readable(
+                    manager.snapshot().resolve(ON_PRIMARY).argb(),resolved.accent()|0xff000000,
+                    resolved.background()|0xff000000,prefs.highContrast()?7:4.5)));
+        });
+        return previewScope;
+    }
     private void changePage(int delta) {
         page=pages.clamp(page+delta);rebuildWidgets();
         var focus=controls.get(delta>0?"next":"previous");
@@ -98,11 +105,11 @@ final class DisplaySuitePreviewScreen extends Screen {
     }
     private UiButton navigation(String id,int x,int y,int w,Component label,Runnable action) {
         var button=new UiButton(x,y,w,20,label,b->action.run(),UiPreferences.fromSettings(settings),false);
-        button.bindTheme(manager.global());buttons.add(button);controls.put(id,button);return addRenderableWidget(button);
+        button.bindTheme(scope);buttons.add(button);controls.put(id,button);return addRenderableWidget(button);
     }
     private UiButton sample(int y,String label,boolean primary,Runnable action) {
         var b=new UiButton(left,y,contentWidth,22,text(label),ignored->action.run(),UiPreferences.fromSettings(settings),primary);
-        b.bindTheme(manager.global());buttons.add(b);controls.put(label,b);return addRenderableWidget(b);
+        b.bindTheme(scope);buttons.add(b);controls.put(label,b);return addRenderableWidget(b);
     }
     public void renderBackground(GuiGraphics g,int x,int y,float tick) {}
     @Override public void render(GuiGraphics g,int x,int y,float tick) {
@@ -112,7 +119,7 @@ final class DisplaySuitePreviewScreen extends Screen {
         g.drawCenteredString(font,font.plainSubstrByWidth(hint.getString(),Math.max(1,width-12)),width/2,24,palette.text());
         UiTheme.preview(palette,()->super.render(g,x,y,tick));
     }
-    private void release(){buttons.forEach(UiButton::unbindTheme);buttons.clear();if(manager!=null){manager.close();manager=null;}}
+    private void release(){buttons.forEach(UiButton::unbindTheme);buttons.clear();if(scope!=null){scope.close();scope=null;}if(manager!=null){manager.close();manager=null;}}
     @Override public void removed(){release();}
     @Override public void onClose(){minecraft.setScreen(parent);}
     @Override public boolean isPauseScreen(){return false;}

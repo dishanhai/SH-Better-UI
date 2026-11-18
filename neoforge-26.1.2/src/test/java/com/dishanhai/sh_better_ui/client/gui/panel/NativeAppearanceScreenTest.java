@@ -168,6 +168,25 @@ class NativeAppearanceScreenTest {
             assertTrue(field(screen,"status").toString().contains("palette_capacity"));
         }
     }
+    @Test void realPreviewInitializationMountsControlsAndOwnsOnlyChildScope() throws Exception {
+        ControlPanelSettings.load(directory);
+        var saved=ControlPanelSettings.current();
+        try(var client=NativeTestClient.install()) {
+            for(String id:com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS) {
+                var preview=new NativeAppearanceScreen.Preview(null,saved.theme().withRegisteredTheme(id));
+                client.client().screen=preview;preview.width=300;preview.height=200;
+                assertDoesNotThrow(()->{preview.init();});
+                var samples=(java.util.List<?>)field(preview,"samples");assertEquals(4,samples.size());
+                assertTrue(preview.children().stream().anyMatch(Button.class::isInstance));
+                var scope=(com.dishanhai.sh_better_ui.theme.ThemeScope)field(preview,"scope");
+                assertNotNull(scope.parent());
+                var selected=(com.dishanhai.sh_better_ui.client.gui.scaled.UiButton)samples.get(2);
+                selected.onPress(new KeyEvent(257,0,0));assertFalse(selected.isSelected());
+                assertEquals(saved,ControlPanelSettings.current());
+                preview.removed();assertNull(field(preview,"scope"));assertNull(field(preview,"manager"));
+            }
+        }
+    }
     private static void press(Object screen,String key)throws Exception{((Button)controls(screen).get(key)).onPress(new KeyEvent(257,0,0));}
     @SuppressWarnings("unchecked") private static Map<String,AbstractWidget> controls(Object screen)throws Exception{return (Map<String,AbstractWidget>)field(screen,"controls");}
     private static Object field(Object target,String name)throws Exception{var f=target.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(target);}
