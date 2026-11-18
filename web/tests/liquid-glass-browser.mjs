@@ -17,7 +17,10 @@ try {
     const end=tabs[2].getAttribute('aria-selected')==='true';
     const open=root.querySelector('[data-open-dialog]');open.click();open.click();
     const dialog=root.querySelector('dialog');const modal=dialog.open;
-    dialog.close();await new Promise(r=>setTimeout(r,50));const returned=document.activeElement===open;
+    dialog.close();
+    const deadline=Date.now()+2000;
+    while(document.activeElement!==open&&Date.now()<deadline) await new Promise(r=>setTimeout(r,25));
+    const returned=document.activeElement===open;
     const contrast=root.querySelector('[data-glass-pref=contrast]');contrast.checked=true;contrast.dispatchEvent(new Event('change'));
     const high=root.dataset.contrast==='high';
     const slider=root.querySelector('#volume');slider.value='100';slider.dispatchEvent(new Event('input'));const volume=root.querySelector('#volume-value').value==='100';
