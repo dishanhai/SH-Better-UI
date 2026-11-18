@@ -9,7 +9,7 @@ import net.minecraft.network.chat.Component;
 /** Native passive documents, with resource-pack PNG images and resource-pack fonts. */
 public final class RichDocumentsApi {
     RichDocumentsApi() {}
-    /** Creates but does not open a viewer. Caller retains ownership of document assets. */
+    /** Creates but does not open a viewer. Caller retains ownership of document assets; the screen owns decoded PNG/GIF/APNG media until closed. */
     public Screen screen(Screen parent, Component title, RichDocument document) {
         return new NativeRichDocumentScreen(parent, title, document);
     }

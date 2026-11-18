@@ -122,7 +122,10 @@ public final class ClientUiKernel {
     }
 
     @SubscribeEvent
-    public static void frame(RenderFrameEvent.Pre event) { beginExtraction(); }
+    public static void frame(RenderFrameEvent.Pre event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.prepareAll(Util.getMillis());
+        beginExtraction();
+    }
 
     @SubscribeEvent
     public static void frameEnd(RenderFrameEvent.Post event) {
@@ -284,6 +287,7 @@ public final class ClientUiKernel {
     public static void reload(AddClientReloadListenersEvent event) {
         event.addListener(Identifier.fromNamespaceAndPath(ShBetterUi.MOD_ID, "material_catalog"),
                 (ResourceManagerReloadListener) resources -> {
+                    com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.resourcesReloaded();
                     if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();
@@ -294,6 +298,7 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void stop(ClientStoppingEvent event) {
+        com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.closeAll();
         var kernel = host;
         if (liveActivities != null) liveActivities.close();
         liveActivities = null;

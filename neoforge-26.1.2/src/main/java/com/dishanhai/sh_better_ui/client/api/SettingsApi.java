@@ -65,7 +65,17 @@ public final class SettingsApi {
                 new com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode(
                         com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "image"),
                         com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:textures/gui/rich/material-shop.png"),
-                        64, 64, "Material icon")));
+                        64, 64, "Material icon"),
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.ParagraphBreak(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "break"), 12),
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.LocalizedText(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "media_label"),
+                        "sh_better_ui.native.rich_document.media_example", "Local resource-pack animation: ", java.util.List.of(),
+                        com.dishanhai.sh_better_ui.kernel.api.richtext.RichStyle.EMPTY),
+                new com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode(
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse(prefix + "animation"),
+                        com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:textures/gui/rich/native-motion.gif"),
+                        128, 32, "Moving colored square")));
         return richDocumentScreen(parent, net.minecraft.network.chat.Component.translatable("sh_better_ui.native.rich_document.title"), document);
     }
 

@@ -1776,6 +1776,7 @@
   "sh_better_ui.live.dismiss": "隱藏活動",
   "sh_better_ui.live.open_details": "開啟即時活動",
   "sh_better_ui.native.rich_document.refresh": "重新整理文件",
+  "sh_better_ui.native.rich_document.media_example": "資源包動畫（減少動態效果時顯示首幀）：",
   "sh_better_ui.native.rich_document.copy": "複製文字",
   "sh_better_ui.native.rich_document.title": "結構化文件",
   "sh_better_ui.native.rich_document.example_text": "資源圖片與樣式文字：",
