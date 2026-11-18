@@ -165,8 +165,10 @@ def sharedSources = [
         'client/gui/text/UiRichText.java',
         'client/gui/text/UiRichIconRenderers.java',
         'client/gui/text/TextGlyphEffects.java',
+        'client/gui/text/TextEffectClusters.java',
         'client/gui/text/TextPalettes.java',
         'client/gui/text/UiShortcutKeycaps.java',
+        'client/lyrics/common/style/ColorMath.java',
         'client/lyrics/core/lyric/LocalLyricFiles.java',
         'client/lyrics/core/lyric/LrcParser.java',
         'client/lyrics/core/lyric/LyricLine.java',
@@ -224,6 +226,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/NativeConfirmationInputTest.java")
         include("${packagePath}/client/gui/search/SearchIndexTest.java")
         include("${packagePath}/client/gui/text/UiRichTextTest.java")
+        include("${packagePath}/client/gui/text/NativeFormattedTextTest.java")
         include("${packagePath}/client/gui/scaled/ButtonFeedbackTest.java")
         include("${packagePath}/client/gui/scaled/InterruptibleAnimationTest.java")
         include("${packagePath}/client/gui/scaled/UiKeyframeAnimationTest.java")

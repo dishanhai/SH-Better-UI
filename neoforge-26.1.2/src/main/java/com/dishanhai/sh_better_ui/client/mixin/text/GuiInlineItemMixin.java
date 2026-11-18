@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.mixin.text;
 
 import com.dishanhai.sh_better_ui.client.gui.text.InlineItemPlatform;
 import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
+import com.dishanhai.sh_better_ui.client.gui.text.UiFormattedText;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.util.FormattedCharSequence;
@@ -22,6 +23,8 @@ abstract class GuiInlineItemMixin {
         if (prepared != text) {
             graphics.text(font, prepared, x, y, color, shadow);
             result.cancel();
+        } else if (UiFormattedText.drawNative(graphics, font, prepared, x, y, color, shadow)) {
+            result.cancel();
         } else {
             InlineItemPlatform.draw(graphics, font, prepared, x, y);
         }
@@ -31,8 +34,10 @@ abstract class GuiInlineItemMixin {
             at = @At("HEAD"), cancellable = true)
     private void shbui$inlineString(Font font, String text, int x, int y, int color, boolean shadow,
                                     CallbackInfo result) {
-        if (text == null || !text.contains("<rich:")) return;
-        var prepared = UiRichText.parse(text);
+        if (text == null) return;
+        var legacy = UiFormattedText.parseLegacy(text);
+        if (legacy == null && !text.contains("<rich:")) return;
+        var prepared = legacy == null ? UiRichText.parse(text) : UiRichText.prepare(legacy);
         ((GuiGraphicsExtractor) (Object) this).text(font, prepared.getVisualOrderText(), x, y, color, shadow);
         result.cancel();
     }

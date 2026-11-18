@@ -39,7 +39,7 @@ public final class UiTextEffects {
         }
     }
 
-    /** 字符索引与长度均按当前效果段的 Unicode 码点计数。 */
+    /** 字符索引与长度均按当前效果段的视觉字形簇计数；组合字共享索引。 */
     public record GlyphContext(int rgb, int index, int length, int codePoint, long timeMillis,
                                boolean reducedMotion) {}
 
