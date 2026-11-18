@@ -180,6 +180,9 @@ def sharedSources = [
         'kernel/api/text/TextReadabilityPalette.java',
         'kernel/internal/BuiltinService.java',
         'kernel/internal/ClientDeveloperPreviews.java',
+        'client/visual/RichMediaDecoder.java',
+        'client/visual/RichMediaPng.java',
+        'client/visual/RichMediaJobs.java',
         'kernel/internal/ClientMaterialCatalog.java',
         'kernel/internal/MaterialPresetCodec.java',
         'kernel/internal/NativeModuleSources.java',
@@ -253,6 +256,10 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/NativeMusicHudTest.java")
         include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
         include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
+        include("${packagePath}/client/visual/NativeRichMedia*.java")
+        include("${packagePath}/client/visual/RichMediaDecoderTest.java")
+        include("${packagePath}/client/visual/RichMediaJobsTest.java")
+        include("${packagePath}/client/gui/panel/NativeRichDocumentMediaTest.java")
         include("${packagePath}/client/gui/panel/NativeRichDocumentScreenTest.java")
         include("${packagePath}/client/gui/panel/NativeRichDocumentEditorTest.java")
         include("${packagePath}/client/gui/panel/RichTextEditorDocumentTest.java")
@@ -344,6 +351,8 @@ tasks.register('verifyLibraryJar') {
                     "${packagePath}/client/api/RichDocumentsApi.class",
                     "${packagePath}/kernel/api/richtext/RichDocumentCodec.class",
                     "${packagePath}/client/visual/NativeRichDocumentView.class",
+                    "${packagePath}/client/visual/NativeRichMedia.class",
+                    'assets/sh_better_ui/textures/gui/rich/native-motion.gif',
                     "${packagePath}/client/gui/panel/NativeRichDocumentScreen.class",
                     "${packagePath}/client/gui/panel/NativeRichDocumentEditorScreen.class",
                     "${packagePath}/client/gui/panel/RichTextEditorDocument.class",

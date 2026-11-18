@@ -2648,6 +2648,7 @@
   "sh_better_ui.live.dismiss": "Hide activity",
   "sh_better_ui.live.open_details": "Open live activities",
   "sh_better_ui.native.rich_document.refresh": "Refresh document",
+  "sh_better_ui.native.rich_document.media_example": "Resource-pack animation (reduced motion holds the first frame): ",
   "sh_better_ui.native.rich_document.copy": "Copy text",
   "sh_better_ui.native.rich_document.title": "Structured document",
   "sh_better_ui.native.rich_document.example_text": "Resource image and styled text: ",

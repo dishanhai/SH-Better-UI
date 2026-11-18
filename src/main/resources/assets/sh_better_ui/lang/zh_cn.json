@@ -2648,6 +2648,7 @@
   "sh_better_ui.live.dismiss": "隐藏活动",
   "sh_better_ui.live.open_details": "打开实时活动",
   "sh_better_ui.native.rich_document.refresh": "刷新文档",
+  "sh_better_ui.native.rich_document.media_example": "资源包动画（减少动态效果时显示首帧）：",
   "sh_better_ui.native.rich_document.copy": "复制文本",
   "sh_better_ui.native.rich_document.title": "结构富文档",
   "sh_better_ui.native.rich_document.example_text": "资源图片与样式文本：",

@@ -11,7 +11,7 @@ import java.util.Objects;
 import java.util.function.Predicate;
 
 /** Passive structured-document reader. No network, file access, commands or embedded control dispatch.
- * Resource textures are borrowed from Minecraft; this view never allocates or releases GPU objects.
+ * The legacy renderer borrows static textures; animated rendering requires an explicitly owned media cache.
  */
 public final class NativeRichDocumentView {
     private final Font font;
@@ -63,25 +63,45 @@ public final class NativeRichDocumentView {
     /** Host owns scissor and resource lookup. Lookup is repeated for visible images, avoiding stale reload caches. */
     public void render(GuiGraphicsExtractor graphics, int x, int y, int clipTop, int clipBottom,
                        Predicate<Identifier> available) {
-        for (var line : layout.visibleLines(clipTop - y, clipBottom - y)) {
-            for (var fragment : line.fragments()) {
-                var box = fragment.bounds();
-                int left = x + box.x(), top = y + box.y();
-                if (fragment.node() instanceof TextRun run) {
-                    graphics.text(font, component(run, fragment.text()), left, top, 0xffe0e6ef, false);
-                } else if (fragment.node() instanceof ImageNode image) {
-                    var texture = Identifier.parse(image.texture().toString());
-                    if (isStaticImage(image) && available.test(texture)) {
-                        graphics.blit(texture, left, top, left + box.width(), top + box.height(), 0, 1, 0, 1);
-                    } else {
-                        graphics.fill(left, top, left + box.width(), top + box.height(), 0xff303b49);
-                        // Clip the alternative text to the reserved box, without changing document geometry.
-                        graphics.enableScissor(left, Math.max(top, clipTop), left + box.width(), Math.min(top + box.height(), clipBottom));
-                        graphics.text(font, font.plainSubstrByWidth(image.altText(), box.width()), left, top, 0xffc5cfda, false);
-                        graphics.disableScissor();
+        render(graphics, x, y, clipTop, clipBottom, available, null, 0, true);
+    }
+    /** Resource-pack media only; the host closes the owner. Decoding and GPU uploads never run here. */
+    public void render(GuiGraphicsExtractor graphics, int x, int y, int clipTop, int clipBottom,
+                       Predicate<Identifier> available, NativeRichMedia media, long nowMs, boolean reducedMotion) {
+        if (media != null) media.beginVisibleFrame();
+        try {
+            for (var line : layout.visibleLines(clipTop - y, clipBottom - y)) {
+                for (var fragment : line.fragments()) {
+                    var box = fragment.bounds();
+                    int left = x + box.x(), top = y + box.y();
+                    if (fragment.node() instanceof TextRun run) {
+                        graphics.text(font, component(run, fragment.text()), left, top, 0xffe0e6ef, false);
+                    } else if (fragment.node() instanceof ImageNode image) {
+                        var texture = Identifier.parse(image.texture().toString());
+                        NativeRichMedia.Region region = null;
+                        if (media != null && isResourceMedia(image)) {
+                            media.request(texture);
+                            region = media.region(texture, nowMs, reducedMotion);
+                        }
+                        if (region != null) {
+                            graphics.blit(region.texture(), left, top, left + box.width(), top + box.height(),
+                                    region.u0(), region.u1(), region.v0(), region.v1());
+                        } else if (media == null && isStaticImage(image) && available.test(texture)) {
+                            graphics.blit(texture, left, top, left + box.width(), top + box.height(), 0, 1, 0, 1);
+                        } else {
+                            graphics.fill(left, top, left + box.width(), top + box.height(), 0xff303b49);
+                            // Clip the alternative text to the reserved box, without changing document geometry.
+                            graphics.enableScissor(left, Math.max(top, clipTop), left + box.width(), Math.min(top + box.height(), clipBottom));
+                            graphics.text(font, font.plainSubstrByWidth(image.altText(), box.width()), left, top, 0xffc5cfda, false);
+                            graphics.disableScissor();
+                        }
                     }
                 }
             }
-        }
+        } finally { if (media != null) media.endVisibleFrame(); }
+    }
+    public static boolean isResourceMedia(ImageNode image) {
+        String path=image.texture().path();
+        return path.startsWith("textures/") && (path.endsWith(".png") || path.endsWith(".gif") || path.endsWith(".apng"));
     }
 }
