@@ -191,6 +191,8 @@ public final class ControlPanelScreen extends Screen {
                         (settings, enabled) -> settings.withDisplay(settings.highContrast(), enabled, settings.widgetBlur()));
                 toggle("widget_blur", "widget_blur.tooltip", ControlPanelSettings::widgetBlur,
                         (settings, enabled) -> settings.withDisplay(settings.highContrast(), settings.reducedMotion(), enabled));
+                toolButton(NativeFeedbackScreen.label("title"), GraphicIcon.SETTINGS, () ->
+                        ControlPanelPlatform.show(minecraft,new NativeFeedbackScreen(this,draft.feedback(),this::feedbackApplied)));
             }
             case 2 -> {
                 var modes = THEMES.stream().map(mode -> new UiSectionBar.Section(
@@ -225,6 +227,11 @@ public final class ControlPanelScreen extends Screen {
         ControlPanelPlatform.show(minecraft, new com.dishanhai.sh_better_ui.client.font.NativeCustomFontScreen(this));
     }
 
+    void feedbackApplied(com.dishanhai.sh_better_ui.config.ControlFeedbackSettings feedback){
+        saved=saved.withFeedback(feedback);draft=draft.withFeedback(feedback);beforeReset=null;
+        status=draft.equals(saved)?label("saved"):null;
+    }
+
     private void initTools() {
         switch (toolPage) {
             case INDEX -> {
@@ -235,6 +242,10 @@ public final class ControlPanelScreen extends Screen {
                 dockExample.active = ShBetterUiApi.settings().dockExampleAvailable();
                 refreshRows.add(() -> dockExample.active = ShBetterUiApi.settings().dockExampleAvailable());
                 toolButton(label("section.links"), GraphicIcon.GITHUB, () -> showToolPage(ToolPage.LINKS));
+                var animationExample = toolButton(Component.translatable("sh_better_ui.native.animation_example.title"), GraphicIcon.CODE,
+                        () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().animationExampleScreen(this)));
+                animationExample.active = ShBetterUiApi.settings().animationExampleAvailable();
+                refreshRows.add(() -> animationExample.active = ShBetterUiApi.settings().animationExampleAvailable());
                 var shortcut = toolButton(label("section.shortcut"), GraphicIcon.KEYBOARD, this::openKeyBindings);
                 shortcut.setTooltip(Tooltip.create(label("shortcut.manage.tooltip")));
                 refreshRows.add(() -> {

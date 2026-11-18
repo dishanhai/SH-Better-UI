@@ -22,6 +22,10 @@ public final class SettingsApi {
 
     public UiPreferences preferences() { return UiPreferences.configured(); }
 
+    public Screen feedbackScreen(@Nullable Screen parent) {
+        return new com.dishanhai.sh_better_ui.client.gui.panel.NativeFeedbackScreen(parent);
+    }
+
     public ControlPanelScreen controlPanel(@Nullable Screen parent) { return new ControlPanelScreen(parent); }
 
     public void openControlPanel() { ControlPanelScreen.open(Minecraft.getInstance()); }
@@ -112,6 +116,11 @@ public final class SettingsApi {
 
     public DeveloperPanelScreen developerPanel(@Nullable Screen parent, UiPreferences preferences) {
         return new DeveloperPanelScreen(parent, preferences);
+    }
+
+    public boolean animationExampleAvailable() { return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.animationExampleAvailable(); }
+    public Screen animationExampleScreen(@Nullable Screen parent) {
+        return com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.animationExampleScreen(parent);
     }
 
     /** Built-in and registered extension preview IDs, in gallery order. */

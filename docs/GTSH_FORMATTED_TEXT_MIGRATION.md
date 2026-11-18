@@ -67,17 +67,20 @@ own smoke tests. Unit/build checks are not screenshots or visual acceptance.
 
 ## Validation snapshot (2026-11-18)
 
-Rebased on main `7f4a23e3de9bf520eb23fefb7f616a7a85f36fa5` after the parallel PRs merged.
+Merged current main `49502c69c56a01373303a1f8ee4dd255b890698c` into this branch,
+retaining both sets of changes, then ran `test kernelTest verifyLibraryJar`:
 
-- Forge: 1,852 tests, one unrelated control-panel pagination test failure, five skips.
-- NeoForge 1.21.1: 1,864 tests, the same control-panel test failure, five skips.
-- All formatted-text regression tests passed on both legacy loaders.
-- NeoForge 26.1.2: 789 tests (five skips), 541 kernel tests and `verifyLibraryJar` passed.
-- NeoForge 26.2: compilation blocked in existing screen/options API migrations; tests not reached.
+| Target | Tests | Skipped | Failures/errors | Kernel tests | Library verification |
+| --- | ---: | ---: | ---: | ---: | --- |
+| Forge 1.20.1 | 1,853 | 5 | 0 | 541 passed | passed |
+| NeoForge 1.21.1 | 1,865 | 5 | 0 | 541 passed | passed |
+| NeoForge 26.1.2 | 812 | 5 | 0 | 541 passed | passed |
 
-The legacy failure is `ControlPanelScreenTest.themePaginationAndRegistryRemountRestoreMountedKeyboardFocus`:
-the newly merged built-in display suites move its target off the first page. It is
-tracked separately, not hidden by excluding the test. On the earlier `51e3284`
-base, both legacy full suites, 541 kernel tests per loader and library verification
-passed. These earlier results do not substitute for a green run on the new main.
-No game screenshot, external font-engine or GuideMe 26.x runtime acceptance is claimed.
+The control-panel pagination failure observed on previous main `7f4a23e` was fixed
+by the subsequent main changes; the tests are not excluded here. These numbers
+are from the combined final tree, not the earlier isolated branches.
+
+NeoForge 26.2 is not accepted: the earlier attempt on `7f4a23e` was blocked by 22
+compile errors in unchanged screen/options API migration files. It was not rerun
+on `49502c6`. No game screenshot, external font-engine or GuideMe 26.x runtime
+acceptance is claimed.
