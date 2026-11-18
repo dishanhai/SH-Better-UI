@@ -339,14 +339,14 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 audioKey = key;
                 audio = bytes; offset = Math.max(0, stream.offsetMs());
                 duration = Math.max(0, stream.durationMs()); preview = stream.preview();
-                output = outputs.get(); output.volume(volume); output.start(audio, 0, playRequested);
+                startOutput(0, playRequested);
             }
             return;
         } catch (OnlineMusicSource.LoginRequired ignored) { problem = Failure.LOGIN_REQUIRED; }
         catch (Exception ignored) { }
         synchronized (this) {
             if (generation == request && state != State.CLOSED) {
-                audioCache.remove(audioKey); failure = problem; state = State.FAILED;
+                failPlayback(problem);
             }
         }
     }
@@ -370,12 +370,34 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         if (audio == null || output == null) return;
         boolean playing = output.state() != State.PAUSED;
         long target = Math.max(0, duration > 0 ? Math.min(duration, positionMs) : positionMs);
-        output.close();
-        output = outputs.get();
-        output.volume(volume);
-        output.start(audio, target, playing);
-        if (queue.attachedGeneration == generation && queueTask == null) queue.watch();
+        var previous = output;
+        output = null;
+        try { previous.close(); }
+        catch (RuntimeException error) { failPlayback(Failure.AUDIO); return; }
+        if (startOutput(target, playing) && queue.attachedGeneration == generation && queueTask == null) queue.watch();
         feed.clear();
+    }
+    /** Publish an output only within the session lock; failed setup never masks the terminal state. */
+    private boolean startOutput(long position, boolean playing) {
+        try {
+            output = Objects.requireNonNull(outputs.get(), "Missing audio output");
+            output.volume(volume);
+            output.start(audio, position, playing);
+            return true;
+        } catch (RuntimeException error) {
+            failPlayback(Failure.AUDIO);
+            return false;
+        }
+    }
+    private void failPlayback(Failure problem) {
+        var failed = output;
+        output = null;
+        // A faulty device must not prevent state publication, stop, shutdown or another play attempt.
+        if (failed != null) try { failed.close(); } catch (RuntimeException ignored) { }
+        audioCache.remove(audioKey);
+        audioKey = null; audio = null;
+        failure = problem; state = State.FAILED; playRequested = false;
+        cancelQueueProgress(); feed.clear();
     }
     @Override public synchronized Snapshot snapshot() {
         State current = output == null ? state : output.state();
@@ -422,7 +444,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         if (lyricTask != null) lyricTask.cancel(true);
         if (output != null) {
             if (output.state() == State.FAILED) audioCache.remove(audioKey);
-            output.close();
+            try { output.close(); } catch (RuntimeException ignored) { }
         }
         audioKey = null;
         output = null; audio = null; duration = offset = 0; preview = false;
