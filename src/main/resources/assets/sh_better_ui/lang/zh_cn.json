@@ -2420,7 +2420,7 @@
   "sh_better_ui.online_music.account.manage_hint": "打开账号、凭证保存与个人音乐库",
   "sh_better_ui.online_music.account.saved": "凭证保存：开启",
   "sh_better_ui.online_music.account.session": "凭证保存：关闭",
-  "sh_better_ui.online_music.account.library_hint": "使用上方歌单或喜欢按钮浏览个人音乐库。刷新账号只重试资料，不会退出登录。",
+  "sh_better_ui.online_music.account.library_hint": "在音乐库中查看歌单与喜欢的歌曲。",
   "sh_better_ui.online_music.account.retry": "刷新账号资料",
   "sh_better_ui.online_music.account.loading": "正在加载账号资料…",
   "sh_better_ui.online_music.account.failed": "账号资料加载失败，登录仍可能有效。点击刷新账号资料重试。",
@@ -2793,5 +2793,8 @@
   "sh_better_ui.online_music.queue.append_current": "将当前歌曲追加到队列",
   "sh_better_ui.online_music.queue.append_track": "将 %s 追加到队列",
   "sh_better_ui.online_music.queue.move_up": "上移 %s",
-  "sh_better_ui.online_music.queue.move_down": "下移 %s"
+  "sh_better_ui.online_music.queue.move_down": "下移 %s",
+  "sh_better_ui.online_music.queue.edit": "编辑队列",
+  "sh_better_ui.online_music.queue.done": "完成",
+  "sh_better_ui.online_music.library.track_count": "%s 首歌曲"
 }

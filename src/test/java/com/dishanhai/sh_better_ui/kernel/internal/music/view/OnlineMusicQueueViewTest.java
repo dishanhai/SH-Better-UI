@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl;
 import com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline;
 import org.junit.jupiter.api.Test;
 import java.lang.reflect.*;
@@ -37,6 +38,7 @@ class OnlineMusicQueueViewTest {
         var f=view.getClass().getDeclaredField("page"); f.setAccessible(true);
         Object page=Arrays.stream(f.getType().getEnumConstants()).filter(v->v.toString().equals("QUEUE")).findFirst().orElseThrow();
         call(view,"show",new Class<?>[]{f.getType()},page);
+        call(view,"setQueueEditing",new Class<?>[]{boolean.class},true);
     }
     private static class Host implements com.dishanhai.sh_better_ui.client.api.preview.PreviewContext {
         int width = 800, height = 600;
@@ -278,20 +280,44 @@ class OnlineMusicQueueViewTest {
         }
     }
 
+    @Test void leavingEditorCancelsPendingMoveAndResizeKeepsEditor() throws Exception {
+        var queue=new EditableQueue(); var f=new Fixture(queue); var host=new Host(); f.view.layout(host); queuePage(f.view);
+        var down=(MusicTextControl)((List<?>)field(f.view,"queueDowns")).get(0);
+        down.setFocused(true); assertTrue(down.keyPressed(32,0,0));
+        assertFalse(f.view.permitsScreenClose()); assertFalse(down.isArmed());
+        assertFalse(down.keyReleased(32,0,0)); assertEquals(0,queue.moves);
+        ((MusicTextControl)field(f.view,"queueEdit")).onPress();
+        host.width=208;host.height=240; f.view.layout(host);
+        assertEquals(true,field(f.view,"queueEditing"));
+        assertTrue(((MusicTextControl)field(f.view,"queueClear")).visible);
+    }
+    @Test void queueEditorReturnsWithoutLosingPlaybackOrScroll() throws Exception {
+        var f = new Fixture(new EditableQueue()); f.playing=A; var host=new Host(); f.view.layout(host); queuePage(f.view);
+        var edit=(MusicTextControl)field(f.view,"queueEdit");
+        var remove=(MusicTextControl)((List<?>)field(f.view,"queueRemoves")).get(0);
+        assertTrue(remove.visible); edit.onPress(); assertFalse(remove.visible);
+        assertFalse(((MusicTextControl)field(f.view,"queueClear")).visible);
+        int width=((MusicTextControl)((List<?>)field(f.view,"queueRows")).get(0)).getWidth();
+        edit.onPress(); assertTrue(remove.visible);
+        assertTrue(width>((MusicTextControl)((List<?>)field(f.view,"queueRows")).get(0)).getWidth());
+        assertFalse(f.view.permitsScreenClose()); assertFalse(remove.visible);
+        assertSame(edit,host.screen.getFocused()); assertEquals("QUEUE",field(f.view,"page").toString());
+        assertEquals(A,f.playing); assertEquals(0,f.paused); assertEquals(0,f.closed);
+    }
     @Test void realQueueControlsPlayClearUndoAndReturnWithoutStopping() throws Exception {
         var f=new Fixture(); f.view.layout(new Host());
         call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),0);
         assertEquals(A,f.playing); queuePage(f.view);
-        var next=(MusicTextControl)field(f.view,"queueNext"); assertTrue(next.visible);assertTrue(next.active);next.onPress();assertEquals(B,f.playing);
+        var next=(MusicTransportControl)field(f.view,"miniNext"); assertTrue(next.visible);((Runnable)field(next,"action")).run();assertEquals(B,f.playing);
         var clear=(MusicTextControl)field(f.view,"queueClear");clear.onPress();assertEquals(B,f.playing);
-        assertFalse(next.active);var undo=(MusicTextControl)field(f.view,"queueUndo");assertTrue(undo.active);undo.onPress();
+        var undo=(MusicTextControl)field(f.view,"queueUndo");assertTrue(undo.active);undo.onPress();
         assertEquals(2,((PlayerQueue)field(f.view,"queue")).tracks().size());assertEquals(B,f.playing);
-        ((MusicTextControl)field(f.view,"back")).onPress();assertFalse(next.visible);assertEquals(B,f.playing);
+        ((MusicTextControl)field(f.view,"back")).onPress();assertFalse(clear.visible);assertTrue(next.visible);assertEquals(B,f.playing);
     }
     @Test void queueActionControlsStayDisjointAtSupportedWindowSizes() throws Exception {
         for (int[] size: new int[][]{{208,240},{360,340},{520,264},{800,600}}) {
             var f=new Fixture(); var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);queuePage(f.view);
-            var names=List.of("queuePrevious","queueNext","queueUndo","queueClear");
+            var names=List.of("queueEdit","queueUndo","queueClear");
             int right=-1;
             for (String name:names) { var b=(MusicTextControl)field(f.view,name);assertTrue(b.getX()>=right,name);assertTrue(b.getWidth()>0);assertTrue(b.getX()+b.getWidth()<=size[0]);right=b.getX()+b.getWidth(); }
         }
@@ -316,6 +342,7 @@ class OnlineMusicQueueViewTest {
         assertEquals(0,f.paused);assertEquals(0,f.closed);
         assertFalse(f.view.permitsScreenClose());assertEquals(false,field(f.view,"immersive"));
         assertEquals("QUEUE",field(f.view,"page").toString());assertEquals(3,field(f.view,"queueFirst"));
+        assertFalse(f.view.permitsScreenClose()); // leave the retained queue editor first
         assertTrue(f.view.permitsScreenClose());assertEquals(A,f.playing);
     }
     @Test void immersiveResizeKeepsModeAndReturnsToTheSamePage() throws Exception {
@@ -367,7 +394,7 @@ class OnlineMusicQueueViewTest {
         var f=new Fixture();f.view.layout(new Host());call(f.view,"playCollection",new Class<?>[]{List.class,int.class},List.of(A,B),1);queuePage(f.view);
         var host=new Host();host.width=360;host.height=340;f.view.layout(host);
         var queue=(PlayerQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
-        assertTrue(((MusicTextControl)field(f.view,"queuePrevious")).visible);
+        assertTrue(((MusicTextControl)field(f.view,"queueEdit")).visible);
     }
     private static final class ModeQueue implements OnlineMusicQueue {
         Mode mode=Mode.SEQUENTIAL;int changes;

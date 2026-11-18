@@ -15,17 +15,14 @@ final class OnlineMusicViewPaint {
     static boolean editing(UiSlider slider) { return slider.isPointerEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
-        var value = font.substrByWidth(styled(text), Math.max(0, width));
-        ink(ui, font, net.minecraft.locale.Language.getInstance().getVisualOrder(value), x, y, color);
+        var value = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(
+                font, styled(text), Math.max(0, width));
+        ink(ui, font, value, x, y, color);
     }
     private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
                             int x, int y, int color) {
-        if ((UiTheme.current().background() >>> 24) == 255) {
-            ui.graphics().text(font, text, x, y, color, false); return;
-        }
-        var paint = LyricTextPalette.sample(color, color, UiTheme.current().background(), 0, ui.preferences().highContrast());
-        ui.graphics().fill(x - 2, y - 1, x + font.width(text) + 2, y + font.lineHeight + 1, paint.protection());
-        ui.graphics().text(font, text, x, y, paint.text(), paint.shadow());
+        // The shared player paints an opaque canvas; per-label plates only repeat visual chrome.
+        ui.graphics().text(font, text, x, y, color, false);
     }
     static void scaledLine(UiFrame ui, Font font, Component text, int x, int y, int width, int color, float scale) {
         var line = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(
@@ -62,34 +59,15 @@ final class OnlineMusicViewPaint {
     }
     static void artwork(UiFrame ui, Bounds bounds) { artwork(ui, bounds, 0f); }
 
-    /** A calm editorial heading. Text is bounded independently of the decorative accent. */
+    /** One page heading; navigation already names the app and page content supplies its context. */
     static void hero(UiFrame ui, Font font, Bounds area, Component kicker, Component title,
                      Component subtitle, float emphasis) {
         if (area.width() < 32 || area.height() < font.lineHeight + 6) return;
-        var theme = UiTheme.current();
-        int accent = theme.accent();
-        int inset = area.width() >= 180 ? 12 : 6;
-        int available = Math.max(1, area.width() - inset * 2);
-        int y = area.y() + 3;
-        if (area.height() >= 44) {
-            line(ui, font, kicker, area.x() + inset, y, available, accent);
-            y += font.lineHeight + 5;
-        }
+        int inset = 6;
         float scale = area.height() >= 32 ? 1.35f : 1f;
-        var heading = Component.literal(font.plainSubstrByWidth(title.getString(), (int)(available / scale)));
-        int headingColor = theme.text();
-        if ((theme.background() >>> 24) != 255) {
-            var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background(), 0, ui.preferences().highContrast());
-            ui.graphics().fill(area.x() + inset - 2, y - 1, area.x() + inset + (int)Math.ceil(font.width(heading) * scale) + 2,
-                    y + (int)Math.ceil(font.lineHeight * scale) + 1, paint.protection());
-            headingColor = paint.text();
-        }
-        ui.drawScaledText(font, heading, area.x() + inset, y, headingColor, scale);
-        y += (int)Math.ceil(font.lineHeight * scale) + 6;
-        if (y + font.lineHeight <= area.bottom() - 4)
-            line(ui, font, subtitle, area.x() + inset, y, available, muted(ui));
-        int length = Math.min(available, 22 + Math.round(22 * clamp(emphasis)));
-        ui.graphics().fill(area.x() + inset, area.bottom() - 2, area.x() + inset + length, area.bottom(), accent);
+        int y = area.y() + 6;
+        scaledLine(ui, font, MpTypography.bold(title), area.x() + inset, y,
+                Math.max(1, area.width() - inset * 2), UiTheme.current().text(), scale);
     }
 
     /** Empty/loading/error copy remains supplied by the owner; no fake results or network work. */

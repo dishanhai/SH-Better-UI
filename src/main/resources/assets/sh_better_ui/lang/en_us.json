@@ -2420,7 +2420,7 @@
   "sh_better_ui.online_music.account.manage_hint": "Open account, credential saving and personal library",
   "sh_better_ui.online_music.account.saved": "Credential saving: on",
   "sh_better_ui.online_music.account.session": "Credential saving: off",
-  "sh_better_ui.online_music.account.library_hint": "Use Playlists or Liked above to browse your library. Refresh account retries profile loading without signing out.",
+  "sh_better_ui.online_music.account.library_hint": "Open Library to browse your playlists and liked songs.",
   "sh_better_ui.online_music.account.retry": "Refresh account",
   "sh_better_ui.online_music.account.loading": "Loading account profile…",
   "sh_better_ui.online_music.account.failed": "Account profile failed to load. Login may still be valid; use Refresh account to retry.",
@@ -2793,5 +2793,8 @@
   "sh_better_ui.online_music.queue.append_current": "Add current track to queue",
   "sh_better_ui.online_music.queue.append_track": "Add %s to queue",
   "sh_better_ui.online_music.queue.move_up": "Move %s up",
-  "sh_better_ui.online_music.queue.move_down": "Move %s down"
+  "sh_better_ui.online_music.queue.move_down": "Move %s down",
+  "sh_better_ui.online_music.queue.edit": "Edit queue",
+  "sh_better_ui.online_music.queue.done": "Done",
+  "sh_better_ui.online_music.library.track_count": "%s tracks"
 }
