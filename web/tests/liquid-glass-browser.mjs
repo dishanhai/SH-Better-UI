@@ -25,6 +25,7 @@ try {
     return {switched,end,modal,returned,high,volume,disposed};
   })()`);
   for(const [name,value] of Object.entries(read)) assert.equal(value,true,name);
+  await browser.evaluate('window.glassKit = null');
   await browser.command('Page.reload');
   await eventually(() => browser.evaluate('Boolean(window.glassKit)'), 'reload');
   await browser.command('Emulation.setDeviceMetricsOverride',{width:390,height:844,deviceScaleFactor:1,mobile:true});
