@@ -385,6 +385,7 @@
   "sh_better_ui.live.preview.progress": "進度 %s%%",
   "sh_better_ui.live.preview.capsule": "%s · %s%%",
   "sh_better_ui.live.preview.unavailable": "活動島預覽目前無法使用。",
+  "key.sh_better_ui.music_open": "開啟 SH 音樂",
   "key.sh_better_ui.control_panel": "開啟 SHBUI 控制面板",
   "key.category.sh_better_ui.controls": "SHBUI",
   "sh_better_ui.panel.title": "SHBUI 控制面板",
