@@ -46,6 +46,96 @@ class OnlinePlayerSessionTest {
         while (!condition.getAsBoolean() && System.nanoTime() < deadline) Thread.sleep(5);
         assertTrue(condition.getAsBoolean(), "asynchronous state did not settle");
     }
+    @Test void failedOutputSetupPublishesAudioFailureAndCanReplay() throws Exception {
+        for (boolean failVolume : List.of(false, true)) {
+            var broken = new Output() {
+                @Override public void volume(float gain) { if (failVolume) throw new IllegalStateException("device"); }
+                @Override public void start(byte[] bytes, long at, boolean playing) { throw new IllegalStateException("device"); }
+                @Override public void close() { super.close(); throw new IllegalStateException("close"); }
+            };
+            var next = new AtomicReference<Output>(broken);
+            try (var session = new OnlinePlayerSession(List.of(new Source()), next::get, uri -> new byte[]{1})) {
+                session.queue().replace(List.of(track("a"), track("b")), 0);
+                await(() -> session.snapshot().state() == State.FAILED);
+                assertEquals(Failure.AUDIO, session.snapshot().failure());
+                assertTrue(broken.closed);
+                assertEquals(0, session.queue().snapshot().index(), "failure must not skip a queued song");
+                var good = new Output(); next.set(good);
+                session.queue().select(0);
+                await(() -> session.snapshot().state() == State.PLAYING);
+                assertEquals(Failure.NONE, session.snapshot().failure());
+                session.pause(); assertEquals(State.PAUSED, session.snapshot().state());
+                session.resume(); assertEquals(State.PLAYING, session.snapshot().state());
+                session.stop(); assertTrue(good.closed); assertEquals(State.IDLE, session.snapshot().state());
+            }
+        }
+    }
+    @Test void outputFactoryFailureIsAudioNotNetwork() throws Exception {
+        try (var session = new OnlinePlayerSession(List.of(new Source()), () -> { throw new IllegalStateException("factory"); }, uri -> new byte[]{1})) {
+            session.play(track("a")); await(() -> session.snapshot().state() == State.FAILED);
+            assertEquals(Failure.AUDIO, session.snapshot().failure());
+        }
+    }
+    @Test void seekSetupFailureDoesNotExposeClosedOldOutputAndRetainsQueue() throws Exception {
+        var first = new Output(); var next = new AtomicReference<Output>(first);
+        try (var session = new OnlinePlayerSession(List.of(new Source()), next::get, uri -> new byte[]{1})) {
+            session.queue().replace(List.of(track("a"), track("b")), 0);
+            await(() -> session.snapshot().state() == State.PLAYING);
+            var broken = new Output() {
+                @Override public void start(byte[] bytes, long at, boolean playing) { throw new IllegalStateException("seek"); }
+            };
+            next.set(broken); session.seek(2000);
+            assertTrue(first.closed); assertTrue(broken.closed);
+            assertEquals(State.FAILED, session.snapshot().state());
+            assertEquals(Failure.AUDIO, session.snapshot().failure());
+            assertEquals(0, session.queue().snapshot().index());
+            next.set(new Output()); session.queue().select(0);
+            await(() -> session.snapshot().state() == State.PLAYING);
+        }
+    }
+    @Test void seekReleaseFailureDoesNotCreateASecondOutput() throws Exception {
+        var allocations = new java.util.concurrent.atomic.AtomicInteger();
+        var first = new Output() {
+            @Override public void close() { super.close(); throw new IllegalStateException("release"); }
+        };
+        try (var session = new OnlinePlayerSession(List.of(new Source()), () -> { allocations.incrementAndGet(); return first; }, uri -> new byte[]{1})) {
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            session.seek(2000);
+            assertEquals(State.FAILED, session.snapshot().state());
+            assertEquals(Failure.AUDIO, session.snapshot().failure());
+            assertEquals(1, allocations.get()); assertTrue(first.closed);
+            session.resume(); assertEquals(State.FAILED, session.snapshot().state());
+        }
+    }
+    @Test void replayAfterDeviceFailureResolvesAuthorizationAgain() throws Exception {
+        var attempts = new java.util.concurrent.atomic.AtomicInteger();
+        var source = new Source() {
+            @Override public Stream resolve(OnlineTrack song) throws Exception {
+                if (attempts.incrementAndGet() > 1) throw new OnlineMusicSource.LoginRequired();
+                return super.resolve(song);
+            }
+        };
+        try (var session = new OnlinePlayerSession(List.of(source), () -> { throw new IllegalStateException("device"); }, uri -> new byte[]{1})) {
+            session.queue().replace(List.of(track("a")), 0);
+            await(() -> session.snapshot().state() == State.FAILED);
+            assertEquals(Failure.AUDIO, session.snapshot().failure());
+            session.queue().select(0); await(() -> session.snapshot().state() == State.FAILED);
+            assertEquals(Failure.LOGIN_REQUIRED, session.snapshot().failure());
+            assertEquals(2, attempts.get());
+        }
+    }
+    @Test void stopAndCloseSurviveDeviceReleaseFailure() throws Exception {
+        var output = new Output() {
+            @Override public void close() { super.close(); throw new IllegalStateException("device close"); }
+        };
+        try (var session = new OnlinePlayerSession(List.of(new Source()), () -> output, uri -> new byte[]{1})) {
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            session.stop(); assertEquals(State.IDLE, session.snapshot().state());
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+        }
+        assertTrue(output.closed);
+    }
+
     @Test void bridgeTracksBorrowedViewRemovalPauseSwitchAndStop() throws Exception {
         var frames = new com.dishanhai.sh_better_ui.client.music.ForegroundMusicFrames();
         try (var session = new OnlinePlayerSession(List.of(new Source()), Output::new, uri -> new byte[]{1});
