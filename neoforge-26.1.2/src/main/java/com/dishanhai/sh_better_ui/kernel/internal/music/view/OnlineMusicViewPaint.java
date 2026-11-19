@@ -5,18 +5,21 @@ import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
 import net.minecraft.client.gui.Font;
+import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Component;
 
 final class OnlineMusicViewPaint {
-    private static Component styled(Component text) { return MpTypography.SEMIBOLD.equals(text.getStyle().getFont()) ? text : MpTypography.text(text); }
+    /** Resolve style before wrapping; the exact same styled runs are measured and drawn. */
+    static FormattedText wrapContent(Component text) { return MusicTextLayout.bound(MusicTypography.text(text)).text(); }
     static void clip(UiFrame ui, Bounds bounds) { ui.graphics().enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom()); }
     static void unclip(UiFrame ui) { ui.graphics().disableScissor(); }
     static boolean editing(UiSlider slider) { return slider.isPointerEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
-        var value = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(
-                font, styled(text), Math.max(0, width));
+        var value = MusicTextLayout.ellipsize(
+                font, MusicTypography.text(text), Math.max(0, width));
         ink(ui, font, value, x, y, color);
     }
     private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
@@ -25,8 +28,8 @@ final class OnlineMusicViewPaint {
         ui.graphics().text(font, text, x, y, color, false);
     }
     static void scaledLine(UiFrame ui, Font font, Component text, int x, int y, int width, int color, float scale) {
-        var line = com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout.ellipsize(
-                font, styled(text), Math.max(1, (int) (width / scale)));
+        var line = MusicTextLayout.ellipsize(
+                font, MusicTypography.text(text), Math.max(1, (int) (width / scale)));
         var pose = ui.graphics().pose();
         pose.pushMatrix();
         try {
@@ -38,10 +41,10 @@ final class OnlineMusicViewPaint {
 
     static void paragraph(UiFrame ui, Font font, Component text, Bounds bounds, int color) {
         int y = bounds.y();
-        for (var line : font.split(styled(text), Math.max(1, bounds.width()))) {
-            if (y + font.lineHeight > bounds.bottom()) break;
+        for (var line : font.split(wrapContent(text), Math.max(1, bounds.width()))) {
+            if (y + MusicTypography.LINE_HEIGHT > bounds.bottom()) break;
             ink(ui, font, line, bounds.x(), y, color);
-            y += font.lineHeight + 3;
+            y += MusicTypography.LINE_HEIGHT + 3;
         }
     }
     static void panel(UiFrame ui, Bounds bounds, int color, boolean border) {
@@ -62,23 +65,23 @@ final class OnlineMusicViewPaint {
     /** One page heading; navigation already names the app and page content supplies its context. */
     static void hero(UiFrame ui, Font font, Bounds area, Component kicker, Component title,
                      Component subtitle, float emphasis) {
-        if (area.width() < 32 || area.height() < font.lineHeight + 6) return;
+        if (area.width() < 32 || area.height() < MusicTypography.LINE_HEIGHT + 6) return;
         int inset = 6;
         float scale = area.height() >= 32 ? 1.35f : 1f;
         int y = area.y() + 6;
-        scaledLine(ui, font, MpTypography.bold(title), area.x() + inset, y,
+        scaledLine(ui, font, MusicTypography.bold(title), area.x() + inset, y,
                 Math.max(1, area.width() - inset * 2), UiTheme.current().text(), scale);
     }
 
     /** Empty/loading/error copy remains supplied by the owner; no fake results or network work. */
     static void emptyState(UiFrame ui, Font font, Bounds area, Component title, Component detail, float emphasis) {
-        if (area.width() < 24 || area.height() < font.lineHeight + 12) return;
+        if (area.width() < 24 || area.height() < MusicTypography.LINE_HEIGHT + 12) return;
         var theme = UiTheme.current();
         panel(ui, area, GuiMotion.lerpColor(theme.background(), theme.surface(), .65f), ui.preferences().highContrast());
         int inset = Math.min(16, Math.max(6, area.width() / 12));
         boolean illustrated = area.width() >= 300 && area.height() >= 72
-                && font.split(title, Math.max(1, area.width() - inset * 2 - 80)).size()
-                    * (font.lineHeight + 3) <= area.height() - 12;
+                && font.split(wrapContent(title), Math.max(1, area.width() - inset * 2 - 80)).size()
+                    * (MusicTypography.LINE_HEIGHT + 3) <= area.height() - 12;
         int x = area.x() + inset;
         if (illustrated) {
             int size = Math.min(64, area.height() - inset * 2);
@@ -87,19 +90,19 @@ final class OnlineMusicViewPaint {
         }
         int width = Math.max(1, area.right() - inset - x);
         // Status/error text has priority over ornamental detail, including long localization.
-        var titleLines = font.split(title, width);
-        int titleHeight = titleLines.size() * (font.lineHeight + 3);
+        var titleLines = font.split(wrapContent(title), width);
+        int titleHeight = titleLines.size() * (MusicTypography.LINE_HEIGHT + 3);
         int padding = 6;
         int y = area.y() + Math.max(padding, (area.height() - Math.min(titleHeight, area.height() - 2 * padding)) / 2);
-        if (titleHeight + font.lineHeight + 8 <= area.height() - 2 * padding)
-            y = area.y() + Math.max(padding, (area.height() - titleHeight - font.lineHeight - 8) / 2);
+        if (titleHeight + MusicTypography.LINE_HEIGHT + 8 <= area.height() - 2 * padding)
+            y = area.y() + Math.max(padding, (area.height() - titleHeight - MusicTypography.LINE_HEIGHT - 8) / 2);
         for (var textLine : titleLines) {
-            if (y + font.lineHeight > area.bottom() - padding) break;
+            if (y + MusicTypography.LINE_HEIGHT > area.bottom() - padding) break;
             ink(ui, font, textLine, x, y, theme.text());
-            y += font.lineHeight + 3;
+            y += MusicTypography.LINE_HEIGHT + 3;
         }
         y += 5;
-        if (y + font.lineHeight <= area.bottom() - padding)
+        if (y + MusicTypography.LINE_HEIGHT <= area.bottom() - padding)
             paragraph(ui, font, detail, new Bounds(x, y, width, area.bottom() - y - padding), muted(ui));
     }
 

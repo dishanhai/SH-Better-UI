@@ -38,13 +38,20 @@ public final class UiMarqueeLabel {
     public void render(GuiGraphics graphics, Font font, int x, int y, int width,
                        int color, boolean shadow, long nowMillis, boolean paused,
                        UiPreferences preferences) {
+        render(graphics,font,x,y,width,color,shadow,nowMillis,paused,preferences,font.lineHeight);
+    }
+
+    /** Scoped typography can request its own vertical metrics without changing global font metrics. */
+    public void render(GuiGraphics graphics, Font font, int x, int y, int width,
+                       int color, boolean shadow, long nowMillis, boolean paused,
+                       UiPreferences preferences, int lineHeight) {
         Objects.requireNonNull(graphics);
         Objects.requireNonNull(font);
         Objects.requireNonNull(preferences);
         if (width <= 0) { motion.reset(); return; }
         MarqueeMotion.Frame frame = motion.sample(text, font.width(text), width, nowMillis,
                 paused, preferences.reducedMotion());
-        graphics.enableScissor(x, y - 1, x + width, y + font.lineHeight + 2);
+        graphics.enableScissor(x, y - 1, x + width, y + Math.max(1,lineHeight) + 2);
         try {
             graphics.pose().pushPose();
             try {

@@ -4,7 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.api.music.control;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import net.minecraft.client.gui.GuiGraphics;
-import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.narration.NarrationElementOutput;
 import net.minecraft.client.gui.narration.NarratedElementType;
@@ -98,15 +98,15 @@ public final class MusicSeekControl extends AbstractWidget {
         var font=net.minecraft.client.Minecraft.getInstance().font;
         String value=clock(model.positionMs())+" / −"+clock(model.durationMs()-model.positionMs());
         // Bubble remains within the seek width; on small controls keep the current time first.
-        if(font.width(MpTypography.text(value))+12>width)value=clock(model.positionMs());
-        while(!value.isEmpty()&&font.width(MpTypography.text(value))+12>width)value=value.substring(0,value.length()-1);
-        var text=MpTypography.text(value);
+        if(font.width(MusicTypography.text(value))+12>width)value=clock(model.positionMs());
+        while(!value.isEmpty()&&font.width(MusicTypography.text(value))+12>width)value=value.substring(0,value.length()-1);
+        var text=MusicTypography.text(value);
         int bubbleWidth=Math.min(width,font.width(text)+12);
         int left=MusicSeekPresentation.bubbleX(getX(),width,bubbleWidth,model.fraction());
-        int top=Math.max(0,getY()-MpTypography.LINE_HEIGHT-8);
+        int top=Math.max(0,getY()-MusicTypography.LINE_HEIGHT-8);
         int background=preferences.highContrast()?0xff000000:0xf0222226;
         com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners.draw(g,left,top,bubbleWidth,
-                MpTypography.LINE_HEIGHT+6,5,preferences.highContrast()?1:0,0xffffffff,background);
+                MusicTypography.LINE_HEIGHT+6,5,preferences.highContrast()?1:0,0xffffffff,background);
         g.drawString(font,text,left+6,top+3,0xffffffff,false);
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput out){

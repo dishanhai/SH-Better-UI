@@ -89,7 +89,7 @@ class NativeLocalFontServiceTest {
             assertEquals(new net.minecraft.util.InclusiveRange<>(version,version),decoded);
             assertEquals("SHBUI local music font",meta.get("description").getAsString());
             assertEquals("[84,0]",meta.get("min_format").toString());assertEquals(meta.get("min_format"),meta.get("max_format"));assertFalse(meta.has("pack_format"));
-            assertNotNull(zip.getEntry("assets/sh_better_ui/font/mp_ui.json"));assertNotNull(zip.getEntry("assets/sh_better_ui/font/mp_ui_semibold.json"));assertNull(zip.getEntry("assets/minecraft/font/default.json"));
+            LocalFontPackTest.assertScopedProviders(zip);
             assertArrayEquals(data,zip.getInputStream(zip.getEntry("assets/sh_better_ui/font/user_ui.ttf")).readAllBytes());
         }
         assertThrows(java.io.IOException.class,()->NativeLocalFontPack.create(data,directory,84,0,()->true));

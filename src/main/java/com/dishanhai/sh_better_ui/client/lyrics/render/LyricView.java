@@ -37,6 +37,12 @@ public final class LyricView {
 
     public static boolean draw(FloatingLyricRenderer renderer, GuiGraphics graphics, Font font,
                                Bounds area, UiPreferences preferences, LyricFeed.Frame preview) {
+        return drawScoped(renderer,graphics,font,area,preferences,preview,null,font.lineHeight+2);
+    }
+
+    /** Optional per-surface font. Existing renderers and their preferences are never mutated globally. */
+    public static boolean drawScoped(FloatingLyricRenderer renderer, GuiGraphics graphics, Font font,
+            Bounds area, UiPreferences preferences, LyricFeed.Frame preview, ResourceLocation fontId, int lineHeight) {
         if (area != null && (area.width() <= 0 || area.height() <= 0)) return false;
         var previousArea = renderer.previewArea();
         var previousStyle = renderer.style();
@@ -51,7 +57,7 @@ public final class LyricView {
         try {
             SdfRenderType.setWeightPercent(style.weightPercent());
             SdfRenderType.setSoftShadow(style.softShadow());
-            Painter painter = new Painter(graphics, font);
+            Painter painter = new Painter(graphics, font, fontId, Math.max(1,lineHeight));
             return preview == null ? renderer.render(painter, preferences.reducedMotion())
                     : renderer.render(painter, preview, preferences.reducedMotion());
         } finally {
@@ -77,19 +83,27 @@ public final class LyricView {
         }
     }
 
-    private record Painter(GuiGraphics graphics, Font font) implements FloatingLyricRenderer.Painter {
+    static net.minecraft.network.chat.Component scopedText(String value,ResourceLocation fontId) {
+        var text=net.minecraft.network.chat.Component.literal(value);
+        return fontId==null?text:text.withStyle(style->style.withFont(fontId));
+    }
+
+    private record Painter(GuiGraphics graphics, Font font, ResourceLocation fontId, int scopedLineHeight) implements FloatingLyricRenderer.Painter {
         @Override public int screenWidth() { return graphics.guiWidth(); }
         @Override public int screenHeight() { return graphics.guiHeight(); }
-        @Override public int textWidth(String text) { return font.width(text); }
-        @Override public int charWidth(char c) { return font.width(String.valueOf(c)); }
-        @Override public int lineHeight() { return font.lineHeight + 2; }
+        @Override public int textWidth(String text) { return fontId==null?font.width(text):font.width(scopedText(text,fontId)); }
+        @Override public int charWidth(char c) { return fontId==null?font.width(String.valueOf(c)):font.width(scopedText(String.valueOf(c),fontId)); }
+        @Override public int lineHeight() { return scopedLineHeight; }
 
         @Override public void drawText(String text, int x, int y, int color) {
             drawText(text, x, y, color, true);
         }
 
         @Override public void drawText(String text, int x, int y, int color, boolean shadow) {
-            if ((color >>> 24) >= 4) graphics.drawString(font, text, x, y, color, shadow);
+            if ((color >>> 24) >= 4) {
+                if(fontId==null)graphics.drawString(font,text,x,y,color,shadow);
+                else graphics.drawString(font,scopedText(text,fontId),x,y,color,shadow);
+            }
         }
 
         @Override public void drawTextScaled(String text, int x, int y, float scale, int color, boolean shadow) {
@@ -123,7 +137,7 @@ public final class LyricView {
             try {
                 stack.translate(0f, -lift, 0f);
                 if (!GradientPainter.drawSpans(graphics, font, glyph, x, y, spans, originX, shadow,
-                        glow, glowAlpha, strokeWidth, strokeColor)) {
+                        glow, glowAlpha, strokeWidth, strokeColor, fontId)) {
                     drawText(glyph, Math.round(x), y, spans[0].startColor(), shadow);
                 }
             } finally {
@@ -149,7 +163,7 @@ public final class LyricView {
             try {
                 stack.translate(0f, -lift, 0f);
                 if (!GradientPainter.draw(graphics, font, glyph, x, y, colors, shadow,
-                        glow, glowAlpha, strokeWidth, strokeColor)) {
+                        glow, glowAlpha, strokeWidth, strokeColor, fontId)) {
                     drawText(glyph, Math.round(x), y, colors.left(), shadow);
                 }
             } finally {

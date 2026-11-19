@@ -1,0 +1,28 @@
+{
+  "providers": [
+    {
+      "type": "ttf",
+      "file": "sh_better_ui:sh_music_sans_medium.ttf",
+      "size": 11.0,
+      "oversample": 3.0,
+      "shift": [
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "type": "ttf",
+      "file": "sh_better_ui:sh_sans_ui.ttf",
+      "size": 11.0,
+      "oversample": 3.0,
+      "shift": [
+        0.0,
+        3.0
+      ]
+    },
+    {
+      "type": "reference",
+      "id": "minecraft:default"
+    }
+  ]
+}

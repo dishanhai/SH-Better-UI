@@ -2,6 +2,8 @@
 package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.live.*;
 import net.minecraft.client.Minecraft;
@@ -25,6 +27,20 @@ public final class ClientLiveActivities implements AutoCloseable {
     private SurfacePlacement.Result placement = SurfacePlacement.Result.HIDDEN;
     private NativeActivityScreen details;
     private boolean closed;
+    private final MusicTypographyScope typography = new MusicTypographyScope();
+    /** Identity ownership survives crossfade layers, without styling unrelated activities. */
+    static final class MusicTypographyScope {
+        private final java.util.IdentityHashMap<ActivityService.Content, Boolean> owned = new java.util.IdentityHashMap<>();
+        void remember(ActivityService.Content content, com.dishanhai.sh_better_ui.kernel.api.UiId owner) {
+            owned.put(content, com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:music_activity").equals(owner));
+        }
+        boolean music(ActivityService.Content content) { return Boolean.TRUE.equals(owned.get(content)); }
+        void retain(java.util.Collection<ActivityService.Content> contents) {
+            var keep = new java.util.IdentityHashMap<ActivityService.Content, Boolean>();
+            for (var content : contents) if (owned.containsKey(content)) keep.put(content, owned.get(content));
+            owned.clear(); owned.putAll(keep);
+        }
+    }
 
     ClientLiveActivities(KernelHost host, LiveSurfaceSettings settings) {
         this.host = host;
@@ -104,6 +120,7 @@ public final class ClientLiveActivities implements AutoCloseable {
             placement = SurfacePlacement.Result.HIDDEN;
             target = new SurfaceTransition.Target<>(SurfacePresentation.HIDDEN, SurfaceGeometry.HIDDEN, null);
         } else {
+            typography.remember(snapshot.content(), snapshot.owner());
             var tokens = palette(snapshot.content());
             var candidate = candidate(plan.requested(), tokens, settings.layout(), graphics.guiWidth(), graphics.guiHeight());
             placement = SurfacePlacement.place(viewport, List.of(candidate), runtime.occupied(),
@@ -114,6 +131,10 @@ public final class ClientLiveActivities implements AutoCloseable {
         }
         var frame = motion.step(target, viewport, runtime.occupied(), host.nowNanos() / 1_000_000L,
                 UiPreferences.configured().reducedMotion());
+        var retained = new java.util.ArrayList<ActivityService.Content>();
+        retained.add(target.content());
+        for (var layer : frame.contentMix()) retained.add(layer.content());
+        typography.retain(retained);
         var area = frame.animated();
         runtime.present(new LiveSurfaceService.View(plan, frame.target().presentation(), frame.current().presentation(),
                 area, SurfaceGeometry.HIDDEN, false, frame.running()));
@@ -122,7 +143,7 @@ public final class ClientLiveActivities implements AutoCloseable {
                 : frame.contentMix().stream().map(SurfaceTransition.Layer::content).filter(java.util.Objects::nonNull).findFirst().orElse(null);
         if (shellContent != null) paintShell(graphics, area, fade(palette(shellContent), area.opacity()));
         for (var layer : frame.contentMix()) if (layer.content() != null && layer.weight() > 0) {
-            paintContent(graphics, layer.content(), area, fade(palette(layer.content()), area.opacity() * layer.weight()), layer.presentation());
+            paintContent(graphics, layer.content(), area, fade(palette(layer.content()), area.opacity() * layer.weight()), layer.presentation(), typography.music(layer.content()));
         }
         if (snapshot != null && frame.input().content() != null) runtime.markPainted(snapshot);
     }
@@ -183,6 +204,9 @@ public final class ClientLiveActivities implements AutoCloseable {
     }
 
     void paintContent(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode) {
+        paintContent(graphics, content, area, tokens, mode, false);
+    }
+    private void paintContent(GuiGraphicsExtractor graphics, ActivityService.Content content, SurfaceGeometry area, SurfaceTokens tokens, SurfacePresentation mode, boolean music) {
         int x = (int) area.x(), y = (int) area.y(), width = (int) area.width(), height = (int) area.height();
         var font = Minecraft.getInstance().font;
         graphics.enableScissor(x, y, x + width, y + height);
@@ -208,18 +232,18 @@ public final class ClientLiveActivities implements AutoCloseable {
                 }
             }
             int available = Math.max(1, x + width - left - 8);
-            var title = text(content.title()).copy().withStyle(net.minecraft.ChatFormatting.BOLD);
-            var detail = text(content.detail());
+            var title = music ? MusicTypography.bold(text(content.title())) : text(content.title()).copy().withStyle(net.minecraft.ChatFormatting.BOLD);
+            var detail = music ? MusicTypography.text(text(content.detail())) : text(content.detail());
             if (mode == SurfacePresentation.EXPANDED) {
-                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(title, available)), left, y + 8, tokens.title(), false);
-                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(detail, available)), left, y + 23, tokens.detail(), false);
+                graphics.text(font, clipped(font, title, available, music), left, y + 8, tokens.title(), false);
+                graphics.text(font, clipped(font, detail, available, music), left, y + 23, tokens.detail(), false);
             } else {
                 int titleWidth = detail.getString().isBlank() ? available : Math.min(font.width(title), Math.max(1, available / 2));
-                int baseline = y + Math.max(0, (height - font.lineHeight) / 2) - (content.progress() >= 0 ? 1 : 0);
-                graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(title, titleWidth)), left, baseline, tokens.title(), false);
+                int baseline = y + Math.max(0, (height - (music ? MusicTypography.LINE_HEIGHT : font.lineHeight)) / 2) - (content.progress() >= 0 ? 1 : 0);
+                graphics.text(font, clipped(font, title, titleWidth, music), left, baseline, tokens.title(), false);
                 int detailX = left + titleWidth + 8;
                 if (detailX < x + width - 8)
-                    graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(detail, x + width - detailX - 8)), detailX, baseline, tokens.detail(), false);
+                    graphics.text(font, clipped(font, detail, x + width - detailX - 8, music), detailX, baseline, tokens.detail(), false);
             }
             if (content.progress() >= 0) {
                 int track = Math.max(0, width - 16);
@@ -229,9 +253,15 @@ public final class ClientLiveActivities implements AutoCloseable {
         } finally { graphics.disableScissor(); }
     }
 
+    private static net.minecraft.util.FormattedCharSequence clipped(net.minecraft.client.gui.Font font, Component text, int width, boolean music) {
+        return music ? MusicTextLayout.ellipsize(font, text, width, MusicTypography.font())
+                : net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text, width));
+    }
+
     @Override public void close() {
         if (closed) return;
         closed = true;
+        typography.retain(List.of());
         artwork.close();
         var screen = details;
         if (screen != null && NativePort.screen(Minecraft.getInstance()) == screen) screen.onClose();
