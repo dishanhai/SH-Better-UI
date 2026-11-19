@@ -26,6 +26,8 @@ class OnlineMusicAccountViewTest {
         final Map<String,CompletableFuture<List<OnlineTrack>>> liked=new HashMap<>();
         CompletableFuture<List<OnlineTrack>> playlistTracks=new Uncancellable<>();
         String lastLibrarySource;
+        OnlineTrack played;
+        int remotePlaylistLoads;
         List<String> providers=List.of("netease","qq");
         CompletableFuture<Void> likes = new Uncancellable<>();
         final Map<String, Boolean> saved = new HashMap<>();
@@ -38,7 +40,8 @@ class OnlineMusicAccountViewTest {
             case "like" -> likes;
             case "playlists" -> {lastLibrarySource=(String)args[0];yield playlists.computeIfAbsent(lastLibrarySource,k->new Uncancellable<>());}
             case "liked" -> {lastLibrarySource=(String)args[0];yield liked.computeIfAbsent(lastLibrarySource,k->new Uncancellable<>());}
-            case "playlist" -> playlistTracks;
+            case "playlist" -> {remotePlaylistLoads++;yield playlistTracks;}
+            case "play" -> {played=(OnlineTrack)args[0];yield null;}
             case "remembersCredentials" -> saved.getOrDefault((String)args[0],false);
             case "rememberCredentials" -> { saved.put((String)args[0],(Boolean)args[1]); yield null; }
             case "snapshot" -> new OnlineMusicPlayer.Snapshot(null, OnlineMusicPlayer.State.IDLE, 0, 0, OnlineMusicPlayer.LyricsState.EMPTY,
@@ -125,10 +128,94 @@ class OnlineMusicAccountViewTest {
     @Test void libraryDoesNotInventProvidersForEmbeddedPlayers() throws Exception {
         for(var ids:List.of(List.<String>of(),List.of("qq"))) {
             var f=new Fixture();f.providers=ids;f.view.layout(new Host());call(f.view,"enterLibrary");
-            assertNull(read(f.view,"librarySources"));
-            if(ids.isEmpty()){assertEquals("view.unavailable",read(f.view,"libraryState"));assertTrue(f.playlists.isEmpty());assertFalse(((net.minecraft.client.gui.components.AbstractWidget)read(f.view,"libraryLogin")).visible);}
-            else assertEquals("qq",f.lastLibrarySource);
+            if(ids.isEmpty()){
+                assertNull(read(f.view,"librarySources"));
+                assertEquals("view.unavailable",read(f.view,"libraryState"));assertTrue(f.playlists.isEmpty());
+                assertFalse(((net.minecraft.client.gui.components.AbstractWidget)read(f.view,"libraryLogin")).visible);
+            } else {
+                assertEquals(List.of("qq","listen1"),read(f.view,"librarySourceIds"));
+                assertEquals("qq",f.lastLibrarySource);
+            }
         }
+    }
+
+    private static void selectListen1(OnlineMusicViewImpl view) throws Exception {
+        var tabs=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSegmentedControl)read(view,"librarySources");
+        assertTrue(tabs.visible && tabs.active);
+        assertEquals(3,tabs.choiceCount());
+        // Exercise the actual selection callback without a sound device.
+        ((java.util.function.IntConsumer)read(tabs,"onChange")).accept(2);
+        assertEquals(2,tabs.selectedIndex());
+        assertEquals("listen1",read(view,"librarySource"));
+    }
+
+    @Test void listen1MinimumViewportImportsAndRemountsWithoutAListen1NetworkSource(
+            @org.junit.jupiter.api.io.TempDir java.nio.file.Path directory) throws Exception {
+        var f=new Fixture();
+        var imports=new com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Session();
+        var view=new OnlineMusicViewImpl(f.player,false,imports);
+        var compact=new Host();compact.width=208;compact.height=240;
+        view.layout(compact);call(view,"enterLibrary");selectListen1(view);
+        var path=(com.dishanhai.sh_better_ui.client.gui.scaled.UiTextField)read(view,"listen1Path");
+        var action=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(view,"listen1ImportButton");
+        assertTrue(path.visible && path.active);assertTrue(action.visible);assertFalse(action.active);
+        assertTrue(path.getX()+path.getWidth()<action.getX());assertTrue(action.getX()+action.getWidth()<compact.width);
+        assertFalse(((net.minecraft.client.gui.components.AbstractWidget)read(view,"libraryLogin")).visible);
+
+        var json=java.nio.file.Files.writeString(directory.resolve("listen1 backup.json"),"""
+                {"playerlists":["myplaylist_1"],"myplaylist_1":{"info":{"id":"myplaylist_1","title":"Mix"},"tracks":[
+                    {"id":"qqtrack_067abc","source":"qq","title":"QQ track"},
+                    {"id":"kwtrack_1","source":"kuwo","title":"Unavailable"}]}}
+                """);
+        path.setValue("\""+json+"\"");
+        // The widget normally writes through onChange; set the value under test before invoking Import.
+        write(view,"listen1File",path.getValue());call(view,"updateListen1Editor");
+        assertTrue(action.active);
+        action.onPress();
+        ((CompletableFuture<?>)read(view,"pendingListen1")).get(5,java.util.concurrent.TimeUnit.SECONDS);
+        call(view,"pollOperations");
+        assertFalse(path.visible);
+        assertEquals(1,imports.imported().supportedTracks());assertEquals(1,imports.imported().skippedTracks());
+        assertEquals(Set.of("netease"),f.playlists.keySet());
+        assertNull(f.played); // Import alone must not replace or start playback.
+
+        view.suspend();
+        var reopened=new OnlineMusicViewImpl(f.player,false,imports);
+        reopened.layout(compact);call(reopened,"enterLibrary");selectListen1(reopened);
+        var row=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)((List<?>)read(reopened,"libraryRows")).getFirst();
+        assertTrue(row.visible);row.onPress(); // Open playlist.
+        assertEquals(0,f.remotePlaylistLoads);
+        row.onPress(); // Play its first track through the regular queue.
+        assertNotNull(f.played);
+        assertEquals("qq",f.played.source());assertEquals("067abc",f.played.id());
+        assertEquals(Set.of("netease"),f.playlists.keySet());
+        reopened.suspend();
+    }
+
+    @Test void listen1CancellationAndFailedReplacementPreserveThePreviousImport() throws Exception {
+        var f=new Fixture();
+        var imports=new com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Session();
+        var list=new OnlinePlaylist("listen1","myplaylist_1","Keep this",1);
+        var old=new com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Imported(List.of(list),Map.of(list.id(),List.of(TRACK)),1,0);
+        imports.replace(old);
+        var view=new OnlineMusicViewImpl(f.player,false,imports);
+        view.layout(new Host());call(view,"enterLibrary");selectListen1(view);
+        var replace=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(view,"libraryRefresh");
+        replace.onPress();
+        var late=new Uncancellable<com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Imported>();
+        write(view,"pendingListen1",late);
+        assertFalse(view.permitsScreenClose()); // Esc dismisses the editor, not the whole screen.
+        late.complete(new com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Imported(List.of(),Map.of(),0,0));
+        call(view,"pollOperations");
+        assertSame(old,imports.imported());assertTrue(replace.visible);
+
+        replace.onPress();
+        write(view,"pendingListen1",CompletableFuture.completedFuture(null)); // File failed validation.
+        call(view,"pollOperations");
+        assertSame(old,imports.imported());
+        assertFalse(view.permitsScreenClose());
+        assertEquals(List.of(list),read(view,"playlists"));
+        view.suspend();
     }
 
     @Test void libraryAuthRoundTripPreservesCompletedListAndGuestControlsNeverOverlapPager() throws Exception {
