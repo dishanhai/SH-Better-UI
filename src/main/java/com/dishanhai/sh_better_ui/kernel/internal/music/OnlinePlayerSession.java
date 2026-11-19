@@ -54,6 +54,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private PlaybackOutput output;
     private float volume = 1f;
     private OnlineMusicEqualizerPreset equalizerPreset = OnlineMusicEqualizerPreset.FLAT;
+    private OnlineMusicSoundEffect soundEffect = OnlineMusicSoundEffect.OFF;
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
     private byte[] audio;
@@ -413,6 +414,22 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         output.equalizerPreset(preset);
         equalizerPreset = preset;
     }
+    private boolean isQqTrack() { return track != null && "qq".equals(track.source()); }
+    @Override public synchronized boolean supportsSoundEffects() {
+        if (!isQqTrack() || state == State.CLOSED || output == null || !output.supportsSoundEffects()) return false;
+        return switch (output.state()) {
+            case LOADING, PLAYING, PAUSED, ENDED -> true;
+            default -> false;
+        };
+    }
+    @Override public synchronized OnlineMusicSoundEffect soundEffect() { return soundEffect; }
+    @Override public synchronized void soundEffect(OnlineMusicSoundEffect effect) {
+        requireOpen();
+        Objects.requireNonNull(effect, "effect");
+        if (!supportsSoundEffects()) throw new UnsupportedOperationException("Music sound effects unavailable");
+        output.soundEffect(effect);
+        soundEffect = effect;
+    }
     @Override public synchronized void pause() { playRequested = false; if (output != null) output.pause(); }
     @Override public synchronized void resume() {
         playRequested = true;
@@ -437,6 +454,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             output = Objects.requireNonNull(outputs.get(), "Missing audio output");
             output.volume(volume);
             if (output.supportsEqualizer()) output.equalizerPreset(equalizerPreset);
+            if (isQqTrack() && output.supportsSoundEffects()) output.soundEffect(soundEffect);
             output.start(audio, position, playing);
             return true;
         } catch (RuntimeException error) {

@@ -2091,5 +2091,12 @@
   "sh_better_ui.online_music.menu.eq.bass_focus": "低頻增強",
   "sh_better_ui.online_music.menu.eq.voice_focus": "人聲突出",
   "sh_better_ui.online_music.menu.eq.treble_focus": "高頻增強",
-  "sh_better_ui.online_music.menu.eq.current": "%s（已選）"
+  "sh_better_ui.online_music.menu.eq.current": "%s（已選）",
+  "sh_better_ui.online_music.menu.qq_effects": "QQ 音效",
+  "sh_better_ui.online_music.menu.qq_effect.off": "關閉",
+  "sh_better_ui.online_music.menu.qq_effect.super_bass": "超重低音",
+  "sh_better_ui.online_music.menu.qq_effect.clear_vocals": "清澈人聲",
+  "sh_better_ui.online_music.menu.qq_effect.live_rhythm": "現場律動",
+  "sh_better_ui.online_music.menu.qq_effect.wide_stereo": "寬廣立體聲",
+  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "虛擬音樂廳"
 }

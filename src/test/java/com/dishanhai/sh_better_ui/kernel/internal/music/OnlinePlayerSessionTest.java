@@ -18,6 +18,68 @@ class OnlinePlayerSessionTest {
         @Override public boolean supportsEqualizer() { return true; }
         @Override public void equalizerPreset(OnlineMusicEqualizerPreset value) { preset = value; }
     }
+    private static class SoundEffectsOutput extends EqualizedOutput {
+        OnlineMusicSoundEffect effect;
+        @Override public boolean supportsSoundEffects() { return true; }
+        @Override public void soundEffect(OnlineMusicSoundEffect value) { effect = value; }
+    }
+    private static OnlineTrack qqTrack(String id) { return new OnlineTrack("qq", id, id, id, "Artist", "", 10000); }
+
+    @Test void qqEffectsSurviveSeekAndTracksButNeverLeakToAnotherProvider() throws Exception {
+        var first = new SoundEffectsOutput();
+        var next = new AtomicReference<Output>(first);
+        var qq = new Source() { @Override public String id() { return "qq"; } };
+        try (var session = new OnlinePlayerSession(List.of(qq, new Source()), next::get, uri -> new byte[]{1})) {
+            assertFalse(session.supportsSoundEffects());
+            assertThrows(UnsupportedOperationException.class, () -> session.soundEffect(OnlineMusicSoundEffect.SUPER_BASS));
+            session.play(qqTrack("one")); await(() -> session.snapshot().state() == State.PLAYING);
+            assertTrue(session.supportsSoundEffects());
+            assertEquals(OnlineMusicSoundEffect.OFF, first.effect);
+            session.equalizerPreset(OnlineMusicEqualizerPreset.TREBLE_FOCUS);
+            session.soundEffect(OnlineMusicSoundEffect.CLEAR_VOCALS);
+            assertEquals(OnlineMusicSoundEffect.CLEAR_VOCALS, first.effect);
+            assertEquals(OnlineMusicEqualizerPreset.TREBLE_FOCUS, first.preset);
+
+            var seek = new SoundEffectsOutput(); next.set(seek); session.seek(1000);
+            assertTrue(first.closed);
+            assertEquals(OnlineMusicSoundEffect.CLEAR_VOCALS, seek.effect);
+            assertEquals(1000, seek.position);
+
+            var other = new SoundEffectsOutput(); next.set(other); session.play(track("other"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            assertFalse(session.supportsSoundEffects());
+            assertNull(other.effect);
+            assertEquals(OnlineMusicEqualizerPreset.TREBLE_FOCUS, other.preset);
+            assertThrows(UnsupportedOperationException.class, () -> session.soundEffect(OnlineMusicSoundEffect.OFF));
+
+            var later = new SoundEffectsOutput(); next.set(later); session.play(qqTrack("later"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            assertEquals(OnlineMusicSoundEffect.CLEAR_VOCALS, later.effect);
+            session.pause();
+            assertTrue(session.supportsSoundEffects());
+            session.soundEffect(OnlineMusicSoundEffect.OFF);
+            assertEquals(OnlineMusicSoundEffect.OFF, later.effect);
+            assertEquals(OnlineMusicEqualizerPreset.TREBLE_FOCUS, later.preset);
+            session.stop(); assertFalse(session.supportsSoundEffects());
+        }
+    }
+    @Test void unsupportedOrFailedQqOutputDoesNotAcceptEffects() throws Exception {
+        var qq = new Source() { @Override public String id() { return "qq"; } };
+        var next = new AtomicReference<Output>(new Output());
+        try (var session = new OnlinePlayerSession(List.of(qq), next::get, uri -> new byte[]{1})) {
+            session.play(qqTrack("external")); await(() -> session.snapshot().state() == State.PLAYING);
+            assertFalse(session.supportsSoundEffects());
+            assertThrows(UnsupportedOperationException.class, () -> session.soundEffect(OnlineMusicSoundEffect.SUPER_BASS));
+            var failed = new SoundEffectsOutput() {
+                @Override public void start(byte[] bytes, long position, boolean playing) { state = State.FAILED; }
+            };
+            next.set(failed);
+            session.play(qqTrack("failed")); await(() -> session.snapshot().state() == State.FAILED);
+            assertFalse(session.supportsSoundEffects());
+            assertThrows(UnsupportedOperationException.class, () -> session.soundEffect(OnlineMusicSoundEffect.SUPER_BASS));
+            assertEquals(OnlineMusicSoundEffect.OFF, session.soundEffect());
+        }
+    }
     @Test void equalizerPreferenceSurvivesSeekTracksAndUnsupportedOutputs() throws Exception {
         var first = new EqualizedOutput();
         var next = new AtomicReference<Output>(first);

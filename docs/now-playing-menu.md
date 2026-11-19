@@ -28,3 +28,8 @@ cancellation, track invalidation, and the smallest header geometry. This is not 
 claim of in-game optical or full Gradle validation.
 
 When the active output supports native PCM equalization, a separate Equalizer list shows the current preset and applies the selected one. The companion web player and outputs without this capability do not expose the entry.
+
+On a supported native QQ track, **QQ Sound Effects** opens a compact two-column
+selector. It marks and focuses the current preset, including Off. Up/Down
+move along the current column, and Left/Right move through the focus order.
+The Equalizer remains separate because it can also affect other sources.

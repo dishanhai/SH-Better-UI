@@ -30,17 +30,17 @@ final class NowPlayingMenuHost {
         if(content!=null)content.close();content=null;expansion=null;outside=false;dismissAtRender=false;shield.visible=false;
         if(host.screen().getFocused()==shield){host.screen().setDragging(false);host.screen().setFocused(source!=null&&source.visible?source:null);}
     }
-    void open(UiButton source,Bounds viewport,Component title,List<NowPlayingMenu.Entry> entries,boolean quickHeader,BooleanSupplier valid){
+    void open(UiButton source,Bounds viewport,Component title,List<NowPlayingMenu.Entry> entries,NowPlayingMenu.Layout menuLayout,BooleanSupplier valid){
         if(!supported())return;
         interrupt();this.source=source;this.valid=valid;
-        int width=Math.min(248,viewport.width()),height=NowPlayingMenu.height(entries.size(),quickHeader);
+        int width=Math.min(248,viewport.width()),height=NowPlayingMenu.height(entries.size(),menuLayout);
         if(viewport.height()<height)return;
         var start=new Bounds(source.getX(),source.getY(),source.getWidth(),source.getHeight());
         var target=new Bounds(Math.max(viewport.x(),Math.min(viewport.right()-width,start.right()-width)),
                 Math.max(viewport.y(),Math.min(viewport.bottom()-height,start.bottom()+6)),width,height);
         content=new NowPlayingMenu(target,host.preferences(),title,entries,valid,this::interrupt,entry->{
             boolean allowed=valid.getAsBoolean();interrupt();if(allowed)entry.action().run();
-        },text->Minecraft.getInstance().getNarrator().saySystemNow(text),quickHeader);
+        },text->Minecraft.getInstance().getNarrator().saySystemNow(text),menuLayout);
         expansion=new UiExpansionController(start,target,UiExpansionController.Config.CENTERED_MENU,host.preferences().reducedMotion(),now());
         shield.visible=true;host.screen().setFocused(shield);
     }

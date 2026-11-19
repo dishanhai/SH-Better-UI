@@ -11,7 +11,12 @@ import java.util.*;
 import java.util.function.*;
 
 final class NowPlayingMenu implements UiLocalModal.Content {
-    record Entry(Component label, MusicControlRenderer.Icon icon, boolean available, Runnable action) {}
+    enum Layout { QUICK_ACTIONS, LIST, EFFECT_TILES }
+    record Entry(Component label, MusicControlRenderer.Icon icon, boolean available, Runnable action, boolean selected) {
+        Entry(Component label, MusicControlRenderer.Icon icon, boolean available, Runnable action) {
+            this(label, icon, available, action, false);
+        }
+    }
     static Bounds anchor(Bounds frame,boolean wide) {
         int inset=frame.width()>=460?24:12;
         return new Bounds(frame.right()-inset-(wide?24:84),frame.y()+6,24,24);
@@ -24,45 +29,72 @@ final class NowPlayingMenu implements UiLocalModal.Content {
     private final Consumer<Component> narrate;
     private final boolean highContrast;
     private final int quickCount;
+    private final Layout layout;
     private int focus;
     private MusicTextControl pressed;
 
     static boolean open(UiLocalModal manager, UiButton source, Bounds viewport, Component title,
-                        List<Entry> entries, boolean quickHeader, BooleanSupplier valid) {
+                        List<Entry> entries, Layout layout, BooleanSupplier valid) {
         if (entries.isEmpty()) return false;
         Runnable[] chosen = {() -> {}};
         int width = Math.min(248, viewport.width());
-        int height = height(entries.size(),quickHeader);
+        int height = height(entries.size(),layout);
         return manager.open(source, viewport,
                 (anchor, clip) -> new Bounds(anchor.right()-width,
                         anchor.bottom()+6, width, height), UiExpansionController.Config.CENTERED_MENU,
                 session -> new NowPlayingMenu(session.target(), session.preferences(), title, entries,
                         valid, session::cancel, entry -> { chosen[0]=entry.action(); session.confirm(); },
-                        text -> Minecraft.getInstance().getNarrator().sayNow(text),quickHeader),
+                        text -> Minecraft.getInstance().getNarrator().sayNow(text),layout),
                 () -> { if(valid.getAsBoolean()) chosen[0].run(); });
     }
 
-    static int height(int entries,boolean quickHeader){return 36+(quickHeader?60:0)+30*Math.max(0,entries-(quickHeader?3:0));}
+    static int height(int entries,boolean quickHeader) {
+        return height(entries,quickHeader?Layout.QUICK_ACTIONS:Layout.LIST);
+    }
+    static int height(int entries,Layout layout) {
+        return switch(layout) {
+            case QUICK_ACTIONS -> 96+30*Math.max(0,entries-3);
+            case LIST -> 36+30*entries;
+            case EFFECT_TILES -> 36+34*((entries+1)/2);
+        };
+    }
+    private static Bounds effectTile(Bounds frame,int index) {
+        int usable=frame.width()-22;
+        int split=usable/2;
+        return new Bounds(frame.x()+8+(index%2==0?0:split+6),frame.y()+28+(index/2)*34,
+                index%2==0?split:usable-split,30);
+    }
 
     NowPlayingMenu(Bounds bounds, UiPreferences preferences, Component title, List<Entry> entries,
                    BooleanSupplier valid, Runnable dismiss, Consumer<Entry> choose, Consumer<Component> narrate) {
-        this(bounds,preferences,title,entries,valid,dismiss,choose,narrate,true);
+        this(bounds,preferences,title,entries,valid,dismiss,choose,narrate,Layout.QUICK_ACTIONS);
     }
 
     NowPlayingMenu(Bounds bounds, UiPreferences preferences, Component title, List<Entry> entries,
                    BooleanSupplier valid, Runnable dismiss, Consumer<Entry> choose, Consumer<Component> narrate, boolean quickHeader) {
+        this(bounds,preferences,title,entries,valid,dismiss,choose,narrate,quickHeader?Layout.QUICK_ACTIONS:Layout.LIST);
+    }
+
+    NowPlayingMenu(Bounds bounds, UiPreferences preferences, Component title, List<Entry> entries,
+                   BooleanSupplier valid, Runnable dismiss, Consumer<Entry> choose, Consumer<Component> narrate, Layout layout) {
+        this.layout=layout;
         this.bounds=bounds; this.title=title; this.valid=valid; this.dismiss=dismiss; this.narrate=narrate;this.highContrast=preferences.highContrast();
         int y=bounds.y()+28;
-        quickCount=quickHeader?Math.min(3,entries.size()):0;
+        quickCount=layout==Layout.QUICK_ACTIONS?Math.min(3,entries.size()):0;
         int quickWidth=(bounds.width()-16)/Math.max(1,quickCount);
+        int selected=-1;
         for (int i=0;i<entries.size();i++) {
             Entry entry=entries.get(i);
-            var button=new MusicTextControl(i<quickCount?new Bounds(bounds.x()+8+i*quickWidth,y,Math.max(12,quickWidth),52):new Bounds(bounds.x()+8,bounds.y()+(quickCount>0?88:28)+(i-quickCount)*30,Math.max(12,bounds.width()-16),28),
-                    entry.label(),preferences,()->choose.accept(entry),()->{});
+            Bounds box=layout==Layout.EFFECT_TILES?effectTile(bounds,i):i<quickCount
+                    ?new Bounds(bounds.x()+8+i*quickWidth,y,Math.max(12,quickWidth),52)
+                    :new Bounds(bounds.x()+8,bounds.y()+(quickCount>0?88:28)+(i-quickCount)*30,Math.max(12,bounds.width()-16),28);
+            var button=new MusicTextControl(box,entry.label(),preferences,()->choose.accept(entry),()->{});
+            button.setSelected(entry.selected());
+            if(entry.selected()&&entry.available())selected=i;
             if(i<quickCount)button.setGlyphOnly(entry.icon());else button.setLeadingIcon(entry.icon()); button.setAvailable(entry.available());
             controls.add(button);
         }
-        focus=-1; move(1);
+        focus=-1; if(selected>=0)setFocus(selected);else move(1);
     }
     @Override public boolean animatesContents(){return true;}
     @Override public boolean dismissesOnOutsidePress(){return true;}
@@ -96,6 +128,11 @@ final class NowPlayingMenu implements UiLocalModal.Content {
     }
     @Override public boolean keyPressed(int key,int scan,int mods,long now){
         if(!valid.getAsBoolean()){dismiss.run();return true;}
+        if(layout==Layout.EFFECT_TILES&&(key==264||key==265)) {
+            int next=focus+(key==264?2:-2);
+            if(focus>=0&&next>=0&&next<controls.size()&&controls.get(next).active)setFocus(next);
+            return true;
+        }
         if(key==264||key==262){move(1);return true;}
         if(key==265||key==263){move(-1);return true;}
         if(key==268){focus=-1;move(1);return true;}

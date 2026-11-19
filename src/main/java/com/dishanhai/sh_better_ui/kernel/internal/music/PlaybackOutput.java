@@ -11,6 +11,10 @@ interface PlaybackOutput extends AutoCloseable {
     default void equalizerPreset(com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicEqualizerPreset preset) {
         throw new UnsupportedOperationException("Output equalizer unavailable");
     }
+    default boolean supportsSoundEffects() { return false; }
+    default void soundEffect(com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicSoundEffect effect) {
+        throw new UnsupportedOperationException("Output sound effects unavailable");
+    }
     void pause();
     void resume();
     State state();
