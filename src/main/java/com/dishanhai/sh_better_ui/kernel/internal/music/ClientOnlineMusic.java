@@ -11,6 +11,7 @@ import com.dishanhai.sh_better_ui.client.music.*;
 public final class ClientOnlineMusic implements OnlineMusicService, MusicOperationSource, AutoCloseable {
     private OnlineMusicPlayer background;
     private OnlineMusicFrameBridge bridge;
+    private Listen1Backup.Session listen1 = new Listen1Backup.Session();
     private boolean closed;
     private final Supplier<OnlineMusicPlayer> backgroundFactory;
     private final Supplier<MusicService.Frame> foreground;
@@ -71,9 +72,10 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
         if (background == null || background.snapshot().state() == OnlineMusicPlayer.State.CLOSED) {
             if (bridge != null) bridge.close();
             background = backgroundFactory.get();
+            listen1 = new Listen1Backup.Session();
             bridge = new OnlineMusicFrameBridge(background, lease.get());
         }
-        return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(background, false);
+        return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(background, false, listen1);
     }
 
     @Override public synchronized List<SessionMusicOperations.Snapshot> operationsSnapshot() {
@@ -88,7 +90,7 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
     public synchronized Optional<OnlineMusicView> backgroundOperationView(MusicOperationNavigation.Target target) {
         if (closed || !(background instanceof OnlinePlayerSession session)
                 || !target.validFor(session.operations())) return Optional.empty();
-        var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+        var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false, listen1);
         view.requestOperationHistory(target);
         return Optional.of(view);
     }
@@ -96,6 +98,7 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;
+        listen1 = new Listen1Backup.Session();
         if (bridge != null) { bridge.close(); bridge = null; }
         if (background != null) { background.close(); background = null; }
     }
