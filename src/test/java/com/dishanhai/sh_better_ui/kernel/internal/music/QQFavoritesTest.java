@@ -202,4 +202,54 @@ class QQFavoritesTest {
         source.credentials("uin=123; qm_keyst=fixture"); return source;
     }
     private static JsonObject json(String value) { return JsonParser.parseString(value).getAsJsonObject(); }
+    @Test void appliedWriteWithLostReadbackIsUnconfirmedAndReadReconcilesWithoutAnotherWrite() throws Exception {
+        var count = new java.util.concurrent.atomic.AtomicInteger();
+        var state = new java.util.concurrent.atomic.AtomicBoolean();
+        var verify = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var readbackFails = new java.util.concurrent.atomic.AtomicBoolean(true);
+        var source = source((module, method, parameters, write) -> {
+            if (write) { count.incrementAndGet(); state.set(true); return json("{\"retCode\":0}"); }
+            if (method.equals("get_song_detail_yqq")) return json("{\"track_info\":{\"mid\":\"songMid\",\"id\":123,\"type\":0}}");
+            if (state.get() && readbackFails.get()) {
+                verify.countDown();
+                try { if (!release.await(3,TimeUnit.SECONDS)) throw new IOException("fixture timeout"); }
+                catch (InterruptedException error) { Thread.currentThread().interrupt(); throw new IOException("fixture interrupted"); }
+                throw new java.net.SocketTimeoutException("fixture readback");
+            }
+            return json("{\"m_fan\":{\"songMid\":" + state.get() + "}}");
+        });
+        try (var player = new OnlinePlayerSession(List.of(source))) {
+            player.credentials("qq", "uin=123; qm_keyst=fixture");
+            var registry = player.operations();
+            var update = registry.startLike(TRACK, true);
+            assertTrue(verify.await(3, TimeUnit.SECONDS));
+            update.detach();
+            release.countDown();
+            assertThrows(ExecutionException.class, () -> update.observe().get(3, TimeUnit.SECONDS));
+            var limit=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+            while (update.snapshot().state()==SessionMusicOperations.State.RUNNING && System.nanoTime()<limit) Thread.onSpinWait();
+            assertEquals(SessionMusicOperations.Error.UNKNOWN, update.snapshot().error());
+            var presenter = new MusicOperationNotices();
+            assertEquals(List.of("operation_like_unknown"), presenter.observe(registry.snapshots(), true).stream()
+                    .filter(event -> !event.cancel()).map(MusicOperationNotices.Update::key).toList());
+            assertTrue(presenter.observe(registry.snapshots(), true).isEmpty());
+            assertTrue(state.get());
+            readbackFails.set(false);
+            // QQ checks current state first. A matching read does not issue another write.
+            source.like(TRACK, true);
+            assertEquals(1,count.get());
+        } finally { release.countDown(); }
+        assertThrows(MusicWriteRejected.class, () -> QQWebProtocol.data(
+                json("{\"code\":0,\"req\":{\"code\":0,\"data\":{\"retCode\":1}}}"), true));
+    }
+    @Test void missingTrackBeforeDispatchDoesNotReportUnconfirmedWrite() {
+        var source = source((module,method,param,write)->{
+            assertFalse(write);
+            return method.equals("IsSongFanByMid") ? json("{\"m_fan\":{\"songMid\":false}}") : new JsonObject();
+        });
+        var error = assertThrows(QQFavorites.NotSent.class, () -> source.like(TRACK,true));
+        assertEquals(SessionMusicOperations.Error.UNAVAILABLE,
+                SessionMusicOperations.classify(SessionMusicOperations.Kind.LIKE,error));
+    }
 }

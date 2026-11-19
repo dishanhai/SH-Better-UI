@@ -65,3 +65,27 @@ The small History control beside Search opens Background tasks, a secondary, pag
 Regression coverage includes real session/real view detach → complete → reopen, explicit cancellation, and credential invalidation preventing restore. These tests use controlled provider results, not live account credentials or remote music services.
 
 The island uses a separate read-operation channel, never a fake playback frame. Detached running and terminal states replace only their own notices with a fresh visible budget; no query, title or account identity is copied. Foreground-consumed results do not produce a duplicate background notice. Sampling while disabled consumes events, so enabling notices does not replay old work; the recent-task page remains available. Native notification capacity defers pending notices while their source record remains valid; the legacy island uses non-evicting admission and retries while full or hidden. Later higher-priority notices can still preempt admitted notices under the existing island policy, without deleting task history. Already-displayed results remain authorized after ordinary history expiry/eviction; account changes and session close invalidate them. Ordinary HUD visibility rules still apply, and history is session-local, not a persistent inbox.
+
+## Provider writes and QR sign-in (third stage)
+
+The built-in player owns like/unlike writes. Closing the panel or changing tabs
+only stops observing the request. It does not revoke an already dispatched
+write. While the same provider and track have a running write, a repeat press
+reports that it is still updating and sends nothing new. The server's confirmed
+rejection is distinct from an unconfirmed result. In particular, QQ can apply
+a write even if its confirmation read times out. The island reports that result
+as unconfirmed; refresh the Likes page to check the current provider state.
+The player never automatically retries the write.
+
+QR polling also remains with the built-in player when the panel is dismissed.
+Opening the provider's account detail returns to the active QR challenge without
+creating a new one. Restarting sign-in cancels the old attempt; replacing or
+expiring the provider's account clears its old challenge and results. The island
+does not display a QR image or report sign-in success until the session has
+applied the credentials and any requested persistence has succeeded.
+
+Notifications and recent-task labels contain only operation type and normalized
+state; no track identity, credentials, account data, QR image, or raw provider
+error. Write and login history rows are informational. No re-execution takes
+place from history. These paths have synthetic provider regression coverage;
+they do not imply live account or audio-service verification.

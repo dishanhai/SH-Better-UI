@@ -306,4 +306,37 @@ class OnlineMusicAccountSessionTest {
         } finally { release.countDown(); }
     }
 
+    @Test void accountRolloverKeepsSameTrackLaneUntilOldWriteActuallyReturns() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var calls = new java.util.concurrent.atomic.AtomicInteger();
+        var source = new Source() {
+            @Override public void like(OnlineTrack track, boolean value) {
+                if (calls.incrementAndGet() == 1) {
+                    entered.countDown();
+                    while (true) {
+                        try { release.await(); break; } catch (InterruptedException ignored) { }
+                    }
+                }
+            }
+        };
+        try (var session = new OnlinePlayerSession(List.of(source))) {
+            session.credentials("test","same-account");
+            var first = session.like(SONG,true);
+            assertTrue(entered.await(3,TimeUnit.SECONDS));
+            session.credentials("test","");
+            session.credentials("test","same-account");
+            assertTrue(first.isCancelled());
+            assertTrue(session.operations().likePending(SONG));
+            var rejected = assertThrows(ExecutionException.class, () -> session.like(SONG,false).get(3,TimeUnit.SECONDS));
+            assertInstanceOf(OnlinePlayerSession.LikeBusy.class,rejected.getCause());
+            assertEquals(1,calls.get());
+            release.countDown();
+            var limit = System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
+            while (session.likeInFlight(SONG) && System.nanoTime() < limit) Thread.sleep(5);
+            assertFalse(session.likeInFlight(SONG));
+            session.like(SONG,false).get(3,TimeUnit.SECONDS);
+            assertEquals(2,calls.get());
+        } finally { release.countDown(); }
+    }
 }

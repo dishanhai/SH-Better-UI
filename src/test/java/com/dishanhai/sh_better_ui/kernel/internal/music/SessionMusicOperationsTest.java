@@ -69,4 +69,37 @@ class SessionMusicOperationsTest {
         operations.close();assertFalse(current.displayValid());
     }
 
+    @Test void unconfirmedBackgroundLikeDoesNotRetryOrClaimRejection() {
+        var owner=new AtomicReference<>(new CompletableFuture<Void>());
+        var writes=new AtomicInteger();
+        var player=(OnlineMusicPlayer)java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{OnlineMusicPlayer.class}, (proxy,method,args)->{
+            if(method.getName().equals("like")) { writes.incrementAndGet();return owner.get(); }
+            throw new AssertionError(method.getName());
+        });
+        var registry=new SessionMusicOperations(player);
+        var track=new OnlineTrack("qq","song123","song123","do not disclose","artist","album",1000);
+        var first=registry.startLike(track,true);
+        first.detach();
+        first.cancel();
+        assertFalse(owner.get().isCancelled());
+        assertThrows(IllegalStateException.class,()->registry.startLike(track,false));
+        owner.get().completeExceptionally(new java.net.SocketTimeoutException("private transport detail"));
+        assertEquals(SessionMusicOperations.Error.UNKNOWN,first.snapshot().error());
+        var notices=new MusicOperationNotices();
+        var result=notices.observe(registry.snapshots(),true).stream().filter(update->!update.cancel()).toList();
+        assertEquals(1,result.size());
+        assertEquals("operation_like_unknown",result.get(0).key());
+        assertFalse(result.get(0).error());
+        assertTrue(notices.observe(registry.snapshots(),true).isEmpty());
+        assertFalse(first.snapshot().toString().contains("song123"));
+        assertEquals(1,writes.get());
+        owner.set(new CompletableFuture<>());
+        var next=registry.startLike(track,false);
+        owner.get().completeExceptionally(new MusicWriteRejected("private rejection"));
+        assertEquals(SessionMusicOperations.Error.REJECTED,next.snapshot().error());
+        registry.invalidate("qq",null);
+        assertFalse(next.displayValid());
+        assertTrue(registry.snapshots().isEmpty());
+    }
 }

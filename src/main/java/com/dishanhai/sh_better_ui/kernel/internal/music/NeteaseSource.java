@@ -147,6 +147,7 @@ final class NeteaseSource implements OnlineMusicSource {
                 "application/x-www-form-urlencoded", "https://music.163.com/", "os=pc; appver=8.9.70; " + session);
         long code = number(data, "code");
         if (code == 301 || code == 401) throw new LoginRequired();
+        if (code >= 400 && code < 500 && path.equals("/weapi/radio/like")) throw new MusicWriteRejected("NetEase favorite write rejected");
         if (code != 200) throw new IOException("NetEase account request rejected: " + code);
         return data;
     }

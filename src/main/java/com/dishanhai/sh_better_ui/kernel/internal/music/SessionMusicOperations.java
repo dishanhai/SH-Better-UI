@@ -8,9 +8,9 @@ import java.util.function.*;
 
 /** Bounded session-owned read jobs. Notification snapshots never contain queries or account data. */
 public final class SessionMusicOperations implements AutoCloseable {
-    public enum Kind { SEARCH, PLAYLISTS, PLAYLIST, LIKED }
+    public enum Kind { SEARCH, PLAYLISTS, PLAYLIST, LIKED, LIKE, UNLIKE, LOGIN; public boolean mutation() { return this == LIKE || this == UNLIKE; } }
     public enum State { RUNNING, SUCCEEDED, FAILED, CANCELLED, SUPERSEDED }
-    public enum Error { NONE, LOGIN_REQUIRED, UNAVAILABLE }
+    public enum Error { BUSY, EXPIRED, NONE, LOGIN_REQUIRED, UNAVAILABLE, UNKNOWN, REJECTED }
     public record Snapshot(long id, Kind kind, String source, State state, boolean background, Error error) {}
     /** Private-to-the-music-view restoration metadata, never a notice payload. */
     public record Request(Kind kind, String source, String query, int page, OnlinePlaylist playlist) {}
@@ -39,6 +39,43 @@ public final class SessionMusicOperations implements AutoCloseable {
     public Handle<List<OnlineTrack>> startLiked(String source,int page) {
         return start(new Request(Kind.LIKED,source,"",page,null),()->player.liked(source,page));
     }
+    public OnlineMusicLogin startLogin(String source) {
+        OnlineMusicLogin[] attempt = new OnlineMusicLogin[1];
+        start(new Request(Kind.LOGIN, source, "", 0, null), () -> {
+            attempt[0] = player.login(source);
+            return ((QrLoginSession)attempt[0]).completion();
+        });
+        if (attempt[0] == null) throw new IllegalStateException("Could not start music login");
+        return attempt[0];
+    }
+    public Optional<OnlineMusicLogin> currentLogin(String source) {
+        return player instanceof OnlinePlayerSession session ? session.currentLogin(source) : Optional.empty();
+    }
+    public void setLoginBackground(String source, OnlineMusicLogin attempt, boolean background) {
+        if (!(attempt instanceof QrLoginSession qr)) return;
+        synchronized (player) {
+            if (currentLogin(source).orElse(null) != attempt) return;
+            synchronized (this) {
+                latest(Kind.LOGIN, source).filter(handle -> handle.owner == qr.completion()).ifPresent(handle -> {
+                    if (background) handle.detach();
+                    else if (handle.state == State.RUNNING) handle.attach();
+                });
+            }
+        }
+    }
+    public Handle<Void> startLike(OnlineTrack track, boolean liked) {
+        return start(new Request(liked ? Kind.LIKE : Kind.UNLIKE, track.source(), track.id(), 0, null),
+                () -> player.like(track, liked));
+    }
+    public synchronized long accountVersion(String source) { return accountEpochs.getOrDefault(source,0L); }
+    public long likeLaneRevision() {
+        return player instanceof OnlinePlayerSession session ? session.likeLaneRevision() : 0;
+    }
+    public boolean likePending(OnlineTrack track) {
+        if (player instanceof OnlinePlayerSession session && session.likeInFlight(track)) return true;
+        synchronized(this) { return entries.values().stream().anyMatch(h -> h.state == State.RUNNING && h.request.kind().mutation()
+                && h.request.source().equals(track.source()) && h.request.query().equals(track.id())); }
+    }
     private <T> Handle<T> start(Request request,Supplier<CompletableFuture<T>> action) {
         // Lock order is always player -> registry; credentials invalidation uses the same order.
         synchronized(player) {
@@ -46,6 +83,9 @@ public final class SessionMusicOperations implements AutoCloseable {
             synchronized(this) {
                 if(closed) throw new IllegalStateException("Music session closed");
                 prune();
+                if (request.kind().mutation() && entries.values().stream().anyMatch(h -> h.state == State.RUNNING
+                        && h.request.kind().mutation() && h.request.source().equals(request.source())
+                        && h.request.query().equals(request.query()))) throw new IllegalStateException("Music update in progress");
                 while(entries.size()>=LIMIT) { var old=entries.values().stream().filter(h->h.state!=State.RUNNING).findFirst(); if(old.isEmpty())break;entries.remove(old.get().id); }
                 if(entries.size()>=LIMIT) throw new IllegalStateException("Too many music operations");
                 handle=new Handle<>(IDS.incrementAndGet(),request);entries.put(handle.id,handle);
@@ -63,8 +103,16 @@ public final class SessionMusicOperations implements AutoCloseable {
         handle.completed=clock.getAsLong();
         if(error==null) { handle.state=State.SUCCEEDED; }
         else if(error instanceof CancellationException)handle.state=State.CANCELLED;
-        else { handle.state=State.FAILED;while(error instanceof CompletionException && error.getCause()!=null)error=error.getCause();
-            handle.error=error instanceof OnlineMusicSource.LoginRequired?Error.LOGIN_REQUIRED:Error.UNAVAILABLE; }
+        else { handle.state=State.FAILED; handle.error=classify(handle.request.kind(),error); }
+    }
+    public static Error classify(Kind kind,Throwable error) {
+        while(error instanceof CompletionException && error.getCause()!=null)error=error.getCause();
+        if(error instanceof OnlinePlayerSession.LikeBusy)return Error.BUSY;
+        if(error instanceof QrLoginSession.Expired)return Error.EXPIRED;
+        if(error instanceof OnlineMusicSource.LoginRequired)return Error.LOGIN_REQUIRED;
+        if(!kind.mutation() || error instanceof QQFavorites.NotSent)return Error.UNAVAILABLE;
+        return error instanceof MusicWriteRejected || error instanceof IllegalArgumentException || error instanceof UnsupportedOperationException
+                ? Error.REJECTED : Error.UNKNOWN;
     }
     private void prune() {
         long now=clock.getAsLong();
@@ -93,6 +141,7 @@ public final class SessionMusicOperations implements AutoCloseable {
         private long completed, accountEpoch;
         private Handle(long id,Request request){this.id=id;this.request=request;this.accountEpoch=accountEpochs.getOrDefault(request.source(),0L); }
         public long id(){return id;}
+        public long accountVersion() { synchronized (SessionMusicOperations.this) { return accountEpoch; } }
         public boolean valid(){synchronized(SessionMusicOperations.this){prune();return displayValid() && entries.get(id)==this;}}
         /** Already-rendered data remains authorized after history retention expires, but never across account changes. */
         public boolean displayValid(){synchronized(SessionMusicOperations.this){return !closed && state!=State.SUPERSEDED && accountEpoch==accountEpochs.getOrDefault(request.source(),0L);}}
@@ -109,7 +158,7 @@ public final class SessionMusicOperations implements AutoCloseable {
         }}
         public void attach(){synchronized(SessionMusicOperations.this){background=false;}}
         public void cancel(){CompletableFuture<T> future;synchronized(SessionMusicOperations.this){
-            if(state!=State.RUNNING)return;state=State.CANCELLED;completed=clock.getAsLong();future=owner;
+            if(state!=State.RUNNING || request.kind().mutation() || request.kind()==Kind.LOGIN)return;state=State.CANCELLED;completed=clock.getAsLong();future=owner;
         }if(future!=null)future.cancel(true);}
     }
 }

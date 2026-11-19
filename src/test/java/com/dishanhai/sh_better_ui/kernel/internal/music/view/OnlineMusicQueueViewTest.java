@@ -494,6 +494,7 @@ class OnlineMusicQueueViewTest {
             case "id"->source;
             case "requestSnapshot"->proxy;
             case "search"->{release.await();yield List.of(A);}
+            case "like"->{release.await();yield null;}
             case "playlist","liked"->List.of(A);
             case "playlists"->List.of(new OnlinePlaylist("qq","new","New account list",1));
             case "supportsLikes"->false;
@@ -520,6 +521,21 @@ class OnlineMusicQueueViewTest {
             assertEquals(List.of(A),((java.util.concurrent.CompletableFuture<?>)field(reopened,"pending")).join());
             assertFalse(handle.snapshot().background());
         } finally {release.countDown();}
+    }
+    @Test void suspendingBorrowedViewDetachesProviderWriteWithoutCancelling() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            player.credentials(A.source(),"fixture-account");
+            var view=new OnlineMusicViewImpl(player,false); view.layout(new Host());
+            call(view,"changeLike",new Class<?>[]{OnlineTrack.class,boolean.class},A,true);
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.latest(com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Kind.LIKE,A.source()).orElseThrow();
+            view.suspend(); // close delegates here before render-thread texture cleanup
+            assertTrue(handle.snapshot().background());
+            assertFalse(handle.observe().isCancelled());
+            release.countDown();
+            handle.observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+        } finally { release.countDown(); }
     }
     @Test void explicitCancelAndCredentialInvalidationCannotRestoreOldReads() throws Exception {
         var release=new java.util.concurrent.CountDownLatch(1);
