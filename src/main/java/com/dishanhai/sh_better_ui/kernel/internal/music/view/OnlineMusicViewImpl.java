@@ -3,6 +3,7 @@
 // See META-INF/third-party/muonium-player/SOURCE for revision and modifications.
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -150,7 +151,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private PreviewContext host;
     private OnlineMusicLayout layout;
     private UiTextField queryField;
-    private MusicTextControl searchButton, previous, next, nowPlaying, back;
+    private MusicTextControl searchButton, spotifySearch, previous, next, nowPlaying, back;
     private MusicTransportControl playback, stop, lyricsToggle, miniQueue, miniPrevious, miniNext;
     private MusicTextControl loginRefresh, loginImport, loginSignOut;
     private final Map<String, Boolean> confirmedLikes = new HashMap<>();
@@ -385,14 +386,17 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                     index->selectSource(searchSourceIds.get(index))));
             searchControls.add(sourceSegments);
         } else {
-            var provider=button(layout.sourceBar(),searchSourceIds.isEmpty()?label("view.unavailable"):sourceLabel(source),()->{},searchControls);
+            var provider=button(layout.sourceBar(),searchSourceIds.isEmpty()?label("spotify.no_native_sources"):sourceLabel(source),()->{},searchControls);
             provider.active=false;
         }
         boolean hasHistory=operations()!=null;
         int historyWidth=hasHistory?(h.width()>=260?Math.min(100,Math.max(64,host.font().width(label("operations.short_title"))+18)):24):0;
-        int searchRight=h.right()-(hasHistory?historyWidth+4:0);
+        var spotifyLabel=label("spotify.link");
+        int spotifyWidth=Math.min(84,Math.max(58,host.font().width(spotifyLabel)+18));
+        int spotifyRight=h.right()-(hasHistory?historyWidth+4:0);
+        int searchRight=spotifyRight-spotifyWidth-4;
         queryField = host.add(new UiTextField(host.font(), new Bounds(h.x(), h.y() + 2, Math.max(1,searchRight-h.x()-28), 22), label("query"), 200, host.preferences()));
-        MusicInputAppearance.apply(queryField);queryField.active=!searchSourceIds.isEmpty();
+        MusicInputAppearance.apply(queryField);
         searchControls.add(queryField);
         queryField.setValue(query); queryField.setHint(label("query")); queryField.setOnChange(this::queryChanged);
         queryField.setOnSubmit(value -> { query = value; search(1, true); });
@@ -401,6 +405,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             else search(1, true);
         }, searchControls);
         searchButton.setIcon(GraphicIcon.SEARCH);
+        spotifySearch=button(new Bounds(spotifyRight-spotifyWidth,h.y()+2,spotifyWidth,22),
+                spotifyLabel,this::openSpotifySearch,searchControls);
+        spotifySearch.setPreview(label("spotify.hint"));
         searchHistory=null;
         if(hasHistory){
             searchHistory=button(new Bounds(h.right()-historyWidth,h.y()+2,historyWidth,22),historyWidth==24?label("operations.title"):label("operations.short_title"),()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},searchControls);
@@ -432,6 +439,53 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if (first + visibleRows < results.size()) { first += visibleRows; updateRows(); }
             else if (results.size() == 20) search(remotePage + 1, false);
         }, searchControls); next.setIcon(GraphicIcon.NEXT);
+    }
+    record ExternalSearchBookmark(OnlineMusicPlayer player, String source, String query, String submittedQuery,
+                                  int remotePage, int first, List<OnlineTrack> results, String state,
+                                  long accountVersion, SessionMusicOperations.Handle<?> displayed) {}
+
+    private void openSpotifySearch() {
+        if (closed || immersive || page != Page.SEARCH) return;
+        var url = SpotifySearchLink.forQuery(queryField.getValue());
+        var bookmark = new ExternalSearchBookmark(player, source, queryField.getValue(), submittedQuery,
+                remotePage, first, List.copyOf(results),
+                pending == null ? searchState : searchOperation != null ? "operations.background" : "cancelled",
+                accountVersion(source), pending == null ? displayedSearchOperation : null);
+        var origin = host;
+        if (!ShBetterUiApi.links().open(origin.screen(), url,
+                () -> OnlineMusicScreen.restoreExternalSearch(origin, this, bookmark))) {
+            feedback(label("spotify.unavailable"));
+        }
+    }
+
+    MusicTextControl restoreExternalSearch(ExternalSearchBookmark bookmark) {
+        // A vanilla confirmation replaces the Screen and can remount its player view on return.
+        // Do not re-submit the provider query or retain rows from a replaced account/session.
+        if (closed || page != Page.SEARCH || immersive) return null;
+        query = bookmark.query();
+        if (queryField != null) {
+            queryField.setValue(query);
+            cancelSuggestions();
+        }
+        if (searchSourceIds.contains(bookmark.source())) {
+            source = bookmark.source();
+            if (bookmark.player() == player && accountVersion(source) == bookmark.accountVersion()
+                    && (bookmark.displayed() == null || bookmark.displayed().displayValid())) {
+                submittedQuery = bookmark.submittedQuery();
+                remotePage = bookmark.remotePage();
+                first = Math.min(bookmark.first(), Math.max(0, bookmark.results().size() - visibleRows));
+                results = bookmark.results();
+                searchState = bookmark.state();
+                displayedSearchOperation = bookmark.displayed();
+            }
+        }
+        if (queryField == null) return null; // Window may have been resized below the player minimum.
+        updateVisibility();
+        return spotifySearch;
+    }
+
+    MusicTextControl spotifySearchControl() {
+        return !closed && queryField != null && spotifySearch.visible ? spotifySearch : null;
     }
     private void buildHistory() {
         historyControls.clear();historyRows.clear();historyBindings.clear();
@@ -1069,7 +1123,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void queryChanged(String value) {
         query = value; cancelSuggestions();
-        if (!value.isBlank()) { suggestAfter = System.nanoTime() + 300_000_000L; suggestedQuery = value; }
+        if (!searchSourceIds.isEmpty() && !value.isBlank()) { suggestAfter = System.nanoTime() + 300_000_000L; suggestedQuery = value; }
         first = 0; updateRows();
     }
     private boolean showSuggestions() { return !suggestions.isEmpty() && query.equals(suggestedQuery); }
@@ -1404,7 +1458,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void updateSearchFeedback() {
         if(results.isEmpty()&&!showSuggestions()) {
             var detail=submittedQuery.isBlank()?Component.empty():sourceLabel(source).copy().append(" · ").append(MusicTypography.text(submittedQuery));
-            searchStatus.setContent(label(searchSourceIds.isEmpty()?"view.unavailable":searchState),detail,pending!=null,null);
+            searchStatus.setContent(label(searchSourceIds.isEmpty()?"spotify.hint":searchState),detail,pending!=null,null);
             searchButton.setPreview(label(pending==null?"search":"cancel").append("\n").append(searchStatus.narration()));
         } else searchButton.setPreview(label(pending==null?"search":"cancel"));
     }

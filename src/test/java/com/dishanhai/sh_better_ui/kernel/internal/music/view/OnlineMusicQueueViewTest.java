@@ -797,4 +797,54 @@ class OnlineMusicQueueViewTest {
         }
     }
 
+
+    @Test void spotifyHandoffFitsMinimumSearchAndDoesNotMasqueradeAsProvider() throws Exception {
+        try (var player = session(new java.util.concurrent.CountDownLatch(0))) {
+            var host = new Host(); host.width=208; host.height=240;
+            var view = new OnlineMusicViewImpl(player, false); view.layout(host);
+            var spotify = view.spotifySearchControl();
+            var nativeSearch = (MusicTextControl) field(view,"searchButton");
+            var history = (MusicTextControl) field(view,"searchHistory");
+            assertNotNull(spotify);
+            assertTrue(spotify.active);
+            assertTrue(nativeSearch.getX()+nativeSearch.getWidth() <= spotify.getX());
+            assertTrue(spotify.getX()+spotify.getWidth() <= history.getX());
+            assertFalse(player.sources().contains("spotify"));
+            queuePage(view);
+            assertNull(view.spotifySearchControl());
+        }
+    }
+
+    @Test void spotifyHandoffAndQueryRemainAvailableWithoutNativeProviders() throws Exception {
+        var f = new Fixture(); f.providers = List.of();
+        f.view.layout(new Host());
+        assertTrue(f.view.spotifySearchControl().active);
+        assertFalse(((MusicTextControl) field(f.view,"searchButton")).active);
+        var query = (com.dishanhai.sh_better_ui.client.gui.scaled.UiTextField) field(f.view,"queryField");
+        assertTrue(query.active);
+        query.setValue("browser-only search");
+        assertEquals("browser-only search", query.getValue());
+        call(f.view, "queryChanged", new Class<?>[]{String.class}, query.getValue());
+        assertEquals(0L, field(f.view,"suggestAfter"));
+    }
+
+    @Test void remountRestoresSpotifySearchDraftAndMatchingCompletedResults() throws Exception {
+        var f = new Fixture();
+        var bookmark = new OnlineMusicViewImpl.ExternalSearchBookmark(f.player, "qq", "edited draft",
+                "completed query", 2, 0, List.of(A), "results", 0, null);
+        var same = new OnlineMusicViewImpl(f.player, false);
+        same.layout(new Host());
+        assertSame(same.spotifySearchControl(), same.restoreExternalSearch(bookmark));
+        assertEquals("edited draft", field(same,"query"));
+        assertEquals("qq", field(same,"source"));
+        assertEquals("completed query", field(same,"submittedQuery"));
+        assertEquals(2, field(same,"remotePage"));
+        assertEquals(List.of(A), field(same,"results"));
+
+        var other = new Fixture().view;
+        other.layout(new Host());
+        other.restoreExternalSearch(bookmark);
+        assertEquals("edited draft", field(other,"query"));
+        assertEquals(List.of(), field(other,"results"));
+    }
 }

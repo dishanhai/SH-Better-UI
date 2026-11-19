@@ -27,10 +27,16 @@ var firstPage = catalog.search("artist or song", 0, 20);
 | 平台 | 官方路径 | 当前缺口 |
 | --- | --- | --- |
 | Apple Music | MusicKit：Apple 平台、Android、Web；Apple Music API 提供目录和用户库 | 原生 Java MP3 播放器不是 MusicKit。需获授权的 developer token、MusicKit 可用的播放宿主、用户登录/订阅检查、生命周期与事件桥接。目录客户端已实现，但未接 UI/播放。 |
-| Spotify | Web API + 官方 Web Playback SDK；完整流通常需要 Premium | 当前多平台 Minecraft 播放器与官方政策中游戏、其他服务内容整合限制存在冲突，需先获得 Spotify 对具体用途的许可。未创建假 provider，也未转用抓包/第三方解密接口。 |
+| Spotify | Web API + 官方 Web Playback SDK；完整流通常需要 Premium | 搜索栏提供 **Spotify ↗**，把当前关键词交给 Spotify 官方网页播放器；不接入 Spotify Platform，不读取账号、歌单或流。在游戏内接入 Web API 或 SDK 前，需先明确取得 Spotify 对该用途的许可。 |
 | 酷狗 | 酷狗曲库开放计划及官方播放组件/合作接口 | 公开开放组件面向移动 App，当前未取得适用于 Java 桌面游戏的接口协议、SDK 和授权。需确认可用合作接入，不把未公开签名接口作为可长期维护的承诺。 |
 
 现有 `OnlineMusicSource.resolve()` 的契约只允许平台授予的 MP3 流。这三家完整播放不应通过返回网页 URL、HLS manifest、受 DRM 保护地址或预览 URL 来假装满足该契约。
+
+## Spotify 网页入口
+
+在音乐页「搜索」栏输入关键词后按 **Spotify ↗**，Minecraft 会按玩家的网页链接设置处理确认并在系统浏览器打开 Spotify 官方搜索。空白时打开 Spotify 搜索首页；在浏览器完成登录、选曲和播放。这个入口独立于现有网易云与 QQ 搜索，不切换游戏内音源、不操作当前播放，也不把 Spotify 搜索结果导入游戏。如果开启了网页链接确认，返回后会保留搜索内容；尚未完成的原生请求沿用现有后台处理。
+
+未接入 Spotify 的 OAuth、歌单、Spotify Connect、Web Playback SDK、音效或游戏内串流。根据 [Spotify 合规说明](https://developer.spotify.com/compliance-tips)，Spotify Platform 禁止用于游戏功能；这里仅跳转公共网页，不调用开发者接口。
 
 ## 下一阶段验收
 
