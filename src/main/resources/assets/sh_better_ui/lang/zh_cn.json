@@ -817,6 +817,7 @@
   "sh_better_ui.picker.count": "已选 %s / %s",
   "sh_better_ui.picker.unavailable": "素材来源当前不可用",
   "sh_better_ui.picker.too_small": "当前 GUI 空间不足。请减小 GUI 比例或扩大窗口后重试。",
+  "key.sh_better_ui.music_open": "打开 SH 音乐",
   "key.sh_better_ui.control_panel": "打开 SHBUI 主控面板",
   "key.sh_better_ui.live_activities": "打开实时活动",
   "sh_better_ui.live.title": "实时活动",

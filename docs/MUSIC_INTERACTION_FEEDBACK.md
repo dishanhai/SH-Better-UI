@@ -108,3 +108,14 @@ that temporary return path. Sign-in gates return to the originating provider and
 library context first. When a focused history slot is rebound to another record,
 its held gesture is cancelled and focus moves to Back instead of silently
 activating a different task.
+
+## Open SH Music from the world
+
+The **Open SH Music** shortcut starts unbound, so installing the mod never
+takes an existing game or modpack shortcut. Set it in **Options → Controls →
+Key Binds → SHBUI / SH Better UI → Open SH Music**. Choose a key that
+is not already used for another gameplay action. It opens the player only
+from a focused world with no screen or overlay. Holding the key does not
+reopen it after closing. Opening is navigation only: the shortcut does not
+start a search, play a song, or sign in. The existing **Control Panel → Tools →
+SH Music** entry remains available.

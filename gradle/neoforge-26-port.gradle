@@ -38,6 +38,7 @@ def sharedSources = [
         'client/gui/scaled/UiPillNavPaint.java',
         'client/gui/panel/PillNavDemo.java',
         'client/music/MusicService.java',
+        'client/music/MusicOpenShortcut.java',
         'client/music/MusicSnapshot.java',
         'client/music/MusicProvider.java',
         'client/music/MusicEvent.java',
@@ -286,6 +287,7 @@ sourceSets.test {
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
         include("${packagePath}/kernel/internal/music/**")
         include("${packagePath}/client/music/MusicServiceTest.java")
+        include("${packagePath}/client/music/MusicOpenShortcutTest.java")
         include("${packagePath}/client/music/NativeMusicFramesTest.java")
         include("${packagePath}/kernel/internal/NativePageScreenInputTest.java")
         include("${packagePath}/kernel/internal/NativeDockWindowsTest.java")
