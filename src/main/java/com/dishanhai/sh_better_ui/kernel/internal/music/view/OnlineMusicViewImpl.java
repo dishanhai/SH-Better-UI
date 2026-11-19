@@ -1673,11 +1673,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var operation=feedbackMessage();
         if(!failed && (current.preview() || !operation.getString().isEmpty()))
             OnlineMusicViewPaint.line(ui,host.font(),current.preview()?(operation.getString().isEmpty()?label("preview"):operation.copy().append(" · ").append(label("preview"))):operation,stage.seek().x()+42,stage.seek().bottom()+2,Math.max(0,stage.seek().width()-86),secondary);
-        stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(retry || operation.getString().isEmpty()?stagePlay.getMessage():operation)));
+        stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(operation.getString().isEmpty()?stagePlay.getMessage():operation)));
         syncStageLyrics(current,windowActive);
         stageLyrics.setMessage(label("lyrics."+current.lyricsState().name().toLowerCase(Locale.ROOT)));
         stageLyrics.palette(ink,secondary,ui.preferences().highContrast()?UiTheme.current().background():0xff292229);
         stageLyrics.preferences(ui.preferences());
+        if (retry) stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(label("retry_track"))));
         stageLyrics.visible=stagePage==StagePage.LYRICS;stageLyrics.active=windowActive;stageLyrics.scale(stage.lyricScale());
         var lyricBounds=stage.lyrics();
         if(!OnlineMusicScreen.supportsLyricsStack(host)&&stageLyrics.browsing()&&lyricBounds.height()>=40)
