@@ -41,8 +41,8 @@ final class MusicStageButton extends Button {
         if (icon != null) icon.draw(g,getX()+(getWidth()-16)/2,getY()+(getHeight()-16)/2,1,foreground,preferences);
         else {
             var font=Minecraft.getInstance().font;
-            var text=net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MpTypography.text(getMessage()),Math.max(1,getWidth()-12)));
-            g.drawString(font,text,getX()+6,getY()+(getHeight()-MpTypography.LINE_HEIGHT)/2,foreground,false);
+            var text=net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MusicTypography.text(getMessage()),Math.max(1,getWidth()-12)));
+            g.drawString(font,text,getX()+6,getY()+(getHeight()-MusicTypography.LINE_HEIGHT)/2,foreground,false);
         }
     }
 }

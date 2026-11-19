@@ -65,6 +65,12 @@ public final class LyricApi {
         return LyricView.draw(renderer, frame.graphics(), font, area, frame.preferences());
     }
 
+    /** Explicit scoped font; callers may pass their own resource-pack font instead of a default. */
+    public boolean drawScoped(FloatingLyricRenderer renderer,UiFrame frame,Font font,Bounds area,
+                              net.minecraft.resources.ResourceLocation fontId,int lineHeight) {
+        return LyricView.drawScoped(renderer,frame.graphics(),font,area,frame.preferences(),null,fontId,lineHeight);
+    }
+
     public Screen settings(Screen parent) {
         return LyricClient.settings(parent);
     }

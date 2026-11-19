@@ -20,12 +20,43 @@ class LocalFontPackTest {
         for(int format:new int[]{15,34}) {
             byte[] data=font();Path pack=LocalFontPack.create(data,temp,format,"OFL fixture".getBytes(),()->false);
             try(var zip=new ZipFile(pack.toFile())) {
-                assertEquals(5,zip.size());
+                assertEquals(7,zip.size());
                 assertTrue(new String(zip.getInputStream(zip.getEntry("pack.mcmeta")).readAllBytes()).contains("\"pack_format\":"+format));
                 assertArrayEquals(data,zip.getInputStream(zip.getEntry("assets/sh_better_ui/font/user_ui.ttf")).readAllBytes());
-                String json=new String(zip.getInputStream(zip.getEntry("assets/sh_better_ui/font/mp_ui.json")).readAllBytes());
-                assertTrue(json.contains("minecraft:default"));assertNull(zip.getEntry("assets/minecraft/font/default.json"));
+                assertScopedProviders(zip);
             }
+        }
+    }
+    static void assertScopedProviders(ZipFile zip) throws IOException {
+        assertNull(zip.getEntry("assets/minecraft/font/default.json"));
+        assertEquals(java.util.Set.of("pack.mcmeta","LICENSE.txt","assets/sh_better_ui/font/user_ui.ttf",
+                        "assets/sh_better_ui/font/mp_ui.json","assets/sh_better_ui/font/mp_ui_semibold.json",
+                        "assets/sh_better_ui/font/music_ui.json","assets/sh_better_ui/font/music_ui_semibold.json"),
+                zip.stream().map(java.util.zip.ZipEntry::getName).collect(java.util.stream.Collectors.toSet()));
+        for(String id:java.util.List.of("mp_ui","mp_ui_semibold","music_ui","music_ui_semibold")) {
+            var entry=zip.getEntry("assets/sh_better_ui/font/"+id+".json");
+            assertNotNull(entry,id);
+            var json=com.google.gson.JsonParser.parseString(new String(zip.getInputStream(entry).readAllBytes(),
+                    java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+            var definitions=json.getAsJsonArray("providers");
+            var order=new java.util.ArrayList<String>();
+            for(var definition:definitions) {
+                var item=definition.getAsJsonObject();
+                order.add(switch(item.get("type").getAsString()) {
+                    case "ttf" -> item.get("file").getAsString();
+                    case "reference" -> item.get("id").getAsString();
+                    default -> throw new AssertionError(item);
+                });
+            }
+            var expected=switch(id) {
+                case "music_ui" -> java.util.List.of("sh_better_ui:user_ui.ttf","sh_better_ui:sh_music_sans_medium.ttf","sh_better_ui:sh_sans_ui.ttf","minecraft:default");
+                case "music_ui_semibold" -> java.util.List.of("sh_better_ui:user_ui.ttf","sh_better_ui:sh_music_sans_semibold.ttf","sh_better_ui:sh_sans_ui_semibold.ttf","minecraft:default");
+                default -> java.util.List.of("sh_better_ui:user_ui.ttf","minecraft:default");
+            };
+            assertEquals(expected,order,id);
+            assertEquals(0,definitions.get(0).getAsJsonObject().getAsJsonArray("shift").get(1).getAsInt(),"User baseline is unchanged");
+            if(id.startsWith("music_"))for(int i=1;i<=2;i++)
+                assertEquals(3,definitions.get(i).getAsJsonObject().getAsJsonArray("shift").get(1).getAsInt());
         }
     }
     @Test void rejectsFakeHeaderTruncatedAndOutOfBoundsTable() throws Exception {

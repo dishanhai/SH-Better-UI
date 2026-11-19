@@ -105,8 +105,8 @@ public final class MusicSegmentedControl extends AbstractWidget {
                 RoundedCorners.draw(g,x,getY()+2,w,height-4,Math.max(2,radius-2),0,0,alpha(ink,armed?.13f:.06f));
             if(isFocused()&&i==(pending<0?selected:pending))
                 RoundedCorners.draw(g,x,getY()+2,w,height-4,Math.max(2,radius-2),1,theme.accent(),0);
-            var text=MusicTextLayout.ellipsize(font,choices.get(i),Math.max(0,w-12),i==selected?MpTypography.SEMIBOLD:MpTypography.FONT);
-            g.drawString(font,text,x+Math.max(0,(w-font.width(text))/2),getY()+(height-MpTypography.LINE_HEIGHT)/2,ink,false);
+            var text=MusicTextLayout.ellipsize(font,choices.get(i),Math.max(0,w-12),i==selected?MusicTypography.semibold():MusicTypography.font());
+            g.drawString(font,text,x+Math.max(0,(w-font.width(text))/2),getY()+(height-MusicTypography.LINE_HEIGHT)/2,ink,false);
         }
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput output){

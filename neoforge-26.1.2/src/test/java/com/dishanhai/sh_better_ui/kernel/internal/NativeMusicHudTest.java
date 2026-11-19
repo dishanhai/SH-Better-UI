@@ -10,6 +10,12 @@ import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 
 final class NativeMusicHudTest {
+    @Test void hudLayoutReservesScopedTypographyLineHeight() {
+        var settings = MusicOverlaySettings.DEFAULT.withHud(true);
+        assertEquals(NativeMusicHud.layout(800,450,settings,
+                com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography.LINE_HEIGHT),
+                NativeMusicHud.layout(800,450,settings,9));
+    }
     @Test void coverFitsEntireSourceWithoutCroppingOrStretching() {
         var area = new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(10, 20, 42, 42);
         assertEquals(area, NativeMusicHud.coverBounds(area, 240, 240));
