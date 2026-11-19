@@ -154,25 +154,52 @@ public final class NativeMusicOverlay implements UIModule {
     private static final class SettingsScreen extends Screen {
         private final NativeMusicOverlay owner;
         private final Screen parent;
+        private final MusicOverlaySettings initial;
         private MusicOverlaySettings draft;
+        private UiButton apply;
         private Component error;
-        SettingsScreen(NativeMusicOverlay owner, Screen parent) { super(text("title")); this.owner=owner;this.parent=parent;draft=owner.settings(); }
+        SettingsScreen(NativeMusicOverlay owner, Screen parent) {
+            super(text("title"));
+            this.owner=owner;
+            this.parent=parent;
+            this.initial=owner.settings();
+            this.draft=initial;
+        }
+        private void edit(MusicOverlaySettings value) {
+            draft=value;
+            error=null;
+            apply.active=!draft.equals(initial);
+        }
         @Override protected void init() {
-            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-60)/8)), y=26;
-            addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{draft=draft.withHud(!draft.hudEnabled());b.setMessage(toggle("hud",draft.hudEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{draft=draft.withIsland(!draft.islandEnabled());b.setMessage(toggle("island",draft.islandEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{draft=draft.withExpanded(!draft.expanded());b.setMessage(toggle("expand",draft.expanded()));}));
+            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-66)/8)), y=26;
+            addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{edit(draft.withHud(!draft.hudEnabled()));b.setMessage(toggle("hud",draft.hudEnabled()));}));
+            addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{edit(draft.withIsland(!draft.islandEnabled()));b.setMessage(toggle("island",draft.islandEnabled()));}));
+            addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{edit(draft.withExpanded(!draft.expanded()));b.setMessage(toggle("expand",draft.expanded()));}));
             addRenderableWidget(new UiButton(x,y+3*step,w,step-2,text("edit_hud"),b->minecraft.setScreen(new PositionScreen(this,false))));
             addRenderableWidget(new UiButton(x,y+4*step,w,step-2,text("edit_island"),b->minecraft.setScreen(new PositionScreen(this,true))));
-            addRenderableWidget(new UiButton(x,y+5*step,w,step-2,toggle("ambient",draft.ambientEnabled()),b->{draft=draft.withAmbient(!draft.ambientEnabled());b.setMessage(toggle("ambient",draft.ambientEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+6*step,w,step-2,toggle("task_notices",draft.taskNotices()),b->{draft=draft.withTaskNotices(!draft.taskNotices());b.setMessage(toggle("task_notices",draft.taskNotices()));}));
-            addRenderableWidget(new UiButton(x,y+7*step,w,step-2,styleLabel(),b->{draft=draft.withIslandStyle(IslandShellStyle.fromId(draft.islandStyle()).next().id());b.setMessage(styleLabel());}));
-            addRenderableWidget(new UiButton(x,height-26,w/2-2,20,text("apply"), b->{try{owner.save(draft);onClose();}catch(RuntimeException e){error=text("save_failed");}}));
+            addRenderableWidget(new UiButton(x,y+5*step,w,step-2,toggle("ambient",draft.ambientEnabled()),b->{edit(draft.withAmbient(!draft.ambientEnabled()));b.setMessage(toggle("ambient",draft.ambientEnabled()));}));
+            addRenderableWidget(new UiButton(x,y+6*step,w,step-2,toggle("task_notices",draft.taskNotices()),b->{edit(draft.withTaskNotices(!draft.taskNotices()));b.setMessage(toggle("task_notices",draft.taskNotices()));}));
+            addRenderableWidget(new UiButton(x,y+7*step,w,step-2,styleLabel(),b->{edit(draft.withIslandStyle(IslandShellStyle.fromId(draft.islandStyle()).next().id()));b.setMessage(styleLabel());}));
+            apply=addRenderableWidget(new UiButton(x,height-26,w/2-2,20,text("apply"), b->{
+                if(draft.equals(initial))return;
+                try{owner.save(draft);}catch(RuntimeException e){error=text("save_failed");return;}
+                onClose();
+            }));
+            apply.active=!draft.equals(initial);
             addRenderableWidget(new UiButton(x+w/2+2,height-26,w/2-2,20,text("cancel"),b->onClose()));
         }
         private Component styleLabel(){return text("style").copy().append(": ").append(text("style."+draft.islandStyle()));}
         private Component toggle(String key,boolean on){return text(key).copy().append(": ").append(Component.translatable(on?"options.on":"options.off"));}
-        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xF018202C);g.drawCenteredString(font,title,width/2,10,0xFFFFFFFF);super.render(g,x,y,partial);if(error!=null)g.drawCenteredString(font,error,width/2,height-39,0xFFFF7777);}
+        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xF018202C);g.drawCenteredString(font,title,width/2,10,0xFFFFFFFF);super.render(g,x,y,partial);
+            var status=error!=null?error:text(draft.equals(initial)?"no_pending_changes":"pending_changes");
+            footerStatus(g,status,error!=null?0xFFFF9999:0xFFE1E7F0);
+        }
+        private void footerStatus(GuiGraphics graphics, Component status, int color) {
+            if(width<=8 || height<40)return;
+            graphics.enableScissor(4,height-39,width-4,height-27);
+            try { graphics.drawCenteredString(font,status,width/2,height-39,color); }
+            finally { graphics.disableScissor(); }
+        }
         @Override public void onClose(){minecraft.setScreen(parent);}
         // NeoForge Screen.render invokes this after our opaque custom background.
         // Do not blur the already-rendered HUD preview; this signature is harmless on Forge 1.20.1.
@@ -194,7 +221,11 @@ public final class NativeMusicOverlay implements UIModule {
             dragging=false;area=new Bounds(0,0,Math.max(1,width),Math.max(1,height));place();
             int w=Math.min(90,(width-16)/3),x=(width-3*w-8)/2;
             addRenderableWidget(new UiButton(x,height-26,w,20,text("reset"),b->{xFraction=.5f;yFraction=editIsland?.05f:.75f;scale=1f;place();}));
-            addRenderableWidget(new UiButton(x+w+4,height-26,w,20,text("apply"),b->{parent.draft=editIsland?parent.draft.withIslandPosition(xFraction,yFraction):parent.draft.withPosition(xFraction,yFraction);parent.draft=parent.draft.withScale(editIsland,scale);onClose();}));
+            addRenderableWidget(new UiButton(x+w+4,height-26,w,20,text("apply"),b->{
+                var next=editIsland?parent.draft.withIslandPosition(xFraction,yFraction):parent.draft.withPosition(xFraction,yFraction);
+                parent.edit(next.withScale(editIsland,scale));
+                onClose();
+            }));
             addRenderableWidget(new UiButton(x+2*w+8,height-26,w,20,text("cancel"),b->onClose()));
             // Footer controls must win hit testing when the preview extends behind them.
             handle=addWidget(new UiButton(bounds.x(),bounds.y(),bounds.width(),bounds.height(),text("drag"),b->{}));

@@ -60,12 +60,16 @@ class NativeMusicSettingsScreenTest {
             slider.onClick(new net.minecraft.client.input.MouseButtonEvent(slider.getX()+slider.getWidth()-5,slider.getY()+5,
                     new net.minecraft.client.input.MouseButtonInfo(0,0)),false);
             assertTrue(slider.isPointerEditing());
+            screen.tick();
+            assertLayoutStatus(screen,"preview");
             assertEquals(before,music.settings());
             assertTrue(slider.keyPressed(new KeyEvent(256,0,0)));
+            assertLayoutStatus(screen,"cancelled");
             assertEquals(.235f,music.settings().x());
             music.settings(music.settings().withIsland(true).withTaskNotices(true));
             slider.keyPressed(new KeyEvent(257,0,0));
             assertTrue(slider.keyPressed(new KeyEvent(262,0,0)));
+            assertLayoutStatus(screen,"applied");
             assertEquals(.25f,music.settings().x());
             assertEquals(.625f,music.settings().y());
             assertTrue(music.settings().islandEnabled());assertTrue(music.settings().taskNotices());
@@ -78,11 +82,14 @@ class NativeMusicSettingsScreenTest {
             var music=start(host);
             music.settings(music.settings().withHud(true).withIsland(true).withPosition(.2f,.4f).withScale(false,1.5f));
             var before=music.settings();var screen=screen(music,200,140);client.client().screen=screen;
+            assertLayoutStatus(screen,"unchanged");
             button(screen,"resetHud").onPress(new KeyEvent(257,0,0));
+            assertLayoutStatus(screen,"reset");
             assertEquals(.5f,music.settings().x());assertEquals(.75f,music.settings().y());assertEquals(1f,music.settings().hudScale());
             assertTrue(music.settings().hudEnabled());assertTrue(music.settings().islandEnabled());
             music.settings(music.settings().withTaskNotices(true));screen.tick();
             button(screen,"undoReset").onPress(new KeyEvent(257,0,0));
+            assertLayoutStatus(screen,"restored");
             assertEquals(before.withTaskNotices(true),music.settings());
             button(screen,"hud").onPress(new KeyEvent(257,0,0));assertFalse(music.settings().hudEnabled());
         }
@@ -116,6 +123,11 @@ class NativeMusicSettingsScreenTest {
         }
     }
 
+    private static void assertLayoutStatus(NativeMusicSettingsScreen screen,String suffix) throws Exception {
+        var status=(net.minecraft.client.gui.components.StringWidget)field(screen,"layoutStatus");
+        var translation=(net.minecraft.network.chat.contents.TranslatableContents)status.getMessage().getContents();
+        assertEquals("sh_better_ui.native.music_settings.layout_"+suffix,translation.getKey());
+    }
     private static KernelHost host() {
         return new KernelHost(ModuleDescriptor.Platform.NEOFORGE_26_1_2,new EnginePublication(),System::nanoTime,Runnable::run,SchedulerBudget.DEFAULT);
     }
