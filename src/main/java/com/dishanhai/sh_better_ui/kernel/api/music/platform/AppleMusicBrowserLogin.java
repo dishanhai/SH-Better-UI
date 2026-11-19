@@ -28,6 +28,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     private volatile String developerToken;
     private volatile State state = State.WAITING;
     private volatile boolean stopped;
+    private final AppleMusicRateControl rates = new AppleMusicRateControl();
 
     /** Starts no browser and does not contact Apple. Supply a short-lived signed developer JWT. */
     public AppleMusicBrowserLogin(String developerToken) throws IOException {
@@ -68,12 +69,23 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     /** This one-session fragment is not a platform credential; do not publish or log it. */
     public URI browserUri() { return URI.create(origin + "/#" + session); }
     public State state() { return state; }
+    /** Only a recent, ready, authorized browser SDK observation enables rate control. */
+    public boolean supportsPlaybackRate() { return !stopped && state == State.AUTHORIZED && rates.supported(System.nanoTime()); }
+    /** Last observed SDK rate, not an optimistic requested value. */
+    public double playbackRate() { return rates.rate(); }
+    public synchronized void playbackRate(double rate) {
+        AppleMusicRateControl.validate(rate);
+        if (stopped || state != State.AUTHORIZED) throw new UnsupportedOperationException("Apple browser playback rate unavailable");
+        rates.request(rate, System.nanoTime());
+    }
+    public String playbackRateResult() { return rates.result(System.nanoTime()); }
     @Override public void close() { stop(State.CLOSED); }
     private synchronized void stop(State terminal) {
         if (stopped) return;
         stopped = true;
         state = terminal;
         developerToken = "";
+        rates.clear();
         server.stop(0);
         worker.shutdownNow();
         expiry.shutdownNow();
@@ -84,8 +96,9 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
             if (!URI.create(origin).getAuthority().equals(host)) { reply(exchange, 403, "text/plain", "Forbidden"); return; }
             String path = exchange.getRequestURI().getPath();
             if (exchange.getRequestURI().getRawQuery() != null) { reply(exchange, 400, "text/plain", "No query accepted"); return; }
-            if (path.equals("/config") || path.equals("/state") || path.equals("/status")) {
+            if (path.equals("/config") || path.equals("/state") || path.equals("/status") || path.equals("/playback-rate")) {
                 if (!authorized(exchange)) { reply(exchange, 403, "text/plain", "Forbidden"); return; }
+                if (path.equals("/playback-rate")) { rateRequest(exchange); return; }
                 if (path.equals("/config") && exchange.getRequestMethod().equals("GET")) {
                     var config = new JsonObject();
                     config.addProperty("developerToken", developerToken);
@@ -105,7 +118,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                         next = State.valueOf(json.get("state").getAsString());
                         if (next == State.WAITING || next == State.EXPIRED || next == State.CLOSED) throw new IllegalArgumentException();
                     } catch (RuntimeException invalid) { reply(exchange, 400, "text/plain", "Invalid state"); return; }
-                    synchronized (this) { if (!stopped) state = next; }
+                    synchronized (this) { if (!stopped) { state = next; if (next != State.AUTHORIZED) rates.clear(); } }
                     reply(exchange, 200, "application/json", "{}");
                 } else reply(exchange, 405, "text/plain", "Method not allowed");
                 return;
@@ -116,6 +129,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                 case "/login.mjs" -> "login.mjs";
                 case "/auth-flow.mjs" -> "auth-flow.mjs";
                 case "/playback-flow.mjs" -> "playback-flow.mjs";
+                case "/rate-bridge.mjs" -> "rate-bridge.mjs";
                 default -> null;
             };
             if (name == null) { reply(exchange, 404, "text/plain", "Not found"); return; }
@@ -124,6 +138,34 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                 reply(exchange, 200, name.endsWith("html") ? "text/html" : "text/javascript", new String(in.readAllBytes(), StandardCharsets.UTF_8));
             }
         } finally { exchange.close(); }
+    }
+    private void rateRequest(HttpExchange exchange) throws IOException {
+        if (exchange.getRequestMethod().equals("GET")) {
+            var json = new JsonObject();
+            var command = rates.command(System.nanoTime());
+            if (command != null) { json.addProperty("id", command.id()); json.addProperty("rate", command.rate()); }
+            reply(exchange, 200, "application/json", json.toString()); return;
+        }
+        if (!exchange.getRequestMethod().equals("POST")) { reply(exchange,405,"text/plain","Method not allowed"); return; }
+        if (!origin.equals(exchange.getRequestHeaders().getFirst("Origin"))) { reply(exchange,403,"text/plain","Forbidden"); return; }
+        String type = exchange.getRequestHeaders().getFirst("Content-Type");
+        if (type == null || !type.toLowerCase(Locale.ROOT).startsWith("application/json")) { reply(exchange,415,"text/plain","JSON required"); return; }
+        byte[] body = exchange.getRequestBody().readNBytes(257);
+        if (body.length > 256) { reply(exchange,413,"text/plain","Too large"); return; }
+        try {
+            var json = JsonParser.parseString(new String(body,StandardCharsets.UTF_8)).getAsJsonObject();
+            if (!json.keySet().equals(Set.of("supported","rate","ack","status"))
+                    || !json.getAsJsonPrimitive("supported").isBoolean()
+                    || !json.getAsJsonPrimitive("rate").isNumber()
+                    || !json.getAsJsonPrimitive("ack").isNumber()
+                    || !json.getAsJsonPrimitive("status").isString()) throw new IllegalArgumentException();
+            long ack = json.get("ack").getAsBigDecimal().longValueExact();
+            synchronized (this) {
+                if (!stopped && state == State.AUTHORIZED) rates.observe(json.get("supported").getAsBoolean(), json.get("rate").getAsDouble(),
+                        ack, json.get("status").getAsString(), System.nanoTime());
+            }
+            reply(exchange,200,"application/json","{}");
+        } catch (RuntimeException invalid) { reply(exchange,400,"text/plain","Invalid rate observation"); }
     }
     private boolean authorized(HttpExchange exchange) {
         String supplied = exchange.getRequestHeaders().getFirst("X-SHBUI-Session");

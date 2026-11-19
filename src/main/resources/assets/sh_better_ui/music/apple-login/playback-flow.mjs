@@ -7,10 +7,18 @@ export function createPlaybackFlow(music, sdk, report) {
   let songId = '';
   let errors = 0;
   const events = ['playbackStateDidChange', 'playbackTimeDidChange',
-    'playbackDurationDidChange', 'authorizationStatusDidChange', 'mediaPlaybackError'];
+    'playbackDurationDidChange', 'playbackRateDidChange', 'authorizationStatusDidChange', 'mediaPlaybackError'];
+  function rateSupported() {
+    if (closed || !ready || !music.isAuthorized || !Number.isFinite(music.playbackRate)) return false;
+    for (let object = music; object; object = Object.getPrototypeOf(object)) {
+      const descriptor = Object.getOwnPropertyDescriptor(object, 'playbackRate');
+      if (descriptor) return typeof descriptor.set === 'function' || descriptor.writable === true;
+    }
+    return false;
+  }
   function snapshot() {
     return { authorized: music.isAuthorized === true, busy: pending, ready,
-      message, songId, state: sdk.PlaybackStates[music.playbackState] ?? 'unknown',
+      message, songId, supportsPlaybackRate: rateSupported(), playbackRate: Number.isFinite(music.playbackRate) ? music.playbackRate : 1, state: sdk.PlaybackStates[music.playbackState] ?? 'unknown',
       seconds: Number.isFinite(music.currentPlaybackTime) ? music.currentPlaybackTime : 0,
       duration: Number.isFinite(music.currentPlaybackDuration) ? music.currentPlaybackDuration : 0 };
   }
@@ -55,6 +63,19 @@ export function createPlaybackFlow(music, sdk, report) {
         message = 'INVALID_TIME'; update(); return Promise.resolve();
       }
       return run('SEEKING', () => music.seekToTime(seconds));
+    },
+    async playbackRate(value) {
+      if (!Number.isFinite(value) || value < .5 || value > 2) {
+        message = 'INVALID_RATE'; update(); return false;
+      }
+      if (!rateSupported() || pending) { message = 'RATE_UNAVAILABLE'; update(); return false; }
+      let applied = false;
+      await run('RATE_CHANGING', () => {
+        music.playbackRate = value; // Documented MusicKit.Instance property, never an internal media element.
+        applied = Math.abs(music.playbackRate - value) < .001;
+        if (!applied) throw new Error('SDK did not accept rate');
+      });
+      return applied && message === 'OBSERVED' && rateSupported();
     },
     close() {
       closed = true;

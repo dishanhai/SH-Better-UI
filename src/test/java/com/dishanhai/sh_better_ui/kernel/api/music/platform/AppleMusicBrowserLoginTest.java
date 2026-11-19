@@ -70,4 +70,29 @@ class AppleMusicBrowserLoginTest {
         assertThrows(IllegalArgumentException.class,()->new AppleMusicBrowserLogin(""));
         assertThrows(IllegalArgumentException.class,()->new AppleMusicBrowserLogin("header.payload.signature\r\nCookie: bad"));
     }
+    private HttpResponse<String> ratePost(AppleMusicBrowserLogin login, String body) throws Exception {
+        return client.send(HttpRequest.newBuilder(endpoint(login,"/playback-rate"))
+                .header("X-SHBUI-Session",login.browserUri().getFragment()).header("Origin",origin(login))
+                .header("Content-Type","application/json").POST(HttpRequest.BodyPublishers.ofString(body)).build(),HttpResponse.BodyHandlers.ofString());
+    }
+    @Test void rateCommandIsSessionScopedValidatedAndAcknowledged() throws Exception {
+        try(var login=new AppleMusicBrowserLogin("header.payload.signature")) {
+            assertFalse(login.supportsPlaybackRate());
+            assertEquals(403,get(login,"/playback-rate",false).statusCode());
+            assertEquals(200,get(login,"/rate-bridge.mjs",false).statusCode());
+            assertEquals(200,ratePost(login,"{\"supported\":true,\"rate\":1,\"ack\":0,\"status\":\"OBSERVED\"}").statusCode());
+            assertFalse(login.supportsPlaybackRate(), "browser observation is insufficient before authorization");
+            post(login,origin(login),"{\"state\":\"AUTHORIZED\"}");
+            assertEquals(400,ratePost(login,"{\"supported\":true,\"rate\":1,\"ack\":0.5,\"status\":\"OBSERVED\"}").statusCode());
+            assertEquals(400,ratePost(login,"{\"supported\":true,\"rate\":1,\"ack\":0,\"status\":\"OBSERVED\",\"token\":\"secret\"}").statusCode());
+            assertEquals(200,ratePost(login,"{\"supported\":true,\"rate\":1,\"ack\":0,\"status\":\"OBSERVED\"}").statusCode());
+            assertTrue(login.supportsPlaybackRate()); login.playbackRate(1.5);
+            assertEquals("PENDING",login.playbackRateResult());
+            assertTrue(get(login,"/playback-rate",true).body().contains("\"rate\":1.5"));
+            assertEquals(200,ratePost(login,"{\"supported\":true,\"rate\":1.5,\"ack\":1,\"status\":\"APPLIED\"}").statusCode());
+            assertEquals("APPLIED",login.playbackRateResult()); assertEquals(1.5,login.playbackRate());
+            post(login,origin(login),"{\"state\":\"SIGNED_OUT\"}");
+            assertFalse(login.supportsPlaybackRate());
+        }
+    }
 }

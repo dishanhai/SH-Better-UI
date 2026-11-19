@@ -20,6 +20,10 @@
 <p id="playback-time">0 / 0 秒</p>
 <label for="seek-time">跳转到（秒）</label> <input id="seek-time" type="number" min="0" step="0.1" value="0">
 <button id="seek-song" class="secondary" disabled>跳转</button>
+<p><label for="playback-rate">播放倍率（0.5–2.0）</label> <input id="playback-rate" type="number" min="0.5" max="2" step="0.05" value="1" disabled>
+<button id="apply-rate" disabled>应用倍率</button></p>
+<p id="rate-status" role="status" aria-live="polite">倍率不可用：请先授权并加载歌曲。</p>
+<p class="note">倍率通过官方 MusicKit API 设置。浏览器可能拒绝或限制倍率；以实测回读值为准，不保证所有浏览器保留音高。</p>
 </section>
 <a href="https://support.apple.com/apple-music" target="_blank" rel="noopener noreferrer">Apple Music 帮助</a>
 </main><script type="module" src="/login.mjs"></script></body></html>
