@@ -58,8 +58,7 @@ public final class MusicLyricsModel {
     public long positionMillis(){return position;}
     public int activeIndex(){
         if(!synchronizedLyrics)return -1;
-        int low=0,high=lines.size()-1,result=-1;
-        while(low<=high){int mid=(low+high)>>>1;if(lines.get(mid).startMillis()<=position){result=mid;low=mid+1;}else high=mid-1;}
+        int result=lastStartedIndex();
         // Prefer the most recently started *still active* line when duet intervals overlap.
         for(int index=result;index>=0;index--) {
             var line=lines.get(index);long end=line.endMillis();
@@ -67,6 +66,15 @@ public final class MusicLyricsModel {
             if(position<end&&!line.text().isBlank())return index;
         }
         return -1;
+    }
+    private int lastStartedIndex(){
+        int low=0,high=lines.size()-1,result=-1;
+        while(low<=high){int mid=(low+high)>>>1;if(lines.get(mid).startMillis()<=position){result=mid;low=mid+1;}else high=mid-1;}
+        return result;
+    }
+    // Explicit gaps don't highlight a line but still need a scroll anchor during direct manipulation.
+    int previewAnchor(){
+        return synchronizedLyrics&&position>=0?Math.max(0,lastStartedIndex()):-1;
     }
     public boolean browsing(){return browsing;}
     public void browse(){browsing=true;}

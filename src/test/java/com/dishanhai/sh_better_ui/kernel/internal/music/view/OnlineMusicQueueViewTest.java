@@ -250,6 +250,40 @@ class OnlineMusicQueueViewTest {
         assertTrue(lyrics.model().lines().isEmpty());assertFalse(lyrics.browsing());assertEquals(-1,lyrics.model().activeIndex());
     }
 
+    @Test void draggingTimelinePreviewsLyricsWithoutSeekingUntilRelease() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var timeline=new LyricTimeline(List.of(
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("first","",0,1000,List.of(),""),
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("second","",1000,2000,List.of(),"")));
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.PAUSED,500,2000,
+                OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        var lyrics=(MusicLyricsView)field(f.view,"stageLyrics");
+        var seek=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl)field(f.view,"stageSeek");
+        seek.visible=true;seek.sync("qq:1",500,2000,true);
+        var types=new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class};
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        lyrics.model().browse();
+        double from=seek.getX()+4+(seek.getWidth()-8)*.25;
+        double to=seek.getX()+4+(seek.getWidth()-8)*.75;
+        double y=seek.getY()+2;
+        assertTrue(seek.mouseClicked(from,y,0));
+        assertTrue(seek.mouseDragged(to,y,0,0,0));
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(1500,lyrics.model().positionMillis());assertEquals(1,lyrics.model().activeIndex());
+        assertFalse(lyrics.browsing());assertTrue(lyrics.model().seekTarget(1).isEmpty());assertEquals(0,f.seeks);
+        seek.cancelInteraction();
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(500,lyrics.model().positionMillis());assertEquals(0,lyrics.model().activeIndex());
+        assertTrue(lyrics.model().seekTarget(1).isPresent());assertFalse(seek.mouseReleased(to,y,0));assertEquals(0,f.seeks);
+        assertTrue(seek.mouseClicked(to,y,0));assertTrue(seek.mouseReleased(to,y,0));assertEquals(1,f.seeks);
+        assertTrue(seek.mouseClicked(to,y,0));
+        seek.sync("qq:2",100,2000,true);
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(B,OnlineMusicPlayer.State.PAUSED,100,2000,
+                OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(100,lyrics.model().positionMillis());assertFalse(seek.mouseReleased(to,y,0));assertEquals(1,f.seeks);
+    }
+
     @Test void compactResultsQueueAndMiniExposeRealArtistMetadata() throws Exception {
         var f=new Fixture();var host=new Host();host.width=393;host.height=270;f.view.layout(host);
         var results=f.view.getClass().getDeclaredField("results");results.setAccessible(true);results.set(f.view,List.of(A,B));

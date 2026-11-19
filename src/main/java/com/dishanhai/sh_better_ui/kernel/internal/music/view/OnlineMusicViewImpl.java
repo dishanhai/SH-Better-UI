@@ -862,6 +862,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateStageGeometry();updateVisibility();
     }
     boolean permitsScreenClose() {
+        if(!immersive&&seek!=null&&seek.isEditing()){seek.cancelInteraction();return false;}
         if(returnFromLibraryLogin()||returnFromHistoryDestination())return false;
         if(!immersive&&page==Page.LIBRARY&&library==Library.TRACKS){returnToPlaylistList();return false;}
         if(!immersive&&page==Page.HISTORY){leaveHistory();return false;}
@@ -1691,7 +1692,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             stageLyricTrack=current.track();stageTimeline=timeline;stageLyricKey=new Object();
             stageLyrics.setLines(stageLyricKey,OnlineLyricPresentation.lines(timeline));
         }
-        stageLyrics.playback(OnlineLyricPresentation.position(current),windowActive&&OnlineLyricPresentation.seekable(current));
+        boolean preview=windowActive&&stageSeek.isEditing()&&OnlineLyricPresentation.seekable(current);
+        stageLyrics.playback(preview?stageSeek.previewPositionMs():OnlineLyricPresentation.position(current),
+                windowActive&&!preview&&OnlineLyricPresentation.seekable(current),preview);
     }
     private Bounds lyricContent() {
         if (immersive) return stage.lyrics();
@@ -1733,13 +1736,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         } else if (!immersive) text(ui, title, c.x() + 4, c.y() + 2, c.width() - 8);
         if (!Objects.equals(lyricTrack, current.track())) { lyricTrack = current.track(); lyricViewport.reset(); }
         var feed = player.lyricFeed().frame();
-        long position = feed.alive() ? feed.snapshot().positionMs() : current.positionMs();
-        lyricOffset = Math.max(0, position - current.positionMs());
+        long playedPosition = feed.alive() ? feed.snapshot().positionMs() : current.positionMs();
+        lyricOffset = Math.max(0, playedPosition - current.positionMs());
+        boolean preview=seek.isEditing()&&OnlineLyricPresentation.seekable(current);
+        long position=preview?seek.previewPositionMs()+Math.min(lyricOffset,Long.MAX_VALUE-seek.previewPositionMs()):playedPosition;
         var palette = LyricTextPalette.sample(UiTheme.current().text(), UiTheme.current().accent(), UiTheme.current().background() | 0xff000000, 0, ui.preferences().highContrast());
         var timeline = current.lyrics(); int index = timeline.indexAt(position); activeLyric = index;
         long now = System.nanoTime() / 1_000_000L;
         boolean focused = lyricRows.stream().anyMatch(row -> row.visible && row.keyboardFocused());
-        double center = lyricViewport.sample(Math.max(0, index), timeline.size(), now, ui.preferences().reducedMotion() || !LyricViewport.canAnimate(lines.height()), focused);
+        double center = lyricViewport.sample(Math.max(0, index), timeline.size(), now, ui.preferences().reducedMotion() || !LyricViewport.canAnimate(lines.height()), focused, preview);
         int rowHeight = immersive ? stage.lyricRowHeight() : 24;
         int visibleLines = Math.max(1, lines.height() / rowHeight);
         lyricsScroll.configure(lyricViewport.scrollPosition(index), timeline.size() + visibleLines - 1, visibleLines);
@@ -1751,7 +1756,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             row.setStage(immersive, immersive ? stage.lyricScale() : 1f);
             boolean present = i < timeline.size() && y >= lines.y() && y + rowHeight <= lines.bottom()
                     && current.lyricsState() == OnlineMusicPlayer.LyricsState.READY;
-            row.active = present && seek.active; row.visible = present; lyricTargets.set(slot, present ? new LyricSeekTarget(current.track(), timeline, timeline.line(i).startMs(), lyricOffset) : null);
+            row.active = present && seek.active && !preview; row.visible = present; lyricTargets.set(slot, present ? new LyricSeekTarget(current.track(), timeline, timeline.line(i).startMs(), lyricOffset) : null);
             if (!present) continue;
             var line = timeline.line(i); var words = Component.empty();
             // Keep provider word timing and text intact. Only the current line receives karaoke color.

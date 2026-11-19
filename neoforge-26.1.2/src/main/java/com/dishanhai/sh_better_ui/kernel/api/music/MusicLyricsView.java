@@ -33,6 +33,7 @@ public final class MusicLyricsView extends AbstractWidget {
     private long lastFrame,observedPosition=-1;
     private boolean layoutDirty=true;
     private boolean completeRowsOnly;
+    private boolean seekingPreview, previewChanged;
     private Font layoutFont;
     private net.minecraft.locale.Language layoutLanguage;
     private static volatile long fontMetricsRevision;
@@ -54,7 +55,14 @@ public final class MusicLyricsView extends AbstractWidget {
         model.content(contentKey,lines);
         if(changed){layoutDirty=true;offset=0;lastFrame=0;observedActive=-2;observedPosition=-1;emphasis=new float[0];softness=new float[0];}
     }
-    public void playback(long positionMillis,boolean seekable){model.playback(positionMillis,seekable);}
+    public void playback(long positionMillis,boolean seekable){playback(positionMillis,seekable,false);}
+    /** A scrub position controls the lyric viewport but never makes a lyric line seekable. */
+    public void playback(long positionMillis,boolean seekable,boolean preview){
+        previewChanged|=seekingPreview!=preview;
+        seekingPreview=preview;
+        if(preview&&model.browsing())follow();
+        model.playback(positionMillis,seekable&&!preview);
+    }
     public void preferences(UiPreferences value){preferences=Objects.requireNonNull(value);}
     public void palette(int primary,int secondary,int backdrop){this.primary=primary;this.secondary=secondary;this.backdrop=backdrop|0xff000000;}
     public void bounds(Bounds bounds){if(width!=bounds.width()||height!=bounds.height())layoutDirty=true;setX(bounds.x());setY(bounds.y());width=bounds.width();height=bounds.height();offset=clamp(offset);}
@@ -149,18 +157,19 @@ public final class MusicLyricsView extends AbstractWidget {
         int current=model.activeIndex();long now=net.minecraft.util.Util.getMillis();
         double frameSeconds=lastFrame==0?0:Math.max(0,(now-lastFrame)/1000d);
         long position=model.positionMillis();
-        boolean snap=lastFrame==0||frameSeconds>.38||preferences.reducedMotion()
+        boolean snap=seekingPreview||previewChanged||lastFrame==0||frameSeconds>.38||preferences.reducedMotion()
                 ||LyricFollowMotion.discontinuity(observedPosition,position,frameSeconds)
                 ||(current>=0&&observedActive>=0&&Math.abs(current-observedActive)>6);
         LyricInterlude gap=current<0&&model.synchronizedLyrics()&&!model.browsing()&&!completeRowsOnly
                 ?LyricInterlude.at(model.lines(),position):null;
         double gapY=gap==null?0:tops[gap.next()]-MusicTypography.LINE_HEIGHT*scale;
-        if(!model.browsing()&&(current>=0||gap!=null)){
-            double target=clamp((current>=0?tops[current]:gapY)-height*.24);
+        int previewAnchor=seekingPreview||previewChanged?model.previewAnchor():-1;
+        if(!model.browsing()&&(current>=0||gap!=null||previewAnchor>=0)){
+            double target=clamp((current>=0?tops[current]:gap!=null?gapY:tops[previewAnchor])-height*.24);
             if(snap)followMotion.reset(target);
             offset=clamp(followMotion.step(target,frameSeconds));
         }else followMotion.reset(offset);
-        observedPosition=position;observedActive=current;lastFrame=now;
+        previewChanged=false;observedPosition=position;observedActive=current;lastFrame=now;
         int hovered=isMouseOver(mx,my)?hit(my):-1;
         int ink=ContrastPolicy.readable(primary,0,backdrop,4.5);
         int muted=preferences.highContrast()?ink:ContrastPolicy.readable(secondary,0,backdrop,3);
