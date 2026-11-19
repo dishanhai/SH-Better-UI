@@ -115,6 +115,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                 case "/" -> "index.html";
                 case "/login.mjs" -> "login.mjs";
                 case "/auth-flow.mjs" -> "auth-flow.mjs";
+                case "/playback-flow.mjs" -> "playback-flow.mjs";
                 default -> null;
             };
             if (name == null) { reply(exchange, 404, "text/plain", "Not found"); return; }

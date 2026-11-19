@@ -103,3 +103,10 @@ Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, co
 - Node 状态机 7 项通过：点击内同步发起、重复点击、正常授权、resolve 但未授权、取消后迟到成功、撤销失败与敏感错误不外泄。
 - 页面脚本语法检查通过。心跳检测游戏连接过期，失败不影响浏览器中手动断开。
 - 未对真实 Apple 账号、token、订阅、官方弹窗与 localhost origin 做端到端成功验收；没有默认账户页入口、没有播放驱动，也没有截图冒充真实登录成功。
+
+### 后续浏览器播放契约切片
+
+现已在同一 companion 增加 catalog 歌曲 ID 加载、显式点击播放、暂停和秒级 seek，
+详见 [Apple Music 浏览器播放契约切片](APPLE_MUSICKIT_BROWSER_PLAYBACK.md)。
+这推进了浏览器控制层，但未改变以上真实凭证/origin/订阅/DRM 验收门禁；
+不代表 Java MP3 音源、游戏账户入口或真实 Apple 播放已经完成。
