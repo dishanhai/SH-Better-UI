@@ -1551,7 +1551,7 @@
   "sh_better_ui.online_music.account.manage_hint": "開啟帳號、憑證儲存與個人音樂庫",
   "sh_better_ui.online_music.account.saved": "憑證儲存：開啟",
   "sh_better_ui.online_music.account.session": "憑證儲存：關閉",
-  "sh_better_ui.online_music.account.library_hint": "使用上方歌單或喜歡按鈕瀏覽個人音樂庫。重新整理帳號只重試資料，不會登出。",
+  "sh_better_ui.online_music.account.library_hint": "在音樂庫中查看歌單與喜歡的歌曲。",
   "sh_better_ui.online_music.account.retry": "重新整理帳號",
   "sh_better_ui.online_music.account.loading": "正在載入帳號資料…",
   "sh_better_ui.online_music.account.failed": "帳號資料載入失敗，登入仍可能有效。請重新整理帳號以重試。",
@@ -1925,5 +1925,8 @@
   "sh_better_ui.settings_detail.discard_title": "放棄此組變更？",
   "sh_better_ui.settings_detail.discard_details": "僅放棄此二級頁面尚未套用的變更，保留其他組。",
   "sh_better_ui.settings_detail.discard": "放棄變更",
-  "sh_better_ui.settings_detail.keep_editing": "繼續編輯"
+  "sh_better_ui.settings_detail.keep_editing": "繼續編輯",
+  "sh_better_ui.online_music.queue.edit": "編輯佇列",
+  "sh_better_ui.online_music.queue.done": "完成",
+  "sh_better_ui.online_music.library.track_count": "%s 首歌曲"
 }

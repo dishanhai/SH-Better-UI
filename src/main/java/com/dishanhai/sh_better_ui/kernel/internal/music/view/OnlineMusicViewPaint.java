@@ -62,7 +62,7 @@ final class OnlineMusicViewPaint {
         if (area.width() < 32 || area.height() < font.lineHeight + 6) return;
         var theme = UiTheme.current();
         int accent = theme.accent();
-        int inset = area.width() >= 180 ? 12 : 6;
+        int inset = 6;
         int available = Math.max(1, area.width() - inset * 2);
         int y = area.y() + 6;
         float scale = area.height() >= 32 ? 1.35f : 1f;
