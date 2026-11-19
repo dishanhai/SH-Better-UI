@@ -32,6 +32,11 @@ class AppleMusicBrowserLoginTest {
             assertEquals(403,get(login,"/status",false).statusCode());
             assertEquals("{}",get(login,"/status",true).body());
             assertEquals(404,get(login,"/missing",false).statusCode());
+            var playback=get(login,"/playback-flow.mjs",false);
+            assertEquals(200,playback.statusCode());
+            assertTrue(playback.headers().firstValue("Content-Type").orElseThrow().startsWith("text/javascript"));
+            assertTrue(playback.body().contains("createPlaybackFlow"));
+            assertFalse(playback.body().contains("header.payload.signature"));
             assertEquals(400,get(login,"/config?token=bad",true).statusCode());
         }
     }

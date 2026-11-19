@@ -1,5 +1,6 @@
 // Author: dishanhai. Never read, copy, transmit, or log musicUserToken.
 import { createAuthorizationFlow } from './auth-flow.mjs';
+import { createPlaybackFlow } from './playback-flow.mjs';
 const status = document.getElementById('status');
 const connect = document.getElementById('connect');
 const cancel = document.getElementById('cancel');
@@ -21,12 +22,42 @@ async function request(url, options) {
   finally { clearTimeout(timer); }
 }
 let flow;
+let playback;
+const loadSong = document.getElementById('load-song');
+const playSong = document.getElementById('play-song');
+const pauseSong = document.getElementById('pause-song');
+const seekSong = document.getElementById('seek-song');
+const playbackStatus = document.getElementById('playback-status');
+const playbackLabels = { IDLE: '等待加载歌曲', LOGIN_REQUIRED: '请先授权', INVALID_ID: '请输入数字目录歌曲 ID',
+  INVALID_TIME: '请输入当前歌曲时长以内的秒数', LOADING: '加载中', STARTING: '已请求播放',
+  PAUSING: '已请求暂停', SEEKING: '已请求跳转', OBSERVED: '命令已返回，以 SDK 状态为准',
+  FAILED: '操作失败。请检查订阅、地区、歌曲可用性及浏览器播放支持；不会显示敏感错误详情' };
+function paintPlayback() {
+  if (!playback) return;
+  const state = playback.snapshot();
+  const blocked = flow.busy || state.busy || !state.authorized;
+  loadSong.disabled = blocked;
+  playSong.disabled = blocked || !state.ready;
+  pauseSong.disabled = blocked || (!state.ready && !['playing', 'loading'].includes(state.state));
+  seekSong.disabled = blocked || !state.ready || state.duration <= 0;
+  playbackStatus.textContent = `${playbackLabels[state.message]} · MusicKit 状态：${state.state}${state.songId ? ` · 已加载歌曲 ${state.songId}` : ''}`;
+  document.getElementById('playback-time').textContent = `${state.seconds.toFixed(1)} / ${state.duration.toFixed(1)} 秒`;
+}
+function transport(action) {
+  if (!playback || flow.busy) return;
+  const operation = action(); paint(); operation.finally(paint);
+}
+loadSong.addEventListener('click', () => transport(() => playback.prepare(document.getElementById('song-id').value.trim())));
+playSong.addEventListener('click', () => transport(() => playback.play()));
+pauseSong.addEventListener('click', () => transport(() => playback.pause()));
+seekSong.addEventListener('click', () => transport(() => playback.seek(document.getElementById('seek-time').valueAsNumber)));
 let bridgeFailed = false;
 function paint() {
   if (!flow) return;
-  connect.disabled = flow.busy || flow.state === 'AUTHORIZED';
-  disconnect.disabled = flow.busy || !flow.authorized;
+  connect.disabled = flow.busy || playback?.snapshot().busy || flow.state === 'AUTHORIZED';
+  disconnect.disabled = flow.busy || playback?.snapshot().busy || !flow.authorized;
   cancel.style.display = flow.busy ? 'inline-block' : 'none';
+  paintPlayback();
 }
 // Serialize state notifications so an older AUTHORIZING callback cannot overwrite AUTHORIZED.
 let notifications = Promise.resolve();
@@ -60,6 +91,7 @@ try {
   });
   await MusicKit.configure({ developerToken: config.developerToken, app: { name: 'SH-Better-UI', build: '1' } });
   flow = createAuthorizationFlow(MusicKit.getInstance(), report);
+  playback = createPlaybackFlow(MusicKit.getInstance(), MusicKit, () => paint());
   status.textContent = labels.WAITING;
   paint();
   const heartbeat = setInterval(async () => {
@@ -72,7 +104,7 @@ try {
       clearInterval(heartbeat);
     }
   }, 5000);
-  addEventListener('pagehide', () => clearInterval(heartbeat), { once: true });
+  addEventListener('pagehide', () => { clearInterval(heartbeat); playback.close(); }, { once: true });
 } catch {
   status.textContent = '无法初始化官方 MusicKit。需要有效的项目开发者 token，以及 Apple 接受的网页来源/浏览器。请重新从游戏发起；仅登录玩家账户不能替代开发者配置。';
   connect.disabled = true;
