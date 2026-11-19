@@ -362,6 +362,22 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             }
         });
     }
+    @Override public synchronized boolean canRetryCurrent() {
+        return state != State.CLOSED && track != null && snapshot().state() == State.FAILED;
+    }
+
+    @Override public synchronized boolean retryCurrent() {
+        if (!canRetryCurrent()) return false;
+        // Attachment is an attempt identity, not a track ID: queues may contain duplicates.
+        boolean attached = queue.attachedGeneration == generation;
+        play(track);
+        if (attached) {
+            queue.attachedGeneration = generation;
+            queue.watch();
+        }
+        return true;
+    }
+
     private void loadAudio(OnlineMusicSource provider, OnlineTrack next, long request, long cacheRevision) {
         Failure problem = Failure.NETWORK;
         try {

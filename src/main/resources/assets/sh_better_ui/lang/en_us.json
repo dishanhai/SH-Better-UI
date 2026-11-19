@@ -56,6 +56,7 @@
   "sh_better_ui.online_music.credentials_hint": "Scan or import cookies from the account page. You can choose whether to save sign-in.",
   "sh_better_ui.online_music.credentials_loaded": "Account credentials updated.",
   "sh_better_ui.online_music.credentials_invalid": "Clipboard does not contain valid login cookies.",
+  "sh_better_ui.online_music.retry_track": "Retry track",
   "sh_better_ui.online_music.failure.login_required": "This source requires sign-in. Open Account, scan the QR code, then retry.",
   "sh_better_ui.panel.developer.gallery.sample.online_music": "Online music",
   "sh_better_ui.online_music.source.netease": "NetEase Music",

@@ -114,6 +114,7 @@
   "sh_better_ui.online_music.credentials_hint": "在帳號頁掃碼或匯入 Cookie，並選擇是否儲存登入。",
   "sh_better_ui.online_music.credentials_loaded": "已更新登入憑證。",
   "sh_better_ui.online_music.credentials_invalid": "剪貼簿中沒有有效的登入 Cookie。",
+  "sh_better_ui.online_music.retry_track": "重試目前歌曲",
   "sh_better_ui.online_music.failure.login_required": "平台要求登入，請在「帳號」中掃碼登入後重試。",
   "sh_better_ui.panel.developer.gallery.sample.online_music": "線上音樂",
   "sh_better_ui.online_music.source.netease": "網易雲音樂",
