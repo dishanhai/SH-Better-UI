@@ -35,6 +35,11 @@ public final class LocalMusicIsland {
     private final DynamicIslandState lifecycle = new DynamicIslandState();
     private final IslandNoticeQueue notices = new IslandNoticeQueue();
     private IslandNoticeQueue.Notice activeNotice;
+
+    public Optional<IslandNoticeQueue.Notice> presentedNotice(long nowMs) {
+        return noticeSurfaceAllowed && notices.isPresented(activeNotice, nowMs)
+                ? Optional.of(activeNotice) : Optional.empty();
+    }
     private final IslandAmbientState ambient = new IslandAmbientState();
     private boolean ambientShown;
     private boolean noticeSurfaceAllowed = true;

@@ -71,3 +71,13 @@ a new capture, or control an external system player. Notifications that cover
 the track, background/minimized Minecraft, chat, other screens, player list,
 and hidden HUD disable the controls. Choose non-conflicting keyboard bindings;
 there is no HUD mouse capture.
+
+### Open the displayed Island task (Forge 1.20.1 / NeoForge 1.21.1)
+
+In **Options → Controls → Key Binds → SHBUI**, bind **Open displayed Music
+Island task** (unbound by default). Use it while the island displays a live
+background operation notice in the world. It opens the matching row in SH
+Music History, not the result, account or playback action itself. The key
+does nothing for media and lyric-only notices, an expired task, or while
+the HUD is hidden. It never starts or retries a search, favorite update or
+QR sign-in. Use a key that does not conflict with another gameplay action.
