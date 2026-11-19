@@ -1,0 +1,12 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.dishanhai.sh_better_ui.client.mixin.kernel",
+  "compatibilityLevel": "JAVA_17",
+  "client": [
+    "GuiTextureBlendMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

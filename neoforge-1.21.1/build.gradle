@@ -57,10 +57,12 @@ def platformFiles = ['com/dishanhai/sh_better_ui/ShBetterUi.java',
 sourceSets {
     main {
         java.srcDir('../src/main/java')
+        // Since 1.21.1, applying a shader no longer sets the blend mode.
+        java.exclude('com/dishanhai/sh_better_ui/client/mixin/kernel/GuiTextureBlendMixin.java')
         java.exclude { it.file.toPath().startsWith(file('../src/main/java').toPath()) &&
                 platformFiles.contains(it.path) }
         resources.srcDir('../src/main/resources')
-        resources.exclude('META-INF/mods.toml')
+        resources.exclude('META-INF/mods.toml', 'sh_better_ui.forge.render.mixins.json')
     }
     test {
         java.srcDir('../src/test/java')
@@ -163,6 +165,11 @@ tasks.register('verifyLibraryJar') {
             if (zip.entries().any { it.name.contains('/kernel/smoke/') || it.name == 'META-INF/sh_better_ui.modules' }) {
                 throw new GradleException('Kernel smoke fixtures must stay out of the release JAR')
             }
+            def kernelMixins = new groovy.json.JsonSlurper().parse(
+                    zip.getInputStream(zip.getEntry('sh_better_ui.kernel.mixins.json')))
+            if (kernelMixins.client.contains('GuiTextureBlendMixin')) {
+                throw new GradleException('The Forge vignette mixin must stay out of the NeoForge client configuration')
+            }
             def forbidden = zip.entries().findAll {
                 it.name.startsWith('META-INF/jarjar/') || it.name.startsWith('kotlin/') ||
                 it.name.startsWith('thedarkcolour/') || it.name.startsWith('com/dishanhai/gt_shanhai/') ||
@@ -170,7 +177,8 @@ tasks.register('verifyLibraryJar') {
                 it.name.startsWith('com/lowdragmc/') ||
                 it.name.startsWith('dev/latvian/') ||
                 it.name.startsWith('org/appliedenergistics/yoga/') ||
-                it.name.startsWith('mezz/jei/') || it.name == 'META-INF/mods.toml'
+                it.name.startsWith('mezz/jei/') || it.name == 'META-INF/mods.toml' ||
+                it.name == 'sh_better_ui.forge.render.mixins.json' || it.name.endsWith('/GuiTextureBlendMixin.class')
             }
             if (!forbidden.isEmpty()) throw new GradleException("Unexpected embedded entries: ${forbidden*.name}")
         } finally { zip.close() }

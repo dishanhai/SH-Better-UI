@@ -58,14 +58,15 @@ if (cachedMcVersionJson.isFile() && !mcMetaOut.isFile()) {
     java.nio.file.Files.copy(cachedMcVersionJson.toPath(), mcMetaOut.toPath())
 }
 
+def mixinConfigs = ['sh_better_ui.text.mixins.json', 'sh_better_ui.text_compat.mixins.json',
+                    'sh_better_ui.kernel.mixins.json', 'sh_better_ui.forge.render.mixins.json']
+
 minecraft {
     mappings channel: mappings_channel, version: "${mappings_version}-${minecraft_version}"
     runs {
         client {
             workingDirectory file('run/client')
-            args '--mixin', 'sh_better_ui.text.mixins.json',
-                    '--mixin', 'sh_better_ui.text_compat.mixins.json',
-                    '--mixin', 'sh_better_ui.kernel.mixins.json'
+            args mixinConfigs.collectMany { ['--mixin', it] }
             mods { sh_better_ui { source sourceSets.main } }
         }
         server {
@@ -104,7 +105,7 @@ jar {
                         'Implementation-Title': mod_name,
                         'Implementation-Version': mod_version,
                         'Implementation-Vendor': mod_authors,
-                        'MixinConfigs': 'sh_better_ui.text.mixins.json,sh_better_ui.text_compat.mixins.json,sh_better_ui.kernel.mixins.json')
+                        'MixinConfigs': mixinConfigs.join(','))
     finalizedBy 'reobfJar'
 }
 
@@ -113,7 +114,7 @@ tasks.register('devJar', Jar) {
     dependsOn classes
     archiveClassifier = 'dev'
     from sourceSets.main.output
-    manifest.attributes('MixinConfigs': 'sh_better_ui.text.mixins.json,sh_better_ui.text_compat.mixins.json,sh_better_ui.kernel.mixins.json')
+    manifest.attributes('MixinConfigs': mixinConfigs.join(','))
 }
 def releaseJarName = "${mod_id}-forge-${minecraft_version}-${mod_version}.jar"
 tasks.register('releaseJar', Copy) {
@@ -133,7 +134,6 @@ tasks.register('verifyLibraryJar') {
                             'META-INF/licenses/muoniumplayer/NOTICE',
                             'META-INF/licenses/muoniumplayer/CHANGES.txt',
                             'META-INF/mods.toml', 'pack.mcmeta', 'kubejs.plugins.txt',
-                            'sh_better_ui.text.mixins.json', 'sh_better_ui.text_compat.mixins.json', 'sh_better_ui.kernel.mixins.json',
                             'com/dishanhai/sh_better_ui/ShBetterUi.class',
                             'com/dishanhai/sh_better_ui/client/UiClient.class',
                             'com/dishanhai/sh_better_ui/client/blur/GaussBlur.class',
@@ -150,7 +150,7 @@ tasks.register('verifyLibraryJar') {
               'assets/sh_better_ui/shaders/text_readability.vsh',
               'assets/sh_better_ui/shaders/text_readability_sample.fsh',
               'assets/sh_better_ui/shaders/text_readability_decide.fsh',
-              'assets/sh_better_ui/shaders/text_readability_composite.fsh']
+              'assets/sh_better_ui/shaders/text_readability_composite.fsh'] + mixinConfigs
             sourceSets.main.output.classesDirs.files.each { classesDir ->
                 fileTree(classesDir).matching { include '**/*.class' }.files.each { classFile ->
                     required.add(classesDir.toPath().relativize(classFile.toPath()).toString().replace('\\', '/'))

@@ -6,7 +6,6 @@
   "client": [
     "BoundedTooltipMixin",
     "EditBoxReadabilityMixin",
-    "GuiTextureBlendMixin",
     "KeyboardActionMixin",
     "PointerMotionMixin",
     "WindowFocusMixin"
