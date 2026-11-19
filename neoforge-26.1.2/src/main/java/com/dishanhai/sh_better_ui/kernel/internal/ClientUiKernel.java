@@ -332,6 +332,7 @@ public final class ClientUiKernel {
         event.addListener(Identifier.fromNamespaceAndPath(ShBetterUi.MOD_ID, "material_catalog"),
                 (ResourceManagerReloadListener) resources -> {
                     com.dishanhai.sh_better_ui.client.visual.NativeRichMedia.resourcesReloaded();
+                    com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography.resourcesReloaded();
                     if (dock != null) dock.closeAll();
                     if (catalog != null) catalog.refreshResources();
                     if (text != null) text.invalidateSamples();

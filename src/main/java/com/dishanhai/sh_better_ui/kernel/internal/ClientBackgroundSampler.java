@@ -28,6 +28,7 @@ final class ClientBackgroundSampler implements AutoCloseable {
     private static final long MAX_SAMPLE_AGE_NANOS = 1_000_000_000L;
     private final int maxAxis;
     private final long minimumInterval;
+    private final boolean reuseContainedRegions;
     private final Slot[] slots = new Slot[SLOT_COUNT];
     private final LinkedHashMap<UiId, Entry> entries = new LinkedHashMap<>(16, .75f, true);
     private long frame, now, version, generation, nextTicket;
@@ -36,10 +37,16 @@ final class ClientBackgroundSampler implements AutoCloseable {
     private boolean failed, closed;
 
     ClientBackgroundSampler(int maxSamplesPerAxis, long minIntervalNanos) {
+        this(maxSamplesPerAxis, minIntervalNanos, false);
+    }
+
+    /** HUD reveals can keep using observations of a smaller, fully visible region as it grows. */
+    ClientBackgroundSampler(int maxSamplesPerAxis, long minIntervalNanos, boolean reuseContainedRegions) {
         if (maxSamplesPerAxis < 1 || maxSamplesPerAxis > 64 || minIntervalNanos < 0) {
             throw new IllegalArgumentException("Invalid bounded background sampling policy");
         }
         maxAxis = maxSamplesPerAxis; minimumInterval = minIntervalNanos;
+        this.reuseContainedRegions = reuseContainedRegions;
     }
 
     void beginFrame(long frameId, long nowNanos, long stateVersion) {
@@ -55,11 +62,17 @@ final class ClientBackgroundSampler implements AutoCloseable {
     BackgroundSample request(UiId id, PixelRegion roi, Stage stage, Runnable beforeCapture) {
         requireOpen(); Objects.requireNonNull(id); Objects.requireNonNull(roi); Objects.requireNonNull(stage);
         Entry entry = entries.get(id);
-        if (entry == null || !entry.region.equals(roi) || entry.stage != stage || entry.version != version) {
+        if (entry == null || !acceptsRegion(roi, entry.region, reuseContainedRegions)
+                || entry.stage != stage || entry.version != version) {
             entry = new Entry(roi, stage, version, minimumInterval); entries.put(id, entry);
             if (entries.size() > MAX_REGIONS) entries.remove(entries.keySet().iterator().next());
+        } else if (!entry.region.equals(roi)) {
+            entry.region = roi;
+            entry.interval = minimumInterval;
+            entry.stableSamples = 0;
+            entry.unavailable = false;
         }
-        boolean fresh = matches(entry.sample, roi, stage, version)
+        boolean fresh = matches(entry.sample, roi, stage, version, reuseContainedRegions)
                 && now - entry.sample.capturedNanos() >= 0 && now - entry.sample.capturedNanos() <= MAX_SAMPLE_AGE_NANOS;
         if (failed) return unavailable(roi, stage, Validity.UNAVAILABLE);
         if (entry.ticket == 0 && (entry.lastRequested == Long.MIN_VALUE || now - entry.lastRequested >= entry.interval)) {
@@ -96,8 +109,21 @@ final class ClientBackgroundSampler implements AutoCloseable {
     }
 
     static boolean matches(BackgroundSample sample, PixelRegion roi, Stage stage, long version) {
-        return sample != null && sample.validity() == Validity.VALID && sample.region().equals(roi)
+        return matches(sample, roi, stage, version, false);
+    }
+
+    private static boolean matches(BackgroundSample sample, PixelRegion roi, Stage stage, long version,
+                                   boolean reuseContainedRegions) {
+        return sample != null && sample.validity() == Validity.VALID
+                && acceptsRegion(roi, sample.region(), reuseContainedRegions)
                 && sample.stage() == stage && sample.stateVersion() == version;
+    }
+
+    private static boolean acceptsRegion(PixelRegion current, PixelRegion sampled, boolean reuseContainedRegions) {
+        if (!reuseContainedRegions) return current.equals(sampled);
+        return current.x() <= sampled.x() && current.y() <= sampled.y()
+                && current.x() + current.width() >= sampled.x() + sampled.width()
+                && current.y() + current.height() >= sampled.y() + sampled.height();
     }
 
     static boolean temporallyStable(BackgroundSample previous, BackgroundSample next) {
@@ -212,7 +238,8 @@ final class ClientBackgroundSampler implements AutoCloseable {
             var stamp = slot.stamp;
             Entry entry = entries.get(stamp.id);
             boolean current = status != GL32.GL_WAIT_FAILED && stamp.generation == generation && stamp.version == version
-                    && entry != null && entry.ticket == stamp.ticket && entry.region.equals(stamp.region) && entry.stage == stamp.stage;
+                    && entry != null && entry.ticket == stamp.ticket && entry.stage == stamp.stage
+                    && acceptsRegion(entry.region, stamp.region, reuseContainedRegions);
             try {
                 if (current) {
                     long start = System.nanoTime();
@@ -234,7 +261,8 @@ final class ClientBackgroundSampler implements AutoCloseable {
                         if (intact) {
                             var sample = BackgroundSample.pixels(stamp.region, stamp.width, stamp.height, colors,
                                     stamp.stage, Source.GPU_DOWNSAMPLED_PIXELS, stamp.frame, stamp.time, stamp.version);
-                            if (temporallyStable(entry.sample, sample)) {
+                            if (matches(entry.sample, stamp.region, stamp.stage, stamp.version)
+                                    && temporallyStable(entry.sample, sample)) {
                                 entry.stableSamples = Math.min(6, entry.stableSamples + 1);
                             } else entry.stableSamples = 0;
                             long multiplier = 1L << Math.min(3, entry.stableSamples / 2);
@@ -320,7 +348,7 @@ final class ClientBackgroundSampler implements AutoCloseable {
     }
     @Override public void close() { if (!closed) { reset(); closed = true; } }
     private static final class Entry {
-        final PixelRegion region; final Stage stage; final long version;
+        PixelRegion region; final Stage stage; final long version;
         long ticket, lastRequested = Long.MIN_VALUE, interval; int stableSamples; boolean unavailable; BackgroundSample sample;
         Entry(PixelRegion region, Stage stage, long version, long interval) {
             this.region = region; this.stage = stage; this.version = version; this.interval = interval;

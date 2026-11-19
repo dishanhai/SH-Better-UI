@@ -5,6 +5,16 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MusicHudLayoutTest {
+    @Test void scopedMusicMetricsKeepMetadataAndTimelineSeparatedAcrossSizes() {
+        for(int height:new int[]{56,80,112,160}) {
+            var layout=MusicHudLayout.arrange(new Bounds(0,0,230,height),MusicTypography.LINE_HEIGHT);
+            assertTrue(layout.visible());
+            assertTrue(layout.metadata().height()>=2*MusicTypography.LINE_HEIGHT+2);
+            if(layout.progress().width()>0)assertTrue(layout.progress().y()>=layout.metadata().bottom());
+            if(layout.lyrics().height()>0)assertTrue(layout.lyrics().y()>=layout.progress().bottom()+MusicTypography.LINE_HEIGHT);
+            assertTrue(layout.lyrics().bottom()<=height);
+        }
+    }
     @Test void fullCardHasCoverTimelineAndLyricsWithoutOverlap() {
         var l = MusicHudLayout.arrange(new Bounds(12, 20, 230, 112), 9);
         assertTrue(l.visible());

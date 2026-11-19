@@ -96,6 +96,11 @@ public final class GradientPainter {
                                 float x, float y, GlyphColors colors,
                                 boolean shadow, float glowRadius, float glowAlpha,
                                 float strokeWidth, int strokeArgb) {
+        return draw(graphics,font,glyph,x,y,colors,shadow,glowRadius,glowAlpha,strokeWidth,strokeArgb,null);
+    }
+    public static boolean draw(GuiGraphics graphics, Font font, String glyph,
+                                float x,float y,GlyphColors colors,boolean shadow,float glowRadius,float glowAlpha,
+                                float strokeWidth,int strokeArgb,net.minecraft.resources.ResourceLocation fontId) {
         if (glyph.isEmpty()) {
             return true;
         }
@@ -104,7 +109,7 @@ public final class GradientPainter {
         int cp = glyph.codePointAt(0);
 
         // 优先走 SDF：任意缩放都锐利，且顶点色渐变照旧生效。
-        SdfAtlas.Slot slot = SdfGlyphProvider.slot(cp);
+        SdfAtlas.Slot slot = fontId==null ? SdfGlyphProvider.slot(cp) : null;
         if (slot != null) {
             return drawSdf(graphics, slot, cp, x, y, colors, shadow);
         }
@@ -118,7 +123,7 @@ public final class GradientPainter {
             return true;
         }
         // 退回原版字形：功能降级但不崩。
-        BakedGlyph baked = GlyphLookup.glyph(font, cp);
+        BakedGlyph baked = GlyphLookup.glyph(font, cp, fontId);
         if (baked == null) {
             return false;
         }
@@ -209,6 +214,11 @@ public final class GradientPainter {
                                      float originX, boolean shadow,
                                      float glowRadius, float glowAlpha,
                                      float strokeWidth, int strokeArgb) {
+        return drawSpans(graphics,font,glyph,x,y,spans,originX,shadow,glowRadius,glowAlpha,strokeWidth,strokeArgb,null);
+    }
+    public static boolean drawSpans(GuiGraphics graphics,Font font,String glyph,float x,float y,
+            GlyphSpan[] spans,float originX,boolean shadow,float glowRadius,float glowAlpha,
+            float strokeWidth,int strokeArgb,net.minecraft.resources.ResourceLocation fontId) {
         if (glyph.isEmpty() || spans == null || spans.length == 0) {
             return true;
         }
@@ -218,12 +228,12 @@ public final class GradientPainter {
 
         // 优先走 SDF。段切分逻辑与原版路径完全一致——
         // 区别只在几何来源，颜色仍是逐顶点写入，所以渐变不受影响。
-        SdfAtlas.Slot slot = SdfGlyphProvider.slot(cp);
+        SdfAtlas.Slot slot = fontId==null ? SdfGlyphProvider.slot(cp) : null;
         if (slot != null) {
             return drawSpansSdf(graphics, slot, cp, x, y, spans, originX, shadow);
         }
 
-        BakedGlyph baked = GlyphLookup.glyph(font, cp);
+        BakedGlyph baked = GlyphLookup.glyph(font, cp, fontId);
         if (baked == null) {
             return false;
         }

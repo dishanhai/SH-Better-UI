@@ -98,11 +98,9 @@ public final class UiHudPanel {
                     preferences.highContrast() ? textColor : DarkModeTheme.borderColor(),
                     DarkModeTheme.surfaceColor(), preferences);
         }
-        if (progress >= 0.5f) {
-            graphics.enableScissor(frameX, frameY, frameX + frameWidth, frameY + frameHeight);
-            try { draw(graphics, font, preferences, x, y, scale, null, false, selected, false, glass); }
-            finally { graphics.disableScissor(); }
-        }
+        graphics.enableScissor(frameX, frameY, frameX + frameWidth, frameY + frameHeight);
+        try { draw(graphics, font, preferences, x, y, scale, null, false, selected, false, glass); }
+        finally { graphics.disableScissor(); }
     }
 
     private void draw(GuiGraphics graphics, Font font, UiPreferences preferences, int x, int y, float scale,
