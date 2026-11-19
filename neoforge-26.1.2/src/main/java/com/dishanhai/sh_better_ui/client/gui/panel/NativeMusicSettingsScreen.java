@@ -24,6 +24,8 @@ public final class NativeMusicSettingsScreen extends Screen {
     private AbstractContainerWidget body;
     private Button island, notices, activity, hud, resetHud, undoReset;
     private UiSlider hudX, hudY, hudScale;
+    private StringWidget layoutStatus;
+    private String layoutFeedback = "layout_unchanged";
     private record HudLayout(float x,float y,float scale) {
         static HudLayout of(MusicOverlaySettings value) { return new HudLayout(value.x(),value.y(),value.hudScale()); }
         MusicOverlaySettings apply(MusicOverlaySettings value) { return value.withPosition(x,y).withScale(false,scale); }
@@ -68,16 +70,20 @@ public final class NativeMusicSettingsScreen extends Screen {
         content.addChild(new MultiLineTextWidget(label("hud_layout_hint"),font).setMaxWidth(available));
         resetHud=content.addChild(Button.builder(label("reset_hud_layout"),button->{
             if(!current())return;
-            cancelSliders();var current=music.settings();beforeReset=HudLayout.of(current);
-            music.settings(HudLayout.of(MusicOverlaySettings.DEFAULT).apply(current));sync();
+            cancelSliders();
+            var current=music.settings();
+            var next=HudLayout.of(MusicOverlaySettings.DEFAULT).apply(current);
+            if(applyLayout(current,next,"layout_reset"))beforeReset=HudLayout.of(current);
+            sync();
         }).width(available).build());
         undoReset=content.addChild(Button.builder(label("undo_hud_reset"),button->{
             if(!current()||beforeReset==null)return;
             cancelSliders();var current=music.settings();
-            if(HudLayout.of(current).equals(HudLayout.of(MusicOverlaySettings.DEFAULT)))
-                music.settings(beforeReset.apply(current));
-            beforeReset=null;sync();
+            if(HudLayout.of(current).equals(HudLayout.of(MusicOverlaySettings.DEFAULT))
+                    && applyLayout(current,beforeReset.apply(current),"layout_restored"))beforeReset=null;
+            sync();
         }).width(available).build());
+        layoutStatus=content.addChild(new StringWidget(0,0,available,font.lineHeight,label(layoutFeedback),font));
         content.addChild(Button.builder(label("preview_hud"),button->{
             if(current()) NativePort.show(minecraft,new LayoutPreview(this,music));
         }).width(available).build());
@@ -124,9 +130,25 @@ public final class NativeMusicSettingsScreen extends Screen {
                 percent->Component.translatable("sh_better_ui.native.music_settings."+key,percent),ignored->{});
         slider.setOnCommit(percent->{
             if(!current())return;
-            beforeReset=null;music.settings(change.apply(music.settings(),percent));sync();
-        },ignored->{});
+            var previous=music.settings();
+            if(applyLayout(previous,change.apply(previous,percent),"layout_applied"))beforeReset=null;
+            sync();
+        },ignored->{
+            layoutFeedback="layout_cancelled";
+            if(current())sync();
+        });
         return slider;
+    }
+    private boolean applyLayout(MusicOverlaySettings previous, MusicOverlaySettings next, String success) {
+        if(previous.equals(next))return false;
+        try {
+            music.settings(next);
+        } catch(RuntimeException failure) {
+            layoutFeedback="layout_failed";
+            return false;
+        }
+        layoutFeedback=success;
+        return true;
     }
     private void sync() {
         var settings = music.settings();
@@ -143,6 +165,9 @@ public final class NativeMusicSettingsScreen extends Screen {
         notices.setMessage(Component.translatable("sh_better_ui.native.music_settings.notices",
                 settings.taskNotices() ? CommonComponents.OPTION_ON : CommonComponents.OPTION_OFF));
         activity.active = ShBetterUiApi.settings().activitiesAvailable();
+        String status = hudX.isPointerEditing() || hudY.isPointerEditing() || hudScale.isPointerEditing()
+                ? "layout_preview" : layoutFeedback;
+        layoutStatus.setMessage(label(status));
     }
     private boolean current() { return !removed && NativePort.screen(minecraft) == this; }
     @Override public void tick() { super.tick(); sync(); }

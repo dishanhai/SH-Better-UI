@@ -32,6 +32,7 @@ public final class MusicLyricsView extends AbstractWidget {
     private double offset,totalHeight;
     private long lastFrame;
     private boolean layoutDirty=true;
+    private boolean completeRowsOnly;
     private Font layoutFont;
     private net.minecraft.locale.Language layoutLanguage;
     private static volatile long fontMetricsRevision;
@@ -58,6 +59,13 @@ public final class MusicLyricsView extends AbstractWidget {
     public void palette(int primary,int secondary,int backdrop){this.primary=primary;this.secondary=secondary;this.backdrop=backdrop|0xff000000;}
     public void bounds(Bounds bounds){if(width!=bounds.width()||height!=bounds.height())layoutDirty=true;setX(bounds.x());setY(bounds.y());width=bounds.width();height=bounds.height();offset=clamp(offset);}
     public void scale(float value){if(!Float.isFinite(value))throw new IllegalArgumentException("Invalid lyric scale");float next=Math.max(1,Math.min(2.5f,value));if(next!=scale){scale=next;layoutDirty=true;}}
+    /** Compact hosts may omit clipped edge rows; ordinary player scrolling keeps partial rows. */
+    public void completeRowsOnly(boolean value){completeRowsOnly=value;}
+    static boolean completeRowVisible(double rowY,double rowHeight,double top,double viewportHeight){
+        return Double.isFinite(rowY)&&Double.isFinite(rowHeight)&&Double.isFinite(top)
+                &&Double.isFinite(viewportHeight)&&rowHeight>0&&viewportHeight>=rowHeight
+                &&rowY>=top&&rowY-top<=viewportHeight-rowHeight;
+    }
     public boolean browsing(){return model.browsing();}
     public void follow(){
         model.follow();lastFrame=0;
@@ -77,12 +85,12 @@ public final class MusicLyricsView extends AbstractWidget {
         for(int i=0;i<tops.length;i++){
             var line=model.lines().get(i);
             var text=line.text();
-            var styled=MpTypography.bold(Component.literal(text.isEmpty()?" ":text));
+            var styled=MusicTypography.bold(Component.literal(text.isEmpty()?" ":text));
             if(line.hasWordTiming()){
                 styled=Component.empty();
                 for(int word=0;word<line.words().size();word++){
                     int wordIndex=word;
-                    styled.append(MpTypography.bold(Component.literal(line.words().get(word).text()))
+                    styled.append(MusicTypography.bold(Component.literal(line.words().get(word).text()))
                             .withStyle(style->style.withInsertion(WORD_TAG+wordIndex)));
                 }
             }
@@ -98,7 +106,7 @@ public final class MusicLyricsView extends AbstractWidget {
                 glyphRows.add(glyphs);
             }
             sweeps.add(LyricSweepLayout.measure(glyphRows,line.words().size()));
-            tops[i]=y;heights[i]=Math.max(1,parts.size())*MpTypography.LINE_HEIGHT*scale;
+            tops[i]=y;heights[i]=Math.max(1,parts.size())*MusicTypography.LINE_HEIGHT*scale;
             // Tiny viewports must not scroll through a whole screen of inter-line whitespace.
             y+=heights[i]+Math.min(10*scale,height*.25);
         }
@@ -107,7 +115,7 @@ public final class MusicLyricsView extends AbstractWidget {
         // can still be scrolled to its last baseline.
         int last=tops.length-1;
         totalHeight=last<0?height:Math.max(tops[last]+height*.76,
-                tops[last]+heights[last]+Math.min(height*.24,MpTypography.LINE_HEIGHT*scale));
+                tops[last]+heights[last]+Math.min(height*.24,MusicTypography.LINE_HEIGHT*scale));
         wrapped=List.copyOf(lines);sweepLayouts=List.copyOf(sweeps);layoutFont=font;layoutLanguage=language;
         measuredRevision=fontMetricsRevision;layoutDirty=false;offset=clamp(offset);
         if(isFocused()&&model.focusedIndex()>=0)reveal(model.focusedIndex());
@@ -171,11 +179,12 @@ public final class MusicLyricsView extends AbstractWidget {
                 int pendingInk=LyricPresentation.pendingInk(i==current,muted,subdued);
                 if(isFocused()&&i==model.focusedIndex())g.outline(getX()+1,(int)y-3,width-2,(int)Math.min(height,heights[i]+6),ink);
                 var parts=wrapped.get(i);
-                int first=Math.max(0,(int)Math.floor((getY()-y)/(MpTypography.LINE_HEIGHT*scale)));
-                int last=Math.min(parts.size(),(int)Math.ceil((getY()+height-y)/(MpTypography.LINE_HEIGHT*scale)));
+                int first=Math.max(0,(int)Math.floor((getY()-y)/(MusicTypography.LINE_HEIGHT*scale)));
+                int last=Math.min(parts.size(),(int)Math.ceil((getY()+height-y)/(MusicTypography.LINE_HEIGHT*scale)));
                 boolean sweep=wordTiming&&!preferences.reducedMotion()&&LyricSweepLayout.leftToRight(line.text());
                 for(int row=first;row<last;row++){
-                    var part=parts.get(row);double rowY=y+row*MpTypography.LINE_HEIGHT*scale;
+                    var part=parts.get(row);double rowY=y+row*MusicTypography.LINE_HEIGHT*scale;
+                    if(completeRowsOnly&&!completeRowVisible(rowY,MusicTypography.LINE_HEIGHT*scale,getY(),height))continue;
                     if(!sweep){
                         if(wordTiming)part=timedColors(part,line,model.positionMillis(),pendingInk,ink);
                         boolean reading=i==hovered||isFocused()&&i==model.focusedIndex()||model.browsing();
@@ -202,7 +211,7 @@ public final class MusicLyricsView extends AbstractWidget {
                     if(cursor<getX()+width)drawClippedPart(g,font,part,rowY,pendingInk,cursor,getX()+width);
                 }
             }
-            if(model.lines().isEmpty())g.text(font,MpTypography.text(getMessage()),getX()+8,getY()+12,muted,false);
+            if(model.lines().isEmpty())g.text(font,MusicTypography.text(getMessage()),getX()+8,getY()+12,muted,false);
         } finally {g.disableScissor();}
     }
     /** A bounded 3x3 spatial kernel softens only future rows. No sharp center layer is retained.
@@ -223,7 +232,7 @@ public final class MusicLyricsView extends AbstractWidget {
         float lift=LyricWordEffects.lift(fraction,preferences.reducedMotion());
         float slope=spanWidth>0?LyricWordEffects.rise(fraction,spanWidth,preferences.reducedMotion())/spanWidth:0;
         // x is unchanged by the shear, so the real-time word reveal remains exactly aligned.
-        g.enableScissor(left,(int)Math.floor(rowY)-3,right,(int)Math.ceil(rowY+MpTypography.LINE_HEIGHT*scale)+2);
+        g.enableScissor(left,(int)Math.floor(rowY)-3,right,(int)Math.ceil(rowY+MusicTypography.LINE_HEIGHT*scale)+2);
         g.pose().pushMatrix();
         try {
             g.pose().translate(getX()+8,(float)(rowY-lift+slope*spanX));
@@ -233,7 +242,7 @@ public final class MusicLyricsView extends AbstractWidget {
     }
     private void drawClippedPart(GuiGraphicsExtractor g,Font font,FormattedCharSequence part,double rowY,int color,int left,int right){
         // Outside the text pose: same coordinate space as the viewport scissor, nested intersection.
-        g.enableScissor(left,(int)Math.floor(rowY)-1,right,(int)Math.ceil(rowY+MpTypography.LINE_HEIGHT*scale)+1);
+        g.enableScissor(left,(int)Math.floor(rowY)-1,right,(int)Math.ceil(rowY+MusicTypography.LINE_HEIGHT*scale)+1);
         try {drawPart(g,font,part,rowY,color);} finally {g.disableScissor();}
     }
     private void drawPart(GuiGraphicsExtractor g,Font font,FormattedCharSequence part,double rowY,int color){

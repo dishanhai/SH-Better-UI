@@ -71,12 +71,47 @@ public final class VisualSamplingSmoke {
                 System.out.println("VISUAL_SAMPLING_SMOKE_PASS vendor=" + GL11.glGetString(GL11.GL_VENDOR)
                         + " renderer=" + GL11.glGetString(GL11.GL_RENDERER) + " metrics=" + sampler.metrics());
             }
+            verifyGrowingHudRegion(id);
+            require(Arrays.equals(before, state()), "Growing HUD region leaked GL state");
         } finally {
             GL15.glBindBuffer(GL21.GL_PIXEL_PACK_BUFFER, 0); GL15.glBindBuffer(GL21.GL_PIXEL_UNPACK_BUFFER, 0);
             GL15.glDeleteBuffers(sentinel); GL30.glDeleteFramebuffers(framebuffer); GL11.glDeleteTextures(texture);
             GLFW.glfwDestroyWindow(window); GLFW.glfwTerminate();
         }
     }
+    private static void verifyGrowingHudRegion(UiId id) {
+        var stage = Stage.POST_MATERIAL_PRE_TEXT;
+        var seed = new PixelRegion(16, 16, 16, 16);
+        var expanded = new PixelRegion(4, 4, 28, 28);
+        try (var sampler = new ClientBackgroundSampler(8, 100_000_000L, true)) {
+            sampler.beginFrame(1, 1_000_000, 7);
+            sampler.request(id, seed, stage);
+            require(sampler.request(id, expanded, stage).validity() == Validity.PENDING
+                            && sampler.metrics().scheduled() == 1,
+                    "Expansion rescheduled an in-flight GPU observation");
+            GL11.glFinish();
+            sampler.beginFrame(2, 2_000_000, 7);
+            var early = sampler.request(id, expanded, stage);
+            require(early.validity() == Validity.VALID && early.region().equals(seed),
+                    "Expanding HUD lost the completed sample of its visible region");
+            require(Arrays.stream(early.pixels()).allMatch(pixel -> pixel == 0xffff0000),
+                    "Expanding HUD sample lost its measured pixels");
+
+            sampler.beginFrame(200, 200_000_000, 7);
+            sampler.request(id, expanded, stage);
+            GL11.glFinish();
+            sampler.beginFrame(201, 201_000_000, 7);
+            var refreshed = sampler.request(id, expanded, stage);
+            require(refreshed.validity() == Validity.VALID && refreshed.region().equals(expanded),
+                    "The HUD did not refresh the sample at its current bounds");
+
+            var moved = new PixelRegion(17, 17, 16, 16);
+            require(sampler.request(id, moved, stage).validity() == Validity.PENDING,
+                    "HUD reused an observation outside its current bounds");
+        }
+        System.out.println("GROWING_HUD_SAMPLING_SMOKE_PASS");
+    }
+
     private static BackgroundSample await(ClientBackgroundSampler sampler, UiId id, PixelRegion roi, Stage stage,
                                            long version, long frameStart) {
         long deadline = System.nanoTime() + 2_000_000_000L;

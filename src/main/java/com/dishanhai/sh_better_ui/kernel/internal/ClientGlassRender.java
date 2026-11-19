@@ -38,7 +38,7 @@ final class ClientGlassRender implements GlassService, AutoCloseable {
 
     private final KernelHost host;
     private final GlassSceneCapture capture;
-    private final ClientBackgroundSampler hudText = new ClientBackgroundSampler(8, 100_000_000L);
+    private final ClientBackgroundSampler hudText = new ClientBackgroundSampler(8, 100_000_000L, true);
     private final LinkedHashMap<HudKey, HudPalette> hudPalettes = new LinkedHashMap<>(16, .75f, true);
     private long nextHudSample;
     private GlassProgram program;

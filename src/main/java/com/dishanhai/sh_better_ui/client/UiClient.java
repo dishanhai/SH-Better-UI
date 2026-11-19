@@ -16,6 +16,8 @@ import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import com.dishanhai.sh_better_ui.client.lyrics.render.LyricView;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay;
+import com.dishanhai.sh_better_ui.kernel.internal.music.IslandPlaybackShortcut;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -47,6 +49,9 @@ public final class UiClient {
     private static KeyMapping liveActivitiesKey;
     private static KeyMapping musicIslandKey;
     private static KeyMapping musicPlayerKey;
+    private static KeyMapping islandOperationKey;
+    private static final java.util.Map<IslandPlaybackShortcut, KeyMapping> islandPlaybackKeys =
+            new java.util.EnumMap<>(IslandPlaybackShortcut.class);
     private static final com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut musicShortcut =
             new com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut();
 
@@ -104,9 +109,30 @@ public final class UiClient {
         }
     }
 
+    private static boolean matches(KeyMapping mapping, InputConstants.Key key) {
+        return mapping != null && !mapping.isUnbound() && mapping.isActiveAndMatches(key);
+    }
+
+    private static void onIslandKey(InputConstants.Key key, int action) {
+        boolean eligible = musicShortcutAllowed(Minecraft.getInstance())
+                && !matches(controlPanelKey, key) && !matches(liveActivitiesKey, key)
+                && !matches(musicIslandKey, key) && !matches(musicPlayerKey, key);
+        if (action != GLFW.GLFW_PRESS || !eligible) return;
+        if (matches(islandOperationKey, key)) {
+            if (islandPlaybackKeys.values().stream().noneMatch(mapping -> matches(mapping, key)))
+                NativeMusicOverlay.openIslandOperation();
+            return;
+        }
+        var selected = IslandPlaybackShortcut.select(true, true,
+                shortcut -> matches(islandPlaybackKeys.get(shortcut), key));
+        if (selected != null) NativeMusicOverlay.controlIslandPlayback(selected);
+    }
+
     @SubscribeEvent
     public static void onLiveActivityKey(InputEvent.Key event) {
-        offerMusicShortcut(InputConstants.getKey(event.getKey(), event.getScanCode()), event.getAction());
+        var key = InputConstants.getKey(event.getKey(), event.getScanCode());
+        offerMusicShortcut(key, event.getAction());
+        onIslandKey(key, event.getAction());
         ClientUiKernel.onLiveActivityKey(Minecraft.getInstance(), event.getKey(), event.getAction(), event.getModifiers());
     }
 
@@ -265,6 +291,7 @@ public final class UiClient {
 
     /** 資源重載仍停留在玻璃畫面時，立即以新資源恢復管線，不必重開畫面。 */
     private static void reloadCurrentScreen() {
+        com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography.resourcesReloaded();
         com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView.invalidateFontMetrics();
         com.dishanhai.sh_better_ui.kernel.api.music.status.MusicStatusView.invalidateFontMetrics();
         com.dishanhai.sh_better_ui.client.gui.scaled.DitherBackground.invalidateAll();
@@ -311,6 +338,15 @@ public final class UiClient {
             musicPlayerKey = new KeyMapping("key.sh_better_ui.music_open", KeyConflictContext.IN_GAME,
                     InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
             event.register(musicPlayerKey);
+            islandOperationKey = new KeyMapping("key.sh_better_ui.music_island_open_task", KeyConflictContext.IN_GAME,
+                    InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
+            event.register(islandOperationKey);
+            for (var shortcut : IslandPlaybackShortcut.values()) {
+                var mapping = new KeyMapping(shortcut.translationKey(), KeyConflictContext.IN_GAME,
+                        InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
+                islandPlaybackKeys.put(shortcut, mapping);
+                event.register(mapping);
+            }
         }
 
         @SubscribeEvent

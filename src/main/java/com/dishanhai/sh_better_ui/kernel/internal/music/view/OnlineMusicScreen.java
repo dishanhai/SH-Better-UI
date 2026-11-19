@@ -7,6 +7,8 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
 import com.dishanhai.sh_better_ui.kernel.api.UnifiedUI;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
+import com.dishanhai.sh_better_ui.kernel.internal.music.ClientOnlineMusic;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -26,6 +28,13 @@ public final class OnlineMusicScreen {
 
     public static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
         return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).backgroundView());
+    }
+
+    /** A notice opens the matching history row, not an account or result action. */
+    public static UiScreen operation(Screen parent, MusicOperationNavigation.Target target) {
+        if (!available() || !target.valid() || !(UnifiedUI.get().require(OnlineMusicService.KEY)
+                instanceof ClientOnlineMusic music)) return null;
+        return create(parent, () -> null, () -> music.backgroundOperationView(target).orElseThrow());
     }
 
     static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus,

@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.*;
 import com.dishanhai.sh_better_ui.client.music.*;
 import com.dishanhai.sh_better_ui.config.MusicOverlaySettings;
 import com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
 import com.dishanhai.sh_better_ui.kernel.internal.music.view.NativeHudLyrics;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -29,7 +30,7 @@ public final class NativeMusicHud {
     }
     static Bounds layout(int width, int height, MusicOverlaySettings settings, int lineHeight) {
         var area = MusicOverlayLayout.panel(width, height, false, settings.hudScale(), settings.x(), settings.y());
-        return MusicHudLayout.arrange(area, lineHeight).visible() ? area : null;
+        return MusicHudLayout.arrange(area, Math.max(lineHeight, MusicTypography.LINE_HEIGHT)).visible() ? area : null;
     }
     void prepare(NativeMusicActivity owner, MusicService.Frame frame, boolean scene, int width, int height, int lineHeight) {
         this.frame = frame; viewportWidth = width; viewportHeight = height;
@@ -46,10 +47,10 @@ public final class NativeMusicHud {
                 || !sceneVisible(Minecraft.getInstance())) return;
         var session = frame.snapshot().session();
         paint(graphics, bounds, frame, artwork.texture(NativeMusicArtwork.icon(session.artwork())));
-        var area = MusicHudLayout.arrange(bounds, Minecraft.getInstance().font.lineHeight).lyrics();
+        var area = MusicHudLayout.arrange(bounds, MusicTypography.LINE_HEIGHT).lyrics();
         long position = session.positionAt(System.nanoTime());
         if (area.height() <= 0 || position < 0 || frame.lyrics().state() != MusicService.LyricsState.AVAILABLE) return;
-        if (lyrics == null) { lyrics = new MusicLyricsView(area, Component.translatable("sh_better_ui.online_music.stage.open"), UiPreferences.configured(), ignored -> {}); lyrics.scale(1); }
+        if (lyrics == null) { lyrics = new MusicLyricsView(area, Component.translatable("sh_better_ui.online_music.stage.open"), UiPreferences.configured(), ignored -> {}); lyrics.scale(1); lyrics.completeRowsOnly(true); }
         String identity = NativeMusicActivity.identity(frame);
         if (lyricTimeline != frame.lyrics().timeline() || !java.util.Objects.equals(lyricIdentity, identity)) {
             lyrics.setLines(identity, NativeHudLyrics.lines(frame.lyrics().timeline()));
@@ -61,7 +62,7 @@ public final class NativeMusicHud {
     }
     private static void paint(GuiGraphicsExtractor graphics, Bounds panel, MusicService.Frame frame, NativeMusicArtwork.Texture texture) {
         var theme = UiTheme.current(); var font = Minecraft.getInstance().font;
-        var layout = MusicHudLayout.arrange(panel, font.lineHeight);
+        var layout = MusicHudLayout.arrange(panel, MusicTypography.LINE_HEIGHT);
         int text = UiPreferences.configured().highContrast() ? 0xffffffff : theme.text();
         int surface = UiPreferences.configured().highContrast() ? 0xff000000 : theme.surface() | 0xff000000;
         RoundedCorners.draw(graphics, panel.x(), panel.y(), panel.width(), panel.height(), 10, 1, theme.border(), surface);
@@ -79,11 +80,11 @@ public final class NativeMusicHud {
             var metadata = layout.metadata();
             var title = session == null ? Component.translatableWithFallback("sh_better_ui.native.music_settings.preview_title", "Layout preview") : session.track().title().map(Component::literal).orElseGet(() -> Component.translatable("sh_better_ui.music.unknown_title"));
             var artist = session == null ? Component.translatableWithFallback("sh_better_ui.native.music_settings.preview_sample", "Static sample · not playing") : Component.literal(session.track().artist().orElse(""));
-            line(graphics, title.copy().withStyle(net.minecraft.ChatFormatting.BOLD), metadata.x(), metadata.y(), metadata.width(), text);
-            line(graphics, artist, metadata.x(), metadata.y()+font.lineHeight+2, metadata.width(), text);
-            if (session != null && metadata.height() >= 3 * font.lineHeight + 4)
+            line(graphics, MusicTypography.bold(title), metadata.x(), metadata.y(), metadata.width(), text);
+            line(graphics, artist, metadata.x(), metadata.y()+MusicTypography.LINE_HEIGHT+2, metadata.width(), text);
+            if (session != null && metadata.height() >= 3 * MusicTypography.LINE_HEIGHT + 4)
                 line(graphics, Component.translatable("sh_better_ui.music.status." + session.status().name().toLowerCase(Locale.ROOT)),
-                        metadata.x(), metadata.y()+2*(font.lineHeight+2), metadata.width(), text);
+                        metadata.x(), metadata.y()+2*(MusicTypography.LINE_HEIGHT+2), metadata.width(), text);
             long position = session == null ? 32000 : session.positionAt(System.nanoTime());
             long duration = session == null ? 180000 : session.durationMs().orElse(0);
             var bar = layout.progress();
@@ -107,11 +108,11 @@ public final class NativeMusicHud {
     private static String clock(long millis) { return String.format(Locale.ROOT,"%d:%02d",millis/60000,millis/1000%60); }
     private static void line(GuiGraphicsExtractor graphics, Component text, int x, int y, int width, int color) {
         var font = Minecraft.getInstance().font;
-        graphics.text(font, net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(text, Math.max(1,width))), x,y,color,false);
+        graphics.text(font, MusicTextLayout.ellipsize(font, text, width, MusicTypography.font()), x,y,color,false);
     }
     /** Explicit local-only layout preview, never submitted as a music frame or activity. */
     public static void drawPreview(GuiGraphicsExtractor graphics, int width, int height, MusicOverlaySettings settings) {
-        var bounds = layout(width,height,settings,Minecraft.getInstance().font.lineHeight);
+        var bounds = layout(width,height,settings,MusicTypography.LINE_HEIGHT);
         if(bounds != null) paint(graphics,bounds,null,null);
     }
 }

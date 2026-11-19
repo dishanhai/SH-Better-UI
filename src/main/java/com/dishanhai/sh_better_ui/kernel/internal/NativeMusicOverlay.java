@@ -11,10 +11,17 @@ import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
+import java.util.HashMap;
+import java.util.Map;
 import java.util.Set;
+import com.dishanhai.sh_better_ui.kernel.internal.music.IslandPlaybackShortcut;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationSource;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
 
 /** Scoped native HUD owner. Never captures gameplay input or starts media capture. */
@@ -25,6 +32,14 @@ public final class NativeMusicOverlay implements UIModule {
     private LocalMusicIsland island;
     private LocalMusicHud card;
     private boolean restoreIsland = true;
+    private record PresentedPlayback(ClientLevel world, LocalPlayer player, OnlineMusicService.BackgroundTarget target) {}
+    private PresentedPlayback presentedPlayback;
+    private record PresentedOperation(ClientLevel world, LocalPlayer player, IslandNoticeQueue.Notice notice,
+                                      MusicOperationNavigation.Target target) {}
+    private PresentedOperation presentedOperation;
+    private ClientLevel operationWorld;
+    private LocalPlayer operationPlayer;
+    private final Map<String, MusicOperationNavigation.Target> operationTargets = new HashMap<>();
     private final MusicIslandTaskAdapter tasks = new MusicIslandTaskAdapter();
     private long ambientAt = Long.MIN_VALUE;
     private final MusicOperationNotices operationTasks = new MusicOperationNotices();
@@ -53,24 +68,42 @@ public final class NativeMusicOverlay implements UIModule {
         context.scope().track(context.engine().require(UIApis.HUD).mount(context, this::draw));
         active = this;
     }
-    @Override public void stop(ModuleContext context) { if (active == this) active = null; suspend(); operationTasks.reset(); }
-    private void suspend() { operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); }); tasks.reset(); restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
+    @Override public void stop(ModuleContext context) {
+        if (active == this) active = null;
+        suspend();
+        operationWorld = null;
+        operationPlayer = null;
+        operationTasks.reset();
+    }
+    private void suspend() { operationAdmission.clear(this::cancelOperationNotice); tasks.reset(); restoreIsland = true; presentedPlayback = null; presentedOperation = null; if (island != null) island.suspend(); if (card != null) card.suspend(); }
     private MusicOverlaySettings settings() { return context.engine().configs().get(MusicOverlaySettings.KEY); }
     private void save(MusicOverlaySettings value) {
         var configs = context.engine().configs();
         configs.beginTransaction().set(configs.userGlobal(), MusicOverlaySettings.KEY, value).commit();
         restoreIsland = true;
     }
+    private void cancelOperationNotice(String id) {
+        operationTargets.remove(id);
+        if (island != null) island.cancelNotice(id);
+    }
+
     private void draw(HudService.Frame frame) {
         var mc = Minecraft.getInstance();
+        presentedPlayback = null;
+        presentedOperation = null;
+        if (operationWorld != mc.level || operationPlayer != mc.player) {
+            operationAdmission.clear(this::cancelOperationNotice);
+            operationWorld = mc.level;
+            operationPlayer = mc.player;
+        }
         var value = settings();
         var source=context.engine().find(OnlineMusicService.KEY).orElse(null);
         boolean operationEnabled=value.islandEnabled() && value.taskNotices() && mc.level!=null && mc.player!=null;
         var operationUpdates=operationTasks.observe(source instanceof MusicOperationSource operations ? operations.operationsSnapshot() : java.util.List.of(),operationEnabled);
-        operationAdmission.update(operationUpdates,id -> { if(island!=null)island.cancelNotice(id); });
-        if(!operationEnabled)operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); });
+        operationAdmission.update(operationUpdates,this::cancelOperationNotice);
+        if(!operationEnabled)operationAdmission.clear(this::cancelOperationNotice);
         if ((!value.hudEnabled() && !value.islandEnabled()) || mc.level == null || mc.player == null) { suspend(); return; }
-        boolean hidden = mc.options.hideGui || mc.screen != null || mc.options.keyPlayerList.isDown();
+        boolean hidden = mc.options.hideGui || mc.screen != null || mc.getOverlay() != null || mc.options.keyPlayerList.isDown();
         if (card == null) card = new LocalMusicHud(ShBetterUiApi.music());
         if (island == null) island = new LocalMusicIsland(ShBetterUiApi.music());
         var viewport = new Bounds(0, 0, frame.width(), frame.height());
@@ -79,7 +112,7 @@ public final class NativeMusicOverlay implements UIModule {
         if (value.hudEnabled() && !hidden) card.render(ui, mc.font,
                 MusicOverlayLayout.panel(frame.width(),frame.height(),false,value.hudScale(),value.x(),value.y()));
         if (value.islandEnabled()) {
-            island.setScene(true,mc.options.keyPlayerList.isDown(),mc.options.hideGui || mc.screen != null,mc.screen != null);
+            island.setScene(true,mc.options.keyPlayerList.isDown(),hidden,mc.screen != null || mc.getOverlay() != null);
             island.setStyle(value.islandStyle());
             island.setAmbient(value.ambientEnabled() ? IslandAmbientState.Settings.DEFAULT : IslandAmbientState.Settings.DISABLED);
             if (value.ambientEnabled() && (ambientAt == Long.MIN_VALUE || ui.nowMs() < ambientAt || ui.nowMs()-ambientAt>=250)) {
@@ -99,11 +132,23 @@ public final class NativeMusicOverlay implements UIModule {
                 tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER); island.cancelNotice(MusicIslandTaskAdapter.PLAYBACK);
             }
             if (hidden) return;
-            operationAdmission.flush(update -> island.tryNotify(new IslandNoticeQueue.Notice(update.id(),
-                    text("task."+update.key()).getString(),"",-1,update.ttlMs(),
-                    update.error()?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs())));
+            operationAdmission.flush(update -> {
+                var notice = new IslandNoticeQueue.Notice(update.id(), text("task."+update.key()).getString(),
+                        "", -1, update.ttlMs(), update.error()?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,
+                        ui.nowMs()+update.ttlMs());
+                if (!island.tryNotify(notice)) return false;
+                if (source instanceof MusicOperationSource operations)
+                    operations.operationTarget(update.operationId()).ifPresent(target -> operationTargets.put(notice.id(), target));
+                return true;
+            });
             var full = MusicOverlayLayout.panel(frame.width(),frame.height(),true,value.islandScale(),value.islandX(),value.islandY());
             island.render(ui,mc.font,MusicOverlayLayout.compact(full,value.islandScale()),full,false);
+            var target = island.backgroundControlTarget();
+            if (target != null) presentedPlayback = new PresentedPlayback(mc.level, mc.player, target);
+            island.presentedNotice(ui.nowMs()).ifPresent(notice -> {
+                var operation = operationTargets.get(notice.id());
+                if (operation != null) presentedOperation = new PresentedOperation(mc.level, mc.player, notice, operation);
+            });
         } else { tasks.reset(); island.suspend(); restoreIsland=true; }
     }
     /** Explicit gameplay shortcut; never changes the saved default expansion preference. */
@@ -112,8 +157,40 @@ public final class NativeMusicOverlay implements UIModule {
         if (!available() || mc.level == null || mc.player == null || mc.screen != null
                 || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
         if (!active.settings().islandEnabled() || active.island == null) return;
+        active.presentedPlayback = null;
+        active.presentedOperation = null;
         active.island.setExpanded(!active.island.expanded(), PageTransition.nowMs(), UiPreferences.configured().reducedMotion());
         active.restoreIsland = false;
+    }
+
+    /** Runs synchronously for an explicitly bound keyboard press; never captures gameplay input. */
+    public static void controlIslandPlayback(IslandPlaybackShortcut shortcut) {
+        var mc = Minecraft.getInstance();
+        if (!available() || mc.level == null || mc.player == null || !mc.isWindowActive()
+                || mc.screen != null || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
+        var owner = active;
+        var shown = owner.presentedPlayback;
+        if (!owner.settings().islandEnabled() || owner.restoreIsland || shown == null
+                || shown.world() != mc.level || shown.player() != mc.player) return;
+        var service = owner.context.engine().find(OnlineMusicService.KEY).orElse(null);
+        if (service != null && shortcut.dispatch(service, shown.target(),
+                ShBetterUiApi.music().getFrame().snapshot(), System.nanoTime())) owner.presentedPlayback = null;
+    }
+
+    /** Opens only the exact operation drawn by the HUD, never a waiting notice or a new task. */
+    public static void openIslandOperation() {
+        var mc = Minecraft.getInstance();
+        if (!available() || mc.level == null || mc.player == null || !mc.isWindowActive() || mc.isPaused()
+                || mc.screen != null || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
+        var owner = active;
+        var shown = owner.presentedOperation;
+        var settings = owner.settings();
+        if (!settings.islandEnabled() || !settings.taskNotices() || owner.restoreIsland || shown == null
+                || shown.world() != mc.level || shown.player() != mc.player || !shown.target().valid()
+                || owner.island.presentedNotice(PageTransition.nowMs()).orElse(null) != shown.notice()) return;
+        owner.presentedOperation = null;
+        var page = OnlineMusicScreen.operation(null, shown.target());
+        if (page != null) mc.setScreen(page);
     }
 
     /** Reserve the expansion envelope only while a real island surface is visible. */
@@ -154,25 +231,53 @@ public final class NativeMusicOverlay implements UIModule {
     private static final class SettingsScreen extends Screen {
         private final NativeMusicOverlay owner;
         private final Screen parent;
+        private final MusicOverlaySettings initial;
         private MusicOverlaySettings draft;
+        private UiButton apply;
         private Component error;
-        SettingsScreen(NativeMusicOverlay owner, Screen parent) { super(text("title")); this.owner=owner;this.parent=parent;draft=owner.settings(); }
+        SettingsScreen(NativeMusicOverlay owner, Screen parent) {
+            super(text("title"));
+            this.owner=owner;
+            this.parent=parent;
+            this.initial=owner.settings();
+            this.draft=initial;
+        }
+        private void edit(MusicOverlaySettings value) {
+            draft=value;
+            error=null;
+            apply.active=!draft.equals(initial);
+        }
         @Override protected void init() {
-            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-60)/8)), y=26;
-            addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{draft=draft.withHud(!draft.hudEnabled());b.setMessage(toggle("hud",draft.hudEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{draft=draft.withIsland(!draft.islandEnabled());b.setMessage(toggle("island",draft.islandEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{draft=draft.withExpanded(!draft.expanded());b.setMessage(toggle("expand",draft.expanded()));}));
+            int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-66)/8)), y=26;
+            addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{edit(draft.withHud(!draft.hudEnabled()));b.setMessage(toggle("hud",draft.hudEnabled()));}));
+            var islandButton = addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{edit(draft.withIsland(!draft.islandEnabled()));b.setMessage(toggle("island",draft.islandEnabled()));}));
+            islandButton.setPreview(text("island_keys_hint"));
+            addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{edit(draft.withExpanded(!draft.expanded()));b.setMessage(toggle("expand",draft.expanded()));}));
             addRenderableWidget(new UiButton(x,y+3*step,w,step-2,text("edit_hud"),b->minecraft.setScreen(new PositionScreen(this,false))));
             addRenderableWidget(new UiButton(x,y+4*step,w,step-2,text("edit_island"),b->minecraft.setScreen(new PositionScreen(this,true))));
-            addRenderableWidget(new UiButton(x,y+5*step,w,step-2,toggle("ambient",draft.ambientEnabled()),b->{draft=draft.withAmbient(!draft.ambientEnabled());b.setMessage(toggle("ambient",draft.ambientEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+6*step,w,step-2,toggle("task_notices",draft.taskNotices()),b->{draft=draft.withTaskNotices(!draft.taskNotices());b.setMessage(toggle("task_notices",draft.taskNotices()));}));
-            addRenderableWidget(new UiButton(x,y+7*step,w,step-2,styleLabel(),b->{draft=draft.withIslandStyle(IslandShellStyle.fromId(draft.islandStyle()).next().id());b.setMessage(styleLabel());}));
-            addRenderableWidget(new UiButton(x,height-26,w/2-2,20,text("apply"), b->{try{owner.save(draft);onClose();}catch(RuntimeException e){error=text("save_failed");}}));
+            addRenderableWidget(new UiButton(x,y+5*step,w,step-2,toggle("ambient",draft.ambientEnabled()),b->{edit(draft.withAmbient(!draft.ambientEnabled()));b.setMessage(toggle("ambient",draft.ambientEnabled()));}));
+            addRenderableWidget(new UiButton(x,y+6*step,w,step-2,toggle("task_notices",draft.taskNotices()),b->{edit(draft.withTaskNotices(!draft.taskNotices()));b.setMessage(toggle("task_notices",draft.taskNotices()));}));
+            addRenderableWidget(new UiButton(x,y+7*step,w,step-2,styleLabel(),b->{edit(draft.withIslandStyle(IslandShellStyle.fromId(draft.islandStyle()).next().id()));b.setMessage(styleLabel());}));
+            apply=addRenderableWidget(new UiButton(x,height-26,w/2-2,20,text("apply"), b->{
+                if(draft.equals(initial))return;
+                try{owner.save(draft);}catch(RuntimeException e){error=text("save_failed");return;}
+                onClose();
+            }));
+            apply.active=!draft.equals(initial);
             addRenderableWidget(new UiButton(x+w/2+2,height-26,w/2-2,20,text("cancel"),b->onClose()));
         }
         private Component styleLabel(){return text("style").copy().append(": ").append(text("style."+draft.islandStyle()));}
         private Component toggle(String key,boolean on){return text(key).copy().append(": ").append(Component.translatable(on?"options.on":"options.off"));}
-        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xF018202C);g.drawCenteredString(font,title,width/2,10,0xFFFFFFFF);super.render(g,x,y,partial);if(error!=null)g.drawCenteredString(font,error,width/2,height-39,0xFFFF7777);}
+        @Override public void render(GuiGraphics g,int x,int y,float partial){g.fill(0,0,width,height,0xF018202C);g.drawCenteredString(font,title,width/2,10,0xFFFFFFFF);super.render(g,x,y,partial);
+            var status=error!=null?error:text(draft.equals(initial)?"no_pending_changes":"pending_changes");
+            footerStatus(g,status,error!=null?0xFFFF9999:0xFFE1E7F0);
+        }
+        private void footerStatus(GuiGraphics graphics, Component status, int color) {
+            if(width<=8 || height<40)return;
+            graphics.enableScissor(4,height-39,width-4,height-27);
+            try { graphics.drawCenteredString(font,status,width/2,height-39,color); }
+            finally { graphics.disableScissor(); }
+        }
         @Override public void onClose(){minecraft.setScreen(parent);}
         // NeoForge Screen.render invokes this after our opaque custom background.
         // Do not blur the already-rendered HUD preview; this signature is harmless on Forge 1.20.1.
@@ -194,7 +299,11 @@ public final class NativeMusicOverlay implements UIModule {
             dragging=false;area=new Bounds(0,0,Math.max(1,width),Math.max(1,height));place();
             int w=Math.min(90,(width-16)/3),x=(width-3*w-8)/2;
             addRenderableWidget(new UiButton(x,height-26,w,20,text("reset"),b->{xFraction=.5f;yFraction=editIsland?.05f:.75f;scale=1f;place();}));
-            addRenderableWidget(new UiButton(x+w+4,height-26,w,20,text("apply"),b->{parent.draft=editIsland?parent.draft.withIslandPosition(xFraction,yFraction):parent.draft.withPosition(xFraction,yFraction);parent.draft=parent.draft.withScale(editIsland,scale);onClose();}));
+            addRenderableWidget(new UiButton(x+w+4,height-26,w,20,text("apply"),b->{
+                var next=editIsland?parent.draft.withIslandPosition(xFraction,yFraction):parent.draft.withPosition(xFraction,yFraction);
+                parent.edit(next.withScale(editIsland,scale));
+                onClose();
+            }));
             addRenderableWidget(new UiButton(x+2*w+8,height-26,w,20,text("cancel"),b->onClose()));
             // Footer controls must win hit testing when the preview extends behind them.
             handle=addWidget(new UiButton(bounds.x(),bounds.y(),bounds.width(),bounds.height(),text("drag"),b->{}));

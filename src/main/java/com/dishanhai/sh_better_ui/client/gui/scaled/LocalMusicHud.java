@@ -15,6 +15,7 @@ import com.dishanhai.sh_better_ui.client.music.MusicService;
 import com.dishanhai.sh_better_ui.client.music.MusicSnapshot;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
 
 import java.util.Locale;
 import java.util.Objects;
@@ -39,7 +40,7 @@ public final class LocalMusicHud {
     }
 
     public void render(UiFrame ui, Font font, Bounds area) {
-        var layout = MusicHudLayout.arrange(area, font.lineHeight);
+        var layout = MusicHudLayout.arrange(area, MusicTypography.LINE_HEIGHT);
         if (!layout.visible()) return;
         current = music.getFrame();
         var snapshot = current.snapshot();
@@ -65,15 +66,15 @@ public final class LocalMusicHud {
                     art.y() + (art.height() - GraphicIcon.PIXELS) / 2, 1, 0xFFFFFFFF, ui.preferences());
             var text = layout.metadata();
             int secondary = ui.preferences().highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1;
-            titleLabel.setText(track == null ? label("unknown_title") : track.title().<Component>map(Component::literal)
-                    .orElseGet(() -> label("unknown_title")));
-            titleLabel.render(g, font, text.x(), text.y(), text.width(), 0xFFFFFFFF, false, ui.nowMs(), false, ui.preferences());
-            artistLabel.setText(track == null ? status(snapshot) : track.artist().<Component>map(Component::literal)
-                    .orElseGet(() -> label("unknown_artist")));
-            artistLabel.render(g, font, text.x(), text.y() + font.lineHeight + 2, text.width(), secondary, false,
-                    ui.nowMs(), false, ui.preferences());
-            if (text.height() >= 3 * font.lineHeight + 4)
-                draw(ui, font, status(snapshot), text.x(), text.y() + 2 * (font.lineHeight + 2), text.width(), secondary);
+            titleLabel.setText(MusicTypography.text(track == null ? label("unknown_title") : track.title().<Component>map(Component::literal)
+                    .orElseGet(() -> label("unknown_title"))));
+            titleLabel.render(g, font, text.x(), text.y(), text.width(), 0xFFFFFFFF, false, ui.nowMs(), false, ui.preferences(), MusicTypography.LINE_HEIGHT);
+            artistLabel.setText(MusicTypography.text(track == null ? status(snapshot) : track.artist().<Component>map(Component::literal)
+                    .orElseGet(() -> label("unknown_artist"))));
+            artistLabel.render(g, font, text.x(), text.y() + MusicTypography.LINE_HEIGHT + 2, text.width(), secondary, false,
+                    ui.nowMs(), false, ui.preferences(), MusicTypography.LINE_HEIGHT);
+            if (text.height() >= 3 * MusicTypography.LINE_HEIGHT + 4)
+                draw(ui, font, status(snapshot), text.x(), text.y() + 2 * (MusicTypography.LINE_HEIGHT + 2), text.width(), secondary);
             var progress = layout.progress();
             long position = session == null ? -1 : session.positionAt(System.nanoTime());
             if (progress.width() > 0) {
@@ -91,7 +92,7 @@ public final class LocalMusicHud {
                 int count = lyricArea.height() >= 38 ? 2 : 1;
                 if (lyrics.style().lineCount() != count) lyrics.setStyle(lyrics.style().withLineCount(count));
                 if (position >= 0 && current.lyrics().state() == MusicService.LyricsState.AVAILABLE
-                        && ShBetterUiApi.lyrics().draw(lyrics, ui, font, lyricArea)) return;
+                        && ShBetterUiApi.lyrics().drawScoped(lyrics, ui, font, lyricArea,MusicTypography.font(),MusicTypography.LINE_HEIGHT)) return;
                 draw(ui, font, label(position < 0 ? "lyrics_no_time" : current.lyrics().state() == MusicService.LyricsState.LOADING
                         ? "lyrics_loading" : current.lyrics().state() == MusicService.LyricsState.AVAILABLE
                         ? "lyrics_waiting" : "lyrics_missing"), lyricArea.x(), lyricArea.y(), lyricArea.width(), secondary);
@@ -109,9 +110,6 @@ public final class LocalMusicHud {
         return seconds / 60 + (seconds % 60 < 10 ? ":0" : ":") + seconds % 60;
     }
     private static void draw(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
-        String value = text.getString();
-        if (font.width(value) <= width) ui.graphics().drawString(font, text, x, y, color, false);
-        else if (width >= font.width("…")) ui.graphics().drawString(font,
-                font.plainSubstrByWidth(value, width - font.width("…")) + "…", x, y, color, false);
+        ui.graphics().drawString(font, MusicTextLayout.ellipsize(font,text,width,MusicTypography.font()),x,y,color,false);
     }
 }

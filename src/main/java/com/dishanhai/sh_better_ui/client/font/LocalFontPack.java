@@ -80,13 +80,27 @@ public final class LocalFontPack {
             try(var zip=new ZipOutputStream(Files.newOutputStream(temp))) {
                 entry(zip,"pack.mcmeta",("{\"pack\":{\"pack_format\":"+format+",\"description\":\"SHBUI local music font (disable to restore)\"}}").getBytes(java.nio.charset.StandardCharsets.UTF_8));
                 entry(zip,"assets/sh_better_ui/font/user_ui.ttf",bytes);
-                String json="{\"providers\":[{\"type\":\"ttf\",\"file\":\"sh_better_ui:user_ui.ttf\",\"size\":11,\"oversample\":3,\"shift\":[0,0]},{\"type\":\"reference\",\"id\":\"minecraft:default\"}]}";
-                entry(zip,"assets/sh_better_ui/font/mp_ui.json",json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
-                entry(zip,"assets/sh_better_ui/font/mp_ui_semibold.json",json.getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                for(String name:List.of("mp_ui","mp_ui_semibold","music_ui","music_ui_semibold"))
+                    entry(zip,"assets/sh_better_ui/font/"+name+".json",fontDefinition(name));
                 entry(zip,"LICENSE.txt",license);
             }
             check(cancelled); Files.move(temp,result); return result;
         } finally { Files.deleteIfExists(temp); }
+    }
+    /** Scope the user's face to SHBUI and let bundled providers fill missing glyphs. */
+    static byte[] fontDefinition(String name) {
+        String providers=face("user_ui.ttf");
+        if (name.equals("music_ui") || name.equals("music_ui_semibold")) {
+            boolean semibold=name.endsWith("_semibold");
+            providers+=","+face(semibold?"sh_music_sans_semibold.ttf":"sh_music_sans_medium.ttf",3)
+                    +","+face(semibold?"sh_sans_ui_semibold.ttf":"sh_sans_ui.ttf",3);
+        }
+        return ("{\"providers\":["+providers+",{\"type\":\"reference\",\"id\":\"minecraft:default\"}]}")
+                .getBytes(java.nio.charset.StandardCharsets.UTF_8);
+    }
+    private static String face(String file) { return face(file,0); }
+    private static String face(String file,int baseline) {
+        return "{\"type\":\"ttf\",\"file\":\"sh_better_ui:"+file+"\",\"size\":11,\"oversample\":3,\"shift\":[0,"+baseline+"]}";
     }
     private static void entry(ZipOutputStream zip,String name,byte[] data) throws IOException { zip.putNextEntry(new ZipEntry(name));zip.write(data);zip.closeEntry(); }
 }

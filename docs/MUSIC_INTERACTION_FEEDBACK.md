@@ -46,25 +46,20 @@ playback command is sent. Notices respect the island/task-notice switches and
 normal HUD visibility rules; this is not a durable notification inbox.
 
 Search/library read cancellation requests interruption and detaches stale UI
-results, not a guarantee that a remote server stopped. Cancelling a like/unlike
-write only stops waiting: the provider may already have applied it, so the UI says
-to refresh rather than claiming undo. QR closure stops local polling; it does not
-revoke authorization already accepted on the phone. The first stage did not carry detached read outcomes into the island; the second stage below adds reads only. Detached write and QR outcomes remain a follow-up.
-
-Follow-up requires session-owned operation identities, account-generation binding,
-explicit cancellation versus unknown-write outcomes, durable terminal snapshots,
-and separate view subscriptions. Migrating writes/QR polling to that owner is an
-explicit next phase, not functionality claimed by this PR.
+results, not a guarantee that a remote server stopped. Built-in sessions also
+own favorite writes and QR sign-in, as described below. Closing or changing
+views detaches observation; it does not reverse a submitted write or revoke
+authorization that was already accepted on the phone.
 
 ## Session read operations (second stage)
 
 Built-in player sessions own searches, account playlist lists, playlist tracks and liked-track reads. Leaving their page, opening immersive lyrics, switching source, or closing a borrowed player view detaches observation without stopping the session job. A new read detaches the previous one. Explicit Cancel asks the owner to cancel; this does not prove a remote server stopped processing. Third-party players without this internal capability retain their original request lifetime semantics.
 
-The small History control beside Search opens Background tasks, a secondary, paginated recent-task list. It shows only operation category and state, with provider in its tooltip, never search text, account names or song titles. Selecting an entry explicitly reattaches and restores its result page; no automatic page navigation or stale completion takeover. Search text and playlist identity exist only as private, in-memory restoration metadata, not notification payloads or persistent history. The registry is bounded to 32 total entries, with ten-minute retention for completed entries; a full set of running jobs rejects new work rather than growing unbounded. Logout/account changes invalidate handles, and the view checks validity before applying any observed result. Closing the whole session clears jobs. QR login, account-profile reads and like mutations retain their existing foreground lifetime; they are not advertised as background reads.
+The small History control beside Search opens Background tasks, a secondary, paginated recent-task list. It shows only operation category and state, with provider in its tooltip, never search text, account names or song titles. Selecting an entry explicitly reattaches and restores its result page; no automatic page navigation or stale completion takeover. Search text and playlist identity exist only as private, in-memory restoration metadata, not notification payloads or persistent history. The registry is bounded to 32 total entries, with ten-minute retention for completed entries; a full set of running jobs rejects new work rather than growing unbounded. Logout/account changes invalidate handles, and the view checks validity before applying any observed result. Closing the whole session clears jobs. Account-profile reads remain foreground-only. QR sign-in and favorite updates are session-owned operations, not background reads.
 
 Regression coverage includes real session/real view detach → complete → reopen, explicit cancellation, and credential invalidation preventing restore. These tests use controlled provider results, not live account credentials or remote music services.
 
-The island uses a separate read-operation channel, never a fake playback frame. Detached running and terminal states replace only their own notices with a fresh visible budget; no query, title or account identity is copied. Foreground-consumed results do not produce a duplicate background notice. Sampling while disabled consumes events, so enabling notices does not replay old work; the recent-task page remains available. Native notification capacity defers pending notices while their source record remains valid; the legacy island uses non-evicting admission and retries while full or hidden. Later higher-priority notices can still preempt admitted notices under the existing island policy, without deleting task history. Already-displayed results remain authorized after ordinary history expiry/eviction; account changes and session close invalidate them. Ordinary HUD visibility rules still apply, and history is session-local, not a persistent inbox.
+The island uses a separate operation channel, never a fake playback frame. Detached running and terminal states replace only their own notices with a fresh visible budget; no query, title or account identity is copied. Foreground-consumed results do not produce a duplicate background notice. Sampling while disabled consumes events, so enabling notices does not replay old work; the recent-task page remains available. Native notification capacity defers pending notices while their source record remains valid; the legacy island uses non-evicting admission and retries while full or hidden. Later higher-priority notices can still preempt admitted notices under the existing island policy, without deleting task history. Already-displayed results remain authorized after ordinary history expiry/eviction; account changes and session close invalidate them. Ordinary HUD visibility rules still apply, and history is session-local, not a persistent inbox.
 
 ## Provider writes and QR sign-in (third stage)
 
@@ -108,6 +103,13 @@ that temporary return path. Sign-in gates return to the originating provider and
 library context first. When a focused history slot is rebound to another record,
 its held gesture is cancelled and focus moves to Back instead of silently
 activating a different task.
+
+On NeoForge 26, choose **View task** on a visible operation notice in the
+live-activity details screen to open History at the matching record. The
+world HUD is display-only and does not intercept mouse clicks. This action
+does not restore, retry or refresh the operation: use the record’s own action
+separately if needed. An expired, replaced or no-longer-background record
+cannot be opened from an old notice.
 
 ## Transport glyph motion
 

@@ -22,7 +22,7 @@ public final class BlackHoleBackdrop implements BackgroundSpec.Renderer {
         var pose = g.pose().last().pose();
         float determinant = pose.determinant();
         if (!pose.isFinite() || !Float.isFinite(determinant) || Math.abs(determinant) < 1e-8f) return;
-        if (!BlackHoleBackdropRenderer.draw(g, area, profile, phase, this)) {
+        if (!BlackHoleBackdropRenderer.draw(g, area, profile, phase)) {
             int color = profile.backgroundColor();
             int alpha = Math.round((color >>> 24) * profile.opacity());
             g.fill(area.x(), area.y(), area.x() + area.width(), area.y() + area.height(),
