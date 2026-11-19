@@ -13,6 +13,9 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import java.util.Set;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationSource;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
 
 /** Scoped native HUD owner. Never captures gameplay input or starts media capture. */
 public final class NativeMusicOverlay implements UIModule {
@@ -24,6 +27,8 @@ public final class NativeMusicOverlay implements UIModule {
     private boolean restoreIsland = true;
     private final MusicIslandTaskAdapter tasks = new MusicIslandTaskAdapter();
     private long ambientAt = Long.MIN_VALUE;
+    private final MusicOperationNotices operationTasks = new MusicOperationNotices();
+    private final com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationAdmission operationAdmission = new com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationAdmission();
     private NativeMusicOverlay(boolean persistent) { this.persistent = persistent; }
     static ModuleDiscovery.Candidate candidate(boolean persistent) {
         return new ModuleDiscovery.Candidate("sh_better_ui", NativeMusicOverlay.class.getName(),
@@ -48,8 +53,8 @@ public final class NativeMusicOverlay implements UIModule {
         context.scope().track(context.engine().require(UIApis.HUD).mount(context, this::draw));
         active = this;
     }
-    @Override public void stop(ModuleContext context) { if (active == this) active = null; suspend(); }
-    private void suspend() { tasks.reset(); restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
+    @Override public void stop(ModuleContext context) { if (active == this) active = null; suspend(); operationTasks.reset(); }
+    private void suspend() { operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); }); tasks.reset(); restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
     private MusicOverlaySettings settings() { return context.engine().configs().get(MusicOverlaySettings.KEY); }
     private void save(MusicOverlaySettings value) {
         var configs = context.engine().configs();
@@ -59,6 +64,11 @@ public final class NativeMusicOverlay implements UIModule {
     private void draw(HudService.Frame frame) {
         var mc = Minecraft.getInstance();
         var value = settings();
+        var source=context.engine().find(OnlineMusicService.KEY).orElse(null);
+        boolean operationEnabled=value.islandEnabled() && value.taskNotices() && mc.level!=null && mc.player!=null;
+        var operationUpdates=operationTasks.observe(source instanceof MusicOperationSource operations ? operations.operationsSnapshot() : java.util.List.of(),operationEnabled);
+        operationAdmission.update(operationUpdates,id -> { if(island!=null)island.cancelNotice(id); });
+        if(!operationEnabled)operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); });
         if ((!value.hudEnabled() && !value.islandEnabled()) || mc.level == null || mc.player == null) { suspend(); return; }
         boolean hidden = mc.options.hideGui || mc.screen != null || mc.options.keyPlayerList.isDown();
         if (card == null) card = new LocalMusicHud(ShBetterUiApi.music());
@@ -83,12 +93,15 @@ public final class NativeMusicOverlay implements UIModule {
                 for (var update : tasks.observe(ShBetterUiApi.music().getFrame())) {
                     if (update.cancel()) island.cancelNotice(update.id());
                     else island.notify(new IslandNoticeQueue.Notice(update.id(),text("task."+update.messageKey()).getString(),
-                            update.detail(),-1,update.ttlMs(),update.messageKey().equals("provider_unavailable")?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs()));
+                            update.detail(),-1,update.ttlMs(),(update.messageKey().equals("provider_unavailable") || update.messageKey().equals("playback_failed"))?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs()));
                 }
             } else {
-                tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER);
+                tasks.reset(); island.cancelNotice(MusicIslandTaskAdapter.LYRICS); island.cancelNotice(MusicIslandTaskAdapter.PROVIDER); island.cancelNotice(MusicIslandTaskAdapter.PLAYBACK);
             }
             if (hidden) return;
+            operationAdmission.flush(update -> island.tryNotify(new IslandNoticeQueue.Notice(update.id(),
+                    text("task."+update.key()).getString(),"",-1,update.ttlMs(),
+                    update.error()?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs())));
             var full = MusicOverlayLayout.panel(frame.width(),frame.height(),true,value.islandScale(),value.islandX(),value.islandY());
             island.render(ui,mc.font,MusicOverlayLayout.compact(full,value.islandScale()),full,false);
         } else { tasks.reset(); island.suspend(); restoreIsland=true; }

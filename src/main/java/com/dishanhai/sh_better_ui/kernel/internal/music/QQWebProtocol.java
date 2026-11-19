@@ -84,17 +84,18 @@ final class QQWebProtocol {
         return data(write ? decode(response.bytes()) : parse(response.bytes()), write);
     }
     static JsonObject data(JsonObject root, boolean write) throws IOException {
-        code(root, "code", true);
-        var req = SourceJson.object(root, "req"); code(req, "code", true);
+        code(root, "code", true, write);
+        var req = SourceJson.object(root, "req"); code(req, "code", true, write);
         if (!req.has("data") || !req.get("data").isJsonObject()) throw new IOException("QQ response missing data");
         var data = req.getAsJsonObject("data");
-        code(data, "code", false); code(data, "subcode", false); code(data, "retCode", write);
+        code(data, "code", false, write); code(data, "subcode", false, write); code(data, "retCode", write, write);
         return data;
     }
-    private static void code(JsonObject object, String field, boolean required) throws IOException {
+    private static void code(JsonObject object, String field, boolean required, boolean write) throws IOException {
         if (!object.has(field) && !required) return;
         long value = integer(object, field);
         if (value == 301 || value == 1000 || value == 104009 || value == 401) throw new OnlineMusicSource.LoginRequired();
+        if (write && field.equals("retCode") && value != 0) throw new MusicWriteRejected("QQ favorite write rejected");
         if (value != 0) throw new IOException("QQ request rejected: " + value);
     }
     static long integer(JsonObject object, String field) throws IOException {

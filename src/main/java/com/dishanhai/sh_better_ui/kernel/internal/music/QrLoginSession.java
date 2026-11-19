@@ -16,6 +16,10 @@ final class QrLoginSession implements OnlineMusicLogin {
     private OnlineMusicSource.QrChallenge challenge;
     private ScheduledFuture<?> task;
     private boolean terminal;
+    private final CompletableFuture<Void> completion = new CompletableFuture<>();
+    CompletableFuture<Void> completion() { return completion; }
+    static final class Expired extends RuntimeException {}
+
     QrLoginSession(OnlineMusicSource provider, BiConsumer<QrLoginSession, String> commit) {
         this(provider, commit, 2000, 180_000);
     }
@@ -88,6 +92,12 @@ final class QrLoginSession implements OnlineMusicLogin {
         if (task != null) task.cancel(true);
         if (ownsWorker) worker.shutdownNow();
         snapshot = new Snapshot(state, null);
+        switch (state) {
+            case CONFIRMED -> completion.complete(null);
+            case CANCELLED -> completion.cancel(false);
+            case EXPIRED -> completion.completeExceptionally(new Expired());
+            default -> completion.completeExceptionally(new IllegalStateException("QR login did not complete"));
+        }
     }
     @Override public Snapshot snapshot() { return snapshot; }
     @Override public void close() { finish(State.CANCELLED); }

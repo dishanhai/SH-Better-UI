@@ -9,6 +9,7 @@ import com.dishanhai.sh_better_ui.kernel.api.live.*;
 import org.junit.jupiter.api.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
 import java.util.*;
+import com.dishanhai.sh_better_ui.kernel.internal.music.*;
 import java.util.concurrent.atomic.*;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,7 +20,9 @@ final class NativeMusicActivityTest {
     private ModuleContext other;
     private OnlineMusicService.BackgroundControls transport;
     private OnlineMusicService.BackgroundCommand dispatched;
-    private final OnlineMusicService online = new OnlineMusicService() {
+    private final List<SessionMusicOperations.Snapshot> operations = new ArrayList<>();
+    private final class TestOnline implements OnlineMusicService, MusicOperationSource {
+        public List<SessionMusicOperations.Snapshot> operationsSnapshot() { return List.copyOf(operations); }
         public Optional<BackgroundControls> backgroundControls(BackgroundTarget target) {
             return transport != null && transport.target().equals(target) ? Optional.of(transport) : Optional.empty();
         }
@@ -31,7 +34,8 @@ final class NativeMusicActivityTest {
         public OnlineMusicPlayer open(List<OnlineMusicSource> sources) { return open(); }
         public OnlineMusicView view() { throw new AssertionError("Activity must not mount music views"); }
         public OnlineMusicView view(OnlineMusicPlayer player) { return view(); }
-    };
+    }
+    private final OnlineMusicService online = new TestOnline();
     private KernelHost host;
     private LiveSurfaceRuntime live;
     private NativeMusicActivity music;
@@ -122,6 +126,31 @@ final class NativeMusicActivityTest {
         frame.set(sample("one", MusicSnapshot.PlaybackStatus.STOPPED)); tick(1);
         assertFalse(live.hasResources());
     }
+    @Test void terminalOnlineFailureReleasesActivityButPublishesOneNoticeWithoutSession() {
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.BUFFERING)); tick(0);
+        frame.set(new MusicService.Frame(new MusicSnapshot("sh_better_ui:online_music", MusicSnapshot.State.TEMPORARILY_UNAVAILABLE, null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK, LyricTimeline.empty()), 1));
+        tick(50);
+        assertEquals(0, live.diagnostics().activities());
+        assertEquals(1, live.diagnostics().notifications());
+        assertEquals("sh_better_ui.music_overlay.task.playback_failed", live.plan().primary().content().title().value());
+        assertTrue(live.plan().primary().content().controls().isEmpty());
+        long instance=live.plan().primary().instance(); tick(100);
+        assertEquals(instance,live.plan().primary().instance());
+        music.settings(music.settings().withIsland(false));tick(101);assertFalse(live.hasResources());
+        host.close();music.advance();assertFalse(live.hasResources());
+    }
+    @Test void bufferingCompletionReplacesNoticeDespiteFastTransitionAndDisabledNoticesStayQuiet() {
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.BUFFERING)); tick(0);
+        frame.set(sample("one", MusicSnapshot.PlaybackStatus.PLAYING)); tick(50);
+        assertEquals(1,live.diagnostics().notifications());
+        assertTrue(live.plan().waiting().contains(UiId.parse("sh_better_ui:music/notice/playback"))
+                || live.plan().primary().id().equals(UiId.parse("sh_better_ui:music/notice/playback")));
+        music.settings(music.settings().withTaskNotices(false));tick(51);
+        assertEquals(0,live.diagnostics().notifications());assertEquals(1,live.diagnostics().activities());
+    }
     private void capacity(int activities, int notifications) {
         var p = live.policy();
         live.policy(new LiveSurfaceRuntime.Policy(p.enabled(), p.compact(), p.expanded(), p.split(), p.notifications(),
@@ -176,4 +205,44 @@ final class NativeMusicActivityTest {
         var model = NativeMusicActivity.content(new MusicService.Frame(new MusicSnapshot("mpris", MusicSnapshot.State.AVAILABLE, session), original.lyrics(), 1), 0);
         assertEquals(511, model.title().value().length());
     }
+    @Test void detachedReadNotifiesWithoutTrackAndDoesNotReplayWhenDisabled() {
+        frame.set(new MusicService.Frame(new MusicSnapshot("system",MusicSnapshot.State.NO_SESSION,null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK,LyricTimeline.empty()),0));
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        operations.add(new SessionMusicOperations.Snapshot(99,SessionMusicOperations.Kind.SEARCH,"private",SessionMusicOperations.State.SUCCEEDED,true,SessionMusicOperations.Error.NONE));
+        tick(0);
+        assertEquals(0,live.diagnostics().activities());assertEquals(1,live.diagnostics().notifications());
+        assertEquals("sh_better_ui.music_overlay.task.operation_search_succeeded",live.plan().primary().content().title().value());
+        long instance=live.plan().primary().instance();tick(1);assertEquals(instance,live.plan().primary().instance());
+        music.settings(music.settings().withIsland(false));tick(2);assertFalse(live.hasResources());
+        music.settings(music.settings().withIsland(true));tick(3);assertFalse(live.hasResources());
+    }
+    @Test void detachedTerminalWaitsForNotificationCapacity() {
+        frame.set(new MusicService.Frame(new MusicSnapshot("system",MusicSnapshot.State.NO_SESSION,null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK,LyricTimeline.empty()),0));
+        capacity(2,1);
+        var occupying=live.publish(other,other.scope(),new NotificationService.Request(UiId.parse("other:busy"),
+                ActivityService.Content.label(ActivityService.Text.literal("Busy")),ActivityService.Priority.LOW,
+                java.time.Duration.ofSeconds(5),null,NotificationService.Merge.KEEP,null));
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        operations.add(new SessionMusicOperations.Snapshot(100,SessionMusicOperations.Kind.LIKED,"private",SessionMusicOperations.State.FAILED,true,SessionMusicOperations.Error.LOGIN_REQUIRED));
+        tick(0);assertEquals(UiId.parse("other:busy"),live.plan().primary().id());
+        occupying.dismiss();tick(1);tick(2);
+        assertEquals("sh_better_ui.music_overlay.task.operation_liked_login_required",live.plan().primary().content().title().value());
+    }
+
+    @Test void unrelatedPlaybackNoticeCannotCoalesceDetachedCompletionWithinOneSecond() {
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        frame.set(sample("one",MusicSnapshot.PlaybackStatus.BUFFERING));tick(0);
+        operations.add(new SessionMusicOperations.Snapshot(101,SessionMusicOperations.Kind.PLAYLISTS,"private",SessionMusicOperations.State.SUCCEEDED,true,SessionMusicOperations.Error.NONE));
+        tick(50);
+        var id=UiId.parse("sh_better_ui:music/notice/operation/101");
+        assertTrue(live.plan().waiting().contains(id)||live.plan().primary().id().equals(id));
+        int count=live.diagnostics().notifications();tick(51);assertEquals(count,live.diagnostics().notifications());
+        music.settings(music.settings().withTaskNotices(false));tick(52);
+        assertEquals(SessionMusicOperations.State.SUCCEEDED,operations.get(0).state());
+        music.settings(music.settings().withTaskNotices(true));tick(53);
+        assertFalse(live.plan().waiting().contains(id));assertNotEquals(id,live.plan().primary().id());
+    }
+
 }

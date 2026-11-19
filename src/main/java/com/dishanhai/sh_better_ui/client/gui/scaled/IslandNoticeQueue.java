@@ -59,6 +59,15 @@ public final class IslandNoticeQueue {
         trim();
     }
 
+    /** Admission without eviction. Existing IDs update in place; callers may defer a rejected new notice. */
+    public boolean tryOffer(Notice notice) {
+        Objects.requireNonNull(notice);
+        if (active != null && active.notice.id().equals(notice.id())) { active.update(notice); return true; }
+        for (var entry : waiting) if (entry.notice.id().equals(notice.id())) { entry.update(notice); return true; }
+        if (waiting.size() >= LIMIT) return false;
+        waiting.add(new Entry(notice)); return true;
+    }
+
     /** Legacy standalone callers present every sample. Hidden hosts should use the overload. */
     public Optional<Notice> sample(long nowMs) { return sample(nowMs, true); }
 

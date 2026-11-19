@@ -9,7 +9,8 @@ import java.util.Objects;
 
 /** Render-thread projection of real immutable service observations; never starts or retries work. */
 public final class MusicIslandTaskAdapter {
-    public static final String LYRICS = "music:lyrics", PROVIDER = "music:provider";
+    public static final String LYRICS = "music:lyrics", PROVIDER = "music:provider", PLAYBACK = "music:playback";
+    private static final String ONLINE = "sh_better_ui:online_music";
     public record Update(String id, String messageKey, String detail, boolean cancel, long ttlMs) {}
     private record Identity(String provider, String session, String track) {}
     private Identity identity;
@@ -18,8 +19,9 @@ public final class MusicIslandTaskAdapter {
     private long revision = Long.MIN_VALUE;
     private MusicService.LyricsState lyrics;
     private MusicSnapshot.State provider;
+    private MusicSnapshot.PlaybackStatus playback;
 
-    public void reset() { source=null; providerId=null; identity=null; revision=Long.MIN_VALUE; lyrics=null; provider=null; }
+    public void reset() { source=null; providerId=null; identity=null; revision=Long.MIN_VALUE; lyrics=null; provider=null; playback=null; }
 
     public List<Update> observe(MusicService.Frame frame) {
         var updates=new ArrayList<Update>();
@@ -32,16 +34,30 @@ public final class MusicIslandTaskAdapter {
         var next=session==null||session.track()==null ? null
                 : new Identity(snapshot.providerId(),session.id(),session.track().key());
         boolean changed=sourceChanged||!Objects.equals(identity,next)||revision!=frame.revision();
-        if(changed) updates.add(new Update(LYRICS,"","",true,0));
-        if(sourceChanged||provider!=snapshot.state()) {
+        if(changed) {
+            updates.add(new Update(LYRICS,"","",true,0));
+            updates.add(new Update(PLAYBACK,"","",true,0));
+        }
+        if(sourceChanged||provider!=snapshot.state() || ONLINE.equals(snapshot.providerId())
+                && snapshot.state()==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE && frame.revision()!=revision) {
             updates.add(new Update(PROVIDER,"","",true,0));
             if(snapshot.state()==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE)
-                updates.add(new Update(PROVIDER,"provider_unavailable","",false,5000));
-            else if(Objects.equals(providerId, snapshot.providerId()) && provider==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE && snapshot.state()==MusicSnapshot.State.AVAILABLE)
+                updates.add(new Update(PROVIDER,ONLINE.equals(snapshot.providerId()) ? "playback_failed" : "provider_unavailable","",false,5000));
+            else if(!ONLINE.equals(snapshot.providerId()) && Objects.equals(providerId, snapshot.providerId()) && provider==MusicSnapshot.State.TEMPORARILY_UNAVAILABLE && snapshot.state()==MusicSnapshot.State.AVAILABLE)
                 updates.add(new Update(PROVIDER,"provider_recovered","",false,3500));
         }
         var nextLyrics=frame.lyrics().state();
         String title=session==null||session.track()==null ? "" : session.track().title().orElse("");
+        var nextPlayback=session==null ? null : session.status();
+        if (ONLINE.equals(snapshot.providerId()) && next != null && (changed || nextPlayback != playback)) {
+            if (nextPlayback == MusicSnapshot.PlaybackStatus.BUFFERING)
+                updates.add(new Update(PLAYBACK,"playback_loading",title,false,8000));
+            else if (!changed && playback == MusicSnapshot.PlaybackStatus.BUFFERING) {
+                updates.add(new Update(PLAYBACK,"","",true,0));
+                if (nextPlayback == MusicSnapshot.PlaybackStatus.PLAYING)
+                    updates.add(new Update(PLAYBACK,"playback_ready",title,false,3500));
+            }
+        }
         if(next!=null && (changed||nextLyrics!=lyrics)) {
             if(nextLyrics==MusicService.LyricsState.LOADING)
                 updates.add(new Update(LYRICS,"lyrics_loading",title,false,8000));
@@ -51,7 +67,7 @@ public final class MusicIslandTaskAdapter {
                     updates.add(new Update(LYRICS,nextLyrics==MusicService.LyricsState.AVAILABLE?"lyrics_ready":"lyrics_unavailable",title,false,3500));
             }
         }
-        providerId=snapshot.providerId();source=nextSource;identity=next;revision=frame.revision();lyrics=nextLyrics;provider=snapshot.state();
+        providerId=snapshot.providerId();source=nextSource;identity=next;revision=frame.revision();lyrics=nextLyrics;provider=snapshot.state();playback=nextPlayback;
         return List.copyOf(updates);
     }
 }

@@ -14,6 +14,38 @@ class MusicIslandTaskAdapterTest {
         return new MusicService.Frame(new MusicSnapshot("provider",MusicSnapshot.State.AVAILABLE,session),
                 new MusicService.Lyrics(state,LyricTimeline.empty()),revision);
     }
+    private MusicService.Frame online(MusicSnapshot.PlaybackStatus status) {
+        var base = frame("A", 1, MusicService.LyricsState.UNAVAILABLE);
+        var old = base.snapshot().session();
+        var session = new MusicSnapshot.Session(old.id(),old.track(),status,old.positionMs(),old.durationMs(),old.rate(),0,null,old.capabilities());
+        return new MusicService.Frame(new MusicSnapshot("sh_better_ui:online_music",MusicSnapshot.State.AVAILABLE,session),base.lyrics(),1);
+    }
+    @Test void onlinePlaybackReportsOnlyObservedLoadingAndCompletionOnce() {
+        var adapter = new MusicIslandTaskAdapter();
+        assertTrue(adapter.observe(online(MusicSnapshot.PlaybackStatus.BUFFERING)).stream().anyMatch(u->u.messageKey().equals("playback_loading")));
+        assertTrue(adapter.observe(online(MusicSnapshot.PlaybackStatus.BUFFERING)).isEmpty());
+        var ready=adapter.observe(online(MusicSnapshot.PlaybackStatus.PLAYING));
+        assertTrue(ready.stream().anyMatch(u->u.cancel()&&u.id().equals(MusicIslandTaskAdapter.PLAYBACK)));
+        assertTrue(ready.stream().anyMatch(u->u.messageKey().equals("playback_ready")));
+        assertTrue(adapter.observe(online(MusicSnapshot.PlaybackStatus.PLAYING)).isEmpty());
+        adapter.reset();
+        assertFalse(adapter.observe(online(MusicSnapshot.PlaybackStatus.PLAYING)).stream().anyMatch(u->u.messageKey().equals("playback_ready")));
+    }
+    @Test void failureCancelsLoadingAndNeverClaimsProviderRecoveryOnAnotherSong() {
+        var adapter = new MusicIslandTaskAdapter();
+        adapter.observe(online(MusicSnapshot.PlaybackStatus.BUFFERING));
+        var failed=new MusicService.Frame(new MusicSnapshot("sh_better_ui:online_music",MusicSnapshot.State.TEMPORARILY_UNAVAILABLE,null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK,LyricTimeline.empty()),1);
+        var updates=adapter.observe(failed);
+        assertTrue(updates.stream().anyMatch(u->u.cancel()&&u.id().equals(MusicIslandTaskAdapter.PLAYBACK)));
+        assertTrue(updates.stream().anyMatch(u->u.messageKey().equals("playback_failed")));
+        assertTrue(adapter.observe(failed).isEmpty());
+        var retried = new MusicService.Frame(failed.snapshot(), failed.lyrics(), 2);
+        assertTrue(adapter.observe(retried).stream().anyMatch(u->u.messageKey().equals("playback_failed")));
+        assertTrue(adapter.observe(retried).isEmpty());
+        adapter.reset(); adapter.observe(failed);
+        assertFalse(adapter.observe(online(MusicSnapshot.PlaybackStatus.PLAYING)).stream().anyMatch(u->!u.cancel()));
+    }
     @Test void loadingAndCompletionReflectRealTransitionsWithoutPercent() {
         var adapter=new MusicIslandTaskAdapter();
         var loading=frame("A",1,MusicService.LyricsState.LOADING);

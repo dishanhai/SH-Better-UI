@@ -1,8 +1,19 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 import org.junit.jupiter.api.Test;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationAdmission;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
 import static org.junit.jupiter.api.Assertions.*;
 class IslandNoticeQueueTest {
     private static IslandNoticeQueue.Notice notice(String id) { return new IslandNoticeQueue.Notice(id,id,"",-1,1000); }
+    @Test void nonEvictingAdmissionCanReplaceFullQueueEntry() {
+        var q=new IslandNoticeQueue();for(int i=0;i<8;i++)assertTrue(q.tryOffer(notice("n"+i)));
+        assertFalse(q.tryOffer(notice("overflow")));
+        assertTrue(q.tryOffer(new IslandNoticeQueue.Notice("n0","changed","",-1,1000)));
+        assertEquals("changed",q.sample(0).orElseThrow().title());
+        assertTrue(q.tryOffer(notice("later")));
+    }
     @Test void fifoAndActiveUpdateDoNotRestartDeadline() {
         var q = new IslandNoticeQueue(); q.offer(notice("a")); q.offer(notice("b"));
         assertEquals("a",q.sample(0).orElseThrow().id());
@@ -172,4 +183,15 @@ class IslandNoticeQueueTest {
         }
         assertTrue(q.peek(1250).isEmpty());
     }
+    @Test void fullQueueDefersWithoutEvictionThenRetriesOnlyUntilAdmitted() {
+        var queue=new IslandNoticeQueue();for(int i=0;i<8;i++)queue.offer(notice("existing"+i));
+        var admission=new MusicOperationAdmission();admission.update(List.of(new MusicOperationNotices.Update("result","succeeded",false,false,3500)),queue::cancel);
+        var accepted=new AtomicInteger();java.util.function.Predicate<MusicOperationNotices.Update> offer=u->{boolean ok=queue.tryOffer(notice(u.id()));if(ok)accepted.incrementAndGet();return ok;};
+        admission.flush(offer);admission.flush(offer);assertEquals(0,accepted.get());
+        assertEquals("existing0",queue.sample(0).orElseThrow().id());
+        admission.flush(offer);admission.flush(offer);assertEquals(1,accepted.get());
+        for(int i=1;i<8;i++)assertEquals("existing"+i,queue.sample(i*1000).orElseThrow().id());
+        assertEquals("result",queue.sample(8000).orElseThrow().id());assertTrue(queue.sample(9000).isEmpty());
+    }
+
 }

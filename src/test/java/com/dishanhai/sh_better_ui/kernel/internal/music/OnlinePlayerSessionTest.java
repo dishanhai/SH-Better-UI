@@ -13,6 +13,26 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.*;
 
 class OnlinePlayerSessionTest {
+    @Test void sessionOwnedReadSurvivesObserverDetachAndCredentialChangeInvalidatesHistory() throws Exception {
+        var started = new CountDownLatch(1); var release = new CountDownLatch(1);
+        var provider = new Source() {
+            @Override public List<OnlineTrack> search(String query,int page,int limit) throws Exception {
+                started.countDown(); if(!release.await(3,TimeUnit.SECONDS))throw new IllegalStateException("timeout");
+                return List.of(track(query));
+            }
+            @Override public void credentials(String value) {}
+        };
+        try(var session=new OnlinePlayerSession(List.of(provider),Output::new,uri->new byte[]{1})) {
+            var operations=SessionMusicOperations.forPlayer(session).orElseThrow();
+            var handle=operations.startSearch("test","song",1);
+            assertTrue(started.await(3,TimeUnit.SECONDS));handle.observe().cancel(true);handle.detach();release.countDown();
+            assertEquals("song",handle.observe().get(3,TimeUnit.SECONDS).get(0).id());
+            await(()->handle.snapshot().state()==SessionMusicOperations.State.SUCCEEDED);
+            assertTrue(handle.snapshot().background());session.credentials("test","");
+            assertFalse(handle.valid());assertTrue(operations.snapshots().isEmpty());
+        } finally { release.countDown(); }
+    }
+
     private Object previousRenderThread;
     private java.lang.reflect.Field renderThread;
     @org.junit.jupiter.api.BeforeEach void bindRenderThread() throws Exception {

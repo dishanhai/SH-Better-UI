@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music;
 
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicSource.LoginRequired;
 import com.google.gson.*;
 import java.io.IOException;
 import java.util.concurrent.locks.ReentrantLock;
@@ -16,6 +17,8 @@ final class QQFavorites {
     QQFavorites() { this(null); }
     QQFavorites(Rpc override) { this.override = override; }
 
+    static final class NotSent extends IOException {}
+
     void like(OnlineTrack track, boolean target, String uin, String key) throws Exception {
         mutations.lockInterruptibly();
         try {
@@ -26,18 +29,30 @@ final class QQFavorites {
                 QQWebProtocol.checkCancelled();
                 return data;
             };
-            if (status(rpc, track.id()) == target) return;
-            var param = new JsonObject(); param.addProperty("song_mid", track.id());
-            var detail = SourceJson.object(rpc.call("music.pf_song_detail_svr", "get_song_detail_yqq", param, false), "track_info");
-            long id = QQWebProtocol.integer(detail, "id"), type = QQWebProtocol.integer(detail, "type");
-            if (!track.id().equals(SourceJson.text(detail, "mid")) || id <= 0 || type < 0 || type > Integer.MAX_VALUE)
-                throw new IOException("QQ track identity could not be verified");
-            var song = new JsonObject(); song.addProperty("songId", id); song.addProperty("songType", type);
-            var songs = new JsonArray(); songs.add(song);
-            var write = new JsonObject(); write.addProperty("dirId", 201); write.add("v_songInfo", songs);
+            JsonObject write;
+            try {
+                if (status(rpc, track.id()) == target) return;
+                var param = new JsonObject(); param.addProperty("song_mid", track.id());
+                var detail = SourceJson.object(rpc.call("music.pf_song_detail_svr", "get_song_detail_yqq", param, false), "track_info");
+                long id = QQWebProtocol.integer(detail, "id"), type = QQWebProtocol.integer(detail, "type");
+                if (!track.id().equals(SourceJson.text(detail, "mid")) || id <= 0 || type < 0 || type > Integer.MAX_VALUE)
+                    throw new IOException("QQ track identity could not be verified");
+                var song = new JsonObject(); song.addProperty("songId", id); song.addProperty("songType", type);
+                var songs = new JsonArray(); songs.add(song);
+                write = new JsonObject(); write.addProperty("dirId", 201); write.add("v_songInfo", songs);
+            } catch (LoginRequired error) { throw error; }
+            catch (IOException error) {
+                if (Thread.currentThread().isInterrupted()) throw error;
+                throw new NotSent();
+            }
             var accepted = rpc.call("music.musicasset.PlaylistDetailWrite", target ? "AddSonglist" : "DelSonglist", write, true);
-            if (QQWebProtocol.integer(accepted, "retCode") != 0) throw new IOException("QQ favorite write rejected");
-            if (status(rpc, track.id()) != target) throw new IOException("QQ favorite change was not confirmed");
+            if (QQWebProtocol.integer(accepted, "retCode") != 0) throw new MusicWriteRejected("QQ favorite write rejected");
+            try {
+                if (status(rpc, track.id()) != target) throw new IOException("QQ favorite change was not confirmed");
+            } catch (LoginRequired error) {
+                // A rejected readback cannot establish what happened to the accepted write.
+                throw new IOException("QQ favorite readback unavailable");
+            }
         } finally { mutations.unlock(); }
     }
     private static boolean status(Rpc rpc, String mid) throws IOException {

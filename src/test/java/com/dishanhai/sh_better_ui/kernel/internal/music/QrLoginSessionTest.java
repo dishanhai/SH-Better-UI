@@ -145,4 +145,44 @@ class QrLoginSessionTest {
         }
         assertEquals("", first.credentials); assertEquals("", second.credentials);
     }
+    @Test void detachedLoginReportsCommittedSuccessOnceWithoutPublishingQrOrCredentials() throws Exception {
+        var entered = new CountDownLatch(1);
+        var release = new CountDownLatch(1);
+        var source = new Source() {
+            @Override public QrChallenge qrLogin() {
+                return new QrChallenge() {
+                    @Override public OnlineMusicLogin.Image image() { return IMAGE; }
+                    @Override public Poll poll() {
+                        entered.countDown();
+                        uninterruptibly(release);
+                        return new Poll(CONFIRMED, "session=synthetic-private");
+                    }
+                };
+            }
+        };
+        try (var player = new OnlinePlayerSession(List.of(source))) {
+            var registry = player.operations();
+            var attempt = registry.startLogin(source.id());
+            assertTrue(entered.await(4, TimeUnit.SECONDS));
+            assertSame(attempt, registry.currentLogin(source.id()).orElseThrow());
+            registry.setLoginBackground(source.id(), attempt, true);
+            release.countDown();
+            await(() -> registry.snapshots().stream().anyMatch(x -> x.state() == SessionMusicOperations.State.SUCCEEDED));
+            assertTrue(player.authenticated(source.id()));
+            assertNull(attempt.snapshot().image());
+            var notifications = new MusicOperationNotices();
+            var events = notifications.observe(registry.snapshots(), true).stream().filter(e -> !e.cancel()).toList();
+            assertEquals(1, events.size());
+            assertEquals("operation_login_succeeded", events.get(0).key());
+            assertFalse(registry.snapshots().toString().contains("synthetic-private"));
+            registry.setLoginBackground(source.id(), attempt, false);
+            assertTrue(notifications.observe(registry.snapshots(), true).isEmpty());
+            registry.setLoginBackground(source.id(), attempt, true);
+            assertTrue(notifications.observe(registry.snapshots(), true).isEmpty());
+            player.credentials(source.id(), "");
+            assertFalse(player.authenticated(source.id()));
+            assertTrue(registry.currentLogin(source.id()).isEmpty());
+            assertTrue(registry.snapshots().isEmpty());
+        } finally { release.countDown(); }
+    }
 }

@@ -47,6 +47,34 @@ public final class UiClient {
     private static KeyMapping controlPanelKey;
     private static KeyMapping liveActivitiesKey;
     private static KeyMapping musicIslandKey;
+    private static KeyMapping musicPlayerKey;
+    private static final com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut musicShortcut =
+            new com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut();
+
+    private static boolean musicShortcutAllowed(Minecraft client) {
+        return client.player != null && client.level != null && client.isWindowActive()
+                && client.screen == null && client.getOverlay() == null;
+    }
+
+    private static void offerMusicShortcut(InputConstants.Key key, int action) {
+        if (musicPlayerKey == null || musicPlayerKey.isUnbound()) return;
+        musicShortcut.offer(action == GLFW.GLFW_PRESS, musicPlayerKey.isActiveAndMatches(key),
+                musicShortcutAllowed(Minecraft.getInstance()));
+    }
+
+    @SubscribeEvent
+    public static void onMusicShortcutMousePre(InputEvent.MouseButton.Pre event) {
+        var key = InputConstants.Type.MOUSE.getOrCreate(event.getButton());
+        musicShortcut.prepareMouse(event.getAction() == GLFW.GLFW_PRESS,
+                musicPlayerKey != null && !musicPlayerKey.isUnbound() && musicPlayerKey.isActiveAndMatches(key),
+                musicShortcutAllowed(Minecraft.getInstance()));
+    }
+
+    @SubscribeEvent
+    public static void onMusicShortcutMousePost(InputEvent.MouseButton.Post event) {
+        musicShortcut.finishMouse(musicShortcutAllowed(Minecraft.getInstance()));
+    }
+
 
     private UiClient() {
     }
@@ -62,6 +90,9 @@ public final class UiClient {
         while (musicIslandKey != null && musicIslandKey.consumeClick()) {
             com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay.toggleIsland();
         }
+        if (musicShortcut.take(musicShortcutAllowed(minecraft))) {
+            minecraft.setScreen(com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.settings().onlineMusicScreen(null));
+        }
         MinecraftThemes.tick(minecraft);
         LyricClient.tick(minecraft);
         UiLocalModal.current(minecraft.screen);
@@ -75,6 +106,7 @@ public final class UiClient {
 
     @SubscribeEvent
     public static void onLiveActivityKey(InputEvent.Key event) {
+        offerMusicShortcut(InputConstants.getKey(event.getKey(), event.getScanCode()), event.getAction());
         ClientUiKernel.onLiveActivityKey(Minecraft.getInstance(), event.getKey(), event.getAction(), event.getModifiers());
     }
 
@@ -273,6 +305,9 @@ public final class UiClient {
             musicIslandKey = new KeyMapping("key.sh_better_ui.music_island", KeyConflictContext.IN_GAME,
                     InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
             event.register(musicIslandKey);
+            musicPlayerKey = new KeyMapping("key.sh_better_ui.music_open", KeyConflictContext.IN_GAME,
+                    InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
+            event.register(musicPlayerKey);
         }
 
         @SubscribeEvent
