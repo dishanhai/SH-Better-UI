@@ -10,10 +10,26 @@ import java.io.ByteArrayInputStream;
 final class Mp3Output implements PlaybackOutput {
     private volatile boolean closed, paused;
     private volatile State state = State.LOADING;
+    private final PcmActivity activity = new PcmActivity();
+    @Override public float audioActivity() {
+        return !closed && !paused && state == State.PLAYING ? activity.sample(System.nanoTime()/1_000_000L) : 0f;
+    }
     private volatile SourceDataLine line;
     private volatile long baseMs, endedMs;
     private Thread worker;
     private volatile float gain = 1f;
+    private volatile PcmEqualizer.Preset equalizerPreset = PcmEqualizer.Preset.FLAT;
+
+    /** Internal native-output capability only; no effect on externally hosted/DRM playback. */
+    @Override public boolean supportsEqualizer() { return true; }
+    @Override public void equalizerPreset(com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicEqualizerPreset preset) {
+        equalizerPreset = switch (java.util.Objects.requireNonNull(preset, "preset")) {
+            case FLAT -> PcmEqualizer.Preset.FLAT;
+            case BASS_FOCUS -> PcmEqualizer.Preset.BASS_FOCUS;
+            case VOICE_FOCUS -> PcmEqualizer.Preset.VOICE_FOCUS;
+            case TREBLE_FOCUS -> PcmEqualizer.Preset.TREBLE_FOCUS;
+        };
+    }
     @Override public void volume(float value) { gain = PcmGain.normalize(value); }
 
     @Override public void start(byte[] bytes, long positionMs, boolean playing) {
@@ -32,10 +48,19 @@ final class Mp3Output implements PlaybackOutput {
             Header header;
             byte[] pcm = new byte[8192];
             float previousGain = gain;
+            PcmEqualizer equalizer = null;
+            int outputRate = 0, outputChannels = 0;
             while (!closed && (header = bits.readFrame()) != null) {
                 var samples = (SampleBuffer) decoder.decodeFrame(header, bits);
                 int channels = samples.getChannelCount(), rate = samples.getSampleFrequency();
                 int frames = samples.getBufferLength() / channels;
+                if (equalizer == null) {
+                    equalizer = new PcmEqualizer(rate, channels);
+                    outputRate = rate;
+                    outputChannels = channels;
+                } else if (rate != outputRate || channels != outputChannels) {
+                    throw new IllegalArgumentException("MP3 format changed during playback");
+                }
                 long targetFrame = targetMs * rate / 1000;
                 if (skippedFrames + frames <= targetFrame) {
                     skippedFrames += frames;
@@ -58,6 +83,8 @@ final class Mp3Output implements PlaybackOutput {
                 synchronized (this) { while (paused && !closed) wait(); }
                 if (closed) return;
                 short[] source = samples.getBuffer();
+                equalizer.preset(equalizerPreset);
+                equalizer.process(source, skip * channels, samples.getBufferLength());
                 float requestedGain = gain;
                 int length = PcmGain.write(source, skip * channels, samples.getBufferLength(), channels,
                         pcm, previousGain, requestedGain);
@@ -67,6 +94,7 @@ final class Mp3Output implements PlaybackOutput {
                     synchronized (this) { while (paused && !closed) wait(); }
                     if (!closed) written += device.write(pcm, written, length - written);
                 }
+                if (!closed && !paused) activity.accept(pcm, length, System.nanoTime()/1_000_000L);
                 skippedFrames += frames;
                 bits.closeFrame();
             }

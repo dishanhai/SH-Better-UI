@@ -53,12 +53,23 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default float volume() { return 1f; }
     /** Normalized 0..1; implementations reject non-finite values and never amplify above unity. */
     default void volume(float value) { throw new UnsupportedOperationException("Music volume unavailable"); }
+    /** True only when the current output supports native PCM tone shaping.
+     * Recheck when playback/output changes; external/browser players default to unavailable. */
+    default boolean supportsEqualizer() { return false; }
+    /** Remembered session preference, not proof that the current output applies it. */
+    default OnlineMusicEqualizerPreset equalizerPreset() { return OnlineMusicEqualizerPreset.FLAT; }
+    /** Requires supportsEqualizer(); never silently accepts an unsupported effect. */
+    default void equalizerPreset(OnlineMusicEqualizerPreset preset) {
+        throw new UnsupportedOperationException("Music equalizer unavailable");
+    }
     /** Compressed bytes referenced by cache entries, counted once even if shared with active playback.
      * Additional playback-only buffers and decoder/device memory are not included. */
     record AudioCacheInfo(int entries, long retainedBytes, long capacityBytes) {}
     default AudioCacheInfo audioCacheInfo() { return new AudioCacheInfo(0, 0, 0); }
     /** Evicts reusable compressed audio without stopping playback. No files or credentials are deleted. */
     default void clearAudioCache() { throw new UnsupportedOperationException("Audio cache unavailable"); }
+    /** Fresh post-gain PCM activity, normalized 0..1. Unavailable/protected audio is silent, never simulated. */
+    default float audioActivity() { return 0f; }
     Snapshot snapshot();
     LyricFeed lyricFeed();
     @Override void close();

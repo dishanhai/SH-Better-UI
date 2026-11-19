@@ -53,6 +53,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private String loginSource;
     private PlaybackOutput output;
     private float volume = 1f;
+    private OnlineMusicEqualizerPreset equalizerPreset = OnlineMusicEqualizerPreset.FLAT;
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
     private byte[] audio;
@@ -401,6 +402,17 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         volume = PcmGain.normalize(value);
         if (output != null) output.volume(volume);
     }
+    @Override public synchronized boolean supportsEqualizer() {
+        return state != State.CLOSED && output != null && output.supportsEqualizer();
+    }
+    @Override public synchronized OnlineMusicEqualizerPreset equalizerPreset() { return equalizerPreset; }
+    @Override public synchronized void equalizerPreset(OnlineMusicEqualizerPreset preset) {
+        requireOpen();
+        Objects.requireNonNull(preset, "preset");
+        if (!supportsEqualizer()) throw new UnsupportedOperationException("Music equalizer unavailable");
+        output.equalizerPreset(preset);
+        equalizerPreset = preset;
+    }
     @Override public synchronized void pause() { playRequested = false; if (output != null) output.pause(); }
     @Override public synchronized void resume() {
         playRequested = true;
@@ -424,6 +436,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         try {
             output = Objects.requireNonNull(outputs.get(), "Missing audio output");
             output.volume(volume);
+            if (output.supportsEqualizer()) output.equalizerPreset(equalizerPreset);
             output.start(audio, position, playing);
             return true;
         } catch (RuntimeException error) {
@@ -441,6 +454,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         failure = problem; state = State.FAILED; playRequested = false;
         cancelQueueProgress(); feed.clear();
     }
+    @Override public synchronized float audioActivity() {
+        return output != null && output.state() == State.PLAYING ? output.audioActivity() : 0f;
+    }
+
     @Override public synchronized Snapshot snapshot() {
         State current = output == null ? state : output.state();
         long position = output == null ? 0 : output.positionMs();
