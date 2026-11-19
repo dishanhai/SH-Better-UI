@@ -6,7 +6,9 @@ The menu offers 0.5×, 0.75×, 1×, 1.25×, 1.5×, 1.75× and 2×. The default i
 and seeks; it is not written to disk or pushed to the music provider.
 
 - The native MP3 path converts decoded PCM at a fixed device sample rate. It
-  changes tempo **and** pitch; this is not pitch-preserving time stretch.
+  changes tempo **and** pitch; this is not pitch-preserving time stretch. Faster
+  rates low-pass PCM before downsampling to avoid folding high frequencies into
+  audible artifacts; the 1× path bypasses the filter.
 - Switching speeds reopens native playback at the last consumed song position
   using already-authorized audio in memory. This may briefly rebuffer locally
   (especially well into a long file); it does not resolve or download the song

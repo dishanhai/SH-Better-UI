@@ -30,13 +30,41 @@ class PcmRateResamplerTest {
                 for (int i = 0; i < frames; i++) input[i] = (short) (at + i);
                 int emitted = converter.append(input, frames, output);
                 for (int i = 0; i < emitted; i++)
-                    assertEquals(Math.round((written + i) * rate), output[i]);
+                    if ((written + i) * rate >= 20)
+                        assertEquals(Math.round((written + i) * rate), output[i]);
                 written += emitted;
                 at += frames;
             }
             written += converter.finish(output);
             assertEquals(Math.ceil(entire.length / rate), written);
         }
+    }
+
+    @Test void twoTimesPlaybackSuppressesFoldbackWhileShiftingPassband() {
+        assertTrue(toneAmplitude(4_000, 8_000) > 9_000, "audible passband shifts by 2×");
+        assertTrue(toneAmplitude(18_000, 8_100) < 100, "near-Nyquist content must not fold into a strong audible tone");
+    }
+
+    private static double toneAmplitude(int sourceFrequency, int outputFrequency) {
+        final int sampleRate = 44100;
+        var converter = new PcmRateResampler(1, 2);
+        var output = new short[converter.outputCapacity(257)];
+        double cosine = 0, sine = 0;
+        int written = 0, measured = 0;
+        for (int at = 0; at < sampleRate; at += 257) {
+            var input = new short[Math.min(257, sampleRate - at)];
+            for (int i = 0; i < input.length; i++)
+                input[i] = (short) Math.round(10000 * Math.sin(2 * Math.PI * sourceFrequency * (at + i) / sampleRate));
+            int emitted = converter.append(input, input.length, output);
+            for (int i = 0; i < emitted; i++, written++) {
+                if (written < 64 || written >= 22050 - 64) continue;
+                double phase = 2 * Math.PI * outputFrequency * written / sampleRate;
+                cosine += output[i] * Math.cos(phase);
+                sine += output[i] * Math.sin(phase);
+                measured++;
+            }
+        }
+        return 2 * Math.hypot(cosine, sine) / measured;
     }
 
     @Test void invalidRateIsRejected() {
