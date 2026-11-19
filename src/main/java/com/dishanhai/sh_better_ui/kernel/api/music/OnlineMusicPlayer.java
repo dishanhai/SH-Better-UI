@@ -44,6 +44,13 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     /** Optional persistent queue; null keeps legacy third-party players on a view-local queue. */
     default OnlineMusicQueue queue() { return null; }
     void play(OnlineTrack track);
+    /** An explicit new attempt may be started for the current failed track. */
+    default boolean canRetryCurrent() { return false; }
+    /** Explicitly restarts only the currently failed track, from the beginning, with fresh stream
+     * resolution. Returns true when accepted; false when unsupported or not currently failed.
+     * No automatic retry/skip, queue reordering, login or credential persistence is implied.
+     * An accepted attempt enters LOADING before returning, so repeated clicks cannot duplicate it. */
+    default boolean retryCurrent() { return false; }
     void pause();
     void resume();
     void seek(long positionMs);

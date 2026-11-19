@@ -919,15 +919,26 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         control[0] = host.add(new MusicTransportControl(box,label(name),glyph,host.preferences(),()->perform(control[0].getMessage(),action)));
         return control[0];
     }
+    private void togglePlayback() {
+        var state = player.snapshot().state();
+        if (state == OnlineMusicPlayer.State.FAILED) {
+            if (player.canRetryCurrent()) player.retryCurrent();
+        } else if (state == OnlineMusicPlayer.State.PLAYING) player.pause();
+        else if (state == OnlineMusicPlayer.State.PAUSED || state == OnlineMusicPlayer.State.ENDED) player.resume();
+    }
+
+    private static boolean canUsePlaybackTimeline(OnlineMusicPlayer.State state) {
+        return state == OnlineMusicPlayer.State.PLAYING || state == OnlineMusicPlayer.State.PAUSED
+                || state == OnlineMusicPlayer.State.ENDED;
+    }
+
     private void buildTransport() {
         var mini = MusicMiniPlayerLayout.of(layout.transport(), layout.expanded());
         nowPlaying=button(mini.metadata(),label("view.now_playing"),this::enterImmersive,null);
         nowPlaying.setVariant(MusicTextControl.Variant.ROW);
         // Register in visual order so keyboard traversal follows previous / play / next.
         miniPrevious=miniControl(mini.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous());
-        playback=miniControl(mini.play(),"play",MusicTransportControl.Glyph.PLAY,()->{
-            if(player.snapshot().state()==OnlineMusicPlayer.State.PLAYING)player.pause();else player.resume();
-        });
+        playback=miniControl(mini.play(),"play",MusicTransportControl.Glyph.PLAY,this::togglePlayback);
         miniNext=miniControl(mini.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next());
         stop=miniControl(mini.stop(),"stop",MusicTransportControl.Glyph.STOP,player::stop);
         lyricsToggle=miniControl(mini.lyrics(),"view.lyrics",MusicTransportControl.Glyph.LYRICS,this::enterImmersive);
@@ -1007,9 +1018,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         nowPlayingMore.setPreview(label("menu.title"));nowPlayingMore.setCornerRadius(12);
 
         stageBack=stageButton(stage.back(),"stage.back",MusicTransportControl.Glyph.BACK,this::leaveImmersive);
-        stagePlay=stageButton(stage.play(),"play",MusicTransportControl.Glyph.PLAY,()->{
-            if(player.snapshot().state()==OnlineMusicPlayer.State.PLAYING)player.pause();else player.resume();
-        });
+        stagePlay=stageButton(stage.play(),"play",MusicTransportControl.Glyph.PLAY,this::togglePlayback);
         stagePrevious=stageButton(stage.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous());
         stageNext=stageButton(stage.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next());
         stageMode=stageButton(stage.mode(),"stage.toggle_lyrics",MusicTransportControl.Glyph.LYRICS,
@@ -1764,12 +1773,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
 
     private void renderTransport(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var state = current.state(); boolean playing = state == OnlineMusicPlayer.State.PLAYING;
-        playback.active = playing || state == OnlineMusicPlayer.State.PAUSED || state == OnlineMusicPlayer.State.ENDED;
-        playback.setMessage(label(playing ? "pause" : "play")); playback.setGlyph(playing ? MusicTransportControl.Glyph.PAUSE : MusicTransportControl.Glyph.PLAY);
+        boolean retry = state == OnlineMusicPlayer.State.FAILED && player.canRetryCurrent();
+        playback.active = canUsePlaybackTimeline(state) || retry;
+        playback.setMessage(label(retry ? "retry_track" : playing ? "pause" : "play")); playback.setGlyph(playing ? MusicTransportControl.Glyph.PAUSE : MusicTransportControl.Glyph.PLAY);
         stop.active = state != OnlineMusicPlayer.State.IDLE && state != OnlineMusicPlayer.State.CLOSED;
         stop.setMessage(label(state == OnlineMusicPlayer.State.LOADING ? "cancel" : "stop"));
         boolean windowActive=net.minecraft.client.Minecraft.getInstance().isWindowActive();
-        seek.active = windowActive && current.durationMs() > 0 && playback.active;
+        seek.active = windowActive && current.durationMs() > 0 && canUsePlaybackTimeline(state);
         seek.sync(current.track()==null?"":trackKey(current.track()),current.positionMs(),current.durationMs(),seek.active);
         miniPrevious.active=queue.canPrevious();miniNext.active=queue.canNext();
         for(var control:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext}) {
@@ -1792,7 +1802,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean important = state==OnlineMusicPlayer.State.FAILED || state==OnlineMusicPlayer.State.LOADING || current.preview();
         if (!MusicMiniPlayerLayout.stacked(t.width()) && (important || !operation.getString().isEmpty()))
             muted(ui,important?status:operation,t.x()+4,t.bottom()-12,t.width()-8);
-        playback.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(status))); stop.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(status.copy().append("\n").append(label("stop_hint")))));
+        playback.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(retry ? label("retry_track").append("\n").append(status) : status))); stop.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(status.copy().append("\n").append(label("stop_hint")))));
     }
     private void updateMiniMetadata(OnlineMusicPlayer.Snapshot current) {
         var title=current.track()==null?label("view.now_playing"):MusicTypography.text(current.track().title());
@@ -1846,12 +1856,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         if(qqStyle()&&!ui.preferences().highContrast())stagePlay.setInk(0xff35d89a);
         stageBack.setAvailable(windowActive);stageMode.setAvailable(windowActive);stageQueue.setAvailable(windowActive);
-        stagePlay.setAvailable(windowActive&&(current.state()==OnlineMusicPlayer.State.PLAYING||current.state()==OnlineMusicPlayer.State.PAUSED||current.state()==OnlineMusicPlayer.State.ENDED));
+        boolean retry = failed && player.canRetryCurrent();
+        stagePlay.setAvailable(windowActive && (canUsePlaybackTimeline(current.state()) || retry));
         boolean playing=current.state()==OnlineMusicPlayer.State.PLAYING;
-        stagePlay.setMessage(label(playing?"pause":"play"));stagePlay.setGlyph(playing?MusicTransportControl.Glyph.PAUSE:MusicTransportControl.Glyph.PLAY);
+        stagePlay.setMessage(label(retry ? "retry_track" : playing ? "pause" : "play"));stagePlay.setGlyph(playing?MusicTransportControl.Glyph.PAUSE:MusicTransportControl.Glyph.PLAY);
         stagePrevious.setAvailable(windowActive&&queue.canPrevious());stageNext.setAvailable(windowActive&&queue.canNext());
         String key=current.track()==null?"":trackKey(current.track());
-        stageSeek.setInk(ink);stageSeek.setPreferences(ui.preferences());stageSeek.sync(key,current.positionMs(),current.durationMs(),stagePlay.active&&current.durationMs()>0);
+        stageSeek.setInk(ink);stageSeek.setPreferences(ui.preferences());stageSeek.sync(key,current.positionMs(),current.durationMs(),windowActive && canUsePlaybackTimeline(current.state()) && current.durationMs()>0);
         stageVolume.setInk(secondary);stageVolume.setPreferences(ui.preferences());
         stageVolume.visible=player.supportsVolume();stageVolume.sync("volume",player.supportsVolume()?Math.round(player.volume()*1000):0,1000,windowActive&&player.supportsVolume());
         long position=stageSeek.isEditing()?stageSeek.previewPositionMs():current.positionMs();
@@ -1865,6 +1876,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stageLyrics.setMessage(label("lyrics."+current.lyricsState().name().toLowerCase(Locale.ROOT)));
         stageLyrics.palette(ink,secondary,ui.preferences().highContrast()?UiTheme.current().background():0xff292229);
         stageLyrics.preferences(ui.preferences());
+        if (retry) stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(label("retry_track"))));
         stageLyrics.visible=stagePage==StagePage.LYRICS;stageLyrics.active=windowActive;stageLyrics.scale(stage.lyricScale());
         var lyricBounds=stage.lyrics();
         if(!OnlineMusicScreen.supportsLyricsStack(host)&&stageLyrics.browsing()&&lyricBounds.height()>=40)

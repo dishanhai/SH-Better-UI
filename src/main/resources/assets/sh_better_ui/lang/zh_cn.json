@@ -56,6 +56,7 @@
   "sh_better_ui.online_music.credentials_hint": "在账号页扫码或导入 Cookie，并选择是否保存登录。",
   "sh_better_ui.online_music.credentials_loaded": "已更新登录凭据。",
   "sh_better_ui.online_music.credentials_invalid": "剪贴板中没有有效的登录 Cookie。",
+  "sh_better_ui.online_music.retry_track": "重试当前歌曲",
   "sh_better_ui.online_music.failure.login_required": "平台要求登录，请在「账号」中扫码登录后重试。",
   "sh_better_ui.panel.developer.gallery.sample.online_music": "在线音乐",
   "sh_better_ui.online_music.source.netease": "网易云音乐",
