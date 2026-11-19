@@ -123,6 +123,7 @@ def sharedSources = [
         'client/gui/scaled/FolderFloatControl.java',
         'client/gui/scaled/GuiMotion.java',
         'client/gui/scaled/InterruptibleAnimation.java',
+        'client/gui/scaled/UiSkeletonMotion.java',
         'client/gui/scaled/UiKeyframeAnimation.java',
         'client/gui/scaled/UiCancelableInteraction.java',
         'client/gui/scaled/LaserFlowProfile.java',
@@ -286,6 +287,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/ShredderDemoTest.java")
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
+        include("${packagePath}/kernel/api/music/control/TransportGlyphMotionTest.java")
         include("${packagePath}/kernel/internal/music/**")
         include("${packagePath}/client/music/MusicServiceTest.java")
         include("${packagePath}/client/music/MusicOpenShortcutTest.java")

@@ -22,12 +22,18 @@ public final class MusicArtworkStage implements AutoCloseable {
     }
     /** Sharp, aspect-preserving artwork. The host supplies the already-loaded resource and actual dimensions. */
     public void renderCover(UiFrame frame,Bounds area,Identifier texture,int imageWidth,int imageHeight) {
+        renderCover(frame,area,texture,imageWidth,imageHeight,1f);
+    }
+    /** Draw the borrowed image with opacity; the original overload stays fully opaque. */
+    public void renderCover(UiFrame frame,Bounds area,Identifier texture,int imageWidth,int imageHeight,float opacity) {
+        if(!(opacity>0f))return;
         if(texture==null||imageWidth<=0||imageHeight<=0||area.width()<=0||area.height()<=0)return;
         float fit=Math.min(area.width()/(float)imageWidth,area.height()/(float)imageHeight);
         int width=Math.min(area.width(),Math.max(1,Math.round(imageWidth*fit)));
         int height=Math.min(area.height(),Math.max(1,Math.round(imageHeight*fit)));
         frame.graphics().blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED,texture,area.x()+(area.width()-width)/2,area.y()+(area.height()-height)/2,
-                0f,0f,width,height,imageWidth,imageHeight,imageWidth,imageHeight);
+                0f,0f,width,height,imageWidth,imageHeight,imageWidth,imageHeight,
+                (Math.round(Math.min(1f,opacity)*255)<<24)|0x00ffffff);
     }
     /** Clears presentation memory only; image ownership remains with its loader. Reusable after close. */
     @Override public void close() { motion.reset(); }

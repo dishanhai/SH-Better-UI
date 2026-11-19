@@ -12,6 +12,9 @@ public final class MusicVinylStage {
     private final MusicArtworkStage cover = new MusicArtworkStage();
     private final VinylMotion motion=new VinylMotion();
     public void render(UiFrame frame, Bounds area, Identifier artwork, int width, int height, boolean playing) {
+        render(frame,area,artwork,width,height,playing,1f);
+    }
+    public void render(UiFrame frame, Bounds area, Identifier artwork, int width, int height, boolean playing, float artworkOpacity) {
         float angle=motion.sample(frame.nowMs(),playing,frame.preferences().reducedMotion());
         int size=Math.min(area.width(),area.height()); if(size<24)return;
         int x=area.x()+(area.width()-size)/2,y=area.y()+(area.height()-size)/2;
@@ -30,7 +33,7 @@ public final class MusicVinylStage {
             RoundedCorners.draw(g,-label/2,-label/2,label,label,label/2f,0,0,0xffb38b50);
             if(artwork!=null&&width>0&&height>0) {
                 int a=Math.max(4,label*2/3);
-                cover.renderCover(frame,new Bounds(-a/2,-a/2,a,a),artwork,width,height);
+                cover.renderCover(frame,new Bounds(-a/2,-a/2,a,a),artwork,width,height,artworkOpacity);
             }
             RoundedCorners.draw(g,-1,-1,2,2,1,0,0,0xffded8c6);
         } finally { g.pose().popMatrix(); }

@@ -59,6 +59,7 @@ public final class OnlineArtworkTexture implements AutoCloseable {
         }
         return Optional.ofNullable(current);
     }
+    synchronized long revision() { return generation; }
     private void load(long ticket, String url) {
         NativeImage image = null;
         try {

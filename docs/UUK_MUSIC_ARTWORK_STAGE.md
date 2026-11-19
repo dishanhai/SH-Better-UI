@@ -39,3 +39,9 @@ changes and freezes movement; high contrast draws a solid theme background.
 image decode. The palette and texture publish together, bound to the same
 request generation; cancellation, replacement, close and resource invalidation
 discard stale pairs. The patch adds no image downloads or disk cache.
+
+For artwork that arrives asynchronously, the `renderCover(..., opacity)` overload
+keeps the same fit and texture ownership. The online player blends from its
+existing placeholder over 180 ms, including vinyl label art. It drops the prior
+cover on replacement rather than painting a released texture. Reduced motion
+and high contrast show the available cover immediately.

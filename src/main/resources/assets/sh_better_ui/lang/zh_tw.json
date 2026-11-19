@@ -4,6 +4,7 @@
   "subtitles.sh_better_ui.beibeipuo_fumo": "BeiBeiPuo 播放音樂",
   "subtitles.sh_better_ui.dishanhai_fumo": "dishanhai 播放音樂",
   "key.sh_better_ui.music_island": "展開 / 收合音樂靈動島",
+  "key.sh_better_ui.music_island_open_task": "開啟靈動島顯示的音樂任務",
   "sh_better_ui.music.expand": "展開詳細資訊",
   "sh_better_ui.music.collapse": "收合詳細資訊",
   "sh_better_ui.music.narration": "%s · %s · %s",
