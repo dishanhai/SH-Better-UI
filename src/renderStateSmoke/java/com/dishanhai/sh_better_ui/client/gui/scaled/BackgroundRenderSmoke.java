@@ -21,6 +21,7 @@ public final class BackgroundRenderSmoke extends Screen {
     private final Path output;
     private int frame;
     private boolean finished;
+    private boolean reloaded;
 
     private BackgroundRenderSmoke(Path output) {
         super(Component.literal("Render state regression"));
@@ -43,9 +44,15 @@ public final class BackgroundRenderSmoke extends Screen {
             if (index >= entries.size()) {
                 var scene = BlackHoleBackdropRenderer.class.getDeclaredField("scene");
                 scene.setAccessible(true);
-                require(scene.get(null) != null, "Black hole never completed its geometry and shade passes");
+                if (!reloaded) {
+                    require(scene.get(null) != null, "Black hole never completed its geometry and shade passes");
+                    verifyBlackHoleRelease(g, scene);
+                    reloaded = true;
+                }
+                if (!BlackHoleBackdropRenderer.draw(g, new Bounds(30, 30, 120, 60),
+                        BlackHoleBackdropProfile.DEFAULT, 0)) return;
                 verifyBlackHoleFailure(g, scene);
-                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels and black-hole failure cleanup\n");
+                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels and black-hole reload/failure cleanup\n");
                 return;
             }
             var entry = entries.get(index);
@@ -73,22 +80,23 @@ public final class BackgroundRenderSmoke extends Screen {
         }
     }
 
+    private static void verifyBlackHoleRelease(GuiGraphics g, java.lang.reflect.Field scene) throws Exception {
+        g.flush();
+        var release = BlackHoleBackdropRenderer.class.getDeclaredMethod("releaseBundle");
+        release.setAccessible(true);
+        int[] before = RenderStateSmoke.snapshot();
+        release.invoke(null);
+        require(Arrays.equals(before, RenderStateSmoke.snapshot()), "Black-hole reload cleanup changed the host bindings");
+        require(scene.get(null) == null, "Black-hole reload retained its scene target");
+        System.out.println("PASS black-hole reload cleanup keeps host bindings");
+    }
+
     private static void verifyBlackHoleFailure(GuiGraphics g, java.lang.reflect.Field scene) throws Exception {
         g.flush();
-        GuiStateGuard.draw(() -> {
-            try {
-                var original = (com.mojang.blaze3d.pipeline.TextureTarget) scene.get(null);
-                int width = original.width, height = original.height;
-                original.destroyBuffers();
-                var broken = new com.mojang.blaze3d.pipeline.TextureTarget(width, height, false, false) {
-                    @Override public int getColorTextureId() { throw new IllegalStateException("injected black-hole sampler failure"); }
-                };
-                scene.set(null, broken);
-            } catch (ReflectiveOperationException failure) { throw new AssertionError(failure); }
-        });
+        ((com.dishanhai.sh_better_ui.kernel.internal.GuiColorTarget) scene.get(null)).close();
         int[] before = RenderStateSmoke.snapshot();
         require(!BlackHoleBackdropRenderer.draw(g, new Bounds(30, 30, 120, 60),
-                BlackHoleBackdropProfile.DEFAULT, 0, g), "Injected black-hole failure was not caught");
+                BlackHoleBackdropProfile.DEFAULT, 0), "Injected black-hole failure was not caught");
         require(scene.get(null) == null, "Failed black-hole resources were retained");
         require(Arrays.equals(before, RenderStateSmoke.snapshot()), "Black-hole failure cleanup unbound the host target");
         require(GL11.glGetError() == GL11.GL_NO_ERROR, "GL error after black-hole failure cleanup");

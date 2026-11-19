@@ -7,9 +7,8 @@ import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.OwnershipLease;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
+import com.dishanhai.sh_better_ui.kernel.internal.GuiColorTarget;
 import com.dishanhai.sh_better_ui.kernel.internal.GuiRenderBindings;
-import com.mojang.blaze3d.pipeline.TextureTarget;
-import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.systems.RenderSystem;
 import com.mojang.blaze3d.vertex.DefaultVertexFormat;
 import com.mojang.blaze3d.vertex.VertexFormat;
@@ -32,7 +31,7 @@ final class BlackHoleBackdropRenderer extends RenderType {
     private static final BlackHoleGeometryPlan.Budget BUDGET = new BlackHoleGeometryPlan.Budget(16_384);
     private static ShaderInstance traceShader, shadeShader, bloomShader, compositeShader;
     private static final Slot[] SLOTS = {new Slot(), new Slot()};
-    private static TextureTarget scene, bloomA, bloomB;
+    private static GuiColorTarget scene, bloomA, bloomB;
     private static OwnershipLease bundleLease;
     private static boolean failedUntilReload;
     private static long useSequence;
@@ -44,7 +43,7 @@ final class BlackHoleBackdropRenderer extends RenderType {
                     .setShaderState(new ShaderStateShard(() -> compositeShader)).setTransparencyState(WaveRenderState.ALPHA_BLEND)
                     .setDepthTestState(LEQUAL_DEPTH_TEST).setCullState(NO_CULL).setWriteMaskState(COLOR_WRITE).createCompositeState(false));
     private static final class Slot {
-        TextureTarget texture;
+        GuiColorTarget texture;
         BlackHoleGeometryPlan.Key key;
         int rows;
         long used;
@@ -71,12 +70,12 @@ final class BlackHoleBackdropRenderer extends RenderType {
     private static void destroyBundle() {
         clearSamplers();
         for (Slot slot : SLOTS) {
-            if (slot.texture != null) slot.texture.destroyBuffers();
+            if (slot.texture != null) slot.texture.close();
             slot.texture = null; slot.key = null; slot.rows = 0; slot.used = 0;
         }
-        if (scene != null) scene.destroyBuffers();
-        if (bloomA != null) bloomA.destroyBuffers();
-        if (bloomB != null) bloomB.destroyBuffers();
+        if (scene != null) scene.close();
+        if (bloomA != null) bloomA.close();
+        if (bloomB != null) bloomB.close();
         scene = bloomA = bloomB = null;
         bundleLease = null;
         BUDGET.clear();
@@ -99,7 +98,7 @@ final class BlackHoleBackdropRenderer extends RenderType {
         try { register.accept(new ShaderInstance(resources, id, DefaultVertexFormat.POSITION_TEX), loaded); }
         catch (IOException exception) { ShBetterUi.LOGGER.warn("Could not load GUI shader {}", id, exception); }
     }
-    static boolean draw(GuiGraphics g, Bounds area, BlackHoleBackdropProfile p, float phase, Object owner) {
+    static boolean draw(GuiGraphics g, Bounds area, BlackHoleBackdropProfile p, float phase) {
         if (failedUntilReload || traceShader == null || shadeShader == null || bloomShader == null || compositeShader == null) return false;
         if (area.width() <= 0 || area.height() <= 0 || p.opacity() <= 0) return true;
         if (!Float.isFinite(phase)) return false;
@@ -116,7 +115,10 @@ final class BlackHoleBackdropRenderer extends RenderType {
         WaveRenderState state = WaveRenderState.capture();
         try (var bindings = new GuiRenderBindings()) {
             try {
-                RenderSystem.activeTexture(GL13.GL_TEXTURE0);
+                if (GL.getCapabilities().glBindSampler != 0) {
+                    GL33.glBindSampler(0, 0);
+                    GL33.glBindSampler(1, 0);
+                }
                 offscreen(g, key, p, phase);
                 Slot display = find(key);
                 if (display == null) return false; // never display half-built or unrelated geometry
@@ -125,9 +127,9 @@ final class BlackHoleBackdropRenderer extends RenderType {
                 int bw = Math.min(BLOOM_CAPACITY, width);
                 int bh = Math.max(1, Math.round((float) height * bw / width));
                 if (bh > BLOOM_CAPACITY) { bh = BLOOM_CAPACITY; bw = Math.max(1, Math.round((float) width * bh / height)); }
-                compositeShader.setSampler("Scene", scene);
-                compositeShader.setSampler("Bloom", bloomB == null ? scene : bloomB);
-                compositeShader.safeGetUniform("ContentScale").set((float) width / scene.width, (float) height / scene.height,
+                compositeShader.setSampler("Scene", scene.texture());
+                compositeShader.setSampler("Bloom", (bloomB == null ? scene : bloomB).texture());
+                compositeShader.safeGetUniform("ContentScale").set((float) width / scene.width(), (float) height / scene.height(),
                         (float) bw / BLOOM_CAPACITY, (float) bh / BLOOM_CAPACITY);
                 compositeShader.safeGetUniform("Finish").set(1f / width, 1f / height, p.brightness() <= 0 ? 0 : p.glow(), p.opacity());
                 VisualRevealRenderer.quad(g, COMPOSITE, area.x(), area.y(), area.width(), area.height(), pose);
@@ -147,39 +149,24 @@ final class BlackHoleBackdropRenderer extends RenderType {
         for (Slot slot : SLOTS) if (slot.complete() && key.equals(slot.key)) return slot;
         return null;
     }
-    private static TextureTarget allocate(int width, int height, boolean geometry) {
-        var target = new TextureTarget(width, height, false, Minecraft.ON_OSX);
-        try {
-        if (geometry) {
-            RenderSystem.bindTexture(target.getColorTextureId());
-            GL11.glTexImage2D(GL11.GL_TEXTURE_2D, 0, GL30.GL_RGBA16F, width, height, 0, GL11.GL_RGBA, GL11.GL_FLOAT, (java.nio.ByteBuffer) null);
+    private static GuiColorTarget allocate(int width, int height, boolean geometry) {
+        if (bundleLease == null) {
+            bundleLease = ClientUiKernel.ownNativeGpu(ModuleDescriptor.ResourceKind.RENDER_TARGET,
+                    UiId.parse("sh_better_ui:native/black_hole/progressive_bundle"), BlackHoleBackdropRenderer::destroyBundle);
         }
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, target.frameBufferId);
-        if (GL30.glCheckFramebufferStatus(GL30.GL_DRAW_FRAMEBUFFER) != GL30.GL_FRAMEBUFFER_COMPLETE)
-            throw new IllegalStateException("Unsupported black-hole target format");
-        target.setFilterMode(geometry ? GL11.GL_NEAREST : GL11.GL_LINEAR);
-        if (bundleLease == null) bundleLease = ClientUiKernel.ownNativeGpu(ModuleDescriptor.ResourceKind.RENDER_TARGET,
-                UiId.parse("sh_better_ui:native/black_hole/progressive_bundle"), BlackHoleBackdropRenderer::destroyBundle);
-        return target;
-        } catch (RuntimeException failure) {
-            target.destroyBuffers();
-            throw failure;
-        }
+        return new GuiColorTarget(width, height, geometry ? GL30.GL_RGBA16F : GL11.GL_RGBA8,
+                geometry ? GL11.GL_NEAREST : GL11.GL_LINEAR);
     }
-    private static void bindTarget(TextureTarget target, int width, int height) {
-        GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, target.frameBufferId);
-        RenderSystem.viewport(0, 0, width, height);
-    }
+
     private static void offscreen(GuiGraphics g, BlackHoleGeometryPlan.Key requested, BlackHoleBackdropProfile p, float phase) {
-        int drawTarget = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING), readTarget = GL11.glGetInteger(GL30.GL_READ_FRAMEBUFFER_BINDING);
-        int unpack = GL11.glGetInteger(GL21.GL_PIXEL_UNPACK_BUFFER_BINDING);
-        int[] viewport = new int[4], scissor = new int[4]; float[] clear = new float[4];
-        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport); GL11.glGetFloatv(GL11.GL_COLOR_CLEAR_VALUE, clear);
+        int drawTarget = GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING);
+        int[] viewport = new int[4], scissor = new int[4];
+        GL11.glGetIntegerv(GL11.GL_VIEWPORT, viewport);
         boolean clipped = GL11.glIsEnabled(GL11.GL_SCISSOR_TEST);
         if (clipped) GL11.glGetIntegerv(GL11.GL_SCISSOR_BOX, scissor);
         try {
-            RenderSystem.disableScissor(); RenderSystem.activeTexture(GL13.GL_TEXTURE0);
-            GL15.glBindBuffer(GL21.GL_PIXEL_UNPACK_BUFFER, 0);
+            RenderSystem.disableScissor();
+            RenderSystem.activeTexture(GL13.GL_TEXTURE0);
             Slot building = null;
             for (Slot slot : SLOTS) if (slot.key != null && !slot.complete()) building = slot;
             // Never preempt a build when another panel requests different geometry.
@@ -192,12 +179,12 @@ final class BlackHoleBackdropRenderer extends RenderType {
                 var key = building.key;
                 int rows = BUDGET.takeRows(UiFrameScheduler.nowMs(), key.width(), key.height() - building.rows);
                 if (rows > 0) {
-                    if (building.texture != null && (building.texture.width != key.width() || building.texture.height != key.height())) {
-                        building.texture.destroyBuffers();
+                    if (building.texture != null && (building.texture.width() != key.width() || building.texture.height() != key.height())) {
+                        building.texture.close();
                         building.texture = null;
                     }
                     if (building.texture == null) building.texture = allocate(key.width(), key.height(), true);
-                    bindTarget(building.texture, key.width(), key.height());
+                    building.texture.bindDraw(key.width(), key.height());
                     RenderSystem.enableScissor(0, building.rows, key.width(), rows);
                     traceShader.safeGetUniform("Surface").set(key.aspect(), key.size(), 0f, key.tilt());
                     traceShader.safeGetUniform("Physics").set(key.inclination(), key.diskOuterRadius(), 0f, 0f);
@@ -212,16 +199,16 @@ final class BlackHoleBackdropRenderer extends RenderType {
             if (display == null) return;
             int width = requested.width(), height = requested.height();
             // Grow only: switching two visible sizes must not reallocate the shared shade target every draw.
-            if (scene != null && (scene.width < width || scene.height < height)) {
-                int growWidth = Math.max(width, scene.width), growHeight = Math.max(height, scene.height);
-                scene.destroyBuffers();
+            if (scene != null && (scene.width() < width || scene.height() < height)) {
+                int growWidth = Math.max(width, scene.width()), growHeight = Math.max(height, scene.height());
+                scene.close();
                 scene = null;
                 scene = allocate(growWidth, growHeight, false);
             }
             if (scene == null) scene = allocate(width, height, false);
-            bindTarget(scene, width, height);
-            shadeShader.setSampler("Geometry", display.texture);
-            shadeShader.safeGetUniform("ContentScale").set((float) width / display.texture.width, (float) height / display.texture.height);
+            scene.bindDraw(width, height);
+            shadeShader.setSampler("Geometry", display.texture.texture());
+            shadeShader.safeGetUniform("ContentScale").set((float) width / display.texture.width(), (float) height / display.texture.height());
             shadeShader.safeGetUniform("Motion").set(phase, p.brightness(), p.outline(), 0f);
             color(shadeShader, "InkColor", p.color()); color(shadeShader, "BackgroundColor", p.backgroundColor());
             VisualRevealRenderer.quad(g, SHADE, -1, -1, 2, 2, IDENTITY);
@@ -236,21 +223,17 @@ final class BlackHoleBackdropRenderer extends RenderType {
                 blur(g, bloomA, bw, bh, bloomB, bw, bh, 0, spread / bh, 0);
             }
         } finally {
-            GL15.glBindBuffer(GL21.GL_PIXEL_UNPACK_BUFFER, unpack);
-            var main = Minecraft.getInstance().getMainRenderTarget();
-            if (main != null && main.frameBufferId == drawTarget) main.bindWrite(false);
-            else GlStateManager._glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, drawTarget);
-            GlStateManager._glBindFramebuffer(GL30.GL_READ_FRAMEBUFFER, readTarget);
+            // The private passes bypass the engine framebuffer cache and restore the real draw binding here.
+            GL30.glBindFramebuffer(GL30.GL_DRAW_FRAMEBUFFER, drawTarget);
             RenderSystem.viewport(viewport[0], viewport[1], viewport[2], viewport[3]);
-            RenderSystem.clearColor(clear[0], clear[1], clear[2], clear[3]);
             if (clipped) RenderSystem.enableScissor(scissor[0], scissor[1], scissor[2], scissor[3]); else RenderSystem.disableScissor();
         }
     }
-    private static void blur(GuiGraphics g, TextureTarget source, int width, int height,
-                             TextureTarget target, int tw, int th, float dx, float dy, float threshold) {
-        bindTarget(target, tw, th);
-        bloomShader.setSampler("Source", source);
-        bloomShader.safeGetUniform("ContentScale").set((float) width / source.width, (float) height / source.height);
+    private static void blur(GuiGraphics g, GuiColorTarget source, int width, int height,
+                             GuiColorTarget target, int tw, int th, float dx, float dy, float threshold) {
+        target.bindDraw(tw, th);
+        bloomShader.setSampler("Source", source.texture());
+        bloomShader.safeGetUniform("ContentScale").set((float) width / source.width(), (float) height / source.height());
         bloomShader.safeGetUniform("Texel").set(1f / width, 1f / height);
         bloomShader.safeGetUniform("Filter").set(dx, dy, threshold, 0f);
         VisualRevealRenderer.quad(g, BLOOM, -1, -1, 2, 2, IDENTITY);

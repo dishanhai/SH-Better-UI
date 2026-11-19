@@ -68,7 +68,6 @@ public final class UiHudPanel {
                            int frameX, int frameY, int frameWidth, int frameHeight, float progress) {
         if (isEmpty() || frameWidth <= 0 || frameHeight <= 0 || progress <= 0) return;
         surface(graphics, frameX, frameY, frameWidth, frameHeight, 6 * scale, preferences, false);
-        if (progress < 0.5f) return;
         graphics.enableScissor(frameX, frameY, frameX + frameWidth, frameY + frameHeight);
         var pose = graphics.pose();
         pose.pushMatrix();
