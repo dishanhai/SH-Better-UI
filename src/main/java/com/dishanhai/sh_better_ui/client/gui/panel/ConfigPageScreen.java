@@ -82,7 +82,9 @@ public final class ConfigPageScreen<T> extends ConfigPagePlatform {
         span = Math.max(1, Math.min(560, width - 16));
         left = (width - span) / 2;
         columns = span >= 360 ? 2 : 1;
-        int presetHeight = page.presets().isEmpty() ? 0 : BUTTON + GAP;
+        int presetCount = page.presets().size();
+        int presetColumns = Math.min(presetCount, Math.max(3, (span - 2 * INSET) / 90));
+        int presetHeight = presetCount == 0 ? 0 : ((presetCount + presetColumns - 1) / presetColumns) * (BUTTON + GAP);
         boolean compact = width < 150 || height < 146 + presetHeight;
         description = compact ? List.of() : font.split(UiHudRichText.prepare(page.description()), span - 2 * INSET);
         int baseHeader = INSET + font.lineHeight + GAP + presetHeight;
@@ -105,9 +107,11 @@ public final class ConfigPageScreen<T> extends ConfigPagePlatform {
         int presetY = body - presetHeight;
         for (var preset : page.presets()) {
             int index = presets.size();
-            int x = left + INSET + (span - 2 * INSET) * index / page.presets().size();
-            int right = left + INSET + (span - 2 * INSET) * (index + 1) / page.presets().size();
-            var control = button(x, presetY, right - x - 3, preset.label(), null, false, () -> choose(preset));
+            int column = index % presetColumns;
+            int x = left + INSET + (span - 2 * INSET) * column / presetColumns;
+            int right = left + INSET + (span - 2 * INSET) * (column + 1) / presetColumns;
+            int y = presetY + index / presetColumns * (BUTTON + GAP);
+            var control = button(x, y, right - x - 3, preset.label(), null, false, () -> choose(preset));
             control.setPreview(preset.description());
             presets.add(control);
         }

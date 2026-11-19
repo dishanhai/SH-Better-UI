@@ -17,7 +17,7 @@ class ConfigPageDraftTest {
     private record Settings(double speed, int durability, boolean passive) {}
 
     private static final Component TEXT = Component.empty();
-    private static final NumberOption<Settings> SPEED = new NumberOption<>("speed", TEXT, TEXT, .25, 16, false,
+    private static final NumberOption<Settings> SPEED = new NumberOption<>("speed", TEXT, TEXT, .25, 20, false,
             Settings::speed, (s, value) -> new Settings(value, s.durability(), s.passive()));
     private static final NumberOption<Settings> DURABILITY = new NumberOption<>("durability", TEXT, TEXT, 1, 100000, true,
             Settings::durability, (s, value) -> new Settings(s.speed(), (int) value, s.passive()));
@@ -41,6 +41,21 @@ class ConfigPageDraftTest {
             return true;
         }));
         assertTrue(draft.commit(value -> fail("The same draft must not be written twice")));
+    }
+
+    @Test
+    void fivePresetsCanSelectAndCommitTheMaximum() {
+        var presets = List.of(1.0, 2.0, 4.0, 10.0, 20.0).stream()
+                .map(value -> new Preset<>(TEXT, TEXT, Map.of(SPEED, value))).toList();
+        var draft = new ConfigPageDraft<>(new ConfigPage<>(TEXT, TEXT, List.of(SPEED, DURABILITY), presets), ORIGINAL);
+        for (var preset : presets) {
+            draft.apply(preset);
+            assertTrue(draft.selected(preset));
+        }
+        assertTrue(draft.commit(value -> {
+            assertEquals(new Settings(20, ORIGINAL.durability(), ORIGINAL.passive()), value);
+            return true;
+        }));
     }
 
     @Test

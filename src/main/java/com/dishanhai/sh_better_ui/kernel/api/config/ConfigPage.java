@@ -23,8 +23,8 @@ public record ConfigPage<T>(Component title, Component description, List<NumberO
         description = Objects.requireNonNull(description).copy();
         options = List.copyOf(options);
         presets = List.copyOf(presets);
-        if (options.isEmpty() || presets.size() > 3 || options.stream().map(NumberOption::id).distinct().count() != options.size()) {
-            throw new IllegalArgumentException("A config page requires unique options and supports up to three quick presets");
+        if (options.isEmpty() || presets.size() > 5 || options.stream().map(NumberOption::id).distinct().count() != options.size()) {
+            throw new IllegalArgumentException("A config page requires unique options and supports up to five quick presets");
         }
         for (var preset : presets) {
             if (preset.values().isEmpty() || !options.containsAll(preset.values().keySet())) {
