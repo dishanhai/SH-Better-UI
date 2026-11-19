@@ -51,6 +51,9 @@ public final class OnlineMusicScreen {
                             Component.translatable("sh_better_ui.online_music.view.unavailable"),
                             frame.viewport().x() + 8, frame.viewport().y() + 40, UiTheme.current().text(), false);
                 })
+                .onForeground((screen, frame) -> {
+                    if (owner.view instanceof OnlineMusicViewImpl nativeView) nativeView.renderRouteHandoff(frame);
+                })
                 .onRemoved(screen -> owner.close()).build();
         result.returnFocus(Objects.requireNonNull(returnFocus));
         return result;

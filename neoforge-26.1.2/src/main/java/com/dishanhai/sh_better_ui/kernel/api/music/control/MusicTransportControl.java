@@ -16,6 +16,7 @@ import java.util.Objects;
 public final class MusicTransportControl extends AbstractWidget {
     public enum Glyph { PREVIOUS, PLAY, PAUSE, NEXT, BACK, LYRICS, QUEUE, STOP, CANCEL, SEARCH, FAVORITE, REMOVE, USER }
     private Glyph glyph;
+    private final TransportGlyphMotion glyphMotion = new TransportGlyphMotion();
     private UiPreferences preferences;
     private final Runnable action,feedback;
     private boolean pointerPressed;
@@ -65,7 +66,9 @@ public final class MusicTransportControl extends AbstractWidget {
     }
     @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g,int x,int y,float partial){
         if(!active)cancelInteraction();
-        MusicControlRenderer.transport(g,new Bounds(getX(),getY(),width,height),glyph,isHovered(),isFocused(),
+        float glyphWeight = glyphMotion.sample(glyph, System.nanoTime() / 1_000_000L,
+                !active || preferences.reducedMotion() || preferences.highContrast());
+        MusicControlRenderer.transport(g,new Bounds(getX(),getY(),width,height),glyph,glyphWeight,isHovered(),isFocused(),
                 pointerPressed||pressedKey!=-1,active,ink,preferences);
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput out){defaultButtonNarrationText(out);}

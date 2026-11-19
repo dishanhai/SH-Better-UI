@@ -8,9 +8,6 @@ import java.util.Objects;
 
 /** 山海：卡片和其他布局的加载占位。宿主在数据可用后用真实内容替换占位。 */
 public final class UiSkeleton {
-    private static final long PERIOD_MS = 1800L;
-    private static final float HIGHLIGHT_SPREAD = 0.4f;
-
     private UiSkeleton() {}
 
     public record Block(Bounds bounds, float cornerRadius) {
@@ -56,12 +53,8 @@ public final class UiSkeleton {
             }
             for (Block block : blocks) {
                 Bounds bounds = block.bounds();
-                if (bounds.width() == 0 || bounds.height() == 0 || bounds.right() <= viewport.x()
-                        || bounds.bottom() <= viewport.y() || bounds.x() >= viewport.right()
-                        || bounds.y() >= viewport.bottom()) continue;
-                float light = highlight(viewport, bounds, nowMs, preferences.reducedMotion());
-                int fill = GuiMotion.lerpColor(base, peak, light);
-                fill = GuiMotion.lerpColor(fill & 0xFFFFFF, fill, opacity);
+                if (!UiSkeletonMotion.intersects(viewport, bounds)) continue;
+                int fill = UiSkeletonMotion.fill(viewport, bounds, nowMs, preferences.reducedMotion(), base, peak, opacity);
                 RoundedCorners.draw(graphics, bounds.x(), bounds.y(), bounds.width(), bounds.height(),
                         block.cornerRadius(), 0f, 0, fill);
             }
@@ -94,12 +87,6 @@ public final class UiSkeleton {
     }
 
     static float highlight(Bounds viewport, Bounds bounds, long nowMs, boolean reducedMotion) {
-        if (reducedMotion || viewport.width() == 0) return 0f;
-        float phase = (float) Math.floorMod(nowMs, PERIOD_MS) / PERIOD_MS;
-        float relativeCenter = GuiMotion.clamp01(
-                ((bounds.x() - (float) viewport.x()) + bounds.width() * 0.5f) / viewport.width());
-        float sweep = GuiMotion.lerp(-HIGHLIGHT_SPREAD, 1f + HIGHLIGHT_SPREAD, phase);
-        float brightness = 1f - GuiMotion.clamp01(Math.abs(sweep - relativeCenter) / HIGHLIGHT_SPREAD);
-        return brightness * brightness * (3f - 2f * brightness);
+        return UiSkeletonMotion.highlight(viewport, bounds, nowMs, reducedMotion);
     }
 }

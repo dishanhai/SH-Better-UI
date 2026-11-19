@@ -109,6 +109,15 @@ library context first. When a focused history slot is rebound to another record,
 its held gesture is cancelled and focus moves to Back instead of silently
 activating a different task.
 
+## Transport glyph motion
+
+The transport's Play/Pause and Stop/Cancel glyphs crossfade over 140 ms on the
+shared player layouts; reversing the action retargets the mix already drawn.
+The hit area, press/release handling, focus ring, current narration, and
+backend playback state are independent of the fade. Reduced-motion and
+high-contrast preferences, disabled controls, and resumed stale frames show
+the current icon immediately. Seek remains pointer-accurate.
+
 ## Open SH Music from the world
 
 The **Open SH Music** shortcut starts unbound, so installing the mod never
@@ -119,3 +128,21 @@ from a focused world with no screen or overlay. Holding the key does not
 reopen it after closing. Opening is navigation only: the shortcut does not
 start a search, play a song, or sign in. The existing **Control Panel → Tools →
 SH Music** entry remains available.
+
+## Loading search and library lists
+
+Active searches, playlist lists, playlist tracks and liked-track reads use the
+UUK skeleton renderer when an empty list has been waiting for at least 150 ms.
+Placeholders are paint-only and take their bounds from the actual row controls;
+the loading label stays available, and no placeholder can take input or focus.
+Fast responses do not flash. A successful nonempty result dissolves the painted
+placeholder behind the real rows; failures, cancellation and leaving the page
+clear it immediately. Reduced motion keeps the placeholder static and suppresses
+the dissolve. The NeoForge 26 extractor and legacy renderer use the same sweep
+math and clipping rules.
+
+Player routes and newly populated provider lists reveal the live content with a
+short, interruptible 165 ms fade. Changing list pages does not animate scrolling
+or move the tab bar or the transport. Immersive lyrics/queue toggle the local
+pane; entering or leaving immersive mode can reveal the whole player. There
+is no retained outgoing widget, and reduced motion skips the reveal entirely.

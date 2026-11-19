@@ -50,7 +50,10 @@ public final class OnlineMusicScreen {
                             Component.translatable("sh_better_ui.online_music.view.unavailable"),
                             frame.viewport().x() + 8, frame.viewport().y() + 40, UiTheme.current().text(), false);
                 })
-                .onForeground((screen, frame) -> { if (owner.overlays != null) owner.overlays.render(frame.graphics(), frame.mouse() == null ? -1 : (int)frame.mouse().x(), frame.mouse() == null ? -1 : (int)frame.mouse().y(), frame.partialTick()); })
+                .onForeground((screen, frame) -> {
+                    if (owner.view instanceof OnlineMusicViewImpl nativeView) nativeView.renderRouteHandoff(frame);
+                    if (owner.overlays != null) owner.overlays.render(frame.graphics(), frame.mouse() == null ? -1 : (int)frame.mouse().x(), frame.mouse() == null ? -1 : (int)frame.mouse().y(), frame.partialTick());
+                })
                 .onRemoved(screen -> owner.close()).build();
     }
 
