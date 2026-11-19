@@ -370,6 +370,7 @@ processResources {
         include('cover.png', 'assets/sh_better_ui/lang/**', 'assets/sh_better_ui/textures/gui/display*/**',
                 'assets/sh_better_ui/blockstates/dishanhai_fumo.json', 'assets/sh_better_ui/models/block/dishanhai_fumo.json',
                 'assets/sh_better_ui/textures/block/dishanhai_fumo.png',
+                'assets/sh_better_ui/textures/block/dishanhai_fumo_face.png', 'assets/sh_better_ui/textures/block/dishanhai_fumo_details.png',
                 'assets/sh_better_ui/blockstates/beibeipuo_fumo.json', 'assets/sh_better_ui/models/block/beibeipuo_fumo.json',
                 'assets/sh_better_ui/textures/block/beibeipuo_fumo.png', 'assets/sh_better_ui/models/block/fumo/skin_64.json',
                 'assets/sh_better_ui/sounds.json', 'assets/sh_better_ui/sounds/plushie_music.ogg',
