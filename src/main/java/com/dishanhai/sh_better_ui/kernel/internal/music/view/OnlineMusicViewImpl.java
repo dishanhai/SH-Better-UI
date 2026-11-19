@@ -917,8 +917,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stageControls.add(stageSeek);stageControls.add(stageVolume);
         stageLyrics=OnlineMusicScreen.addLyricsLayer(host,new MusicLyricsView(stage.lyrics(),label("lyrics.empty"),host.preferences(),position->{
             var now=player.snapshot();
-            if(OnlineLyricPresentation.seekable(now)&&position>=0&&position<=now.durationMs()&&Objects.equals(now.track(),stageLyricTrack)&&now.lyrics()==stageTimeline&&stageLyrics.contentKey()==stageLyricKey)
-                player.seek(position);
+            if(stageSeek.isEditing()||position<0||!Objects.equals(now.track(),stageLyricTrack)
+                    ||now.lyrics()!=stageTimeline||stageLyrics.contentKey()!=stageLyricKey)return;
+            var target=new LyricSeekTarget(stageLyricTrack,stageTimeline,position,previewLyricOffset(now)).position(now);
+            if(target.isPresent()&&target.getAsLong()<=now.durationMs())player.seek(target.getAsLong());
         }),()->stage.lyrics());
         stageFollow=OnlineMusicScreen.addLyricsLayer(host,new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+Math.max(0,stage.lyrics().height()-20),Math.min(108,stage.lyrics().width()),20),label("view.follow_lyrics"),
                 host.preferences(),stageLyrics::follow),()->stage.lyrics());
@@ -1693,8 +1695,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             stageLyrics.setLines(stageLyricKey,OnlineLyricPresentation.lines(timeline));
         }
         boolean preview=windowActive&&stageSeek.isEditing()&&OnlineLyricPresentation.seekable(current);
-        stageLyrics.playback(preview?stageSeek.previewPositionMs():OnlineLyricPresentation.position(current),
-                windowActive&&!preview&&OnlineLyricPresentation.seekable(current),preview);
+        long clipPosition=preview?stageSeek.previewPositionMs():OnlineLyricPresentation.position(current);
+        stageLyrics.playback(OnlineLyricPresentation.songPosition(clipPosition,previewLyricOffset(current)),
+                windowActive&&OnlineLyricPresentation.seekable(current),preview);
+    }
+    private long previewLyricOffset(OnlineMusicPlayer.Snapshot snapshot) {
+        return snapshot.preview()?Math.max(0,player.lyricOffsetMs(snapshot)):0;
     }
     private Bounds lyricContent() {
         if (immersive) return stage.lyrics();
@@ -1735,11 +1741,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if (current.track() != null) muted(ui, MusicTypography.text(current.track().artist()), cover.x(), cover.bottom() + 23, size);
         } else if (!immersive) text(ui, title, c.x() + 4, c.y() + 2, c.width() - 8);
         if (!Objects.equals(lyricTrack, current.track())) { lyricTrack = current.track(); lyricViewport.reset(); }
-        var feed = player.lyricFeed().frame();
-        long playedPosition = feed.alive() ? feed.snapshot().positionMs() : current.positionMs();
-        lyricOffset = Math.max(0, playedPosition - current.positionMs());
+        lyricOffset=previewLyricOffset(current);
         boolean preview=seek.isEditing()&&OnlineLyricPresentation.seekable(current);
-        long position=preview?seek.previewPositionMs()+Math.min(lyricOffset,Long.MAX_VALUE-seek.previewPositionMs()):playedPosition;
+        long clipPosition=preview?seek.previewPositionMs():OnlineLyricPresentation.position(current);
+        long position=OnlineLyricPresentation.songPosition(clipPosition,lyricOffset);
         var palette = LyricTextPalette.sample(UiTheme.current().text(), UiTheme.current().accent(), UiTheme.current().background() | 0xff000000, 0, ui.preferences().highContrast());
         var timeline = current.lyrics(); int index = timeline.indexAt(position); activeLyric = index;
         long now = System.nanoTime() / 1_000_000L;

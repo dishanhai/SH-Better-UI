@@ -71,6 +71,8 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     /** Fresh post-gain PCM activity, normalized 0..1. Unavailable/protected audio is silent, never simulated. */
     default float audioActivity() { return 0f; }
     Snapshot snapshot();
+    /** Song-time start of an authorized clip, for the matching lyric snapshot. Full tracks return zero. */
+    default long lyricOffsetMs(Snapshot snapshot) { return 0; }
     LyricFeed lyricFeed();
     @Override void close();
 }
