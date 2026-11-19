@@ -46,13 +46,14 @@ public final class BackgroundRenderSmoke extends Screen {
                 scene.setAccessible(true);
                 if (!reloaded) {
                     require(scene.get(null) != null, "Black hole never completed its geometry and shade passes");
+                    verifyVignetteBlend(g);
                     verifyBlackHoleRelease(g, scene);
                     reloaded = true;
                 }
                 if (!BlackHoleBackdropRenderer.draw(g, new Bounds(30, 30, 120, 60),
                         BlackHoleBackdropProfile.DEFAULT, 0)) return;
                 verifyBlackHoleFailure(g, scene);
-                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels and black-hole reload/failure cleanup\n");
+                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels and vignette blending and black-hole reload/failure cleanup\n");
                 return;
             }
             var entry = entries.get(index);
@@ -78,6 +79,28 @@ public final class BackgroundRenderSmoke extends Screen {
             failure.printStackTrace();
             finish("failure.txt", failure.toString());
         }
+    }
+
+    private void verifyVignetteBlend(GuiGraphics g) {
+        g.fill(0, 0, width, height, 0xFF305070);
+        g.flush();
+        new com.mojang.blaze3d.shaders.BlendMode().apply();
+        try {
+            com.mojang.blaze3d.systems.RenderSystem.enableBlend();
+            com.mojang.blaze3d.systems.RenderSystem.blendFuncSeparate(
+                    GL11.GL_ZERO, GL11.GL_ONE_MINUS_SRC_COLOR, GL11.GL_ONE, GL11.GL_ZERO);
+            g.setColor(0, 0, 0, 1);
+            g.blit(ResourceLocation.fromNamespaceAndPath("minecraft", "textures/misc/vignette.png"),
+                    0, 0, 0, 0, width, height, width, height);
+            var pixel = org.lwjgl.BufferUtils.createByteBuffer(4);
+            GL11.glReadPixels(2, 2, 1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+            require((pixel.get(0) & 255) == 0x30 && (pixel.get(1) & 255) == 0x50 && (pixel.get(2) & 255) == 0x70,
+                    "Vanilla vignette replaced the world color with black");
+        } finally {
+            g.setColor(1, 1, 1, 1);
+            com.mojang.blaze3d.systems.RenderSystem.defaultBlendFunc();
+        }
+        System.out.println("PASS vanilla vignette preserves multiplicative blend");
     }
 
     private static void verifyBlackHoleRelease(GuiGraphics g, java.lang.reflect.Field scene) throws Exception {
