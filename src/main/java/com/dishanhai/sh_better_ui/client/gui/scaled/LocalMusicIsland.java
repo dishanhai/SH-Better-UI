@@ -13,6 +13,7 @@ import com.dishanhai.sh_better_ui.client.music.MusicService;
 import com.dishanhai.sh_better_ui.client.music.MusicSnapshot;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
 
 import java.util.Locale;
 import java.util.Optional;
@@ -175,15 +176,15 @@ public final class LocalMusicIsland {
             int right = Math.round(outline.rect().getX() + outline.rect().getW()) - 10;
             int top = Math.round(outline.rect().getY()) + 7;
             drawText(ui, font, Component.literal(activeNotice.title()), left, top, right, 0xFFFFFFFF);
-            drawText(ui, font, Component.literal(activeNotice.detail()), left, top + font.lineHeight + 2,
+            drawText(ui, font, Component.literal(activeNotice.detail()), left, top + MusicTypography.LINE_HEIGHT + 2,
                     right, preferences.highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1);
-            int barY = top + 2 * font.lineHeight + 5;
+            int barY = top + 2 * MusicTypography.LINE_HEIGHT + 5;
             if (activeNotice.progress() >= 0 && barY + 2 < outline.rect().getY() + outline.rect().getH() - 5) {
                 graphics.fill(left, barY, right, barY + 2, 0xFF415064);
                 graphics.fill(left, barY, left + (int) Math.round((right-left)*activeNotice.progress()),
                         barY + 2, preferences.highContrast() ? 0xFFFFFFFF : ACCENT);
             }
-            if (rect.getH() >= 2 * font.lineHeight + 18) notices.presented(activeNotice, ui.nowMs());
+            if (rect.getH() >= 2 * MusicTypography.LINE_HEIGHT + 18) notices.presented(activeNotice, ui.nowMs());
             return;
         }
 
@@ -236,13 +237,13 @@ public final class LocalMusicIsland {
         var state = status(snapshot);
         var track = session == null ? null : session.track();
         int secondary = preferences.highContrast() ? 0xFFFFFFFF : 0xFFCBD5E1;
-        int step = font.lineHeight + 1;
+        int step = MusicTypography.LINE_HEIGHT + 1;
         int y = surfaceTop + 10;
         int textX = x + 25;
         if (session != null) {
-            titleLabel.setText(title(session));
+            titleLabel.setText(MusicTypography.text(title(session)));
             titleLabel.render(graphics, font, textX, y, Math.max(0, textRight - textX), 0xFFFFFFFF,
-                    false, ui.nowMs(), hovered, preferences);
+                    false, ui.nowMs(), hovered, preferences, MusicTypography.LINE_HEIGHT);
             y += step;
             if (track != null) drawText(ui, font, credit(session), textX, y, textRight, secondary);
         } else drawText(ui, font, Component.translatable(TEXT + "unknown_title"), textX, y, textRight, secondary);
@@ -274,7 +275,7 @@ public final class LocalMusicIsland {
             int lyricHeight = bottom - lyricY;
             int lineCount = lyricHeight >= 28 ? 2 : 1;
             if (lyrics.style().lineCount() != lineCount) lyrics.setStyle(lyrics.style().withLineCount(lineCount));
-            if (ShBetterUiApi.lyrics().draw(lyrics, ui, font, new Bounds(left, lyricY, right - left, lyricHeight))) {
+            if (ShBetterUiApi.lyrics().drawScoped(lyrics, ui, font, new Bounds(left, lyricY, right - left, lyricHeight), MusicTypography.font(), MusicTypography.LINE_HEIGHT)) {
                 return;
             }
         }
@@ -304,32 +305,32 @@ public final class LocalMusicIsland {
         int available = Math.max(0, bounds.width() - 16);
         // Width follows templates, not live values: FPS jitter never changes the island geometry.
         int total = 0;
-        for (var chip : chips) total += font.width(chip.widthTemplate())
-                + (chip.unit().isEmpty() ? 0 : font.width(chip.unit()) + 3) + 8;
+        for (var chip : chips) total += font.width(MusicTypography.text(chip.widthTemplate()))
+                + (chip.unit().isEmpty() ? 0 : font.width(MusicTypography.text(chip.unit())) + 3) + 8;
         if (total - 8 > available) {
             // Compact/narrow hosts show one complete chip, rather than cropping the last reading.
             int index = ui.preferences().reducedMotion() ? 0 : (int) Math.floorMod(ui.nowMs() / 5000, chips.size());
             chips = java.util.List.of(chips.get(index));
             var only = chips.get(0);
-            total = font.width(only.widthTemplate()) + (only.unit().isEmpty() ? 0 : font.width(only.unit())+3)+8;
+            total = font.width(MusicTypography.text(only.widthTemplate())) + (only.unit().isEmpty() ? 0 : font.width(MusicTypography.text(only.unit()))+3)+8;
         }
         int x = bounds.x() + 8 + Math.max(0, (available - total + 8) / 2);
-        int y = bounds.y() + (bounds.height() - font.lineHeight) / 2;
+        int y = bounds.y() + (bounds.height() - MusicTypography.LINE_HEIGHT) / 2;
         ui.graphics().enableScissor(bounds.x()+8, bounds.y(), bounds.right()-8, bounds.bottom());
         try {
             for (var chip : chips) {
-                int width = font.width(chip.widthTemplate());
+                int width = font.width(MusicTypography.text(chip.widthTemplate()));
                 int color = ui.preferences().highContrast() ? 0xFFFFFFFF : switch (chip.health()) {
                     case GOOD -> 0xFF9DE3C1;
                     case WARN -> 0xFFFFDB91;
                     case BAD -> 0xFFFFB1B1;
                     case NEUTRAL -> 0xFFFFFFFF;
                 };
-                ui.graphics().drawString(font, chip.value(), x + Math.max(0,(width-font.width(chip.value()))/2), y, color, false);
+                ui.graphics().drawString(font, MusicTypography.text(chip.value()), x + Math.max(0,(width-font.width(MusicTypography.text(chip.value())))/2), y, color, false);
                 x += width;
                 if (!chip.unit().isEmpty()) {
-                    ui.graphics().drawString(font, chip.unit(), x+3, y, 0xFFFFFFFF, false);
-                    x += font.width(chip.unit())+3;
+                    ui.graphics().drawString(font, MusicTypography.text(chip.unit()), x+3, y, 0xFFFFFFFF, false);
+                    x += font.width(MusicTypography.text(chip.unit()))+3;
                 }
                 x += 8;
             }
@@ -360,13 +361,7 @@ public final class LocalMusicIsland {
     }
 
     private static void drawText(UiFrame ui, Font font, Component text, int x, int y, int right, int color) {
-        String value = text.getString();
-        int width = Math.max(0, right - x);
-        if (font.width(value) <= width) ui.graphics().drawString(font, text, x, y, color, false);
-        else if (width >= font.width("…")) {
-            ui.graphics().drawString(font, font.plainSubstrByWidth(value, width - font.width("…")) + "…",
-                    x, y, color, false);
-        }
+        ui.graphics().drawString(font, MusicTextLayout.ellipsize(font,text,Math.max(0,right-x),MusicTypography.font()), x,y,color,false);
     }
 
     private static String clock(long millis) {

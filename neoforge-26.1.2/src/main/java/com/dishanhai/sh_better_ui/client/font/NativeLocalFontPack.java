@@ -21,8 +21,8 @@ public final class NativeLocalFontPack {
                 String version="["+major+","+minor+"]";
                 put(zip,"pack.mcmeta",("{\"pack\":{\"min_format\":"+version+",\"max_format\":"+version+",\"description\":\"SHBUI local music font\"}}").getBytes(StandardCharsets.UTF_8));
                 check(cancelled); put(zip,"assets/sh_better_ui/font/user_ui.ttf",font);
-                String definition="{\"providers\":[{\"type\":\"ttf\",\"file\":\"sh_better_ui:user_ui.ttf\",\"size\":11,\"oversample\":3,\"shift\":[0,0]},{\"type\":\"reference\",\"id\":\"minecraft:default\"}]}";
-                for(String name:new String[]{"mp_ui","mp_ui_semibold"}) put(zip,"assets/sh_better_ui/font/"+name+".json",definition.getBytes(StandardCharsets.UTF_8));
+                for(String name:new String[]{"mp_ui","mp_ui_semibold","music_ui","music_ui_semibold"})
+                    put(zip,"assets/sh_better_ui/font/"+name+".json",LocalFontPack.fontDefinition(name));
                 put(zip,"LICENSE.txt","User-provided local font. SHBUI grants no redistribution permission.".getBytes(StandardCharsets.UTF_8));
             }
             check(cancelled); Files.move(temporary,target); return target;

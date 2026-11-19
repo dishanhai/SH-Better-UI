@@ -36,7 +36,7 @@ public final class MusicTextControl extends AbstractWidget {
     public void setVariant(Variant value){variant=Objects.requireNonNull(value);}
     public void setSelected(boolean value){selected=value;}
     public void setSecondary(Component value){secondary=Objects.requireNonNull(value);secondaryPresent=!value.equals(Component.empty());}
-    public void setPreview(Component value){setTooltip(Tooltip.create(Objects.requireNonNull(value)));}
+    public void setPreview(Component value){setTooltip(Tooltip.create(MusicTypography.text(Objects.requireNonNull(value))));}
     /** Compatibility mapping only: glyphs are rendered by UUK vectors, never the legacy bitmap texture. */
     public void setIcon(GraphicIcon icon){outline=outlineFor(icon);leading=map(icon);iconOnly=outline!=null||leading!=null;}
     public void setLeadingIcon(GraphicIcon icon){outline=outlineFor(icon);leading=map(icon);iconOnly=false;}
@@ -135,12 +135,12 @@ public final class MusicTextControl extends AbstractWidget {
         }else if(leading!=null&&right-left>=48){glyph(g,leading,left,ink);left+=26;}
         if(trailing!=null&&right-left>=48){glyph(g,trailing,right-22,ink);right-=26;}
         boolean twoLines=secondaryVisible();
-        int line=MpTypography.LINE_HEIGHT;
+        int line=MusicTypography.LINE_HEIGHT;
         int top=getY()+(height-(twoLines?line*2+2:line))/2;
-        var primary=MusicTextLayout.ellipsize(font,getMessage(),Math.max(0,right-left),MpTypography.FONT);
+        var primary=MusicTextLayout.ellipsize(font,getMessage(),Math.max(0,right-left),MusicTypography.font());
         int x=variant==Variant.ACTION?left+Math.max(0,(right-left-font.width(primary))/2):left;
         g.drawString(font,primary,x,top,ink,false);
-        if(twoLines)g.drawString(font,MusicTextLayout.ellipsize(font,secondary,Math.max(0,right-left),MpTypography.FONT),left,top+line+2,muted,false);
+        if(twoLines)g.drawString(font,MusicTextLayout.ellipsize(font,secondary,Math.max(0,right-left),MusicTypography.font()),left,top+line+2,muted,false);
     }
     public boolean secondaryVisible(){return variant==Variant.ROW&&height>=28&&secondaryPresent&&!iconOnly;}
     private void glyph(GuiGraphics g,MusicTransportControl.Glyph icon,int x,int ink){

@@ -3,7 +3,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
-import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -34,7 +34,7 @@ final class OnlineLyricButton extends Button {
     boolean keyboardFocused() { return isFocused() && !pointerFocus; }
     void setSelected(boolean value) { selected = value; }
     void setDistance(float value) { distance = Math.abs(value); }
-    void setPreview(Component text) { setTooltip(Tooltip.create(text)); }
+    void setPreview(Component text) { setTooltip(Tooltip.create(MusicTypography.text(text))); }
     public boolean mouseScrolled(double x, double y, double amount) {
         if (!visible || !isMouseOver(x, y) || amount == 0) return false;
         scroll.accept(amount > 0 ? -1 : 1); return true;
@@ -47,16 +47,16 @@ final class OnlineLyricButton extends Button {
         // MP-like focus hierarchy without per-glyph blur or duplicate glow draw calls.
         // Reserve scaled width before truncation so a focused line never bleeds into the scrollbar.
         float scale = lyricScale(selected, distance, preferences.highContrast()) * (stage ? stageScale : 1f);
-        int x = getX() + 12, y = getY() + Math.round((getHeight() - font.lineHeight * scale) / 2f);
+        int x = getX() + 12, y = getY() + Math.round((getHeight() - MusicTypography.LINE_HEIGHT * scale) / 2f);
         var paint = LyricTextPalette.sample(theme.text(), theme.accent(), theme.background() | 0xff000000, distance, preferences.highContrast());
         int color = selected ? paint.active() : paint.text();
         if (isHoveredOrFocused()) {
             graphics.fill(getX(), getY(), getX() + 2, getY() + getHeight(), theme.accent());
             if (isFocused()) graphics.outline(getX(), getY(), getWidth(), getHeight(), theme.accent());
         }
-        var text = font.substrByWidth(MpTypography.text(getMessage()), Math.max(1, (int) ((getWidth() - 24) / scale)));
+        var text = font.substrByWidth(MusicTypography.text(getMessage()), Math.max(1, (int) ((getWidth() - 24) / scale)));
         if (paint.protection() != 0) graphics.fill(x - 3, y - 2,
-                x + Math.min(getWidth() - 24, Math.round(font.width(text) * scale)) + 3, y + Math.round(font.lineHeight * scale) + 2, paint.protection());
+                x + Math.min(getWidth() - 24, Math.round(font.width(text) * scale)) + 3, y + Math.round(MusicTypography.LINE_HEIGHT * scale) + 2, paint.protection());
         graphics.pose().pushMatrix();
         try {
             graphics.pose().translate(x, y);

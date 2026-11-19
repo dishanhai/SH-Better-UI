@@ -268,6 +268,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/UiAttentionTest.java")
         include("${packagePath}/client/gui/scaled/HudTextPaletteTest.java")
         include("${packagePath}/client/gui/scaled/MusicHudLayoutTest.java")
+        include("${packagePath}/client/gui/scaled/MusicTypographyTest.java")
         include("${packagePath}/client/gui/scaled/MusicOverlayLayoutTest.java")
         include("${packagePath}/client/gui/scaled/UiBranchedMenuTest.java")
         include("${packagePath}/client/gui/scaled/TabScrollStateTest.java")
@@ -299,6 +300,7 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/NativeActivityMotionTest.java")
         include("${packagePath}/kernel/internal/NativeMusicArtworkTest.java")
         include("${packagePath}/kernel/internal/NativeMusicHudTest.java")
+        include("${packagePath}/kernel/internal/MusicTypographyScopeTest.java")
         include("${packagePath}/kernel/internal/NativeMusicActivityTest.java")
         include("${packagePath}/client/visual/NativeRichDocumentViewTest.java")
         include("${packagePath}/client/visual/NativeRichMedia*.java")
@@ -376,6 +378,8 @@ processResources {
                 'assets/sh_better_ui/font/hud_shortcut_keycaps.json', 'assets/sh_better_ui/textures/font/hud_shortcut_keycaps.png',
                 'assets/sh_better_ui/font/inline_items.json',
                 'assets/sh_better_ui/font/mp_ui.json', 'assets/sh_better_ui/font/mp_ui_semibold.json',
+                'assets/sh_better_ui/font/music_ui.json', 'assets/sh_better_ui/font/music_ui_semibold.json',
+                'assets/sh_better_ui/font/sh_music_sans_medium.ttf', 'assets/sh_better_ui/font/sh_music_sans_semibold.ttf',
                 'assets/sh_better_ui/font/sh_sans_ui.ttf', 'assets/sh_better_ui/font/sh_sans_ui_semibold.ttf',
                 'assets/sh_better_ui/textures/gui/rich/**',
                 'assets/sh_better_ui/music/apple-login/**',
@@ -440,6 +444,10 @@ tasks.register('verifyLibraryJar') {
                     'assets/sh_better_ui/music/apple-login/index.html',
                     'assets/sh_better_ui/music/apple-login/login.mjs',
                     'assets/sh_better_ui/music/apple-login/auth-flow.mjs',
+                    'assets/sh_better_ui/font/music_ui.json',
+                    'assets/sh_better_ui/font/music_ui_semibold.json',
+                    'assets/sh_better_ui/font/sh_music_sans_medium.ttf',
+                    'assets/sh_better_ui/font/sh_music_sans_semibold.ttf',
                     'assets/sh_better_ui/font/mp_ui.json',
                     'assets/sh_better_ui/font/mp_ui_semibold.json',
                     'assets/sh_better_ui/font/sh_sans_ui.ttf',

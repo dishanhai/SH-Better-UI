@@ -1,0 +1,22 @@
+SH Music Sans Medium and Semibold are renamed TrueType subsets of IBM Plex Sans SC.
+Upstream: https://github.com/IBM/plex
+Upstream package: @ibm/plex-sans-sc 1.1.0
+Publisher package: https://registry.npmjs.org/@ibm/plex-sans-sc/-/plex-sans-sc-1.1.0.tgz
+Upstream source revision: 222657a016f31e6d913ede88520de7dec84dc81b
+Package integrity (npm): sha512-IkhORwgw/CrsUss7uW9Rj6KKSsGQoIyIaNWjjju/7sV7SYS3yk0c/DgZN/leIG3Co5lN/X4Or/sQaL+SdvmSIg==
+Original copyright: Copyright © 2017 IBM Corp. with Reserved Font Name "Plex".
+License: SIL Open Font License 1.1, reproduced in OFL.txt from the publisher package.
+
+Inputs: fonts/complete/woff/hinted/IBMPlexSansSC-Medium.woff and
+fonts/complete/woff/hinted/IBMPlexSansSC-SemiBold.woff.
+Modification: subset 7,603 mapped characters in Medium and 7,604 in Semibold using FontTools; retain TrueType
+hinting, keep common simplified/traditional characters and shipped music UI strings,
+unwrap the original WOFF containers to TTF, and replace family/style/PostScript
+identity with SH Music Sans. Provenance, copyright and licensing metadata are retained.
+The existing UI font stack supplies fallback glyphs. Minecraft's default is unchanged.
+No Apple fonts, OS font copies or third-party music player assets are included.
+
+Input medium SHA-256: 9dd35d1a4126864277a332a652c8484330a69f0843ebcd4a8917be215bf24a5f
+Input semibold SHA-256: 99ebffc1a4d460ecc9f3e88c3538631420457ddca62550bbbfd8ece6bcef30df
+Output medium SHA-256: dc56701d7591ce66c8bee54547a9cc7a5ae5de9f72d74d133f3e6d974e68365f
+Output semibold SHA-256: ac7c05edc77d7341d28812df18cdd9c824d1e21560546466d3b0724b4f0230b6

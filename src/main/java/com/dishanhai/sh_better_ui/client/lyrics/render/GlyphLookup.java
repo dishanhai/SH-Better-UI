@@ -73,7 +73,10 @@ public final class GlyphLookup {
      * @return 字形，取不到时返回 null
      */
     public static BakedGlyph glyph(Font font, int cp) {
-        FontSet set = fontSet(font);
+        return glyph(font,cp,null);
+    }
+    public static BakedGlyph glyph(Font font, int cp, ResourceLocation fontId) {
+        FontSet set = fontSet(font,fontId);
         if (set == null) {
             return null;
         }
@@ -110,12 +113,13 @@ public final class GlyphLookup {
         }
     }
 
-    private static FontSet fontSet(Font font) {
+    private static FontSet fontSet(Font font) { return fontSet(font,null); }
+    private static FontSet fontSet(Font font, ResourceLocation fontId) {
         if (!available()) {
             return null;
         }
         try {
-            return (FontSet) getFontSet.invoke(font, DEFAULT_FONT);
+            return (FontSet) getFontSet.invoke(font, fontId==null?DEFAULT_FONT:fontId);
         } catch (Throwable t) {
             return null;
         }

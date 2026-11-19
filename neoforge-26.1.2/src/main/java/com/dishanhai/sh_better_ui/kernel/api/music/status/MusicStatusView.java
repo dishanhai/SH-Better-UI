@@ -46,8 +46,8 @@ public final class MusicStatusView {
         if(!dirty&&measuredFont==font&&measuredLanguage==language&&measuredWidth==width&&measuredRevision==metricsRevision)return;
         textInset=width>=240&&(busy||icon!=null)?32:0;
         int available=Math.max(1,width-16-textInset);
-        titleLines=title.equals(Component.empty())?List.of():font.split(MusicTextLayout.bound(MpTypography.bold(title)).text(),available);
-        detailLines=detail.equals(Component.empty())?List.of():font.split(MusicTextLayout.bound(MpTypography.text(detail)).text(),available);
+        titleLines=title.equals(Component.empty())?List.of():font.split(MusicTextLayout.bound(MusicTypography.bold(title)).text(),available);
+        detailLines=detail.equals(Component.empty())?List.of():font.split(MusicTextLayout.bound(MusicTypography.text(detail)).text(),available);
         contentHeight=16+titleLines.size()*14+detailLines.size()*14+(!titleLines.isEmpty()&&!detailLines.isEmpty()?6:0);
         if(textInset>0)contentHeight=Math.max(40,contentHeight);
         measuredFont=font;measuredLanguage=language;measuredWidth=width;measuredRevision=metricsRevision;dirty=false;
