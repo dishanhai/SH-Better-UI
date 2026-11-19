@@ -487,4 +487,144 @@ class OnlineMusicQueueViewTest {
         assertTrue(mode.keyPressed(32,0,0));f.view.suspend();assertFalse(mode.keyReleased(32,0,0));
         assertEquals(0,backend.changes);
     }
+
+    private static OnlineMusicPlayer session(java.util.concurrent.CountDownLatch release) throws Exception {
+        var providers=new ArrayList<OnlineMusicSource>();
+        for(String source:List.of("qq","netease")) providers.add((OnlineMusicSource)Proxy.newProxyInstance(OnlineMusicQueueViewTest.class.getClassLoader(),new Class[]{OnlineMusicSource.class},(proxy,method,args)->switch(method.getName()) {
+            case "id"->source;
+            case "requestSnapshot"->proxy;
+            case "search"->{release.await();yield List.of(A);}
+            case "playlist","liked"->List.of(A);
+            case "playlists"->List.of(new OnlinePlaylist("qq","new","New account list",1));
+            case "supportsLikes"->false;
+            case "credentials"->null;
+            default->null;
+        }));
+        var constructor=Class.forName("com.dishanhai.sh_better_ui.kernel.internal.music.OnlinePlayerSession").getDeclaredConstructor(List.class);
+        constructor.setAccessible(true);return (OnlineMusicPlayer)constructor.newInstance(providers);
+    }
+    @Test void detachedReadSurvivesViewSuspendAndCanBeRestoredFromHistory() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());
+            var source=view.getClass().getDeclaredField("source");source.setAccessible(true);source.set(view,"qq");
+            var query=view.getClass().getDeclaredField("query");query.setAccessible(true);query.set(view,"private query");
+            call(view,"search",new Class<?>[]{int.class,boolean.class},1,true);
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.latest(com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Kind.SEARCH,"qq").orElseThrow();
+            view.suspend();assertFalse(handle.observe().isCancelled());assertTrue(handle.snapshot().background());
+            release.countDown();handle.observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+            var reopened=new OnlineMusicViewImpl(player,false);reopened.layout(new Host());
+            call(reopened,"restoreOperation",new Class<?>[]{long.class},handle.id());
+            assertEquals("private query",field(reopened,"submittedQuery"));
+            assertEquals(List.of(A),((java.util.concurrent.CompletableFuture<?>)field(reopened,"pending")).join());
+            assertFalse(handle.snapshot().background());
+        } finally {release.countDown();}
+    }
+    @Test void explicitCancelAndCredentialInvalidationCannotRestoreOldReads() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());
+            var source=view.getClass().getDeclaredField("source");source.setAccessible(true);source.set(view,"qq");
+            var query=view.getClass().getDeclaredField("query");query.setAccessible(true);query.set(view,"private query");
+            call(view,"search",new Class<?>[]{int.class,boolean.class},1,true);
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.latest(com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Kind.SEARCH,"qq").orElseThrow();
+            call(view,"cancelSearch",new Class<?>[]{});
+            assertEquals(com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.State.CANCELLED,handle.snapshot().state());
+            player.credentials("qq","new-account");
+            call(view,"restoreOperation",new Class<?>[]{long.class},handle.id());
+            assertNull(field(view,"pending"));assertTrue(registry.snapshots().isEmpty());
+        } finally {release.countDown();}
+    }
+
+    private static void page(OnlineMusicViewImpl view,String name) throws Exception {
+        var f=view.getClass().getDeclaredField("page");f.setAccessible(true);
+        var target=Arrays.stream(f.getType().getEnumConstants()).filter(v->v.toString().equals(name)).findFirst().orElseThrow();
+        call(view,"show",new Class<?>[]{f.getType()},target);
+    }
+    @Test void navigationAwayAndBackDoesNotLeavePermanentSearchingStatus() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());
+            var query=view.getClass().getDeclaredField("query");query.setAccessible(true);query.set(view,"private query");
+            call(view,"search",new Class<?>[]{int.class,boolean.class},1,true);
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.latest(com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Kind.SEARCH,"netease").orElseThrow();
+            page(view,"ACCOUNTS");release.countDown();handle.observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+            page(view,"SEARCH");
+            assertNull(field(view,"pending"));assertEquals("operations.background",field(view,"searchState"));
+            assertTrue(((List<?>)field(view,"results")).isEmpty());
+        } finally {release.countDown();}
+    }
+    @Test void historyRebindingAndSuspendDisarmHeldRows() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var first=registry.startSearch("qq","private first",1);
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());page(view,"HISTORY");
+            var row=(MusicTextControl)((List<?>)field(view,"historyRows")).get(0);
+            var held=MusicTextControl.class.getDeclaredField("pressedKey");held.setAccessible(true);held.setInt(row,32);assertTrue(row.isArmed());
+            var second=registry.startSearch("qq","private second",1);call(view,"updateHistory",new Class<?>[]{});
+            assertFalse(row.isArmed());assertEquals(second.id(),((Map<?,?>)field(view,"historyBindings")).get(row));
+            held.setInt(row,32);page(view,"ACCOUNTS");assertFalse(row.isArmed());
+            page(view,"HISTORY");held.setInt(row,32);view.suspend();assertFalse(row.isArmed());
+            assertFalse(row.getMessage().getString().contains("private"));
+        } finally {release.countDown();}
+    }
+
+    @Test void historyEntryLivesBesideSearchAndFitsSmallestLayout() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(0);
+        try(var player=session(release)) {
+            var view=new OnlineMusicViewImpl(player,false);var host=new Host();host.width=208;host.height=240;view.layout(host);
+            var entry=(MusicTextControl)field(view,"searchHistory");
+            var query=(net.minecraft.client.gui.components.AbstractWidget)field(view,"queryField");
+            var search=(MusicTextControl)field(view,"searchButton");
+            assertTrue(entry.visible);assertTrue(entry.active);
+            assertTrue(query.getX()+query.getWidth()<=search.getX());
+            assertTrue(search.getX()+search.getWidth()<=entry.getX());
+            assertTrue(entry.getX()+entry.getWidth()<=host.width);
+            assertFalse(((List<?>)field(view,"accountControls")).contains(entry));
+            entry.onPress();assertEquals("HISTORY",field(view,"page").toString());
+            assertFalse(view.permitsScreenClose());assertEquals("SEARCH",field(view,"page").toString());
+            page(view,"ACCOUNTS");assertFalse(entry.visible);
+        }
+    }
+
+    @Test void displayedResultsOutliveHistoryRetentionButNotCredentialChange() throws Exception {
+        for(boolean expire:List.of(false,true))try(var player=session(new java.util.concurrent.CountDownLatch(0))) {
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.startSearch("qq","private query",1);handle.observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());call(view,"restoreOperation",new Class<?>[]{long.class},handle.id());
+            var results=view.getClass().getDeclaredField("results");results.setAccessible(true);results.set(view,List.of(A));
+            var pending=view.getClass().getDeclaredField("pending");pending.setAccessible(true);pending.set(view,null);
+            if(expire) {
+                var completed=handle.getClass().getDeclaredField("completed");completed.setAccessible(true);completed.setLong(handle,System.nanoTime()-601_000_000_000L);
+                registry.snapshots();
+            } else for(int i=0;i<33;i++)registry.startSearch("qq","query "+i,1).observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+            assertFalse(handle.valid());call(view,"pollOperations",new Class<?>[]{});
+            assertEquals(List.of(A),field(view,"results"));
+            player.credentials("qq","new-account");call(view,"pollOperations",new Class<?>[]{});
+            assertTrue(((List<?>)field(view,"results")).isEmpty());
+        }
+    }
+    @Test void credentialRolloverClearsPlaylistIdentityAndLikeCacheAndRetryOpensNewLibrary() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(0);
+        try(var player=session(release)) {
+            player.credentials("qq","first-account");
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());
+            var playlist=new OnlinePlaylist("qq","old","Old list",1);
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.startPlaylist(playlist,1);handle.observe().get(3,java.util.concurrent.TimeUnit.SECONDS);
+            call(view,"restoreOperation",new Class<?>[]{long.class},handle.id());call(view,"pollOperations",new Class<?>[]{});
+            ((Map<String,Boolean>)field(view,"confirmedLikes")).put("qq:old",true);
+            player.credentials("qq","second-account");call(view,"pollOperations",new Class<?>[]{});
+            assertNull(field(view,"selectedPlaylist"));assertEquals("NONE",field(view,"library").toString());
+            assertTrue(((Map<?,?>)field(view,"confirmedLikes")).isEmpty());
+            call(view,"loadLibraryPage",new Class<?>[]{int.class},1);
+            assertEquals("PLAYLISTS",field(view,"library").toString());
+            assertNotNull(field(view,"pendingPlaylists"));
+        }
+    }
+
 }

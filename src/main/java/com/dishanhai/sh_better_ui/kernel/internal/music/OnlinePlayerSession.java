@@ -20,6 +20,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private final Download download;
     private final LocalLyricFeed feed = new LocalLyricFeed("sh_better_ui:online_music");
     private final Map<CompletableFuture<?>, String> searches = new HashMap<>();
+    private final SessionMusicOperations operations = new SessionMusicOperations(this);
+    SessionMusicOperations operations() { return operations; }
     private final Set<String> authenticated = new HashSet<>();
     private final Map<String, String> credentials = new HashMap<>();
     private final Set<String> remembered = new HashSet<>();
@@ -81,6 +83,9 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         cancelRequests(obsolete);
     }
     private List<CompletableFuture<?>> replaceCredentials(String sourceId, String cookie, boolean cancelLogin) {
+        return replaceCredentials(sourceId,cookie,cancelLogin,null);
+    }
+    private List<CompletableFuture<?>> replaceCredentials(String sourceId, String cookie, boolean cancelLogin, CompletableFuture<?> failedRead) {
         requireOpen();
         var provider = source(sourceId);
         String valid = MusicHttp.cookie(cookie);
@@ -101,7 +106,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             throw (RuntimeException) error;
         }
         if (cancelLogin && login != null && sourceId.equals(loginSource)) login.close();
-        var obsolete = applyCredentials(sourceId, valid);
+        var obsolete = applyCredentials(sourceId, valid, failedRead);
         stop();
         return obsolete;
     }
@@ -111,8 +116,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             remembered.remove(sourceId); persistenceVersions.remove(sourceId);
         } else persistenceVersions.put(sourceId, next);
     }
-    private List<CompletableFuture<?>> applyCredentials(String sourceId, String cookie) {
+    private List<CompletableFuture<?>> applyCredentials(String sourceId, String cookie) { return applyCredentials(sourceId,cookie,null); }
+    private List<CompletableFuture<?>> applyCredentials(String sourceId, String cookie, CompletableFuture<?> failedRead) {
         accountGenerations.merge(sourceId, 1L, Long::sum);
+        operations.invalidate(sourceId,failedRead);
         var obsolete = new ArrayList<CompletableFuture<?>>();
         for (var entry : List.copyOf(searches.entrySet())) if (entry.getValue().equals(sourceId)) {
             obsolete.add(entry.getKey()); searches.remove(entry.getKey());
@@ -276,8 +283,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                     if (result.isDone() || state == State.CLOSED || accountGenerations.getOrDefault(sourceId, 0L) != epoch) return;
                     if (error instanceof OnlineMusicSource.LoginRequired) {
                         searches.remove(result);
-                        try { obsolete = replaceCredentials(sourceId, "", false); } catch (java.io.UncheckedIOException ignored) {
-                            source(sourceId).credentials(""); obsolete = applyCredentials(sourceId, ""); stop();
+                        try { obsolete = replaceCredentials(sourceId, "", false, result); } catch (java.io.UncheckedIOException ignored) {
+                            source(sourceId).credentials(""); obsolete = applyCredentials(sourceId, "", result); stop();
                         }
                     }
                 }
@@ -615,6 +622,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         synchronized (this) {
             if (state == State.CLOSED) return;
             reset(); audioCache.clear(); track = null; state = State.CLOSED;
+            operations.close();
             if (login != null) { login.close(); login = null; }
             authenticated.clear(); credentials.clear(); remembered.clear(); persistenceVersions.clear(); searchIndex.clear();
             obsolete = List.copyOf(searches.keySet()); searches.clear();

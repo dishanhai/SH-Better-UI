@@ -8,7 +8,7 @@ import java.util.function.Supplier;
 import com.dishanhai.sh_better_ui.client.music.*;
 
 /** Independent sessions plus a kernel-owned player for the ordinary background music route. */
-public final class ClientOnlineMusic implements OnlineMusicService, AutoCloseable {
+public final class ClientOnlineMusic implements OnlineMusicService, MusicOperationSource, AutoCloseable {
     private OnlineMusicPlayer background;
     private OnlineMusicFrameBridge bridge;
     private boolean closed;
@@ -74,6 +74,10 @@ public final class ClientOnlineMusic implements OnlineMusicService, AutoCloseabl
             bridge = new OnlineMusicFrameBridge(background, lease.get());
         }
         return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(background, false);
+    }
+
+    @Override public synchronized List<SessionMusicOperations.Snapshot> operationsSnapshot() {
+        return !closed && background instanceof OnlinePlayerSession session ? session.operations().snapshots() : List.of();
     }
 
     @Override public synchronized void close() {

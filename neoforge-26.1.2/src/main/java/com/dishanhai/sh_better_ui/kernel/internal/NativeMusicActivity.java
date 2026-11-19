@@ -11,6 +11,8 @@ import com.dishanhai.sh_better_ui.kernel.api.live.*;
 import com.google.gson.Gson;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
 import java.time.Duration;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationSource;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
 import java.util.*;
 import java.util.function.*;
 
@@ -28,6 +30,9 @@ public final class NativeMusicActivity implements UIModule {
     private final MusicIslandCapsuleState visibility = new MusicIslandCapsuleState();
     private final MusicIslandTaskAdapter tasks = new MusicIslandTaskAdapter();
     private final Map<String, NotificationService.Handle> notices = new HashMap<>();
+    private final MusicOperationNotices operationTasks = new MusicOperationNotices();
+    private final Map<String, MusicOperationNotices.Update> pendingOperations = new LinkedHashMap<>();
+    private final Map<String, NotificationService.Handle> operationNotices = new HashMap<>();
     private ModuleContext context;
     private ActivityService activities;
     private NotificationService notifications;
@@ -109,12 +114,13 @@ public final class NativeMusicActivity implements UIModule {
         } else hudReservation.update(rect);
         return true;
     }
-    @Override public void stop(ModuleContext ignored) { hudBounds(null); clear(); context = null; }
+    @Override public void stop(ModuleContext ignored) { hudBounds(null); clear(); clearOperationNotices(); operationTasks.reset(); context = null; }
 
     /** UI-thread MEASURE, before LiveSurfaceRuntime.advance. No network or playback commands. */
     public void advance() {
         if (context == null || !context.scope().isOpen()) return;
         var settings = context.engine().configs().get(MusicOverlaySettings.KEY);
+        publishOperationNotices(settings);
         if (!settings.islandEnabled()) { clear(); return; }
         var frame = frames.get();
         long now = clock.getAsLong();
@@ -147,6 +153,33 @@ public final class NativeMusicActivity implements UIModule {
                 expanded = settings.expanded();
                 handle.requestPresentation(expanded ? SurfacePresentation.EXPANDED : SurfacePresentation.COMPACT);
             }
+        }
+    }
+    private void clearOperationNotices() {
+        for(var notice:operationNotices.values())if(!notice.snapshot().lifecycle().terminal())notice.dismiss();
+        operationNotices.clear(); pendingOperations.clear();
+    }
+    private void publishOperationNotices(MusicOverlaySettings settings) {
+        boolean enabled=settings.islandEnabled() && settings.taskNotices() && notificationsEnabled.getAsBoolean();
+        var snapshots=online instanceof MusicOperationSource source ? source.operationsSnapshot() : java.util.List.<com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Snapshot>of();
+        var updates=operationTasks.observe(snapshots,enabled);
+        if(!enabled){clearOperationNotices();return;}
+        operationNotices.values().removeIf(handle->handle.snapshot().lifecycle().terminal());
+        for(var update:updates) {
+            var previous=operationNotices.remove(update.id());
+            if(previous!=null&&!previous.snapshot().lifecycle().terminal())previous.dismiss();
+            pendingOperations.remove(update.id());
+            if(!update.cancel())pendingOperations.put(update.id(),update);
+        }
+        for(var update:List.copyOf(pendingOperations.values())) {
+            if(!notificationAdmission.getAsBoolean())break;
+            pendingOperations.remove(update.id());
+            var id=UiId.parse("sh_better_ui:music/notice/"+update.id().substring("music:".length()));
+            var content=new ActivityService.Content(ActivityService.Text.key("sh_better_ui.music_overlay.task."+update.key()),
+                    ActivityService.Text.literal(""),null,-1,false,List.of(),List.of());
+            operationNotices.put(update.id(),notifications.publish(context,context.scope(),new NotificationService.Request(id,
+                    content,update.error()?ActivityService.Priority.NORMAL:ActivityService.Priority.LOW,
+                    Duration.ofMillis(update.ttlMs()),id,NotificationService.Merge.REPLACE,null)));
         }
     }
     private void publishNotices(MusicService.Frame frame, MusicOverlaySettings settings, long now) {

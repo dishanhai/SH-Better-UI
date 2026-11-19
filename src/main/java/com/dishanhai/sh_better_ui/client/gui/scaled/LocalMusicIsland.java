@@ -74,6 +74,7 @@ public final class LocalMusicIsland {
     }
 
     public void notify(IslandNoticeQueue.Notice notice) { notices.offer(notice); }
+    public boolean tryNotify(IslandNoticeQueue.Notice notice) { return notices.tryOffer(notice); }
 
     /** Cancel only the completed/withdrawn operation, never unrelated queued notices. */
     public void cancelNotice(String id) {
