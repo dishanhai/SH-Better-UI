@@ -91,6 +91,13 @@ public final class OnlineMusicScreen {
         ServiceUnavailable(RuntimeException cause) { super(cause); }
     }
 
+    static GuiEventListener restoreExternalSearch(PreviewContext context, OnlineMusicViewImpl origin,
+                                                   OnlineMusicViewImpl.ExternalSearchBookmark bookmark) {
+        if (context instanceof Context nativeContext && nativeContext.owner.view instanceof OnlineMusicViewImpl next
+                && next != origin) return next.restoreExternalSearch(bookmark);
+        return origin.spotifySearchControl();
+    }
+
     /** The dedicated player owns its chrome; there is no native header over the artwork stage. */
     static GuiEventListener shellBack(PreviewContext context) {
         return null;
