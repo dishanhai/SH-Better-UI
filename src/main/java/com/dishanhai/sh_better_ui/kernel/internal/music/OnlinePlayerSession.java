@@ -595,7 +595,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private void beforeQueueEdit() {
         if (crossfade != null && crossfade.output().crossfadeStatus(crossfade.token()) == PlaybackOutput.CrossfadeStatus.COMPLETE)
             promoteCrossfade();
-        if (!tryCancelCrossfade()) throw new IllegalStateException("Wait for the active track transition");
+        if (!tryCancelCrossfade()) throw new OnlineMusicQueue.TransitionInProgress();
         crossfadeAttempted = false;
     }
 

@@ -931,7 +931,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void perform(Component actionName, Runnable action) {
         feedback(label("feedback.requested", actionName));
         try { action.run(); }
-        catch (RuntimeException failure) { interactionFeedback.show(label("feedback.failed"),System.nanoTime()/1_000_000L,true); visualMotion.pulse(System.nanoTime()/1_000_000L); }
+        catch (RuntimeException failure) {
+            long now=System.nanoTime()/1_000_000L;
+            interactionFeedback.show(label(failure instanceof OnlineMusicQueue.TransitionInProgress
+                    ?"crossfade.busy":"feedback.failed"),now,true);
+            visualMotion.pulse(now);
+        }
     }
     private Component feedbackMessage() { return interactionFeedback.current(System.nanoTime() / 1_000_000L); }
     private net.minecraft.client.gui.components.events.GuiEventListener stageReturnControl() {
@@ -1015,8 +1020,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 host.preferences(),stageLyrics::follow),()->stage.lyrics());
         stageCoverEntry=host.add(new MusicStageButton(stage.cover(),label("stage.toggle_lyrics"),null,
                 ()->setStagePage(stagePage==StagePage.LYRICS?StagePage.ARTWORK:StagePage.LYRICS),host.preferences(),false,true));
-        stagePlaybackMode=host.add(new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y(),
-                Math.max(12,stage.lyrics().width()),20),Component.empty(),host.preferences(),this::cyclePlaybackMode));
+        stagePlaybackMode=button(new Bounds(stage.lyrics().x(),stage.lyrics().y(),
+                Math.max(12,stage.lyrics().width()),20),Component.empty(),this::cyclePlaybackMode,null);
         stageControls.add(stagePlaybackMode);
         stageQueueScroll=host.add(new OnlineMusicScrollRegion(stage.lyrics().x(),stage.lyrics().y()+Math.min(24,stage.lyrics().height()),stage.lyrics().width(),Math.max(1,stage.lyrics().height()-24),
                 label("queue.scroll"),offset->{stageQueueFirst=offset;updateStageQueueRows();}));

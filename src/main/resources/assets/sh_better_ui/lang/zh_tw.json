@@ -1809,6 +1809,7 @@
   "sh_better_ui.online_music.crossfade.caption": "交叉淡化 · %s",
   "sh_better_ui.online_music.crossfade.off": "關閉",
   "sh_better_ui.online_music.crossfade.seconds": "%s 秒",
+  "sh_better_ui.online_music.crossfade.busy": "請等歌曲過渡完成後再試。如已暫停，請先繼續播放。",
   "sh_better_ui.online_music.crossfade.hint": "僅適用於遊戲內原生播放。",
   "sh_better_ui.online_music.queue.mode.sequential": "順序播放",
   "sh_better_ui.online_music.queue.mode.repeat_all": "清單循環",

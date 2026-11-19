@@ -483,7 +483,7 @@ class OnlineMusicQueueViewTest {
         var queue=(PlayerQueue)field(f.view,"queue");assertEquals(1,queue.index());assertEquals(2,queue.tracks().size());assertEquals(B,f.playing);
         assertTrue(((MusicTextControl)field(f.view,"queueEdit")).visible);
     }
-    private static final class ModeQueue implements OnlineMusicQueue {
+    private static class ModeQueue implements OnlineMusicQueue {
         Mode mode=Mode.SEQUENTIAL;int changes;
         public boolean supportsModes(){return true;}
         public Mode mode(){return mode;}
@@ -522,6 +522,28 @@ class OnlineMusicQueueViewTest {
         var lyrics=Arrays.stream(pageField.getType().getEnumConstants()).filter(v->v.toString().equals("LYRICS")).findFirst().orElseThrow();
         call(f.view,"setStagePage",new Class<?>[]{pageField.getType()},lyrics);
         assertFalse(control.visible);control.onPress();assertEquals(1,backend.changes);
+    }
+    @Test void immersiveQueueHandlesAnInProgressCrossfadeWithoutChangingMode() throws Exception {
+        class BusyQueue extends ModeQueue {
+            boolean busy=true;
+            @Override public void mode(Mode value) {
+                if(busy) throw new TransitionInProgress();
+                super.mode(value);
+            }
+        }
+        var backend=new BusyQueue();var f=new Fixture(backend);f.view.layout(new Host());
+        call(f.view,"enterImmersive",new Class<?>[]{});
+        var page=field(f.view,"stagePage").getClass();
+        var stage=Arrays.stream(page.getEnumConstants()).filter(v->v.toString().equals("QUEUE")).findFirst().orElseThrow();
+        call(f.view,"setStagePage",new Class<?>[]{page},stage);
+        var control=(MusicTextControl)field(f.view,"stagePlaybackMode");
+        assertTrue(control.visible&&control.active);
+        assertDoesNotThrow(control::onPress);
+        assertEquals(0,backend.changes);
+        var message=f.view.getClass().getDeclaredMethod("feedbackMessage");message.setAccessible(true);
+        assertTrue(((net.minecraft.network.chat.Component)message.invoke(f.view)).getString().contains("crossfade.busy"));
+        backend.busy=false;
+        control.onPress();assertEquals(1,backend.changes);assertEquals(OnlineMusicQueue.Mode.REPEAT_ALL,backend.mode);
     }
     @Test void modeHeaderFitsCompactQueueWithoutOverlappingLocate() throws Exception {
         for(int[] size:new int[][]{{208,240},{393,270},{590,406},{960,540}}){

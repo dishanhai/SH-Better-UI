@@ -6,6 +6,8 @@ import java.util.List;
 /** Session-owned queue. Selection starts playback atomically; edits do not stop the audible track.
  * Only explicitly supplied tracks are queued: no implicit remote pagination or failure skipping. Playback modes are session-local unless explicitly checkpointed. */
 public interface OnlineMusicQueue {
+    /** An audible crossfade has committed; retry edits after the handoff. */
+    final class TransitionInProgress extends IllegalStateException {}
     enum Mode { SEQUENTIAL, REPEAT_ONE, REPEAT_ALL, SHUFFLE }
     record Snapshot(List<OnlineTrack> tracks, int index, boolean canUndo, Mode mode,
                     boolean canPrevious, boolean canNext) {

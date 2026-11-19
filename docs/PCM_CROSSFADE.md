@@ -42,3 +42,7 @@ The independent implementation combines the scheduling idea in
 with the single-buffer PCM mixing idea in
 [Rockbox's PCM output](https://github.com/Rockbox/rockbox/blob/master/apps/pcmbuf.c).
 It does not import code from either project.
+
+Before release, listen to a long same-provider pair starting with an empty
+audio cache. A slow download or a long outgoing-tail decode may miss the
+preparation window and trigger normal playback instead of crossfade.
