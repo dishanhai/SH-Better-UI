@@ -235,6 +235,7 @@ kotlin.sourceSets.main.kotlin {
     include("${packagePath}/kernel/api/page/PageDsl.kt", "${packagePath}/client/glass/GlassGeometry.kt")
 }
 sourceSets.test {
+    resources.srcDir('../src/test/resources')
     java {
         srcDir('../src/test/java')
         include("${packagePath}/client/font/Native*.java")

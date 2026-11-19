@@ -9,7 +9,7 @@ import java.util.*;
 import java.util.concurrent.*;
 import java.util.function.Supplier;
 
-/** One owner, one audible track. Generations reject stale network and lyric completions. */
+/** One playback owner. Generations reject stale network, overlap and lyric completions. */
 final class OnlinePlayerSession implements OnlineMusicPlayer {
     @FunctionalInterface interface Download { byte[] read(java.net.URI uri) throws Exception; }
     private final Map<String, OnlineMusicSource> sources = new LinkedHashMap<>();
@@ -48,13 +48,23 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     });
     private final PlayerQueue queue = new PlayerQueue();
     private ScheduledFuture<?> queueTask;
-    private long queueWatch;
+    private long queueWatch, crossfadeToken;
+    private int crossfadeSeconds;
+    private boolean crossfadeAttempted;
+    private PendingCrossfade crossfade;
+
+    private record PendingCrossfade(long token, long generation, PlaybackOutput output,
+                                    OnlineTrack song, OnlineMusicSource provider,
+                                    long cacheRevision, int seconds, long outgoingDuration) {}
+    private record PreparedCrossfade(byte[] bytes, SessionAudioCache.Key key, OnlineMusicSource.Stream stream) {}
+    private Future<?> crossfadeTask;
+    private PreparedCrossfade crossfadeAudio;
     private QrLoginSession login;
     private String loginSource;
     private PlaybackOutput output;
     private float volume = 1f;
-    private OnlineMusicEqualizerPreset equalizerPreset = OnlineMusicEqualizerPreset.FLAT;
     private OnlineMusicSoundEffect soundEffect = OnlineMusicSoundEffect.OFF;
+    private OnlineMusicEqualizerPreset equalizerPreset = OnlineMusicEqualizerPreset.FLAT;
     private Future<?> audioTask, lyricTask;
     private OnlineTrack track;
     private byte[] audio;
@@ -353,6 +363,9 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         long request = generation;
         long cacheRevision = audioCache.revision();
         audioTask = workers.submit(() -> loadAudio(provider, next, request, cacheRevision));
+        startLyrics(provider, next, request);
+    }
+    private void startLyrics(OnlineMusicSource provider, OnlineTrack next, long request) {
         lyricTask = workers.submit(() -> {
             LyricTimeline timeline;
             try { timeline = provider.lyrics(next); } catch (Exception ignored) { timeline = LyricTimeline.empty(); }
@@ -430,6 +443,16 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         output.soundEffect(effect);
         soundEffect = effect;
     }
+    @Override public synchronized boolean supportsCrossfade() { return state != State.CLOSED; }
+    @Override public synchronized int crossfadeSeconds() { return crossfadeSeconds; }
+    @Override public synchronized void crossfadeSeconds(int seconds) {
+        requireOpen();
+        if (seconds < 0 || seconds > 12) throw new IllegalArgumentException("Crossfade must be off or 1–12 seconds");
+        if (crossfadeSeconds == seconds) return;
+        if (tryCancelCrossfade()) crossfadeAttempted = false;
+        // Once mixed frames are queued, finish that handoff. This setting applies to future overlaps.
+        crossfadeSeconds = seconds;
+    }
     @Override public synchronized void pause() { playRequested = false; if (output != null) output.pause(); }
     @Override public synchronized void resume() {
         playRequested = true;
@@ -440,6 +463,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         requireOpen();
         if (audio == null || output == null) return;
         boolean playing = output.state() != State.PAUSED;
+        discardCrossfade();
+        crossfadeAttempted = false;
         long target = Math.max(0, duration > 0 ? Math.min(duration, positionMs) : positionMs);
         var previous = output;
         output = null;
@@ -528,6 +553,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         failure = Failure.NONE; lyricsState = LyricsState.EMPTY; lyrics = LyricTimeline.empty(); feed.clear();
     }
     private void cancelQueueProgress() {
+        discardCrossfade();
+        crossfadeAttempted = false;
         queueWatch++;
         if (queueTask != null) queueTask.cancel(false);
         queueTask = null;
@@ -536,13 +563,120 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private synchronized void advanceQueue(long request, long watch) {
         if (queueWatch != watch || generation != request || state == State.CLOSED) return;
         if (state == State.FAILED) { cancelQueueProgress(); return; }
-        if (!playRequested || output == null) return;
+        if (output == null) return;
         State current = output.state();
         if (current == State.FAILED) { cancelQueueProgress(); return; }
-        if (current != State.ENDED) return;
+        if (advanceCrossfade(current) || !playRequested || current != State.ENDED) return;
         cancelQueueProgress();
         int next = queue.order.next(true);
         if (next >= 0) queue.playIndex(next);
+    }
+
+    private boolean tryCancelCrossfade() {
+        if (crossfade == null) return true;
+        if (!crossfade.output().cancelCrossfade(crossfade.token())) return false;
+        clearCrossfade();
+        return true;
+    }
+
+    /** Transport commands close this output even if the PCM overlap was already submitted. */
+    private void discardCrossfade() {
+        if (crossfade != null) crossfade.output().cancelCrossfade(crossfade.token());
+        clearCrossfade();
+    }
+
+    private void clearCrossfade() {
+        crossfade = null;
+        crossfadeAudio = null;
+        if (crossfadeTask != null) crossfadeTask.cancel(true);
+        crossfadeTask = null;
+    }
+
+    private void beforeQueueEdit() {
+        if (crossfade != null && crossfade.output().crossfadeStatus(crossfade.token()) == PlaybackOutput.CrossfadeStatus.COMPLETE)
+            promoteCrossfade();
+        if (!tryCancelCrossfade()) throw new IllegalStateException("Wait for the active track transition");
+        crossfadeAttempted = false;
+    }
+
+    /** Called only under the session lock. Queue advancement waits for the sink's consumed frame boundary. */
+    private boolean advanceCrossfade(State playback) {
+        if (crossfade != null) {
+            switch (output.crossfadeStatus(crossfade.token())) {
+                case COMPLETE -> { promoteCrossfade(); return true; }
+                case MIXING -> { return true; }
+                case REJECTED -> discardCrossfade();
+                default -> { }
+            }
+        }
+        long requested = crossfadeSeconds * 1000L;
+        long left = duration - output.positionMs();
+        if (requested == 0 || crossfadeAttempted || playback != State.PLAYING || !playRequested
+                || !output.supportsCrossfade() || preview || offset != 0 || duration < requested * 2
+                || left > requested + 8000 || left < requested) return false;
+        int next = queue.peekCrossfadeSuccessor();
+        if (next < 0) return false;
+        var song = queue.tracks.get(next);
+        if (!song.source().equals(track.source()) || song.id().equals(track.id())) return false;
+        crossfadeAttempted = true;
+        OnlineMusicSource provider;
+        try { provider=source(song.source()).requestSnapshot(); }
+        catch (RuntimeException unavailable) { return false; }
+        var pending = new PendingCrossfade(++crossfadeToken,generation,output,song,provider,
+                audioCache.revision(),crossfadeSeconds,duration);
+        crossfade = pending;
+        crossfadeTask = workers.submit(() -> prepareCrossfade(pending));
+        return false;
+    }
+
+    private void prepareCrossfade(PendingCrossfade pending) {
+        boolean queued = false;
+        try {
+            var song = pending.song();
+            var stream = pending.provider().resolve(song);
+            if (stream == null || stream.preview() || stream.offsetMs() != 0
+                    || stream.durationMs() < 2000L * pending.seconds()) return;
+            var key = new SessionAudioCache.Key(song.source(), song.id(), song.mediaId(), stream);
+            byte[] bytes;
+            synchronized (this) {
+                if (crossfade != pending) return;
+                bytes = audioCache.get(key);
+            }
+            if (bytes == null) bytes = download.read(stream.uri());
+            if (bytes.length == 0 || bytes.length > MusicHttp.AUDIO_LIMIT) return;
+            synchronized (this) {
+                if (crossfade != pending || generation != pending.generation()) return;
+                // Metadata must exist before the audio worker can claim the registered successor.
+                crossfadeAudio = new PreparedCrossfade(bytes, key, stream);
+            }
+            queued = pending.output().queueCrossfade(pending.token(), bytes, pending.seconds(), pending.outgoingDuration());
+        } catch (Exception ignored) {
+            // Optional prefetch has no authority to replace the current track on failure.
+        } finally {
+            synchronized (this) {
+                if (crossfade != pending) pending.output().cancelCrossfade(pending.token());
+                else if (!queued) discardCrossfade();
+            }
+        }
+    }
+
+    private void promoteCrossfade() {
+        var pending = crossfade;
+        var prepared = Objects.requireNonNull(crossfadeAudio);
+        output.acceptCrossfade(pending.token());
+        cancelQueueProgress();
+        // Keep the existing line and already-playing decoder, but rotate session jobs and metadata.
+        generation++;
+        if (lyricTask != null) lyricTask.cancel(true);
+        track = pending.song(); audio = prepared.bytes(); audioKey = prepared.key();
+        audioCache.put(audioKey, audio, pending.cacheRevision());
+        duration = prepared.stream().durationMs(); offset = 0; preview = false;
+        failure = Failure.NONE; state = State.PLAYING;
+        lyrics = LyricTimeline.empty(); lyricsState = LyricsState.LOADING; feed.clear();
+        queue.index = queue.order.next(true);
+        queue.attachedGeneration = generation;
+        startLyrics(pending.provider(),track,generation);
+        queue.watch();
     }
 
     private final class PlayerQueue implements OnlineMusicQueue {
@@ -575,6 +709,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 if (tracks != previous || order.mode() != previousMode || index != previousIndex || generation != request)
                     throw new java.io.IOException("Queue changed while loading the checkpoint; retry explicitly");
                 for (var song : saved.get().tracks()) validateTrack(song);
+                beforeQueueEdit();
                 cancelQueueProgress();
                 tracks = saved.get().tracks(); index = -1; undoTracks = null; undoOrder = null; undoPositions = null; attachedGeneration = -1;
                 order.mode(saved.get().mode()); order.reset(tracks.size(), -1);
@@ -614,7 +749,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         @Override public Mode mode() { synchronized (OnlinePlayerSession.this) { return order.mode(); } }
         @Override public void mode(Mode mode) {
             synchronized (OnlinePlayerSession.this) {
-                requireOpen(); order.mode(Objects.requireNonNull(mode));
+                requireOpen(); Objects.requireNonNull(mode);
+                if (mode == order.mode()) return;
+                beforeQueueEdit();
+                order.mode(mode);
                 cancelQueueProgress();
                 if (attachedGeneration == generation && index >= 0
                         && OnlinePlayerSession.this.snapshot().state() != State.ENDED) watch();
@@ -622,6 +760,14 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         }
         private void playIndex(int selected) {
             play(tracks.get(selected)); index = selected; attachedGeneration = generation; watch();
+        }
+        private int peekCrossfadeSuccessor() {
+            if (attachedGeneration != generation || index < 0 || index >= tracks.size()) return -1;
+            return switch (order.mode()) {
+                case SEQUENTIAL -> index + 1 < tracks.size() ? index + 1 : -1;
+                case REPEAT_ALL -> tracks.size() > 1 ? (index + 1) % tracks.size() : -1;
+                default -> -1;
+            };
         }
         private void watch() {
             if (attachedGeneration == generation && index >= 0) {
@@ -647,6 +793,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 var added = List.copyOf(additions);
                 if (added.isEmpty()) return;
                 for (var song : added) validateTrack(song);
+                beforeQueueEdit();
                 remember();
                 var copy = new ArrayList<>(tracks); copy.addAll(added);
                 for (int i = 0; i < added.size(); i++) undoPositions.add(-1);
@@ -657,6 +804,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (from < 0 || to < 0 || from >= tracks.size() || to >= tracks.size() || from == to) return;
+                beforeQueueEdit();
                 remember();
                 var copy = new ArrayList<>(tracks); copy.add(to, copy.remove(from));
                 undoPositions.add(to, undoPositions.remove(from));
@@ -671,6 +819,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= tracks.size()) return;
+                beforeQueueEdit();
                 remember(); var copy = new ArrayList<>(tracks); copy.remove(selected); tracks = List.copyOf(copy);
                 undoPositions.remove(selected);
                 if (selected == index) { index = -1; attachedGeneration = -1; cancelQueueProgress(); }
@@ -681,12 +830,14 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         @Override public void clear() {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen(); if (tracks.isEmpty()) return;
+                beforeQueueEdit();
                 remember(); undoPositions.clear(); tracks = List.of(); index = -1; order.reset(0, -1); attachedGeneration = -1; cancelQueueProgress();
             }
         }
         @Override public void undo() {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen(); if (undoTracks == null) return;
+                beforeQueueEdit();
                 boolean advancing = queueTask != null;
                 int restoredIndex = index < 0 || attachedGeneration != generation ? -1 : undoPositions.get(index);
                 tracks = undoTracks; index = restoredIndex;

@@ -34,8 +34,15 @@ class OnlineMusicQueueViewTest {
             case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
+            case "supportsCrossfade" -> this.nativeCrossfade;
+            case "crossfadeSeconds" -> {
+                if(args==null)yield this.crossfade;
+                this.crossfade=(int)args[0];this.crossfadeCommits++;yield null;
+            }
             default -> null;
         });
+        int crossfade,crossfadeCommits;
+        boolean nativeCrossfade;
         final OnlineMusicViewImpl view;
         Fixture() { this(null); }
         Fixture(OnlineMusicQueue queue) { persistent = queue; view = new OnlineMusicViewImpl(player); }
@@ -91,6 +98,49 @@ class OnlineMusicQueueViewTest {
         public void select(int selected) { index = selected; }
         public void next() {} public void previous() {} public void remove(int selected) {} public void clear() {}
     }
+    @Test void nativeCrossfadeAllowsReversiblePreviewAndSecondsKeyboardWithoutSeeking() throws Exception {
+        var f=new Fixture(new EditableQueue()); f.nativeCrossfade=true;
+        var host=new Host();host.width=208;host.height=240;
+        f.view.layout(host);queuePage(f.view);
+        call(f.view,"setQueueEditing",new Class<?>[]{boolean.class},false);
+        var entry=(MusicTextControl)field(f.view,"crossfadeEntry");
+        var slider=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl)field(f.view,"crossfadeSlider");
+        var back=(MusicTextControl)field(f.view,"back");
+        assertTrue(entry.visible && entry.active);assertFalse(slider.visible);
+        assertTrue(back.getX()+back.getWidth()<entry.getX());assertTrue(entry.getX()+entry.getWidth()<host.width);
+        entry.onPress();
+        assertTrue(slider.visible && slider.active);assertFalse(entry.visible);
+        assertSame(slider,host.screen.getFocused());slider.setFocused(true);
+        var row=(MusicTextControl)((List<?>)field(f.view,"queueRows")).getFirst();
+        assertFalse(row.visible);
+        double y=slider.getY()+10,x=slider.getX()+slider.getWidth()-4;
+        assertTrue(slider.mouseClicked(x,y,0));assertEquals(12,slider.previewPositionMs());assertEquals(0,f.crossfadeCommits);
+        assertFalse(f.view.permitsScreenClose()); // Esc first cancels pointer preview.
+        assertEquals(0,slider.previewPositionMs());slider.mouseReleased(x,y,0);
+        assertEquals(0,f.crossfadeCommits);assertTrue(slider.visible);
+        assertTrue(slider.mouseClicked(x,y,0));slider.mouseReleased(x,y,0);
+        assertEquals(12,f.crossfade);assertEquals(1,f.crossfadeCommits);
+        assertTrue(slider.keyPressed(263,0,0));assertEquals(11,f.crossfade);
+        assertTrue(slider.keyPressed(268,0,0));assertEquals(0,f.crossfade); // Home is Off.
+        assertEquals(3,f.crossfadeCommits);assertEquals(0,f.seeks);
+        assertFalse(f.view.permitsScreenClose()); // Esc next returns to the queue.
+        assertFalse(slider.visible);assertTrue(row.visible);assertSame(entry,host.screen.getFocused());
+    }
+
+    @Test void nonNativePlaybackCannotOpenOrCommitCrossfade() throws Exception {
+        var f=new Fixture();var host=new Host();f.view.layout(host);queuePage(f.view);
+        call(f.view,"setQueueEditing",new Class<?>[]{boolean.class},false);
+        var entry=(MusicTextControl)field(f.view,"crossfadeEntry");
+        assertFalse(entry.visible);assertFalse(entry.active);entry.onPress();
+        assertEquals(false,field(f.view,"crossfadeOpen"));
+        assertEquals(0,f.crossfadeCommits);
+        f.nativeCrossfade=true;call(f.view,"updateQueueRows",new Class<?>[0]);entry.onPress();
+        f.nativeCrossfade=false;call(f.view,"applyCrossfade",new Class<?>[]{long.class},6L);
+        assertEquals(0,f.crossfadeCommits);
+        call(f.view,"updateQueueRows",new Class<?>[0]);assertEquals(false,field(f.view,"crossfadeOpen"));
+        assertFalse(entry.visible);
+    }
+
     @Test void editableQueueControlsDelegateWithoutInterruptingPlaybackAndUndo() throws Exception {
         var queue = new EditableQueue(); var f = new Fixture(queue); f.playing = A;
         var host = new Host(); f.view.layout(host); queuePage(f.view);editQueue(f.view);

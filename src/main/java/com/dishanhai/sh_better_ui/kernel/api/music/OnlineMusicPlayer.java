@@ -62,6 +62,13 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default void equalizerPreset(OnlineMusicEqualizerPreset preset) {
         throw new UnsupportedOperationException("Music equalizer unavailable");
     }
+    /** Whether this player exposes the native automatic queue crossfade setting. */
+    default boolean supportsCrossfade() { return false; }
+    /** Session preference: 0 is off; 1–12 requests a bounded overlap. */
+    default int crossfadeSeconds() { return 0; }
+    default void crossfadeSeconds(int seconds) {
+        throw new UnsupportedOperationException("Music crossfade unavailable");
+    }
     /** Whether the current QQ track uses a native output that can apply local sound effects. */
     default boolean supportsSoundEffects() { return false; }
     /** Remembered session preference; no effect is applied when this capability is unavailable. */

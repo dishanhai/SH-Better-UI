@@ -43,7 +43,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicTransportControl exitControl;
     private UiButton nowPlayingMore;
     private NowPlayingMenuHost nowPlayingMenus;
-    private void closeNowPlayingMenu() { if(nowPlayingMenus!=null)nowPlayingMenus.interrupt(); }
+    private void closeNowPlayingMenu() {
+        if(nowPlayingMenus!=null)nowPlayingMenus.interrupt();
+        // Route, focus and host invalidation clear any pending settings-slider gesture too.
+        if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
+    }
     private void openNowPlayingMenu() {
         var track=player.snapshot().track();
         if(track==null||!immersive)return;
@@ -134,7 +138,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicTextControl queueUndo, queueClear, queueLocate, queueEdit;
     private boolean queueEditing;
     private int queueFirst;
-    private MusicTextControl queuePlaybackMode, stagePlaybackMode;
+    private MusicTextControl queuePlaybackMode, stagePlaybackMode, crossfadeEntry;
+    private MusicSeekControl crossfadeSlider;
+    private boolean crossfadeOpen;
+    private static final int MAX_CROSSFADE_SECONDS = 12;
     private final LyricViewport lyricViewport = new LyricViewport();
     private final OnlineArtworkTexture artwork = new OnlineArtworkTexture();
     private OnlineTrack lyricTrack;
@@ -240,6 +247,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         closeNowPlayingMenu();
         if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction();
         if(queuePlaybackMode!=null)queuePlaybackMode.cancelInteraction();
+        if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
         navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); navigation.clear();
         routeMotion.reset();
         host = context; layout = OnlineMusicLayout.of(context.viewport()); stage = null; queryField = null;
@@ -266,6 +274,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         back = button(new Bounds(h.x(), h.y() + 2, Math.min(88, h.width() / 2), 22), label("view.back"), () -> {
             if(returnFromLibraryLogin()||returnFromHistoryDestination()) return;
             if(page==Page.HISTORY) { leaveHistory();
+            } else if(page==Page.QUEUE&&crossfadeOpen) { setCrossfadeOpen(false);
             } else if(page==Page.QUEUE&&queueEditing) { setQueueEditing(false);
             } else if(page==Page.LIBRARY&&library==Library.TRACKS) {
                 returnToPlaylistList();
@@ -344,7 +353,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         clamped = Math.min(libraryFirst, Math.max(0, librarySize() - visibleRows));
         if (libraryFirst != clamped) { libraryFirst = clamped; updateLibraryRows(); }
         libraryScroll.configure(libraryFirst, librarySize(), visibleRows);
-        scrollVisibility(queueScroll, page == Page.QUEUE);
+        scrollVisibility(queueScroll, page == Page.QUEUE && !immersive && !crossfadeOpen);
         queueFirst = Math.min(queueFirst, Math.max(0, queue.tracks().size() - visibleRows));
         queueScroll.configure(queueFirst, queue.tracks().size(), visibleRows);
         scrollVisibility(lyricsScroll, page == Page.LYRICS);
@@ -677,6 +686,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void buildQueue() {
         var c = layout.content();
         var modes = layout.sourceBar();
+        var header = layout.searchBar();
+        int crossfadeWidth=Math.min(144,header.width()-96);
+        crossfadeEntry=button(new Bounds(header.right()-crossfadeWidth,header.y()+2,crossfadeWidth,22),
+                label("crossfade.title"),()->setCrossfadeOpen(true),queueControls);
+        crossfadeSlider=host.add(new MusicSeekControl(new Bounds(c.x()+8,c.y()+17,c.width()-16,20),
+                label("crossfade.title"),host.preferences(),edit->{},edit->applyCrossfade(edit.positionMs()),edit->{}));
+        crossfadeSlider.setKeyboardStep(1,1);
+        crossfadeSlider.setValueFormatter((seconds,total)->crossfadeValue(seconds));
         queuePlaybackMode = button(new Bounds(modes.x(), modes.y(), Math.max(12, modes.width()-96), 20),
                 Component.empty(), this::cyclePlaybackMode, queueControls);
         queueAppend = button(new Bounds(layout.sourceBar().right() - 60, layout.sourceBar().y(), 24, 20), label("queue.append_current"), () -> {
@@ -714,6 +731,40 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 () -> { queue.clear(); updateQueueRows(); updateScrollRegions(); }, queueControls);
         queueClear.setPreview(label("queue.clear_hint"));
     }
+    private static Component crossfadeValue(long seconds) {
+        return seconds==0?label("crossfade.off"):label("crossfade.seconds",seconds);
+    }
+    private void setCrossfadeOpen(boolean open) {
+        if (open && (immersive || page!=Page.QUEUE || !player.supportsCrossfade())) return;
+        if (crossfadeOpen==open) return;
+        crossfadeOpen=open;
+        if(open) {
+            queueEditing=false;
+            for(var control:queueControls)if(control instanceof MusicTextControl text)text.cancelInteraction();
+        } else crossfadeSlider.cancelInteraction();
+        updateQueueRows();updateScrollRegions();
+        host.screen().setFocused(open?crossfadeSlider:crossfadeEntry.visible?crossfadeEntry:back);
+    }
+    private void applyCrossfade(long seconds) {
+        if(!crossfadeOpen||immersive||page!=Page.QUEUE||!player.supportsCrossfade())return;
+        int clamped=(int)Math.max(0,Math.min(MAX_CROSSFADE_SECONDS,seconds));
+        if(player.crossfadeSeconds()!=clamped) {
+            perform(label("crossfade.caption",crossfadeValue(clamped)),()->player.crossfadeSeconds(clamped));
+        }
+        updateQueueRows();
+    }
+    private void syncCrossfadeControls(boolean queuePage, boolean supported) {
+        int seconds=supported?player.crossfadeSeconds():0;
+        var caption=label("crossfade.caption",crossfadeValue(seconds));
+        crossfadeEntry.setVisible(queuePage&&supported&&!crossfadeOpen&&!queueEditing);
+        crossfadeEntry.setAvailable(crossfadeEntry.visible);
+        if (!crossfadeEntry.getMessage().equals(caption)) {
+            crossfadeEntry.setMessage(caption);crossfadeEntry.setPreview(caption.copy().append("\n").append(label("crossfade.hint")));
+        }
+        crossfadeEntry.setSelected(seconds>0);
+        crossfadeSlider.visible=queuePage&&supported&&crossfadeOpen;
+        crossfadeSlider.sync("queue-crossfade",seconds,MAX_CROSSFADE_SECONDS,crossfadeSlider.visible);
+    }
     private void setQueueEditing(boolean editing) {
         queueEditing = editing;
         for (var control : queueControls) if (control instanceof MusicTextControl text) text.cancelInteraction();
@@ -738,6 +789,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (queueEdit == null) return;
         queueFirst = Math.min(queueFirst, Math.max(0, queue.tracks().size() - visibleRows));
         var tracks = queue.tracks();
+        boolean queuePage = !immersive && page == Page.QUEUE;
+        boolean crossfadeAvailable = queuePage && player.supportsCrossfade();
+        if (crossfadeOpen && !crossfadeAvailable) {
+            crossfadeOpen=false;crossfadeSlider.cancelInteraction();
+            if(host.screen().getFocused()==crossfadeSlider)host.screen().setFocused(back);
+        }
+        boolean showQueue = queuePage && !crossfadeOpen;
         if (boundQueueFirst != queueFirst || !boundQueueTracks.equals(tracks)) {
             for (var control : queueControls) if (control instanceof MusicTextControl text) text.cancelInteraction();
             boundQueueTracks = tracks; boundQueueFirst = queueFirst;
@@ -745,14 +803,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var trackToAppend = player.snapshot().track();
         if (!java.util.Objects.equals(queueAppendTrack, trackToAppend)) queueAppend.cancelInteraction();
         queueAppendTrack = trackToAppend;
-        queueAppend.setVisible(!immersive && page == Page.QUEUE && queueEditing && queue.supportsEditing());
+        queueAppend.setVisible(showQueue && queueEditing && queue.supportsEditing());
         queueAppend.setAvailable(queueAppendTrack != null);
         queueAppend.setPreview(queueAppendTrack == null ? label("queue.append_current") : label("queue.append_track", queueAppendTrack.title()));
         var rowBounds = musicRows();
         for (int slot = 0; slot < queueRows.size(); slot++) {
             int i = queueFirst + slot;
             var row = queueRows.get(slot); var remove = queueRemoves.get(slot);
-            row.visible = !immersive && page == Page.QUEUE && i < queue.tracks().size();
+            row.visible = showQueue && i < tracks.size();
             remove.visible = row.visible && queueEditing;
             row.setWidth(rowBounds.get(slot).width() - (queueEditing ? (queue.supportsEditing() ? 84 : 28) : 0));
             row.active = remove.active = row.visible;
@@ -771,13 +829,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             row.setSelected(i == queue.index());
             remove.setPreview(label("queue.remove_track", track.title()));
         }
-        boolean queuePage = !immersive && page == Page.QUEUE;
-        queueEdit.setVisible(queuePage);
+        queueEdit.setVisible(showQueue);
+        queueLocate.setVisible(showQueue);
+        queuePlaybackMode.setVisible(showQueue);
         queueEdit.setMessage(label(queueEditing ? "queue.done" : "queue.edit"));
-        queueUndo.setVisible(queuePage && queueEditing); queueClear.setVisible(queuePage && queueEditing);
+        queueUndo.setVisible(showQueue && queueEditing); queueClear.setVisible(showQueue && queueEditing);
         queueClear.active = !queue.tracks().isEmpty(); queueUndo.active = queue.canUndo();
         queueLocate.active = queue.index() >= 0;
         updatePlaybackModeControls();
+        syncCrossfadeControls(queuePage,crossfadeAvailable);
         if(!navigation.isEmpty()) {
             var entry=navigation.get(Page.QUEUE.ordinal());
             var details=queue.tracks().isEmpty()?label("queue.empty").append("\n").append(label("queue.empty_hint")):label("queue.count",queue.tracks().size());
@@ -804,7 +864,19 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void renderQueue(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var h = layout.searchBar(); var c = layout.content();
-        if (queueEditing || !layout.expanded()) text(ui, label(queueEditing ? "queue.edit" : "view.queue"), h.x() + back.getWidth() + 8, h.y() + 8, h.width() - back.getWidth() - 8);
+        int titleX=h.x()+back.getWidth()+8;
+        if(crossfadeOpen) {
+            text(ui,label("crossfade.title"),titleX,h.y()+8,h.right()-titleX);
+            text(ui,crossfadeValue(crossfadeSlider.previewPositionMs()),c.x()+8,c.y()+3,c.width()-16);
+            crossfadeSlider.setPreferences(ui.preferences());
+            crossfadeSlider.setInk(UiTheme.current().text());
+            OnlineMusicViewPaint.paragraph(ui,host.font(),label("crossfade.hint"),
+                    new Bounds(c.x()+8,c.y()+40,c.width()-16,Math.max(0,c.height()-40)),
+                    UiTheme.current().secondaryText(0xff94a3b8,.25f));
+            return;
+        }
+        if ((queueEditing || !layout.expanded()) && !crossfadeEntry.visible)
+            text(ui,label(queueEditing ? "queue.edit" : "view.queue"),titleX,h.y()+8,h.right()-titleX);
         if(layout.listHeadingHeight()>=20)muted(ui, label("queue.count", queue.tracks().size()), c.x() + 6, c.y() + 4, Math.max(0, c.width() - 110));
         for (int slot = 0; slot < queueRows.size(); slot++) {
             int i = queueFirst + slot; if (i >= queue.tracks().size()) break;
@@ -881,6 +953,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(!immersive&&page==Page.LIBRARY&&library==Library.TRACKS){returnToPlaylistList();return false;}
         if(!immersive&&page==Page.HISTORY){leaveHistory();return false;}
         if(!immersive&&page==Page.ACCOUNTS&&accountDetail){returnToAccountList();return false;}
+        if(!immersive&&page==Page.QUEUE&&crossfadeOpen) {
+            if(crossfadeSlider.isEditing())crossfadeSlider.cancelInteraction();
+            else setCrossfadeOpen(false);
+            return false;
+        }
         if (!immersive && page == Page.QUEUE && queueEditing) { setQueueEditing(false); return false; }
         if (!immersive) return true;
         if(stageSeek!=null&&stageSeek.isEditing()){stageSeek.cancelInteraction();return false;}
@@ -992,7 +1069,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (immersive) { immersive = false; }
         if (next == Page.LYRICS && page != Page.LYRICS) lyricsReturnPage = page;
         for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag();
-        if (page != next) { historyDestination=null; cancelLike(); queueEditing=false; }
+        if (page != next) {
+            historyDestination=null;cancelLike();queueEditing=false;crossfadeOpen=false;
+            if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
+        }
         if (page == Page.ACCOUNTS && next != page){leaveAccountDetail();libraryLoginReturn=false;}
         if(page==Page.LIBRARY&&next!=page){boolean loading=pendingPlaylists!=null||pendingLibrary!=null;detachLibrary();if(loading)library=Library.NONE;}
         if (page == Page.SEARCH && next != page) { detachSearch(); cancelSuggestions(); }
@@ -1500,7 +1580,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             case LIBRARY -> new LibraryRoute(librarySource, libraryGroup,
                     library == Library.TRACKS && selectedPlaylist != null ? selectedPlaylist.id() : null, libraryRowsRevision);
             case ACCOUNTS -> accountDetail ? accountSource : null;
-            case QUEUE -> queueEditing;
+            case QUEUE -> crossfadeOpen?"crossfade":queueEditing;
             default -> null;
         };
         var next = new OnlineMusicRouteMotion.Route(page, detail, immersive ? stagePage : null);
