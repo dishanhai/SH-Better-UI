@@ -1,42 +1,44 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.api.music;
+
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class LyricWordEffectsTest {
-    @Test void onlyFutureRowsBlurNotCurrentRemainderOrHistory(){
-        assertTrue(LyricWordEffects.blurFuture(200,500,false,false,false,false));
-        assertFalse(LyricWordEffects.blurFuture(200,100,false,false,false,false));
-        assertFalse(LyricWordEffects.blurFuture(200,500,true,false,false,false));
-        assertFalse(LyricWordEffects.blurFuture(-1,500,false,false,false,false));
-        assertFalse(LyricWordEffects.blurFuture(200,500,false,true,false,false));
-        assertFalse(LyricWordEffects.blurFuture(200,500,false,false,true,false));
-        assertFalse(LyricWordEffects.blurFuture(200,500,false,false,false,true));
+    @Test void featherAdvancesOverMeasuredGlyphsAndHasExactEndpoints(){
+        assertEquals(0,LyricWordEffects.coverage(0,20,5,10));
+        assertEquals(1,LyricWordEffects.coverage(1,20,15,10));
+        float a=LyricWordEffects.coverage(.28f,20,5,10);
+        float b=LyricWordEffects.coverage(.32f,20,5,10);
+        assertTrue(a>0&&b>a&&b<1);
+        assertTrue(LyricWordEffects.coverage(.5f,20,5,10)>LyricWordEffects.coverage(.5f,20,15,10));
     }
-    @Test void geometryIsPlaybackDeterministicBoundedAndReducedMotionIsStatic(){
-        float fraction=LyricPresentation.wordFraction(250,100,500);
-        assertEquals(LyricWordEffects.lift(fraction,false),LyricWordEffects.lift(fraction,false));
-        assertEquals(0,LyricWordEffects.lift(0,false));
-        assertEquals(0,LyricWordEffects.lift(fraction,true));
-        assertEquals(0,LyricWordEffects.rise(fraction,100,true));
-        assertTrue(LyricWordEffects.rise(1,1000,false)<=.55f);
-        assertTrue(LyricWordEffects.lift(1,false)<=.45f);
-        assertTrue(LyricWordEffects.lift(.1f,false)<LyricWordEffects.lift(.9f,false));
-    }
-    @Test void spatialKernelIsCenteredNormalizedAndHasNonzeroOffsets(){
-        float weight=0,x=0,y=0;
-        for(int row=0;row<3;row++)for(int col=0;col<3;col++){
-            float w=LyricWordEffects.WEIGHTS[row]*LyricWordEffects.WEIGHTS[col];
-            weight+=w;x+=w*LyricWordEffects.OFFSETS[col];y+=w*LyricWordEffects.OFFSETS[row];
+
+    @Test void liftAndTiltReturnToBaselineBeforeNextWord(){
+        for(float endpoint:new float[]{0,1}){
+            assertEquals(0,LyricWordEffects.lift(endpoint,2));
+            assertEquals(0,LyricWordEffects.rise(endpoint,60,2));
         }
-        assertEquals(1,weight);assertEquals(0,x);assertEquals(0,y);
-        assertTrue(LyricWordEffects.OFFSETS[0]<0);assertTrue(LyricWordEffects.OFFSETS[2]>0);
+        assertTrue(LyricWordEffects.lift(.4f,2)>1);
+        assertTrue(LyricWordEffects.lift(.4f,2)>LyricWordEffects.lift(.85f,2));
+        assertTrue(LyricWordEffects.rise(.4f,60,2)>.5f);
+        assertTrue(LyricWordEffects.rise(.5f,1000,2.5f)<=1.2f);
     }
-    @Test void shearPreservesHorizontalAdvanceAndRaisesOnlyBoundedRightEdge(){
-        float width=40,rise=LyricWordEffects.rise(.5f,width,false),slope=rise/width;
-        var transform=new org.joml.Matrix4f().m01(-slope);
-        var left=transform.transformPosition(new org.joml.Vector3f(0,0,0));
-        var right=transform.transformPosition(new org.joml.Vector3f(width,0,0));
-        assertEquals(0,left.x);assertEquals(width,right.x);assertEquals(-rise,right.y,0.0001f);
+
+    @Test void focusIsContinuousAboveAndBelowTheAnchorAndEdgesFade(){
+        assertEquals(0,LyricWordEffects.focusDistance(100,100,20));
+        assertEquals(LyricWordEffects.focusDistance(80,100,20),LyricWordEffects.focusDistance(120,100,20));
+        assertTrue(LyricWordEffects.focusDistance(138,100,20)>LyricWordEffects.focusDistance(137,100,20));
+        assertEquals(1,LyricWordEffects.focusDistance(200,100,20));
+        assertEquals(0,LyricWordEffects.edgeOpacity(0,100,20));
+        assertEquals(.5f,LyricWordEffects.edgeOpacity(10,100,20));
+        assertEquals(1,LyricWordEffects.edgeOpacity(50,100,20));
+        assertEquals(0,LyricWordEffects.edgeOpacity(100,100,20));
+    }
+
+    @Test void incomingTimedRowKeepsResidualBlurUntilItsInkSettles(){
+        assertEquals(.4f,LyricWordEffects.softMix(.4f,0));
+        assertEquals(.2f,LyricWordEffects.softMix(.4f,.5f));
+        assertEquals(0,LyricWordEffects.softMix(.4f,1));
     }
 }

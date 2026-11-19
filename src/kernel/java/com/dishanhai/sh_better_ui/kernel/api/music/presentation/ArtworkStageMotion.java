@@ -9,7 +9,23 @@ public final class ArtworkStageMotion {
     private ArtworkPalette from,target,shown;
     private double elapsed=650,phase;
     private long last;
-    public void reset() { from=target=shown=null;elapsed=650;phase=0;last=0; }
+    private double audioLevel;
+    private long audioLast, holdUntil;
+    private boolean audioStarted;
+    public void reset() { from=target=shown=null;elapsed=650;phase=0;last=0;audioLevel=0;audioStarted=false;holdUntil=0; }
+    /** Audio-driven mode: phase is an envelope, never a free-running clock. */
+    public Frame sample(ArtworkPalette next,long now,boolean reducedMotion,boolean lowPerformance,float activity) {
+        var colors=sample(next,now,reducedMotion,lowPerformance);
+        double target=Float.isFinite(activity)?Math.max(0,Math.min(1,activity)):0;
+        double dt=audioStarted && now>=audioLast?Math.min(1000,(double)now-audioLast):0;
+        audioStarted=true;audioLast=now;
+        if(reducedMotion || lowPerformance) {audioLevel=0;holdUntil=0;return new Frame(colors.palette(),0);}
+        if(target>audioLevel) holdUntil=now+80;
+        else if(now<holdUntil) target=audioLevel;
+        audioLevel+=(target-audioLevel)*(1-Math.exp(-dt/(target>audioLevel?65:260)));
+        if(audioLevel<.0001)audioLevel=0;
+        return new Frame(colors.palette(),audioLevel*2.4);
+    }
     public Frame sample(ArtworkPalette next,long now,boolean reducedMotion,boolean lowPerformance) {
         Objects.requireNonNull(next);
         if(shown==null || reducedMotion || lowPerformance) {

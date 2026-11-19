@@ -33,6 +33,7 @@ final class LyricSweepLayout {
         return new LyricSweepLayout(rows,widths);
     }
     List<Span> row(int index){return rows.get(index);}
+    float width(int word){return widths[word];}
     float revealed(Span span,float fraction){
         float safe=Float.isFinite(fraction)?Math.max(0,Math.min(1,fraction)):0;
         return Math.max(0,Math.min(span.width(),widths[span.word()]*safe-span.wordOffset()));

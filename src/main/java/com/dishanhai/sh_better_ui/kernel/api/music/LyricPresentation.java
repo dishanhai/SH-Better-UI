@@ -12,7 +12,7 @@ final class LyricPresentation {
     }
     static float approach(float value,float target,double seconds,boolean reducedMotion){
         if(reducedMotion)return target;
-        return value+(target-value)*(float)(1-Math.exp(-18*Math.max(0,Math.min(.05,seconds))));
+        return value+(target-value)*(float)(1-Math.exp(-18*Math.max(0,seconds)));
     }
     /** Current-word masks must use the actual secondary ink, not the near-active row fade. */
     static int pendingInk(boolean current,int muted,int surrounding){return current?muted:surrounding;}

@@ -2887,5 +2887,18 @@
   "sh_better_ui.music_overlay.task.operation_login_running": "QR sign-in · Waiting",
   "sh_better_ui.music_overlay.task.operation_login_succeeded": "QR sign-in · Signed in",
   "sh_better_ui.music_overlay.task.operation_login_failed": "QR sign-in · Failed",
-  "sh_better_ui.music_overlay.task.operation_login_expired": "QR sign-in · Expired"
+  "sh_better_ui.music_overlay.task.operation_login_expired": "QR sign-in · Expired",
+  "sh_better_ui.online_music.menu.title": "More actions",
+  "sh_better_ui.online_music.menu.unlike": "Remove like",
+  "sh_better_ui.online_music.menu.like": "Like",
+  "sh_better_ui.online_music.menu.queue": "Queue",
+  "sh_better_ui.online_music.menu.playlists": "Playlists",
+  "sh_better_ui.online_music.menu.search_album": "Search album",
+  "sh_better_ui.online_music.menu.search_artist": "Search artist",
+  "sh_better_ui.online_music.menu.equalizer": "Equalizer",
+  "sh_better_ui.online_music.menu.eq.flat": "Flat",
+  "sh_better_ui.online_music.menu.eq.bass_focus": "Bass Boost",
+  "sh_better_ui.online_music.menu.eq.voice_focus": "Vocal Focus",
+  "sh_better_ui.online_music.menu.eq.treble_focus": "Treble Boost",
+  "sh_better_ui.online_music.menu.eq.current": "%s (selected)"
 }

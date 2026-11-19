@@ -20,6 +20,8 @@ import java.util.function.Supplier;
 /** Ordinary user-facing player route. No developer catalogue, sample or gallery is consulted. */
 public final class OnlineMusicScreen {
     private OnlineMusicScreen() {}
+    /** This native player route supplies the required after-widgets pass. */
+    static boolean supportsMenuForeground(PreviewContext host){return host instanceof Context;}
 
     public static boolean available() {
         return UnifiedUI.isAvailable() && UnifiedUI.get().find(OnlineMusicService.KEY).isPresent();

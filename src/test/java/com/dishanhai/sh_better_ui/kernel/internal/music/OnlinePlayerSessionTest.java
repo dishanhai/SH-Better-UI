@@ -13,6 +13,41 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.*;
 
 class OnlinePlayerSessionTest {
+    private static class EqualizedOutput extends Output {
+        OnlineMusicEqualizerPreset preset;
+        @Override public boolean supportsEqualizer() { return true; }
+        @Override public void equalizerPreset(OnlineMusicEqualizerPreset value) { preset = value; }
+    }
+    @Test void equalizerPreferenceSurvivesSeekTracksAndUnsupportedOutputs() throws Exception {
+        var first = new EqualizedOutput();
+        var next = new AtomicReference<Output>(first);
+        try (var session = new OnlinePlayerSession(List.of(new Source()), next::get, uri -> new byte[]{1})) {
+            assertFalse(session.supportsEqualizer());
+            assertThrows(UnsupportedOperationException.class, () -> session.equalizerPreset(OnlineMusicEqualizerPreset.BASS_FOCUS));
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            assertTrue(session.supportsEqualizer());
+            assertEquals(OnlineMusicEqualizerPreset.FLAT, first.preset);
+            session.equalizerPreset(OnlineMusicEqualizerPreset.VOICE_FOCUS);
+            assertEquals(OnlineMusicEqualizerPreset.VOICE_FOCUS, first.preset);
+            assertThrows(NullPointerException.class, () -> session.equalizerPreset(null));
+            var seek = new EqualizedOutput(); next.set(seek); session.seek(1000);
+            assertEquals(OnlineMusicEqualizerPreset.VOICE_FOCUS, seek.preset);
+            next.set(new Output()); session.play(track("b"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            assertFalse(session.supportsEqualizer());
+            assertThrows(UnsupportedOperationException.class, () -> session.equalizerPreset(OnlineMusicEqualizerPreset.TREBLE_FOCUS));
+            assertEquals(OnlineMusicEqualizerPreset.VOICE_FOCUS, session.equalizerPreset());
+            var last = new EqualizedOutput(); next.set(last); session.play(track("c"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            assertEquals(OnlineMusicEqualizerPreset.VOICE_FOCUS, last.preset);
+            session.stop(); assertFalse(session.supportsEqualizer());
+        }
+    }
+    @Test void unsupportedOutputRejectsPresetRatherThanPretendingToApplyIt() {
+        var output = new Output();
+        assertFalse(output.supportsEqualizer());
+        assertThrows(UnsupportedOperationException.class, () -> output.equalizerPreset(OnlineMusicEqualizerPreset.FLAT));
+    }
     @Test void sessionOwnedReadSurvivesObserverDetachAndCredentialChangeInvalidatesHistory() throws Exception {
         var started = new CountDownLatch(1); var release = new CountDownLatch(1);
         var provider = new Source() {

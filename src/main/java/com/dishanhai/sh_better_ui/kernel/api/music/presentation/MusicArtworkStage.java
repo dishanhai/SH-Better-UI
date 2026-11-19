@@ -24,6 +24,16 @@ public final class MusicArtworkStage implements AutoCloseable {
                 nowMs,frame.preferences().reducedMotion(),lowPerformance);
         MusicArtworkStageRender.background(frame.graphics(),bounds,shown.palette(),shown.phase(),lowPerformance);
     }
+    /** Playback-scoped PCM response. No PCM means a still palette, including protected providers. */
+    public void renderAudioBackground(UiFrame frame,Bounds bounds,ArtworkPalette palette,long nowMs,boolean lowPerformance,float activity) {
+        if(bounds.width()<=0||bounds.height()<=0)return;
+        if(frame.preferences().highContrast()) {
+            motion.reset();frame.graphics().fill(bounds.x(),bounds.y(),bounds.right(),bounds.bottom(),UiTheme.current().background()|0xff000000);return;
+        }
+        var shown=motion.sample(palette==null?ArtworkPalette.fallback(UiTheme.current().background()):palette,
+                nowMs,frame.preferences().reducedMotion(),lowPerformance,activity);
+        MusicArtworkStageRender.background(frame.graphics(),bounds,shown.palette(),shown.phase(),lowPerformance);
+    }
     /** Sharp, aspect-preserving artwork. The host supplies the already-loaded resource and actual dimensions. */
     public void renderCover(UiFrame frame,Bounds area,ResourceLocation texture,int imageWidth,int imageHeight) {
         renderCover(frame,area,texture,imageWidth,imageHeight,1f);

@@ -2078,5 +2078,18 @@
   "sh_better_ui.music_overlay.task.operation_login_running": "掃碼登入 · 等待中",
   "sh_better_ui.music_overlay.task.operation_login_succeeded": "掃碼登入 · 登入成功",
   "sh_better_ui.music_overlay.task.operation_login_failed": "掃碼登入 · 失敗",
-  "sh_better_ui.music_overlay.task.operation_login_expired": "掃碼登入 · 已過期"
+  "sh_better_ui.music_overlay.task.operation_login_expired": "掃碼登入 · 已過期",
+  "sh_better_ui.online_music.menu.title": "更多操作",
+  "sh_better_ui.online_music.menu.unlike": "取消喜歡",
+  "sh_better_ui.online_music.menu.like": "喜歡",
+  "sh_better_ui.online_music.menu.queue": "佇列",
+  "sh_better_ui.online_music.menu.playlists": "歌單",
+  "sh_better_ui.online_music.menu.search_album": "搜尋專輯",
+  "sh_better_ui.online_music.menu.search_artist": "搜尋藝人",
+  "sh_better_ui.online_music.menu.equalizer": "等化器",
+  "sh_better_ui.online_music.menu.eq.flat": "原聲",
+  "sh_better_ui.online_music.menu.eq.bass_focus": "低頻增強",
+  "sh_better_ui.online_music.menu.eq.voice_focus": "人聲突出",
+  "sh_better_ui.online_music.menu.eq.treble_focus": "高頻增強",
+  "sh_better_ui.online_music.menu.eq.current": "%s（已選）"
 }
