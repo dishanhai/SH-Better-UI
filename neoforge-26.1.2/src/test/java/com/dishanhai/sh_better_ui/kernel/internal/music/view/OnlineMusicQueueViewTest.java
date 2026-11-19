@@ -1,6 +1,8 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
+import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
 import com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline;
 import org.junit.jupiter.api.Test;
@@ -524,6 +526,31 @@ class OnlineMusicQueueViewTest {
         var constructor=Class.forName("com.dishanhai.sh_better_ui.kernel.internal.music.OnlinePlayerSession").getDeclaredConstructor(List.class);
         constructor.setAccessible(true);return (OnlineMusicPlayer)constructor.newInstance(providers);
     }
+    @Test void noticeDeepLinkFocusesExactHistoryRecordWithoutRestoringIt() throws Exception {
+        try (var player = session(new java.util.concurrent.CountDownLatch(0))) {
+            var registry = SessionMusicOperations.forPlayer(player).orElseThrow();
+            var item = registry.startSearch("qq", "private", 1);
+            item.detach();
+            var target = MusicOperationNavigation.target(registry, item.id()).orElseThrow();
+            for (int i = 0; i < 12; i++) registry.startSearch("qq", "newer", 1);
+            var view = new OnlineMusicViewImpl(player, false);
+            var host = new Host();
+            view.requestOperationHistory(target);
+            view.layout(host);
+            assertEquals("HISTORY", field(view, "page").toString());
+            assertEquals(item.id(), ((Map<?, ?>) field(view, "historyBindings")).get(host.screen().getFocused()));
+            assertNull(field(view, "pending"));
+            assertTrue(item.snapshot().background());
+
+            item.attach();
+            var staleView = new OnlineMusicViewImpl(player, false);
+            staleView.requestOperationHistory(target);
+            staleView.layout(new Host());
+            assertEquals("SEARCH", field(staleView, "page").toString());
+            assertNull(field(staleView, "pending"));
+        }
+    }
+
     @Test void detachedReadSurvivesViewSuspendAndCanBeRestoredFromHistory() throws Exception {
         var release=new java.util.concurrent.CountDownLatch(1);
         try(var player=session(release)) {

@@ -21,8 +21,13 @@ final class NativeMusicActivityTest {
     private OnlineMusicService.BackgroundControls transport;
     private OnlineMusicService.BackgroundCommand dispatched;
     private final List<SessionMusicOperations.Snapshot> operations = new ArrayList<>();
+    private SessionMusicOperations registry;
+    private final AtomicReference<MusicOperationNavigation.Target> openedOperation = new AtomicReference<>();
     private final class TestOnline implements OnlineMusicService, MusicOperationSource {
         public List<SessionMusicOperations.Snapshot> operationsSnapshot() { return List.copyOf(operations); }
+        public Optional<MusicOperationNavigation.Target> operationTarget(long id) {
+            return registry == null ? Optional.empty() : MusicOperationNavigation.target(registry, id);
+        }
         public Optional<BackgroundControls> backgroundControls(BackgroundTarget target) {
             return transport != null && transport.target().equals(target) ? Optional.of(transport) : Optional.empty();
         }
@@ -44,7 +49,7 @@ final class NativeMusicActivityTest {
         live = new LiveSurfaceRuntime(host);
         music = new NativeMusicActivity(false, frame::get, now::get, () -> live.policy().notifications(),
                 () -> live.diagnostics().activities() < live.policy().maxActivities(),
-                () -> live.diagnostics().notifications() < live.policy().maxNotifications(), opened::incrementAndGet);
+                () -> live.diagnostics().notifications() < live.policy().maxNotifications(), opened::incrementAndGet, openedOperation::set);
         var platforms = Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2);
         host.start(List.of(BuiltinService.candidate(platforms, OnlineMusicService.KEY, online), BuiltinService.candidate(platforms, ActivityService.KEY, live, ActivityService.CAPABILITY),
                 BuiltinService.candidate(platforms, NotificationService.KEY, live, NotificationService.CAPABILITY), music.candidate(),
@@ -205,6 +210,48 @@ final class NativeMusicActivityTest {
         var model = NativeMusicActivity.content(new MusicService.Frame(new MusicSnapshot("mpris", MusicSnapshot.State.AVAILABLE, session), original.lyrics(), 1), 0);
         assertEquals(511, model.title().value().length());
     }
+    @Test void viewTaskDispatchIsExplicitAndRejectsReattachedTarget() {
+        frame.set(new MusicService.Frame(new MusicSnapshot("system", MusicSnapshot.State.NO_SESSION, null),
+                new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK, LyricTimeline.empty()), 0));
+        music.settings(MusicOverlaySettings.DEFAULT.withIsland(true).withTaskNotices(true));
+        var owner = new java.util.concurrent.CompletableFuture<List<OnlineTrack>>();
+        var player = (OnlineMusicPlayer) java.lang.reflect.Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{OnlineMusicPlayer.class}, (proxy, method, args) -> {
+                    if (method.getName().equals("search")) return owner;
+                    throw new AssertionError(method.getName());
+                });
+        registry = MusicOperationFixtures.registry(player);
+        try {
+            var job = registry.startSearch("qq", "private", 1);
+            job.detach(); operations.add(job.snapshot()); tick(0);
+            var snapshot = live.plan().primary();
+            assertEquals(List.of(NativeMusicActivity.VIEW_TASK),
+                    snapshot.content().controls().stream().map(ActivityService.Control::id).toList());
+            assertNull(openedOperation.get());
+            assertFalse(live.isInteractivePrimary(snapshot), "A not-yet-painted action is not visible");
+            live.markPainted(snapshot);
+            assertTrue(live.isInteractivePrimary(snapshot));
+            var viewTask = new ActivityService.Action(NativeMusicActivity.VIEW_TASK, -1);
+            assertTrue(live.dispatch(snapshot, viewTask));
+            tick(1);
+            assertEquals(job.id(), openedOperation.get().id());
+            assertFalse(owner.isDone());
+            openedOperation.set(null);
+            assertTrue(live.dispatch(snapshot, viewTask));
+            job.attach();
+            tick(2);
+            assertNull(openedOperation.get());
+            live.advance(false, false);
+            assertFalse(live.isInteractivePrimary(snapshot), "The passive HUD cannot activate a task");
+            live.advance(false, true);
+            assertTrue(live.isInteractivePrimary(snapshot));
+            now.set(8_000_000_000L);
+            assertFalse(live.isInteractivePrimary(snapshot), "Expiry applies even before the next advance");
+        } finally {
+            registry.close();
+        }
+    }
+
     @Test void detachedReadNotifiesWithoutTrackAndDoesNotReplayWhenDisabled() {
         frame.set(new MusicService.Frame(new MusicSnapshot("system",MusicSnapshot.State.NO_SESSION,null),
                 new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK,LyricTimeline.empty()),0));

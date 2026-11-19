@@ -283,6 +283,16 @@ final class LiveSurfaceRuntime implements ActivityService, NotificationService, 
                 && entry.snapshot.lifecycle() == Lifecycle.RUNNING && entry.snapshot.presented() ? entry : null;
     }
 
+    /** Recheck a focused route at dispatch time, including deadlines between MEASURE passes. */
+    boolean isInteractivePrimary(Snapshot snapshot) {
+        var primary = plan.primary();
+        if (!policy.enabled || !plan.interactive() || primary == null || primary.instance() != snapshot.instance()) return false;
+        var entry = currentActionBinding(snapshot);
+        return entry != null && entry.firstShown != NOT_SHOWN && host.nowNanos() < entry.deadline()
+                && (entry.notification == null || policy.notifications
+                && (!policy.quiet || entry.snapshot.priority() == Priority.CRITICAL));
+    }
+
     boolean hasActions(Snapshot snapshot) {
         return currentActionBinding(snapshot) != null;
     }
