@@ -11,8 +11,11 @@ import com.google.gson.Gson;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
+import net.minecraft.client.multiplayer.ClientLevel;
+import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.network.chat.Component;
 import java.util.Set;
+import com.dishanhai.sh_better_ui.kernel.internal.music.IslandPlaybackShortcut;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationSource;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
@@ -25,6 +28,8 @@ public final class NativeMusicOverlay implements UIModule {
     private LocalMusicIsland island;
     private LocalMusicHud card;
     private boolean restoreIsland = true;
+    private record PresentedPlayback(ClientLevel world, LocalPlayer player, OnlineMusicService.BackgroundTarget target) {}
+    private PresentedPlayback presentedPlayback;
     private final MusicIslandTaskAdapter tasks = new MusicIslandTaskAdapter();
     private long ambientAt = Long.MIN_VALUE;
     private final MusicOperationNotices operationTasks = new MusicOperationNotices();
@@ -54,7 +59,7 @@ public final class NativeMusicOverlay implements UIModule {
         active = this;
     }
     @Override public void stop(ModuleContext context) { if (active == this) active = null; suspend(); operationTasks.reset(); }
-    private void suspend() { operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); }); tasks.reset(); restoreIsland = true; if (island != null) island.suspend(); if (card != null) card.suspend(); }
+    private void suspend() { operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); }); tasks.reset(); restoreIsland = true; presentedPlayback = null; if (island != null) island.suspend(); if (card != null) card.suspend(); }
     private MusicOverlaySettings settings() { return context.engine().configs().get(MusicOverlaySettings.KEY); }
     private void save(MusicOverlaySettings value) {
         var configs = context.engine().configs();
@@ -63,6 +68,7 @@ public final class NativeMusicOverlay implements UIModule {
     }
     private void draw(HudService.Frame frame) {
         var mc = Minecraft.getInstance();
+        presentedPlayback = null;
         var value = settings();
         var source=context.engine().find(OnlineMusicService.KEY).orElse(null);
         boolean operationEnabled=value.islandEnabled() && value.taskNotices() && mc.level!=null && mc.player!=null;
@@ -70,7 +76,7 @@ public final class NativeMusicOverlay implements UIModule {
         operationAdmission.update(operationUpdates,id -> { if(island!=null)island.cancelNotice(id); });
         if(!operationEnabled)operationAdmission.clear(id -> { if(island!=null)island.cancelNotice(id); });
         if ((!value.hudEnabled() && !value.islandEnabled()) || mc.level == null || mc.player == null) { suspend(); return; }
-        boolean hidden = mc.options.hideGui || mc.screen != null || mc.options.keyPlayerList.isDown();
+        boolean hidden = mc.options.hideGui || mc.screen != null || mc.getOverlay() != null || mc.options.keyPlayerList.isDown();
         if (card == null) card = new LocalMusicHud(ShBetterUiApi.music());
         if (island == null) island = new LocalMusicIsland(ShBetterUiApi.music());
         var viewport = new Bounds(0, 0, frame.width(), frame.height());
@@ -79,7 +85,7 @@ public final class NativeMusicOverlay implements UIModule {
         if (value.hudEnabled() && !hidden) card.render(ui, mc.font,
                 MusicOverlayLayout.panel(frame.width(),frame.height(),false,value.hudScale(),value.x(),value.y()));
         if (value.islandEnabled()) {
-            island.setScene(true,mc.options.keyPlayerList.isDown(),mc.options.hideGui || mc.screen != null,mc.screen != null);
+            island.setScene(true,mc.options.keyPlayerList.isDown(),hidden,mc.screen != null || mc.getOverlay() != null);
             island.setStyle(value.islandStyle());
             island.setAmbient(value.ambientEnabled() ? IslandAmbientState.Settings.DEFAULT : IslandAmbientState.Settings.DISABLED);
             if (value.ambientEnabled() && (ambientAt == Long.MIN_VALUE || ui.nowMs() < ambientAt || ui.nowMs()-ambientAt>=250)) {
@@ -104,6 +110,8 @@ public final class NativeMusicOverlay implements UIModule {
                     update.error()?IslandNoticeQueue.Priority.HIGH:IslandNoticeQueue.Priority.NORMAL,ui.nowMs()+update.ttlMs())));
             var full = MusicOverlayLayout.panel(frame.width(),frame.height(),true,value.islandScale(),value.islandX(),value.islandY());
             island.render(ui,mc.font,MusicOverlayLayout.compact(full,value.islandScale()),full,false);
+            var target = island.backgroundControlTarget();
+            if (target != null) presentedPlayback = new PresentedPlayback(mc.level, mc.player, target);
         } else { tasks.reset(); island.suspend(); restoreIsland=true; }
     }
     /** Explicit gameplay shortcut; never changes the saved default expansion preference. */
@@ -112,8 +120,23 @@ public final class NativeMusicOverlay implements UIModule {
         if (!available() || mc.level == null || mc.player == null || mc.screen != null
                 || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
         if (!active.settings().islandEnabled() || active.island == null) return;
+        active.presentedPlayback = null;
         active.island.setExpanded(!active.island.expanded(), PageTransition.nowMs(), UiPreferences.configured().reducedMotion());
         active.restoreIsland = false;
+    }
+
+    /** Runs synchronously for an explicitly bound keyboard press; never captures gameplay input. */
+    public static void controlIslandPlayback(IslandPlaybackShortcut shortcut) {
+        var mc = Minecraft.getInstance();
+        if (!available() || mc.level == null || mc.player == null || !mc.isWindowActive()
+                || mc.screen != null || mc.getOverlay() != null || mc.options.hideGui || mc.options.keyPlayerList.isDown()) return;
+        var owner = active;
+        var shown = owner.presentedPlayback;
+        if (!owner.settings().islandEnabled() || owner.restoreIsland || shown == null
+                || shown.world() != mc.level || shown.player() != mc.player) return;
+        var service = owner.context.engine().find(OnlineMusicService.KEY).orElse(null);
+        if (service != null && shortcut.dispatch(service, shown.target(),
+                ShBetterUiApi.music().getFrame().snapshot(), System.nanoTime())) owner.presentedPlayback = null;
     }
 
     /** Reserve the expansion envelope only while a real island surface is visible. */
@@ -173,7 +196,8 @@ public final class NativeMusicOverlay implements UIModule {
         @Override protected void init() {
             int w=Math.min(240,Math.max(40,width-16)), x=(width-w)/2, step=Math.min(24,Math.max(14,(height-66)/8)), y=26;
             addRenderableWidget(new UiButton(x,y,w,step-2,toggle("hud",draft.hudEnabled()), b->{edit(draft.withHud(!draft.hudEnabled()));b.setMessage(toggle("hud",draft.hudEnabled()));}));
-            addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{edit(draft.withIsland(!draft.islandEnabled()));b.setMessage(toggle("island",draft.islandEnabled()));}));
+            var islandButton = addRenderableWidget(new UiButton(x,y+step,w,step-2,toggle("island",draft.islandEnabled()), b->{edit(draft.withIsland(!draft.islandEnabled()));b.setMessage(toggle("island",draft.islandEnabled()));}));
+            islandButton.setPreview(text("island_keys_hint"));
             addRenderableWidget(new UiButton(x,y+2*step,w,step-2,toggle("expand",draft.expanded()),b->{edit(draft.withExpanded(!draft.expanded()));b.setMessage(toggle("expand",draft.expanded()));}));
             addRenderableWidget(new UiButton(x,y+3*step,w,step-2,text("edit_hud"),b->minecraft.setScreen(new PositionScreen(this,false))));
             addRenderableWidget(new UiButton(x,y+4*step,w,step-2,text("edit_island"),b->minecraft.setScreen(new PositionScreen(this,true))));

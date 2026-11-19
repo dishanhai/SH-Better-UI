@@ -16,6 +16,8 @@ import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
 import net.neoforged.neoforge.event.GameShuttingDownEvent;
 import com.dishanhai.sh_better_ui.client.lyrics.render.LyricView;
 import com.mojang.blaze3d.platform.InputConstants;
+import com.dishanhai.sh_better_ui.kernel.internal.NativeMusicOverlay;
+import com.dishanhai.sh_better_ui.kernel.internal.music.IslandPlaybackShortcut;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.Screen;
@@ -48,6 +50,8 @@ public final class UiClient {
     private static KeyMapping liveActivitiesKey;
     private static KeyMapping musicIslandKey;
     private static KeyMapping musicPlayerKey;
+    private static final java.util.Map<IslandPlaybackShortcut, KeyMapping> islandPlaybackKeys =
+            new java.util.EnumMap<>(IslandPlaybackShortcut.class);
     private static final com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut musicShortcut =
             new com.dishanhai.sh_better_ui.client.music.MusicOpenShortcut();
 
@@ -104,9 +108,24 @@ public final class UiClient {
         }
     }
 
+    private static boolean matches(KeyMapping mapping, InputConstants.Key key) {
+        return mapping != null && !mapping.isUnbound() && mapping.isActiveAndMatches(key);
+    }
+
+    private static void onIslandPlaybackKey(InputConstants.Key key, int action) {
+        boolean eligible = musicShortcutAllowed(Minecraft.getInstance())
+                && !matches(controlPanelKey, key) && !matches(liveActivitiesKey, key)
+                && !matches(musicIslandKey, key) && !matches(musicPlayerKey, key);
+        var selected = IslandPlaybackShortcut.select(action == GLFW.GLFW_PRESS, eligible,
+                shortcut -> matches(islandPlaybackKeys.get(shortcut), key));
+        if (selected != null) NativeMusicOverlay.controlIslandPlayback(selected);
+    }
+
     @SubscribeEvent
     public static void onLiveActivityKey(InputEvent.Key event) {
-        offerMusicShortcut(InputConstants.getKey(event.getKey(), event.getScanCode()), event.getAction());
+        var key = InputConstants.getKey(event.getKey(), event.getScanCode());
+        offerMusicShortcut(key, event.getAction());
+        onIslandPlaybackKey(key, event.getAction());
         ClientUiKernel.onLiveActivityKey(Minecraft.getInstance(), event.getKey(), event.getAction(), event.getModifiers());
     }
 
@@ -308,6 +327,12 @@ public final class UiClient {
             musicPlayerKey = new KeyMapping("key.sh_better_ui.music_open", KeyConflictContext.IN_GAME,
                     InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
             event.register(musicPlayerKey);
+            for (var shortcut : IslandPlaybackShortcut.values()) {
+                var mapping = new KeyMapping(shortcut.translationKey(), KeyConflictContext.IN_GAME,
+                        InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_UNKNOWN, "key.categories.sh_better_ui");
+                islandPlaybackKeys.put(shortcut, mapping);
+                event.register(mapping);
+            }
         }
 
         @SubscribeEvent
