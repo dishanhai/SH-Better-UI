@@ -642,10 +642,14 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 if (crossfade != pending) return;
                 bytes = audioCache.get(key);
             }
-            if (bytes == null) bytes = download.read(stream.uri());
+            boolean downloaded = bytes == null;
+            if (downloaded) bytes = download.read(stream.uri());
             if (bytes.length == 0 || bytes.length > MusicHttp.AUDIO_LIMIT) return;
             synchronized (this) {
                 if (crossfade != pending || generation != pending.generation()) return;
+                // Keep a completed download on dry fallback. Ordinary playback still resolves
+                // a fresh grant and must match the same stream key before reusing the bytes.
+                if (downloaded) audioCache.put(key, bytes, pending.cacheRevision());
                 // Metadata must exist before the audio worker can claim the registered successor.
                 crossfadeAudio = new PreparedCrossfade(bytes, key, stream);
             }
@@ -669,7 +673,6 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         generation++;
         if (lyricTask != null) lyricTask.cancel(true);
         track = pending.song(); audio = prepared.bytes(); audioKey = prepared.key();
-        audioCache.put(audioKey, audio, pending.cacheRevision());
         duration = prepared.stream().durationMs(); offset = 0; preview = false;
         failure = Failure.NONE; state = State.PLAYING;
         lyrics = LyricTimeline.empty(); lyricsState = LyricsState.LOADING; feed.clear();

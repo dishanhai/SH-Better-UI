@@ -67,6 +67,49 @@ class Mp3CrossfadeOutputTest {
         } finally { output.close(); }
     }
 
+    @Test void bufferedWritesDoNotCompleteHandoffUntilDeviceConsumptionCrossesBoundary() throws Exception {
+        byte[] outgoing = fixture("outgoing");
+        short[] oldPcm = decode(outgoing);
+        var line = new TestLine(false);
+        var output = new Mp3Output(format -> line.device);
+        try {
+            output.start(outgoing, 0, true);
+            line.allowThrough(512);
+            await(() -> output.state() == State.PLAYING && line.frames() == 512);
+            assertEquals(0, output.positionMs(), "buffered frames have not been heard");
+            line.consumeThrough(256);
+            assertEquals(32, output.positionMs());
+            assertTrue(output.queueCrossfade(1, fixture("incoming"), 1, oldPcm.length / 8L));
+
+            // Queue the whole overlap and some successor audio, but keep the hardware clock behind.
+            line.allowThrough(oldPcm.length + 512);
+            await(() -> line.frames() == oldPcm.length + 512);
+            assertEquals(CrossfadeStatus.MIXING, output.crossfadeStatus(1));
+            output.acceptCrossfade(1);
+            assertEquals(32, output.positionMs(), "early acknowledgement must not publish successor time");
+
+            line.consumeThrough(oldPcm.length - 1);
+            assertEquals(CrossfadeStatus.MIXING, output.crossfadeStatus(1));
+            long beforePause = output.positionMs();
+            output.pause();
+            assertEquals(State.PAUSED, output.state());
+            line.consumeThrough(oldPcm.length + 512);
+            assertEquals(oldPcm.length - 1, line.consumedFrames(), "a stopped device consumes nothing");
+            assertEquals(beforePause, output.positionMs());
+            assertEquals(CrossfadeStatus.MIXING, output.crossfadeStatus(1));
+
+            output.resume();
+            line.consumeThrough(oldPcm.length);
+            assertEquals(CrossfadeStatus.COMPLETE, output.crossfadeStatus(1));
+            assertEquals(oldPcm.length / 8L, output.positionMs(), "old clock remains until acknowledgement");
+            output.acceptCrossfade(1);
+            assertEquals(1000, output.positionMs());
+            assertEquals(CrossfadeStatus.NONE, output.crossfadeStatus(1));
+            line.consumeThrough(oldPcm.length + 512);
+            assertEquals(1064, output.positionMs(), "successor clock follows consumption, not write head");
+        } finally { output.close(); }
+    }
+
     @Test void mismatchAndCancelledTokenNeverTouchOldAudio() throws Exception {
         byte[] outgoing = fixture("outgoing"), mismatch = fixture("mismatch");
         short[] oldPcm = decode(outgoing);
@@ -135,7 +178,10 @@ class Mp3CrossfadeOutputTest {
     /** A deterministic finite device with an independently advanceable consumed clock. */
     private static final class TestLine {
         private final ByteArrayOutputStream bytes = new ByteArrayOutputStream();
-        private int budget;
+        private int budget, consumed;
+        private boolean consumeOnWrite;
+        TestLine() { this(true); }
+        TestLine(boolean consumeOnWrite) { this.consumeOnWrite = consumeOnWrite; }
         private boolean running, closed;
         final SourceDataLine device = (SourceDataLine) Proxy.newProxyInstance(getClass().getClassLoader(),
                 new Class<?>[]{SourceDataLine.class}, (ignored, method, args) -> {
@@ -145,12 +191,13 @@ class Mp3CrossfadeOutputTest {
                             case "start" -> { running = true; notifyAll(); yield null; }
                             case "stop" -> { running = false; notifyAll(); yield null; }
                             case "close" -> { closed = true; notifyAll(); yield null; }
-                            case "getLongFramePosition" -> (long) frames();
+                            case "getLongFramePosition" -> (long) consumed;
                             case "write" -> {
                                 while (!closed && running && frames() >= budget) wait();
                                 if (closed || !running) yield 0;
                                 int count = Math.min((int) args[2] / 2, budget - frames()) * 2;
                                 bytes.write((byte[]) args[0], (int) args[1], count);
+                                if (consumeOnWrite) consumed = frames();
                                 yield count;
                             }
                             default -> throw new AssertionError("Unexpected device method: " + method.getName());
@@ -158,6 +205,11 @@ class Mp3CrossfadeOutputTest {
                     }
                 });
         synchronized int frames() { return bytes.size() / 2; }
+        synchronized int consumedFrames() { return consumed; }
+        synchronized void consumeThrough(int frame) {
+            if (running && !closed) consumed = Math.max(consumed, Math.min(frame, frames()));
+            notifyAll();
+        }
         synchronized void allowThrough(int frame) { budget = frame; notifyAll(); }
         synchronized short[] samples() {
             byte[] raw = bytes.toByteArray();

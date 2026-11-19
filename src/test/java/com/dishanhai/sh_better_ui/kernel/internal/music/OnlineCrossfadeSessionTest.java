@@ -90,19 +90,53 @@ class OnlineCrossfadeSessionTest {
         }
     }
 
-    @Test void unreadyOrRejectedSuccessorLeavesCurrentAndNormalEofLoadsNext() throws Exception {
-        var out=new Output();var next=new Output();var outputs=new AtomicInteger();
-        try(var session=new OnlinePlayerSession(List.of(new Source()),()->outputs.getAndIncrement()==0?out:next,uri->new byte[]{1})){
-            session.crossfadeSeconds(3);session.queue().replace(List.of(A,B),0);
-            await(()->session.snapshot().state()==State.PLAYING);
-            out.position=7000;
-            await(()->out.phase==CrossfadeStatus.READY);
-            out.phase=CrossfadeStatus.REJECTED;
-            await(()->out.phase==CrossfadeStatus.NONE);
-            assertEquals(A,session.snapshot().track());assertEquals(1,outputs.get());
-            out.state=State.ENDED;
-            await(()->B.equals(session.snapshot().track())&&session.snapshot().state()==State.PLAYING);
-            assertEquals(2,outputs.get());assertEquals(0,out.adopts);
+    @Test void rejectedSuccessorReusesDownloadedBytesOnlyAfterResolvingAgain() throws Exception {
+        assertDryHandoff("same", 1, State.PLAYING);
+    }
+
+    @Test void rejectedSuccessorDoesNotReuseBytesForChangedGrant() throws Exception {
+        assertDryHandoff("changed", 2, State.PLAYING);
+    }
+
+    @Test void rejectedSuccessorDoesNotBypassRevokedGrant() throws Exception {
+        assertDryHandoff("revoked", 1, State.FAILED);
+    }
+
+    @Test void explicitCacheClearDropsPreparedBytesFromNormalHandoff() throws Exception {
+        assertDryHandoff("cleared", 2, State.PLAYING);
+    }
+
+    private static void assertDryHandoff(String scenario, int expectedDownloads, State finalState) throws Exception {
+        var out = new Output(); var next = new Output(); var outputs = new AtomicInteger();
+        var grants = new AtomicInteger(); var downloads = new AtomicInteger();
+        var source = new Source() {
+            @Override public Stream resolve(OnlineTrack track) throws Exception {
+                if (B.equals(track) && grants.incrementAndGet() == 2) {
+                    if ("revoked".equals(scenario)) return null;
+                    if ("changed".equals(scenario)) {
+                        return new Stream(URI.create("https://example.org/b"), 4000, 6000, true);
+                    }
+                }
+                return super.resolve(track);
+            }
+        };
+        try (var session = new OnlinePlayerSession(List.of(source), () -> outputs.getAndIncrement() == 0 ? out : next,
+                uri -> { if (uri.getPath().equals("/b")) downloads.incrementAndGet(); return new byte[]{1}; })) {
+            session.crossfadeSeconds(3); session.queue().replace(List.of(A,B),0);
+            await(() -> session.snapshot().state() == State.PLAYING);
+            out.position = 7000;
+            await(() -> out.phase == CrossfadeStatus.READY);
+            assertEquals(1, downloads.get());
+            if ("cleared".equals(scenario)) session.clearAudioCache();
+            out.phase = CrossfadeStatus.REJECTED;
+            await(() -> out.phase == CrossfadeStatus.NONE);
+            assertEquals(A, session.snapshot().track()); assertEquals(1, outputs.get());
+            out.state = State.ENDED;
+            await(() -> B.equals(session.snapshot().track()) && session.snapshot().state() == finalState);
+            assertEquals(2, grants.get());
+            assertEquals(expectedDownloads, downloads.get());
+            assertEquals(finalState == State.FAILED ? 1 : 2, outputs.get());
+            assertEquals(0, out.adopts);
         }
     }
 

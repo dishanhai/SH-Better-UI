@@ -939,6 +939,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
     }
     private Component feedbackMessage() { return interactionFeedback.current(System.nanoTime() / 1_000_000L); }
+    /** The transport's time row is narrow. Preserve the full explanation in the play tooltip. */
+    static Component immersiveFeedback(Component operation, OnlineMusicPlayer.State state) {
+        if (operation.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text
+                && text.getKey().equals(TEXT + "crossfade.busy"))
+            return label(state == OnlineMusicPlayer.State.PAUSED ? "crossfade.resume_short" : "crossfade.wait_short");
+        return operation;
+    }
     private net.minecraft.client.gui.components.events.GuiEventListener stageReturnControl() {
         return shellBack==null?stageBack:shellBack;
     }
@@ -1760,8 +1767,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         OnlineMusicViewPaint.line(ui,host.font(),MusicTypography.text(time(position)),stage.seek().x(),stage.seek().bottom()+2,36,secondary);
         OnlineMusicViewPaint.line(ui,host.font(),MusicTypography.text("−"+time(Math.max(0,current.durationMs()-position))),stage.seek().right()-40,stage.seek().bottom()+2,40,secondary);
         var operation=feedbackMessage();
+        var inlineOperation=immersiveFeedback(operation,current.state());
         if(!failed && (current.preview() || !operation.getString().isEmpty()))
-            OnlineMusicViewPaint.line(ui,host.font(),current.preview()?(operation.getString().isEmpty()?label("preview"):operation.copy().append(" · ").append(label("preview"))):operation,stage.seek().x()+42,stage.seek().bottom()+2,Math.max(0,stage.seek().width()-86),secondary);
+            OnlineMusicViewPaint.line(ui,host.font(),current.preview()?(operation.getString().isEmpty()?label("preview"):inlineOperation.copy().append(" · ").append(label("preview"))):inlineOperation,stage.seek().x()+42,stage.seek().bottom()+2,Math.max(0,stage.seek().width()-86),secondary);
         stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(operation.getString().isEmpty()?stagePlay.getMessage():operation)));
         syncStageLyrics(current,windowActive);
         stageLyrics.setMessage(label("lyrics."+current.lyricsState().name().toLowerCase(Locale.ROOT)));

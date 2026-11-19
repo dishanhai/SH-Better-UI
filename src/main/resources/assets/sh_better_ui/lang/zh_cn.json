@@ -2619,6 +2619,8 @@
   "sh_better_ui.online_music.crossfade.caption": "交叉淡化 · %s",
   "sh_better_ui.online_music.crossfade.off": "关闭",
   "sh_better_ui.online_music.crossfade.seconds": "%s 秒",
+  "sh_better_ui.online_music.crossfade.wait_short": "请稍候",
+  "sh_better_ui.online_music.crossfade.resume_short": "先恢复播放",
   "sh_better_ui.online_music.crossfade.busy": "请等歌曲过渡完成后再试。已暂停时，请先恢复播放。",
   "sh_better_ui.online_music.crossfade.hint": "仅适用于游戏内原生播放。",
   "sh_better_ui.online_music.queue.mode.sequential": "顺序播放",

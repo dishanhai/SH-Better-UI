@@ -2619,6 +2619,8 @@
   "sh_better_ui.online_music.crossfade.caption": "Crossfade · %s",
   "sh_better_ui.online_music.crossfade.off": "Off",
   "sh_better_ui.online_music.crossfade.seconds": "%s s",
+  "sh_better_ui.online_music.crossfade.wait_short": "Please wait",
+  "sh_better_ui.online_music.crossfade.resume_short": "Resume first",
   "sh_better_ui.online_music.crossfade.busy": "Wait for the crossfade to finish. Resume playback if paused.",
   "sh_better_ui.online_music.crossfade.hint": "Native playback only.",
   "sh_better_ui.online_music.queue.mode.sequential": "Sequential",
