@@ -26,6 +26,7 @@ public final class IslandNoticeQueue {
         }
     }
     private static final int LIMIT = 8;
+    private static final long MAX_RENDER_GAP_MS = 250;
     private static final class Entry {
         Notice notice;
         long remaining;
@@ -44,6 +45,9 @@ public final class IslandNoticeQueue {
     private Entry active;
     private long lastTime = Long.MIN_VALUE;
     private boolean previouslyPresented;
+    private Notice lastDrawn;
+    private long lastDrawnAt;
+    private long lastDrawnRemaining;
 
     /** Stable IDs replace content without restarting the visible budget or queue position. */
     public void offer(Notice notice) {
@@ -80,14 +84,26 @@ public final class IslandNoticeQueue {
 
     /** Post-draw acknowledgement: an outdated render must not charge a replacement notice. */
     public void presented(Notice notice, long nowMs) {
-        if (active != null && active.notice == notice && lastTime == nowMs) previouslyPresented = true;
+        if (active != null && active.notice == notice && lastTime == nowMs) {
+            previouslyPresented = true;
+            lastDrawn = notice;
+            lastDrawnAt = nowMs;
+            lastDrawnRemaining = active.remaining;
+        }
+    }
+
+    /** Authorize only this recently drawn notice, without advancing to another entry. */
+    public boolean isPresented(Notice notice, long nowMs) {
+        return notice != null && active != null && active.notice == notice && lastDrawn == notice
+                && nowMs >= lastTime && nowMs - lastDrawnAt <= MAX_RENDER_GAP_MS
+                && !active.expired(nowMs) && lastDrawnRemaining > nowMs - lastDrawnAt;
     }
 
     private Optional<Notice> advance(long nowMs, boolean presented, boolean renderClock) {
         if (lastTime != Long.MIN_VALUE && nowMs < lastTime) clear();
         if (active != null && previouslyPresented && (presented || renderClock) && lastTime != Long.MIN_VALUE) {
             long elapsed = nowMs - lastTime;
-            if (renderClock) elapsed = Math.min(250, elapsed);
+            if (renderClock) elapsed = Math.min(MAX_RENDER_GAP_MS, elapsed);
             active.remaining = Math.max(0, active.remaining - elapsed);
             active.resumeProtection = Math.max(0, active.resumeProtection - elapsed);
         }
@@ -109,15 +125,16 @@ public final class IslandNoticeQueue {
             }
             trim();
         }
+        if (active != previous || (!renderClock && !presented)) lastDrawn = null;
         if (active != previous && renderClock) previouslyPresented = false;
         return Optional.ofNullable(active == null ? null : active.notice);
     }
 
     /** Pause immediately when a host stops drawing, even if it no longer calls sample. */
-    public void pause() { previouslyPresented = false; }
+    public void pause() { previouslyPresented = false; lastDrawn = null; }
     public void cancel(String id) {
         Objects.requireNonNull(id);
-        if (active != null && active.notice.id().equals(id)) { active = null; previouslyPresented = false; }
+        if (active != null && active.notice.id().equals(id)) dismiss();
         waiting.removeIf(entry -> entry.notice.id().equals(id));
     }
     private static boolean preempts(Entry incoming, Entry current) {
@@ -146,6 +163,6 @@ public final class IslandNoticeQueue {
             waiting.remove(lowest);
         }
     }
-    public void dismiss() { active = null; previouslyPresented = false; }
-    public void clear() { active = null; waiting.clear(); lastTime = Long.MIN_VALUE; previouslyPresented = false; }
+    public void dismiss() { active = null; pause(); }
+    public void clear() { dismiss(); waiting.clear(); lastTime = Long.MIN_VALUE; }
 }
