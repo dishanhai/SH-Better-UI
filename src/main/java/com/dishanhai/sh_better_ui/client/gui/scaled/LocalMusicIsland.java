@@ -11,6 +11,8 @@ import com.dishanhai.sh_better_ui.client.lyrics.common.hud.FloatingLyricRenderer
 import com.dishanhai.sh_better_ui.client.music.MusicLyricFeed;
 import com.dishanhai.sh_better_ui.client.music.MusicService;
 import com.dishanhai.sh_better_ui.client.music.MusicSnapshot;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService.BackgroundTarget;
+import com.dishanhai.sh_better_ui.kernel.internal.music.IslandPlaybackShortcut;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.Component;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
@@ -34,6 +36,11 @@ public final class LocalMusicIsland {
     private final DynamicIslandState lifecycle = new DynamicIslandState();
     private final IslandNoticeQueue notices = new IslandNoticeQueue();
     private IslandNoticeQueue.Notice activeNotice;
+
+    public Optional<IslandNoticeQueue.Notice> presentedNotice(long nowMs) {
+        return noticeSurfaceAllowed && notices.isPresented(activeNotice, nowMs)
+                ? Optional.of(activeNotice) : Optional.empty();
+    }
     private final IslandAmbientState ambient = new IslandAmbientState();
     private boolean ambientShown;
     private boolean noticeSurfaceAllowed = true;
@@ -73,6 +80,11 @@ public final class LocalMusicIsland {
     public void updateAmbient(int fps, int pingMillis, int hour, int minute, long nowMs) {
         ambient.update(fps, pingMillis, hour, minute, nowMs);
     }
+
+    private BackgroundTarget renderedMusicTarget;
+
+    /** The expanded music frame actually drawn, null for a compact/hidden/notification surface. */
+    public BackgroundTarget backgroundControlTarget() { return renderedMusicTarget; }
 
     public void notify(IslandNoticeQueue.Notice notice) { notices.offer(notice); }
     public boolean tryNotify(IslandNoticeQueue.Notice notice) { return notices.tryOffer(notice); }
@@ -152,6 +164,7 @@ public final class LocalMusicIsland {
     }
 
     private void render(UiFrame ui, Font font, Bounds compact, Bounds full, boolean hovered, Optional<AudioFrame> audio, boolean systemAudio) {
+        renderedMusicTarget = null;
         if (compact.width() < 94 || compact.height() < 28) { notices.pause(); return; }
         observeMusic(ui.nowMs());
         if (systemAudio) audio = music.getAudioFeatures(current);
@@ -232,6 +245,7 @@ public final class LocalMusicIsland {
         // Compact leading/trailing presentation deliberately leaves the centre quiet.
         // Track title, credit, timeline and lyrics belong to the expanded presentation.
         if (!detail) return;
+        renderedMusicTarget = IslandPlaybackShortcut.target(snapshot);
         textRight = indicatorX - 6;
 
         var state = status(snapshot);

@@ -87,6 +87,52 @@ class IslandNoticeQueueTest {
         var current = q.peek(5000).orElseThrow(); q.presented(current,5000); q.pause();
         assertEquals(current,q.peek(10000).orElseThrow());
     }
+    @Test void navigationRequiresAnExactRecentlyDrawnNoticeWithoutAdvancingTheQueue() {
+        var q = new IslandNoticeQueue();
+        var first = priority("operation/1", IslandNoticeQueue.Priority.NORMAL, 200);
+        var pending = notice("operation/2");
+        q.offer(first); q.offer(pending);
+        q.peek(0);
+        assertFalse(q.isPresented(first, 0));
+        q.presented(first, 0);
+        assertTrue(q.isPresented(first, 199));
+        assertFalse(q.isPresented(first, 200));
+        assertFalse(q.isPresented(pending, 201));
+        assertEquals(pending, q.peek(201).orElseThrow());
+        assertFalse(q.isPresented(pending, 201));
+        q.presented(pending, 201);
+        assertEquals(pending, q.peek(240).orElseThrow()); // Later safe-area reservation, not a draw.
+        assertTrue(q.isPresented(pending, 250));
+        assertEquals(pending, q.peek(451).orElseThrow());
+        assertTrue(q.isPresented(pending, 451));
+        assertFalse(q.isPresented(pending, 200));
+        assertFalse(q.isPresented(pending, 452));
+        q.pause();
+        assertFalse(q.isPresented(pending, 250));
+    }
+
+    @Test void navigationRejectsReplacementPreemptionAndExhaustedVisibleBudget() {
+        var q = new IslandNoticeQueue();
+        var first = notice("operation/1");
+        q.offer(first); q.peek(0); q.presented(first, 0);
+        var replacement = notice("operation/1");
+        q.offer(replacement);
+        assertFalse(q.isPresented(first, 1));
+        var urgent = priority("urgent", IslandNoticeQueue.Priority.HIGH, 200);
+        q.offer(urgent); q.peek(1);
+        assertFalse(q.isPresented(replacement, 1));
+        q.presented(urgent, 1);
+        assertTrue(q.isPresented(urgent, 199));
+        assertEquals(replacement, q.peek(200).orElseThrow());
+        for (long now : new long[]{200, 450, 700, 950}) {
+            q.peek(now); q.presented(replacement, now);
+        }
+        assertTrue(q.isPresented(replacement, 1198));
+        assertFalse(q.isPresented(replacement, 1199));
+        q.clear();
+        assertFalse(q.isPresented(replacement, 951));
+    }
+
     @Test void instantPreemptsSamePriorityButDoesNotBounceOnRepeatedQueries() {
         var q=new IslandNoticeQueue();
         q.offer(priority("volume",IslandNoticeQueue.Priority.INSTANT,0)); q.sample(0);
@@ -185,7 +231,7 @@ class IslandNoticeQueueTest {
     }
     @Test void fullQueueDefersWithoutEvictionThenRetriesOnlyUntilAdmitted() {
         var queue=new IslandNoticeQueue();for(int i=0;i<8;i++)queue.offer(notice("existing"+i));
-        var admission=new MusicOperationAdmission();admission.update(List.of(new MusicOperationNotices.Update("result","succeeded",false,false,3500)),queue::cancel);
+        var admission=new MusicOperationAdmission();admission.update(List.of(new MusicOperationNotices.Update("result",1L,"succeeded",false,false,3500)),queue::cancel);
         var accepted=new AtomicInteger();java.util.function.Predicate<MusicOperationNotices.Update> offer=u->{boolean ok=queue.tryOffer(notice(u.id()));if(ok)accepted.incrementAndGet();return ok;};
         admission.flush(offer);admission.flush(offer);assertEquals(0,accepted.get());
         assertEquals("existing0",queue.sample(0).orElseThrow().id());

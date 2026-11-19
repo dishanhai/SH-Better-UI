@@ -47,17 +47,6 @@ final class OnlineMusicViewPaint {
         RoundedCorners.draw(ui.graphics(), bounds.x(), bounds.y(), bounds.width(), bounds.height(), 6, border ? 1 : 0,
                 ui.preferences().highContrast() ? UiTheme.current().text() : UiTheme.current().border(), color);
     }
-    /** Provider-owned album art; aspect ratio is preserved rather than stretched. */
-    static void cover(UiFrame ui, Bounds bounds, OnlineArtworkTexture.Texture texture) {
-        if (bounds.width() <= 0 || bounds.height() <= 0) return;
-        float fit = Math.min((float)bounds.width() / texture.width(), (float)bounds.height() / texture.height());
-        int width = Math.max(1, Math.round(texture.width() * fit));
-        int height = Math.max(1, Math.round(texture.height() * fit));
-        ui.graphics().blit(texture.id(), bounds.x() + (bounds.width() - width) / 2,
-                bounds.y() + (bounds.height() - height) / 2, width, height,
-                0f, 0f, texture.width(), texture.height(), texture.width(), texture.height());
-    }
-    static void artwork(UiFrame ui, Bounds bounds) { artwork(ui, bounds, 0f); }
 
     /** A calm editorial heading. Text is bounded independently of the decorative accent. */
     static void hero(UiFrame ui, Font font, Bounds area, Component kicker, Component title,
@@ -87,7 +76,7 @@ final class OnlineMusicViewPaint {
         int x = area.x() + inset;
         if (illustrated) {
             int size = Math.min(64, area.height() - inset * 2);
-            artwork(ui, new Bounds(x, area.y() + (area.height() - size) / 2, size, size), emphasis);
+            artwork(ui, new Bounds(x, area.y() + (area.height() - size) / 2, size, size), emphasis, 1f);
             x += size + 16;
         }
         int width = Math.max(1, area.right() - inset - x);
@@ -130,29 +119,33 @@ final class OnlineMusicViewPaint {
     }
 
     /** Original vector sleeve/record, not remote artwork. Motion changes only ornamental bars. */
-    static void artwork(UiFrame ui, Bounds bounds, float activity) {
+    static void artwork(UiFrame ui, Bounds bounds, float activity, float opacity) {
+        if(!(opacity>0f))return;
         int size = Math.min(bounds.width(), bounds.height());
         if (size < 16) return;
         var theme = UiTheme.current();
         int x = bounds.x() + (bounds.width() - size) / 2, y = bounds.y() + (bounds.height() - size) / 2;
         int border = ui.preferences().highContrast() ? theme.text() : theme.border();
         RoundedCorners.draw(ui.graphics(), x, y, size, size, Math.min(9, size / 5f), 1,
-                border, GuiMotion.lerpColor(theme.surface(), theme.accent(), .13f));
+                fade(border,opacity), fade(GuiMotion.lerpColor(theme.surface(), theme.accent(), .13f),opacity));
         int diameter = Math.max(10, size - 10), cx = x + size / 2, cy = y + size / 2;
         RoundedCorners.draw(ui.graphics(), cx - diameter / 2, cy - diameter / 2, diameter, diameter,
-                diameter / 2f, 1, border, theme.background());
+                diameter / 2f, 1, fade(border,opacity), fade(theme.background(),opacity));
         int inner = Math.max(6, diameter / 3);
         RoundedCorners.draw(ui.graphics(), cx - inner / 2, cy - inner / 2, inner, inner,
-                inner / 2f, 0, theme.accent(), theme.accent());
-        ui.graphics().fill(cx, cy, cx + 1, cy + 1, theme.text());
+                inner / 2f, 0, fade(theme.accent(),opacity), fade(theme.accent(),opacity));
+        ui.graphics().fill(cx, cy, cx + 1, cy + 1, fade(theme.text(),opacity));
         if (size >= 32) {
             float amount = ui.preferences().reducedMotion() ? 0f : clamp(activity);
             for (int i = 0; i < 4; i++) {
                 int h = 2 + Math.round((2 + i % 3) * amount);
                 int bx = x + size - 4 - i * 3;
-                ui.graphics().fill(bx, y + size - 4 - h, bx + 1, y + size - 4, theme.accent());
+                ui.graphics().fill(bx, y + size - 4 - h, bx + 1, y + size - 4, fade(theme.accent(),opacity));
             }
         }
+    }
+    private static int fade(int color,float opacity) {
+        return (Math.round((color>>>24)*opacity)<<24)|(color&0x00ffffff);
     }
     private static int muted(UiFrame ui) {
         var theme = UiTheme.current();

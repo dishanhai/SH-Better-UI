@@ -88,7 +88,7 @@ public final class ClientUiKernel {
                 () -> clientActivities.runtime().diagnostics().activities() < clientActivities.runtime().policy().maxActivities(),
                 () -> clientActivities.runtime().diagnostics().notifications() < clientActivities.runtime().policy().maxNotifications(),
                 () -> NativePort.show(minecraft, com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.settings()
-                        .onlineMusicScreen(NativePort.screen(minecraft))));
+                        .onlineMusicScreen(NativePort.screen(minecraft))), clientActivities::openMusicOperation);
         var materialCatalog = new ClientMaterialCatalog(kernel, PLATFORM, asset -> {
             var id = Identifier.tryParse(asset);
             return id != null && minecraft.getResourceManager().getResource(id).isPresent();

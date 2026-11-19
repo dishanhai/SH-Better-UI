@@ -59,3 +59,25 @@ byte-progress task API. OnlineMusicScreen closes its owned session on removal.
 Consequently this increment does not claim background-download percentages or
 player-to-island continuing playback/handoff. Those require an explicit durable
 player owner and actual backend task events, rather than cosmetic notifications.
+
+### In-world Island playback shortcuts (Forge 1.20.1 / NeoForge 1.21.1)
+
+In Options → Controls → Key Binds → SHBUI, bind the Island toggle and the
+Island playback shortcuts you want. They are unbound by default. Expand the
+island while it shows an SH Music track to play/pause, skip to the previous or
+next track, or seek back/forward by 10 seconds. The existing Open SH Music
+shortcut opens the complete player. These controls do not open a session, start
+a new capture, or control an external system player. Notifications that cover
+the track, background/minimized Minecraft, chat, other screens, player list,
+and hidden HUD disable the controls. Choose non-conflicting keyboard bindings;
+there is no HUD mouse capture.
+
+### Open the displayed Island task (Forge 1.20.1 / NeoForge 1.21.1)
+
+In **Options → Controls → Key Binds → SHBUI**, bind **Open displayed Music
+Island task** (unbound by default). Use it while the island displays a live
+background operation notice in the world. It opens the matching row in SH
+Music History, not the result, account or playback action itself. The key
+does nothing for media and lyric-only notices, an expired task, or while
+the HUD is hidden. It never starts or retries a search, favorite update or
+QR sign-in. Use a key that does not conflict with another gameplay action.

@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.client.api.*;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -28,6 +29,13 @@ public final class OnlineMusicScreen {
         return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).backgroundView());
     }
 
+    /** A notice opens the matching history row, not an account or result action. */
+    public static UiScreen operation(Screen parent, MusicOperationNavigation.Target target) {
+        if (!available() || !target.valid() || !(UnifiedUI.get().require(OnlineMusicService.KEY)
+                instanceof com.dishanhai.sh_better_ui.kernel.internal.music.ClientOnlineMusic music)) return null;
+        return create(parent, () -> null, () -> music.backgroundOperationView(target).orElseThrow());
+    }
+
     static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus,
                            Supplier<OnlineMusicView> factory) {
         var owner = new SessionOwner(factory);
@@ -50,6 +58,9 @@ public final class OnlineMusicScreen {
                     else frame.graphics().text(Minecraft.getInstance().font,
                             Component.translatable("sh_better_ui.online_music.view.unavailable"),
                             frame.viewport().x() + 8, frame.viewport().y() + 40, UiTheme.current().text(), false);
+                })
+                .onForeground((screen, frame) -> {
+                    if (owner.view instanceof OnlineMusicViewImpl nativeView) nativeView.renderRouteHandoff(frame);
                 })
                 .onRemoved(screen -> owner.close()).build();
         result.returnFocus(Objects.requireNonNull(returnFocus));
