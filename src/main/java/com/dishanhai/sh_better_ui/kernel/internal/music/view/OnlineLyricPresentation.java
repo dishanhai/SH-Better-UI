@@ -16,6 +16,10 @@ final class OnlineLyricPresentation {
             default -> -1;
         };
     }
+    static long songPosition(long clipPosition,long offset) {
+        if(clipPosition<0)return -1;
+        return clipPosition+Math.min(Math.max(0,offset),Long.MAX_VALUE-clipPosition);
+    }
     static boolean seekable(OnlineMusicPlayer.Snapshot snapshot) {
         return position(snapshot)>=0&&snapshot.durationMs()>0;
     }

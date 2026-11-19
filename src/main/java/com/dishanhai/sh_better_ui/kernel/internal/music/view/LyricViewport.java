@@ -6,8 +6,8 @@ final class LyricViewport {
     private double position, velocity;
     private int manual = -1;
     private long last, resume;
-    private boolean started;
-    void reset() { started = false; manual = -1; resume = 0; velocity = 0; }
+    private boolean started, previewing;
+    void reset() { started = false; previewing = false; manual = -1; resume = 0; velocity = 0; }
     void scroll(int direction, int active, int size, long now) {
         long next = (long) (manual < 0 ? Math.max(0, active) : manual) + direction;
         browseTo((int) Math.max(0, Math.min(Integer.MAX_VALUE, next)), size, now);
@@ -24,7 +24,17 @@ final class LyricViewport {
     boolean browsing(long now) { return manual >= 0 && now < resume; }
     void follow() { manual = -1; resume = 0; velocity = 0; }
     double sample(int active, int size, long now, boolean reducedMotion, boolean focused) {
+        return sample(active,size,now,reducedMotion,focused,false);
+    }
+    double sample(int active, int size, long now, boolean reducedMotion, boolean focused, boolean preview) {
         if (size <= 0) { reset(); return 0; }
+        boolean scrubbed=preview||previewing;
+        previewing=preview;
+        if (scrubbed) {
+            follow();
+            position=Math.max(0,Math.min(size-1,active));
+            started=true; last=now; return position;
+        }
         if (focused && started) {
             // Keep keyboard targets stationary, including when a track's lyric count shrinks.
             position = Math.max(0, Math.min(size - 1, position));

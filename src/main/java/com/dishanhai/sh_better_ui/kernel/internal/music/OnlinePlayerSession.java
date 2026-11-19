@@ -488,6 +488,10 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset, generation); }
     /** Identity of the current playback attempt; reads share the playback mutation lock. */
     synchronized long playbackGeneration() { return generation; }
+    @Override public synchronized long lyricOffsetMs(Snapshot snapshot) {
+        return snapshot.preview() && preview && Objects.equals(track,snapshot.track()) && lyrics==snapshot.lyrics()
+                ? offset : 0;
+    }
     @Override public LyricFeed lyricFeed() {
         return new LyricFeed() {
             @Override public Frame frame() {

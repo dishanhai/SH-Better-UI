@@ -972,6 +972,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateStageGeometry();updateVisibility();
     }
     boolean permitsScreenClose() {
+        if(!immersive&&seek!=null&&seek.isEditing()){seek.cancelInteraction();return false;}
         if(returnFromLibraryLogin()||returnFromHistoryDestination())return false;
         if(dismissListen1Editor())return false;
         if(!immersive&&page==Page.LIBRARY&&library==Library.TRACKS){returnToPlaylistList();return false;}
@@ -1027,8 +1028,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stageControls.add(stageSeek);stageControls.add(stageVolume);
         stageLyrics=OnlineMusicScreen.addLyricsLayer(host,new MusicLyricsView(stage.lyrics(),label("lyrics.empty"),host.preferences(),position->{
             var now=player.snapshot();
-            if(OnlineLyricPresentation.seekable(now)&&position>=0&&position<=now.durationMs()&&Objects.equals(now.track(),stageLyricTrack)&&now.lyrics()==stageTimeline&&stageLyrics.contentKey()==stageLyricKey)
-                player.seek(position);
+            if(stageSeek.isEditing()||position<0||!Objects.equals(now.track(),stageLyricTrack)
+                    ||now.lyrics()!=stageTimeline||stageLyrics.contentKey()!=stageLyricKey)return;
+            var target=new LyricSeekTarget(stageLyricTrack,stageTimeline,position,previewLyricOffset(now)).position(now);
+            if(target.isPresent()&&target.getAsLong()<=now.durationMs())player.seek(target.getAsLong());
         }),()->stage.lyrics());
         stageFollow=OnlineMusicScreen.addLyricsLayer(host,new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+Math.max(0,stage.lyrics().height()-20),Math.min(108,stage.lyrics().width()),20),label("view.follow_lyrics"),
                 host.preferences(),stageLyrics::follow),()->stage.lyrics());
@@ -1886,7 +1889,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             stageLyricTrack=current.track();stageTimeline=timeline;stageLyricKey=new Object();
             stageLyrics.setLines(stageLyricKey,OnlineLyricPresentation.lines(timeline));
         }
-        stageLyrics.playback(OnlineLyricPresentation.position(current),windowActive&&OnlineLyricPresentation.seekable(current));
+        boolean preview=windowActive&&stageSeek.isEditing()&&OnlineLyricPresentation.seekable(current);
+        long clipPosition=preview?stageSeek.previewPositionMs():OnlineLyricPresentation.position(current);
+        stageLyrics.playback(OnlineLyricPresentation.songPosition(clipPosition,previewLyricOffset(current)),
+                windowActive&&OnlineLyricPresentation.seekable(current),preview);
+    }
+    private long previewLyricOffset(OnlineMusicPlayer.Snapshot snapshot) {
+        return snapshot.preview()?Math.max(0,player.lyricOffsetMs(snapshot)):0;
     }
     private Bounds lyricContent() {
         if (immersive) return stage.lyrics();
@@ -1927,14 +1936,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if (current.track() != null) muted(ui, MusicTypography.text(current.track().artist()), cover.x(), cover.bottom() + 23, size);
         } else if (!immersive) text(ui, title, c.x() + 4, c.y() + 2, c.width() - 8);
         if (!Objects.equals(lyricTrack, current.track())) { lyricTrack = current.track(); lyricViewport.reset(); }
-        var feed = player.lyricFeed().frame();
-        long position = feed.alive() ? feed.snapshot().positionMs() : current.positionMs();
-        lyricOffset = Math.max(0, position - current.positionMs());
+        lyricOffset=previewLyricOffset(current);
+        boolean preview=seek.isEditing()&&OnlineLyricPresentation.seekable(current);
+        long clipPosition=preview?seek.previewPositionMs():OnlineLyricPresentation.position(current);
+        long position=OnlineLyricPresentation.songPosition(clipPosition,lyricOffset);
         var palette = LyricTextPalette.sample(UiTheme.current().text(), UiTheme.current().accent(), UiTheme.current().background() | 0xff000000, 0, ui.preferences().highContrast());
         var timeline = current.lyrics(); int index = timeline.indexAt(position); activeLyric = index;
         long now = System.nanoTime() / 1_000_000L;
         boolean focused = lyricRows.stream().anyMatch(row -> row.visible && row.keyboardFocused());
-        double center = lyricViewport.sample(Math.max(0, index), timeline.size(), now, ui.preferences().reducedMotion() || !LyricViewport.canAnimate(lines.height()), focused);
+        double center = lyricViewport.sample(Math.max(0, index), timeline.size(), now, ui.preferences().reducedMotion() || !LyricViewport.canAnimate(lines.height()), focused, preview);
         int rowHeight = immersive ? stage.lyricRowHeight() : 24;
         int visibleLines = Math.max(1, lines.height() / rowHeight);
         lyricsScroll.configure(lyricViewport.scrollPosition(index), timeline.size() + visibleLines - 1, visibleLines);
@@ -1946,7 +1956,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             row.setStage(immersive, immersive ? stage.lyricScale() : 1f);
             boolean present = i < timeline.size() && y >= lines.y() && y + rowHeight <= lines.bottom()
                     && current.lyricsState() == OnlineMusicPlayer.LyricsState.READY;
-            row.active = present && seek.active; row.visible = present; lyricTargets.set(slot, present ? new LyricSeekTarget(current.track(), timeline, timeline.line(i).startMs(), lyricOffset) : null);
+            row.active = present && seek.active && !preview; row.visible = present; lyricTargets.set(slot, present ? new LyricSeekTarget(current.track(), timeline, timeline.line(i).startMs(), lyricOffset) : null);
             if (!present) continue;
             var line = timeline.line(i); var words = Component.empty();
             // Keep provider word timing and text intact. Only the current line receives karaoke color.

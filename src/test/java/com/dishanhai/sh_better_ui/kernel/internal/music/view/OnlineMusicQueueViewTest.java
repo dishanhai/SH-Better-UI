@@ -16,10 +16,12 @@ class OnlineMusicQueueViewTest {
         OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
         int paused,closed,seeks;
+        long clipOffset, lastSeek;
         OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
             case "queue" -> persistent;
-            case "seek" -> {seeks++;yield null;}
+            case "seek" -> {seeks++;lastSeek=(Long)args[0];yield null;}
+            case "lyricOffsetMs" -> clipOffset;
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
             case "sources" -> providers;
@@ -248,6 +250,64 @@ class OnlineMusicQueueViewTest {
         lyrics.model().browse();f.snapshotOverride=new OnlineMusicPlayer.Snapshot(B,OnlineMusicPlayer.State.PLAYING,500,2000,OnlineMusicPlayer.LyricsState.EMPTY,timeline,OnlineMusicPlayer.Failure.NONE,false);
         call(f.view,"syncStageLyrics",new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class},f.snapshotOverride,true);
         assertTrue(lyrics.model().lines().isEmpty());assertFalse(lyrics.browsing());assertEquals(-1,lyrics.model().activeIndex());
+    }
+
+    @Test void draggingTimelinePreviewsLyricsWithoutSeekingUntilRelease() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());
+        var timeline=new LyricTimeline(List.of(
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("first","",0,1000,List.of(),""),
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("second","",1000,2000,List.of(),"")));
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.PAUSED,500,2000,
+                OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        var lyrics=(MusicLyricsView)field(f.view,"stageLyrics");
+        var seek=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl)field(f.view,"stageSeek");
+        seek.visible=true;seek.sync("qq:1",500,2000,true);
+        var types=new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class};
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        lyrics.model().browse();
+        double from=seek.getX()+4+(seek.getWidth()-8)*.25;
+        double to=seek.getX()+4+(seek.getWidth()-8)*.75;
+        double y=seek.getY()+2;
+        assertTrue(seek.mouseClicked(from,y,0));
+        assertTrue(seek.mouseDragged(to,y,0,0,0));
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(1500,lyrics.model().positionMillis());assertEquals(1,lyrics.model().activeIndex());
+        assertFalse(lyrics.browsing());assertTrue(lyrics.model().seekTarget(1).isEmpty());assertEquals(0,f.seeks);
+        seek.cancelInteraction();
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(500,lyrics.model().positionMillis());assertEquals(0,lyrics.model().activeIndex());
+        assertTrue(lyrics.model().seekTarget(1).isPresent());assertFalse(seek.mouseReleased(to,y,0));assertEquals(0,f.seeks);
+        assertTrue(seek.mouseClicked(to,y,0));assertTrue(seek.mouseReleased(to,y,0));assertEquals(1,f.seeks);
+        assertTrue(seek.mouseClicked(to,y,0));
+        seek.sync("qq:2",100,2000,true);
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(B,OnlineMusicPlayer.State.PAUSED,100,2000,
+                OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,false);
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(100,lyrics.model().positionMillis());assertFalse(seek.mouseReleased(to,y,0));assertEquals(1,f.seeks);
+    }
+
+    @Test void authorizedPreviewScrubsInSongTimeAndLyricClickSeeksInClipTime() throws Exception {
+        var f=new Fixture();f.view.layout(new Host());f.clipOffset=30000;
+        var timeline=new LyricTimeline(List.of(
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("clip start","",30000,35000,List.of(),""),
+                new com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricLine("second","",35000,45000,List.of(),"")));
+        f.snapshotOverride=new OnlineMusicPlayer.Snapshot(A,OnlineMusicPlayer.State.PAUSED,2000,30000,
+                OnlineMusicPlayer.LyricsState.READY,timeline,OnlineMusicPlayer.Failure.NONE,true);
+        var lyrics=(MusicLyricsView)field(f.view,"stageLyrics");
+        var seek=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl)field(f.view,"stageSeek");
+        seek.visible=true;seek.sync("qq:1",2000,30000,true);
+        var types=new Class<?>[]{OnlineMusicPlayer.Snapshot.class,boolean.class};
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(32000,lyrics.model().positionMillis());
+        double target=seek.getX()+4+(seek.getWidth()-8)/6d;
+        assertTrue(seek.mouseClicked(target,seek.getY()+2,0));
+        call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        assertEquals(35000,lyrics.model().positionMillis());assertEquals(1,lyrics.model().activeIndex());
+        seek.cancelInteraction();call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
+        ((java.util.function.LongConsumer)field(lyrics,"seek")).accept(35000);
+        assertEquals(1,f.seeks);assertEquals(5000,f.lastSeek);
+        ((java.util.function.LongConsumer)field(lyrics,"seek")).accept(65000);
+        assertEquals(1,f.seeks);
     }
 
     @Test void compactResultsQueueAndMiniExposeRealArtistMetadata() throws Exception {

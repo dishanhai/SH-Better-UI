@@ -64,4 +64,14 @@ class LyricViewportTest {
         assertTrue(OnlineLyricButton.lyricScale(false, Float.NaN, false) >= .9f);
         assertEquals(OnlineLyricButton.lyricScale(false, 2, false), OnlineLyricButton.lyricScale(false, -2, false));
     }
+    @Test void seekPreviewOverridesBrowsingAndReturnsImmediatelyToAudibleLine() {
+        var view=new LyricViewport();
+        view.browseTo(8,12,0);
+        assertEquals(3,view.sample(3,12,1,false,true,true));
+        assertFalse(view.browsing(1));
+        assertEquals(4,view.sample(4,12,2,false,false,true));
+        assertEquals(2,view.sample(2,12,3,false,false,false));
+        double follow=view.sample(3,12,30,false,false);
+        assertTrue(follow>2&&follow<3);
+    }
 }
