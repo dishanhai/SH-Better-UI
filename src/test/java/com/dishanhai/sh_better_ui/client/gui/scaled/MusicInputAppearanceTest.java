@@ -31,7 +31,7 @@ class MusicInputAppearanceTest {
         field.paint(canvas);assertEquals(1,canvas.stroke);
         MusicInputAppearance.apply(field);field.paint(canvas);
         assertEquals(0,canvas.stroke);assertEquals(8,canvas.textY);
-        assertEquals(MpTypography.FONT,canvas.style.getFont());
+        assertEquals(MusicTypography.FONT,canvas.style.getFont());
         field.setFocused(true);field.paint(canvas);assertEquals(1,canvas.stroke);
         field.setFocused(false);field.setError(Component.literal("Invalid"));field.paint(canvas);assertEquals(1,canvas.stroke);
         field.setError(null);field.setPreferences(new UiPreferences(true,true,false));
