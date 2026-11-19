@@ -489,12 +489,19 @@ class OnlineMusicQueueViewTest {
     }
 
     private static OnlineMusicPlayer session(java.util.concurrent.CountDownLatch release) throws Exception {
+        return session(release,null,new java.util.concurrent.atomic.AtomicInteger());
+    }
+    private static OnlineMusicPlayer session(java.util.concurrent.CountDownLatch release, Exception likeError,java.util.concurrent.atomic.AtomicInteger writes) throws Exception {
         var providers=new ArrayList<OnlineMusicSource>();
         for(String source:List.of("qq","netease")) providers.add((OnlineMusicSource)Proxy.newProxyInstance(OnlineMusicQueueViewTest.class.getClassLoader(),new Class[]{OnlineMusicSource.class},(proxy,method,args)->switch(method.getName()) {
             case "id"->source;
             case "requestSnapshot"->proxy;
             case "search"->{release.await();yield List.of(A);}
-            case "like"->{release.await();yield null;}
+            case "like"->{writes.incrementAndGet();release.await();if(likeError!=null)throw likeError;yield null;}
+            case "qrLogin"->new OnlineMusicSource.QrChallenge() {
+                public OnlineMusicLogin.Image image() {return new OnlineMusicLogin.Image(1,1,new BitSet());}
+                public OnlineMusicSource.Poll poll() throws Exception {release.await();return new OnlineMusicSource.Poll(OnlineMusicLogin.State.WAITING,"");}
+            };
             case "playlist","liked"->List.of(A);
             case "playlists"->List.of(new OnlinePlaylist("qq","new","New account list",1));
             case "supportsLikes"->false;
@@ -640,6 +647,153 @@ class OnlineMusicQueueViewTest {
             call(view,"loadLibraryPage",new Class<?>[]{int.class},1);
             assertEquals("PLAYLISTS",field(view,"library").toString());
             assertNotNull(field(view,"pendingPlaylists"));
+        }
+    }
+
+    @Test void historyLikeAndLoginNavigateWithoutReissuingTheirAction() throws Exception {
+        var neverRelease=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(neverRelease)) {
+            player.credentials("qq","fixture");
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var like=registry.startLike(A,true);
+            var view=new OnlineMusicViewImpl(player,false);var host=new Host();view.layout(host);
+            page(view,"HISTORY");
+            var row=(MusicTextControl)((List<?>)field(view,"historyRows")).get(0);
+            assertTrue(row.active);row.onPress();
+            assertEquals("LIBRARY",field(view,"page").toString());
+            assertEquals("qq",field(view,"librarySource"));
+            assertEquals("LIKED",field(view,"library").toString());
+            assertNotNull(field(view,"pendingLibrary"));
+            assertEquals(1,registry.snapshots().stream().filter(task->task.kind().mutation()).count());
+            assertFalse(view.permitsScreenClose());assertEquals("HISTORY",field(view,"page").toString());
+            assertEquals(like.id(),((Map<?,?>)field(view,"historyBindings")).get(host.screen().getFocused()));
+            var attempt=registry.startLogin("netease");
+            var login=registry.snapshots().stream().filter(task->task.kind().name().equals("LOGIN")).findFirst().orElseThrow();
+            call(view,"updateHistory",new Class<?>[]{});
+            call(view,"restoreOperation",new Class<?>[]{long.class},login.id());
+            assertEquals("ACCOUNTS",field(view,"page").toString());
+            assertEquals("netease",field(view,"accountSource"));
+            assertTrue((Boolean)field(view,"accountDetail"));
+            assertSame(attempt,registry.currentLogin("netease").orElseThrow());
+            assertEquals(1,registry.snapshots().stream().filter(task->task.kind().name().equals("LOGIN")).count());
+            assertFalse(view.permitsScreenClose());assertEquals("HISTORY",field(view,"page").toString());
+            assertFalse(like.observe().isCancelled());
+            assertFalse(view.permitsScreenClose());assertEquals("SEARCH",field(view,"page").toString());
+            assertSame(field(view,"searchHistory"),host.screen().getFocused());
+        } finally {neverRelease.countDown();}
+    }
+
+    @Test void historyPagerAndCancelledReadCannotActivate() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(1);
+        try(var player=session(release)) {
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var handle=registry.startSearch("qq","cancelled query",1);handle.cancel();
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());page(view,"HISTORY");
+            assertFalse(((MusicTextControl)field(view,"historyPrevious")).active);
+            assertFalse(((MusicTextControl)field(view,"historyNext")).active);
+            var row=(MusicTextControl)((List<?>)field(view,"historyRows")).get(0);
+            assertFalse(row.active);row.onPress();
+            call(view,"restoreOperation",new Class<?>[]{long.class},handle.id());
+            assertEquals("HISTORY",field(view,"page").toString());
+            assertNull(field(view,"pending"));
+        } finally {release.countDown();}
+    }
+
+    @Test void unknownWriteChecksLikesOnceAndSignedOutRouteHonorsAuthGate() throws Exception {
+        var release=new java.util.concurrent.CountDownLatch(0);
+        var writes=new java.util.concurrent.atomic.AtomicInteger();
+        try(var player=session(release,new java.io.IOException("unknown transport"),writes)) {
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            player.credentials("qq","fixture");
+            var unknown=registry.startLike(A,false);
+            assertThrows(java.util.concurrent.ExecutionException.class,()->unknown.observe().get(3,java.util.concurrent.TimeUnit.SECONDS));
+            for(int i=0;i<100&&unknown.snapshot().state().name().equals("RUNNING");i++)Thread.sleep(5);
+            assertEquals("UNKNOWN",unknown.snapshot().error().name());
+            assertEquals(1,writes.get());
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());page(view,"HISTORY");
+            call(view,"restoreOperation",new Class<?>[]{long.class},unknown.id());
+            assertEquals("qq",field(view,"librarySource"));assertEquals("LIKED",field(view,"library").toString());
+            assertNotNull(field(view,"pendingLibrary"));assertEquals(1,writes.get());
+            assertFalse(view.permitsScreenClose());
+            player.credentials("qq","");
+            var signedOut=registry.startLike(A,true);
+            assertThrows(java.util.concurrent.ExecutionException.class,()->signedOut.observe().get(3,java.util.concurrent.TimeUnit.SECONDS));
+            assertEquals("LOGIN_REQUIRED",signedOut.snapshot().error().name());
+            call(view,"restoreOperation",new Class<?>[]{long.class},signedOut.id());
+            assertEquals("qq",field(view,"librarySource"));assertEquals("LIKED",field(view,"library").toString());
+            assertNull(field(view,"pendingLibrary"));assertEquals(1,writes.get());
+            assertTrue(((MusicTextControl)field(view,"libraryLogin")).visible);
+            ((MusicTextControl)field(view,"libraryLogin")).onPress();
+            assertEquals("ACCOUNTS",field(view,"page").toString());
+            assertEquals("qq",field(view,"accountSource"));
+            assertFalse(view.permitsScreenClose());
+            assertEquals("LIBRARY",field(view,"page").toString());
+            assertEquals("qq",field(view,"librarySource"));
+            assertEquals("LIKED",field(view,"library").toString());
+            assertNull(field(view,"pendingLibrary"));
+            ((MusicTextControl)field(view,"back")).onPress();
+            assertEquals("HISTORY",field(view,"page").toString());
+            assertTrue(registry.currentLogin("qq").isEmpty());
+        }
+    }
+    @Test void wideHistoryLabelFitsChineseTranslationsAndCompactEntryKeepsSearchTarget() throws Exception {
+        try(var player=session(new java.util.concurrent.CountDownLatch(0))) {
+            var view=new OnlineMusicViewImpl(player,false);var host=new Host();view.layout(host);
+            var entry=(MusicTextControl)field(view,"searchHistory");
+            assertTrue(entry.getWidth()>=64);
+            for(String locale:List.of("zh_cn","zh_tw")) {
+                try(var stream=getClass().getResourceAsStream("/assets/sh_better_ui/lang/"+locale+".json")) {
+                    assertNotNull(stream);
+                    var json=com.google.gson.JsonParser.parseReader(new java.io.InputStreamReader(stream,java.nio.charset.StandardCharsets.UTF_8)).getAsJsonObject();
+                    String label=json.get("sh_better_ui.online_music.operations.short_title").getAsString();
+                    assertTrue(host.font().width(label)+18<=entry.getWidth());
+                }
+            }
+            var fullSearch=(MusicTextControl)field(view,"searchButton");
+            assertTrue(fullSearch.getX()+fullSearch.getWidth()<=entry.getX());
+            host.width=208;host.height=240;view.layout(host);
+            var compact=(MusicTextControl)field(view,"searchHistory");
+            assertEquals(24,compact.getWidth());
+            assertEquals(24,((MusicTextControl)field(view,"searchButton")).getWidth());
+            assertTrue(((net.minecraft.client.gui.components.AbstractWidget)field(view,"queryField")).getWidth()>0);
+        }
+    }
+
+    @Test void ordinaryLibraryDrillDownKeepsItsOwnBackDestination() throws Exception {
+        try(var player=session(new java.util.concurrent.CountDownLatch(0))) {
+            player.credentials("qq","fixture");
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var liked=registry.startLiked("qq",1);
+            var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());page(view,"HISTORY");
+            call(view,"restoreOperation",new Class<?>[]{long.class},liked.id());
+            var switchGroup=(java.util.function.IntConsumer)field(field(view,"libraryGroups"),"onChange");
+            switchGroup.accept(0);
+            ((java.util.concurrent.CompletableFuture<?>)field(view,"pendingPlaylists")).get(3,java.util.concurrent.TimeUnit.SECONDS);
+            call(view,"pollOperations",new Class<?>[0]);
+            var row=(MusicTextControl)((List<?>)field(view,"libraryRows")).get(0);row.onPress();
+            assertEquals("TRACKS",field(view,"library").toString());
+            assertFalse(view.permitsScreenClose());
+            assertEquals("LIBRARY",field(view,"page").toString());
+            assertEquals("PLAYLISTS",field(view,"library").toString());
+        }
+    }
+
+    @Test void historyFocusNeverSilentlyChangesTaskAndAccountEscapeReturnsToCard() throws Exception {
+        try(var player=session(new java.util.concurrent.CountDownLatch(0))) {
+            var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
+            var first=registry.startSearch("qq","first",1);
+            var view=new OnlineMusicViewImpl(player,false); var host=new Host();view.layout(host);page(view,"HISTORY");
+            var row=(MusicTextControl)((List<?>)field(view,"historyRows")).get(0);
+            var bindings=(Map<?,?>)field(view,"historyBindings");
+            assertEquals(first.id(),bindings.get(row));
+            host.screen().setFocused(row);
+            registry.startSearch("qq","second",1);call(view,"updateHistory",new Class<?>[0]);
+            assertSame(field(view,"back"),host.screen().getFocused());
+            page(view,"ACCOUNTS");
+            var card=(MusicTextControl)((Map<?,?>)field(view,"accounts")).get("qq");
+            card.onPress();assertTrue((boolean)field(view,"accountDetail"));
+            assertFalse(view.permitsScreenClose());assertFalse((boolean)field(view,"accountDetail"));
+            assertSame(card,host.screen().getFocused());
         }
     }
 

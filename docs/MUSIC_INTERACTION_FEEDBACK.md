@@ -86,6 +86,25 @@ applied the credentials and any requested persistence has succeeded.
 
 Notifications and recent-task labels contain only operation type and normalized
 state; no track identity, credentials, account data, QR image, or raw provider
-error. Write and login history rows are informational. No re-execution takes
-place from history. These paths have synthetic provider regression coverage;
+error. Write and login history records never re-execute their original action;
+the safe navigation shortcuts below open the related workflow instead. These
+paths have synthetic provider regression coverage;
 they do not imply live account or audio-service verification.
+
+
+## History shortcuts
+
+The Search toolbar shows History as text where there is room, otherwise as a
+named clock button. A record shows its provider, outcome and next action. A
+search or library result is restored from memory rather than sent again. A
+favorite update opens that provider's Liked Songs through the existing sign-in
+gate, even if the write outcome is uncertain; it never retries the mutation.
+A sign-in record opens that provider's account settings and can show the
+existing QR challenge, without starting one. Pruned or cancelled records
+cannot be activated. Pagination controls are disabled at their limits.
+Back and Escape return to History after following a record; leaving History
+returns focus to the toolbar button. Explicit new navigation or drill-down clears
+that temporary return path. Sign-in gates return to the originating provider and
+library context first. When a focused history slot is rebound to another record,
+its held gesture is cancelled and focus moves to Back instead of silently
+activating a different task.
