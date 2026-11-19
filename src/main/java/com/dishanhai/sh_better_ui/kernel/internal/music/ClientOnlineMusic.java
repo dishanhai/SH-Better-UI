@@ -80,6 +80,19 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
         return !closed && background instanceof OnlinePlayerSession session ? session.operations().snapshots() : List.of();
     }
 
+    @Override public synchronized Optional<MusicOperationNavigation.Target> operationTarget(long id) {
+        return !closed && background instanceof OnlinePlayerSession session
+                ? MusicOperationNavigation.target(session.operations(), id) : Optional.empty();
+    }
+
+    public synchronized Optional<OnlineMusicView> backgroundOperationView(MusicOperationNavigation.Target target) {
+        if (closed || !(background instanceof OnlinePlayerSession session)
+                || !target.validFor(session.operations())) return Optional.empty();
+        var view = new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(session, false);
+        view.requestOperationHistory(target);
+        return Optional.of(view);
+    }
+
     @Override public synchronized void close() {
         if (closed) return;
         closed = true;

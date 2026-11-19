@@ -185,7 +185,7 @@ class IslandNoticeQueueTest {
     }
     @Test void fullQueueDefersWithoutEvictionThenRetriesOnlyUntilAdmitted() {
         var queue=new IslandNoticeQueue();for(int i=0;i<8;i++)queue.offer(notice("existing"+i));
-        var admission=new MusicOperationAdmission();admission.update(List.of(new MusicOperationNotices.Update("result","succeeded",false,false,3500)),queue::cancel);
+        var admission=new MusicOperationAdmission();admission.update(List.of(new MusicOperationNotices.Update("result",1L,"succeeded",false,false,3500)),queue::cancel);
         var accepted=new AtomicInteger();java.util.function.Predicate<MusicOperationNotices.Update> offer=u->{boolean ok=queue.tryOffer(notice(u.id()));if(ok)accepted.incrementAndGet();return ok;};
         admission.flush(offer);admission.flush(offer);assertEquals(0,accepted.get());
         assertEquals("existing0",queue.sample(0).orElseThrow().id());

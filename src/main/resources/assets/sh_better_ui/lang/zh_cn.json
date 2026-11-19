@@ -2809,6 +2809,7 @@
   "sh_better_ui.music_overlay.task.playback_failed": "播放失败，请打开播放器查看。",
   "sh_better_ui.online_music.feedback.seek": "跳转至 %s",
   "sh_better_ui.online_music.operations.title": "后台任务",
+  "sh_better_ui.online_music.operations.view_task": "查看任务",
   "sh_better_ui.online_music.operations.empty": "暂无近期任务",
   "sh_better_ui.online_music.operations.short_title": "历史记录",
   "sh_better_ui.online_music.operations.action.restore": "恢复结果",
