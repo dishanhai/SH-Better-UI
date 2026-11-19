@@ -62,6 +62,14 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default void equalizerPreset(OnlineMusicEqualizerPreset preset) {
         throw new UnsupportedOperationException("Music equalizer unavailable");
     }
+    /** Whether the current QQ track uses a native output that can apply local sound effects. */
+    default boolean supportsSoundEffects() { return false; }
+    /** Remembered session preference; no effect is applied when this capability is unavailable. */
+    default OnlineMusicSoundEffect soundEffect() { return OnlineMusicSoundEffect.OFF; }
+    /** Requires supportsSoundEffects(); does not alter provider quality, licensing, or stream selection. */
+    default void soundEffect(OnlineMusicSoundEffect effect) {
+        throw new UnsupportedOperationException("Music sound effects unavailable");
+    }
     /** Compressed bytes referenced by cache entries, counted once even if shared with active playback.
      * Additional playback-only buffers and decoder/device memory are not included. */
     record AudioCacheInfo(int entries, long retainedBytes, long capacityBytes) {}

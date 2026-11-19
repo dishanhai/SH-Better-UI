@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicSoundEffect;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.State;
 import com.dishanhai.sh_better_ui.kernel.internal.music.decoder.*;
 import javax.sound.sampled.*;
@@ -19,6 +20,13 @@ final class Mp3Output implements PlaybackOutput {
     private Thread worker;
     private volatile float gain = 1f;
     private volatile PcmEqualizer.Preset equalizerPreset = PcmEqualizer.Preset.FLAT;
+
+    // Null means this output is not attached to a QQ stream. Avoid allocating delay history for other providers.
+    private volatile OnlineMusicSoundEffect soundEffect;
+    @Override public boolean supportsSoundEffects() { return true; }
+    @Override public void soundEffect(OnlineMusicSoundEffect effect) {
+        soundEffect = java.util.Objects.requireNonNull(effect, "effect");
+    }
 
     /** Internal native-output capability only; no effect on externally hosted/DRM playback. */
     @Override public boolean supportsEqualizer() { return true; }
@@ -49,6 +57,7 @@ final class Mp3Output implements PlaybackOutput {
             byte[] pcm = new byte[8192];
             float previousGain = gain;
             PcmEqualizer equalizer = null;
+            PcmSoundEffects effects = null;
             int outputRate = 0, outputChannels = 0;
             while (!closed && (header = bits.readFrame()) != null) {
                 var samples = (SampleBuffer) decoder.decodeFrame(header, bits);
@@ -85,6 +94,12 @@ final class Mp3Output implements PlaybackOutput {
                 short[] source = samples.getBuffer();
                 equalizer.preset(equalizerPreset);
                 equalizer.process(source, skip * channels, samples.getBufferLength());
+                var requestedEffect = soundEffect;
+                if (requestedEffect != null) {
+                    if (effects == null) effects = new PcmSoundEffects(rate, channels);
+                    effects.preset(requestedEffect);
+                    effects.process(source, skip * channels, samples.getBufferLength());
+                }
                 float requestedGain = gain;
                 int length = PcmGain.write(source, skip * channels, samples.getBufferLength(), channels,
                         pcm, previousGain, requestedGain);

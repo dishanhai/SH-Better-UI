@@ -61,9 +61,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 !track.album().isBlank()&&searchSourceIds.contains(track.source()),()->searchFromMenu(track,track.album())));
         actions.add(new NowPlayingMenu.Entry(label("menu.search_artist"),MusicControlRenderer.Icon.USER,
                 !track.artist().isBlank()&&searchSourceIds.contains(track.source()),()->searchFromMenu(track,track.artist())));
+        if(player.supportsSoundEffects())actions.add(new NowPlayingMenu.Entry(label("menu.qq_effects"),
+                MusicControlRenderer.Icon.SETTINGS,true,()->openQqEffects(track)));
         if(player.supportsEqualizer())actions.add(new NowPlayingMenu.Entry(label("menu.equalizer"),
                 MusicControlRenderer.Icon.SETTINGS,true,()->openEqualizer(track)));
-        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,true,
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,NowPlayingMenu.Layout.QUICK_ACTIONS,
                 ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track));
     }
     private void openEqualizer(OnlineTrack track) {
@@ -76,8 +78,21 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             entries.add(new NowPlayingMenu.Entry(preset==selected?label("menu.eq.current",name):name,null,true,
                     ()->perform(name,()->player.equalizerPreset(preset))));
         }
-        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.equalizer"),entries,false,
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.equalizer"),entries,NowPlayingMenu.Layout.LIST,
                 ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track)&&player.supportsEqualizer());
+    }
+    private void openQqEffects(OnlineTrack track) {
+        if(!player.supportsSoundEffects()||!Objects.equals(player.snapshot().track(),track))return;
+        closeNowPlayingMenu();
+        var selected=player.soundEffect();
+        var entries=new ArrayList<NowPlayingMenu.Entry>();
+        for(var effect:OnlineMusicSoundEffect.values()){
+            var name=label("menu.qq_effect."+effect.name().toLowerCase(Locale.ROOT));
+            entries.add(new NowPlayingMenu.Entry(effect==selected?label("menu.eq.current",name):name,null,true,
+                    ()->perform(name,()->player.soundEffect(effect)),effect==selected));
+        }
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.qq_effects"),entries,NowPlayingMenu.Layout.EFFECT_TILES,
+                ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track)&&player.supportsSoundEffects());
     }
     private void searchFromMenu(OnlineTrack track,String value) {
         selectSource(track.source());query=value;queryField.setValue(value);search(1,true);

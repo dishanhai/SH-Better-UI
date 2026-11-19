@@ -2900,5 +2900,12 @@
   "sh_better_ui.online_music.menu.eq.bass_focus": "Bass Boost",
   "sh_better_ui.online_music.menu.eq.voice_focus": "Vocal Focus",
   "sh_better_ui.online_music.menu.eq.treble_focus": "Treble Boost",
-  "sh_better_ui.online_music.menu.eq.current": "%s (selected)"
+  "sh_better_ui.online_music.menu.eq.current": "%s (selected)",
+  "sh_better_ui.online_music.menu.qq_effects": "QQ Sound Effects",
+  "sh_better_ui.online_music.menu.qq_effect.off": "Off",
+  "sh_better_ui.online_music.menu.qq_effect.super_bass": "Super Bass",
+  "sh_better_ui.online_music.menu.qq_effect.clear_vocals": "Clear Vocals",
+  "sh_better_ui.online_music.menu.qq_effect.live_rhythm": "Live Rhythm",
+  "sh_better_ui.online_music.menu.qq_effect.wide_stereo": "Wide Stereo",
+  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "Concert Hall"
 }

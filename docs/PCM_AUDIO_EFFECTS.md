@@ -58,3 +58,19 @@ selection, seek/track replacement, unsupported-output switching, and remembered
 preferences. All 30 tests in these three classes pass against the NeoForge
 1.21.1 compiled dependency boundary. These are pure
 Java numerical tests, not audio-device, in-game, listening, or Apple Music tests.
+
+## QQ source sound effects
+
+While the current QQ track plays through a supported native PCM output,
+**Now Playing → … → QQ Sound Effects** opens a two-column selector. Choose Off,
+Super Bass, Clear Vocals, Live Rhythm, Wide Stereo, or Concert Hall. These are
+local SHBUI presets inspired by the categories in [QQ Music's Galaxy effects
+engineering write-up](https://cloud.tencent.com/developer/article/2279776);
+they are not Tencent's proprietary algorithms.
+
+The QQ stage follows the existing session equalizer and precedes volume and
+the activity meter. Its setting is remembered for the current player session
+across QQ tracks and seeks, with no file or account persistence. It is not
+processed for other providers, browser playback, or outputs that do not
+implement the PCM capability. These settings do not negotiate stream quality,
+change membership, or enable DTS, lossless, or 5.1 output.

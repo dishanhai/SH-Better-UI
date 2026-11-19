@@ -12,8 +12,8 @@ final class NowPlayingMenuHost {
     NowPlayingMenuHost(PreviewContext host){modal=new UiLocalModal(host.screen(),host.preferences());}
     boolean supported(){return true;}
     void interrupt(){modal.interrupt();}
-    void open(UiButton source,Bounds viewport,Component title,List<NowPlayingMenu.Entry> entries,boolean quickHeader,BooleanSupplier valid){
-        NowPlayingMenu.open(modal,source,viewport,title,entries,quickHeader,valid);
+    void open(UiButton source,Bounds viewport,Component title,List<NowPlayingMenu.Entry> entries,NowPlayingMenu.Layout menuLayout,BooleanSupplier valid){
+        NowPlayingMenu.open(modal,source,viewport,title,entries,menuLayout,valid);
     }
     void render(UiFrame frame){} // Native local-modal event integration draws above the host.
 }
