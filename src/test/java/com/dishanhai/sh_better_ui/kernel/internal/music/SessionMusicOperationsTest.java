@@ -69,6 +69,41 @@ class SessionMusicOperationsTest {
         operations.close();assertFalse(current.displayValid());
     }
 
+    @Test void noticeTargetsMatchOneDetachedEntryAndNeverExecuteIt() {
+        var owner=new CompletableFuture<List<OnlineTrack>>();
+        var registry=new SessionMusicOperations(player(new AtomicReference<>(owner)));
+        var other=new SessionMusicOperations(player(new AtomicReference<>(new CompletableFuture<>())));
+        var item=registry.startSearch("qq","private",1);
+        assertTrue(MusicOperationNavigation.target(registry,item.id()).isEmpty());
+        item.detach();
+        var target=MusicOperationNavigation.target(registry,item.id()).orElseThrow();
+        assertEquals(item.id(),target.id());
+        assertTrue(target.validFor(registry));
+        assertFalse(target.validFor(other));
+        assertFalse(owner.isDone());
+        item.attach();
+        assertFalse(target.valid());
+        registry.close();
+        assertFalse(target.valid());
+    }
+    @Test void noticeTargetRejectsExpiredHistoryAndChangedAccountEvenWhenResultIsRetained() {
+        var owner=new CompletableFuture<List<OnlineTrack>>();
+        var next=new AtomicReference<>(owner);
+        var clock=new AtomicLong(1);
+        var registry=new SessionMusicOperations(player(next),clock::get);
+        var item=registry.startSearch("qq","private",1);
+        item.detach();
+        var stale=MusicOperationNavigation.target(registry,item.id()).orElseThrow();
+        registry.invalidate("qq",owner);
+        owner.completeExceptionally(new OnlineMusicSource.LoginRequired());
+        assertTrue(item.valid());
+        assertFalse(stale.valid());
+        var refreshed=MusicOperationNavigation.target(registry,item.id()).orElseThrow();
+        assertTrue(refreshed.valid());
+        clock.addAndGet(600_000_000_000L);
+        assertFalse(refreshed.valid());
+    }
+
     @Test void unconfirmedBackgroundLikeDoesNotRetryOrClaimRejection() {
         var owner=new AtomicReference<>(new CompletableFuture<Void>());
         var writes=new AtomicInteger();

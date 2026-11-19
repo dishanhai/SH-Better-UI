@@ -15,6 +15,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.network.chat.MutableComponent;
 import java.util.*;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
 import java.util.concurrent.CompletableFuture;
 
@@ -140,6 +141,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private final List<MusicTextControl> historyRows = new ArrayList<>();
     private final Map<MusicTextControl,Long> historyBindings = new IdentityHashMap<>();
     private int historyFirst;
+    private MusicOperationNavigation.Target pendingHistory;
     private List<SessionMusicOperations.Snapshot> history = List.of();
     private SessionMusicOperations operations() { return SessionMusicOperations.forPlayer(player).orElse(null); }
     private CompletableFuture<List<String>> pendingSuggestions;
@@ -197,6 +199,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }, null);
         back.setLeadingIcon(GraphicIcon.BACK);
         updateRows(); updateLibraryRows(); updateVisibility();
+        if (pendingHistory != null) {
+            var target = pendingHistory;
+            pendingHistory = null;
+            if (target.validFor(operations())) {
+                show(Page.HISTORY);
+                focusHistoryRow(target.id());
+            }
+        }
     }
     private void buildNavigation() {
         var n = layout.navigation();
@@ -407,15 +417,23 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         show(Page.SEARCH);
         if(searchHistory!=null&&searchHistory.visible)host.screen().setFocused(searchHistory);
     }
+    /** Called before the dedicated route mounts; never executes or restores the operation itself. */
+    public void requestOperationHistory(MusicOperationNavigation.Target target) {
+        this.pendingHistory = Objects.requireNonNull(target);
+    }
+
     private boolean returnFromHistoryDestination() {
         if(immersive||page!=historyDestination)return false;
         long id=historyReturnId;
         show(Page.HISTORY);
+        focusHistoryRow(id);
+        return true;
+    }
+    private void focusHistoryRow(long id) {
         for(int i=0;i<history.size();i++)if(history.get(i).id()==id){
             int size=Math.max(1,historyRows.size());historyFirst=i/size*size;updateHistory();break;
         }
         for(var row:historyRows)if(row.active&&row.visible&&Objects.equals(historyBindings.get(row),id)){host.screen().setFocused(row);break;}
-        return true;
     }
     @SuppressWarnings("unchecked")
     private void restoreOperation(long id) {

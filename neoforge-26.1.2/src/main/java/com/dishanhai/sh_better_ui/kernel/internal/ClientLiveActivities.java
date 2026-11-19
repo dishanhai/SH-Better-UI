@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
@@ -82,6 +83,19 @@ public final class ClientLiveActivities implements AutoCloseable {
     }
 
     public void openDetails(Screen parent) { NativePort.show(Minecraft.getInstance(), details(parent)); }
+
+    /** Only the focused dashboard may follow an action; the world HUD is display-only. */
+    void openMusicOperation(MusicOperationNavigation.Target target) {
+        var client = Minecraft.getInstance();
+        var parent = details;
+        if (closed || parent == null || NativePort.screen(client) != parent || NativePort.hasOverlay(client)
+                || !client.isWindowActive() || !target.valid()) return;
+        var primary = runtime.plan().primary();
+        if (primary == null || !primary.id().equals(NativeMusicActivity.operationNoticeId(target.id()))
+                || !runtime.isInteractivePrimary(primary)) return;
+        var screen = com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicScreen.operation(parent, target);
+        if (screen != null) NativePort.show(client, screen);
+    }
 
     void detailOpened(NativeActivityScreen screen) { details = screen; }
 

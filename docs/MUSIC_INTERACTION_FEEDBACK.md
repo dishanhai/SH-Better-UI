@@ -104,6 +104,13 @@ library context first. When a focused history slot is rebound to another record,
 its held gesture is cancelled and focus moves to Back instead of silently
 activating a different task.
 
+On NeoForge 26, choose **View task** on a visible operation notice in the
+live-activity details screen to open History at the matching record. The
+world HUD is display-only and does not intercept mouse clicks. This action
+does not restore, retry or refresh the operation: use the record’s own action
+separately if needed. An expired, replaced or no-longer-background record
+cannot be opened from an old notice.
+
 ## Open SH Music from the world
 
 The **Open SH Music** shortcut starts unbound, so installing the mod never

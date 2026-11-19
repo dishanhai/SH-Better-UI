@@ -12,6 +12,7 @@ import com.google.gson.Gson;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicService;
 import java.time.Duration;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationSource;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNotices;
 import java.util.*;
 import java.util.function.*;
@@ -20,10 +21,12 @@ import java.util.function.*;
 public final class NativeMusicActivity implements UIModule {
     public static final UiId ID = UiId.parse("sh_better_ui:music/island");
     public static final UiId OPEN = UiId.parse("sh_better_ui:music/open");
+    static final UiId VIEW_TASK = UiId.parse("sh_better_ui:music/view_task");
     private static final String ONLINE = "sh_better_ui:online_music";
     private final Supplier<MusicService.Frame> frames;
     private final LongSupplier clock;
     private final Runnable openMusic;
+    private final Consumer<MusicOperationNavigation.Target> openOperation;
     private final BooleanSupplier notificationsEnabled;
     private final boolean persistent;
     private final BooleanSupplier activityAdmission, notificationAdmission;
@@ -53,6 +56,12 @@ public final class NativeMusicActivity implements UIModule {
         this(persistent, () -> ShBetterUiApi.music().getFrame(), System::nanoTime, notificationsEnabled,
                 activityAdmission, notificationAdmission, openMusic);
     }
+    public NativeMusicActivity(boolean persistent, BooleanSupplier notificationsEnabled,
+                               BooleanSupplier activityAdmission, BooleanSupplier notificationAdmission, Runnable openMusic,
+                               Consumer<MusicOperationNavigation.Target> openOperation) {
+        this(persistent, () -> ShBetterUiApi.music().getFrame(), System::nanoTime, notificationsEnabled,
+                activityAdmission, notificationAdmission, openMusic, openOperation);
+    }
     NativeMusicActivity(boolean persistent, Supplier<MusicService.Frame> frames, LongSupplier clock,
                         BooleanSupplier notificationsEnabled, Runnable openMusic) {
         this(persistent, frames, clock, notificationsEnabled, () -> true, () -> true, openMusic);
@@ -60,6 +69,13 @@ public final class NativeMusicActivity implements UIModule {
     NativeMusicActivity(boolean persistent, Supplier<MusicService.Frame> frames, LongSupplier clock,
                         BooleanSupplier notificationsEnabled, BooleanSupplier activityAdmission,
                         BooleanSupplier notificationAdmission, Runnable openMusic) {
+        this(persistent, frames, clock, notificationsEnabled, activityAdmission, notificationAdmission, openMusic, null);
+    }
+    NativeMusicActivity(boolean persistent, Supplier<MusicService.Frame> frames, LongSupplier clock,
+                        BooleanSupplier notificationsEnabled, BooleanSupplier activityAdmission,
+                        BooleanSupplier notificationAdmission, Runnable openMusic,
+                        Consumer<MusicOperationNavigation.Target> openOperation) {
+        this.openOperation = openOperation;
         this.activityAdmission = activityAdmission; this.notificationAdmission = notificationAdmission;
         this.persistent = persistent; this.frames = frames; this.clock = clock;
         this.notificationsEnabled = notificationsEnabled; this.openMusic = openMusic;
@@ -159,6 +175,10 @@ public final class NativeMusicActivity implements UIModule {
         for(var notice:operationNotices.values())if(!notice.snapshot().lifecycle().terminal())notice.dismiss();
         operationNotices.clear(); pendingOperations.clear();
     }
+    static UiId operationNoticeId(long id) {
+        return UiId.parse("sh_better_ui:music/notice/operation/" + id);
+    }
+
     private void publishOperationNotices(MusicOverlaySettings settings) {
         boolean enabled=settings.islandEnabled() && settings.taskNotices() && notificationsEnabled.getAsBoolean();
         var snapshots=online instanceof MusicOperationSource source ? source.operationsSnapshot() : java.util.List.<com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.Snapshot>of();
@@ -174,12 +194,21 @@ public final class NativeMusicActivity implements UIModule {
         for(var update:List.copyOf(pendingOperations.values())) {
             if(!notificationAdmission.getAsBoolean())break;
             pendingOperations.remove(update.id());
-            var id=UiId.parse("sh_better_ui:music/notice/"+update.id().substring("music:".length()));
+            var id = operationNoticeId(update.operationId());
+            var target = openOperation != null && online instanceof MusicOperationSource source
+                    ? source.operationTarget(update.operationId()).orElse(null) : null;
+            var controls = target == null ? List.<ActivityService.Control>of() :
+                    List.of(new ActivityService.Control(VIEW_TASK, ActivityService.Text.key("sh_better_ui.online_music.operations.view_task")));
             var content=new ActivityService.Content(ActivityService.Text.key("sh_better_ui.music_overlay.task."+update.key()),
-                    ActivityService.Text.literal(""),null,-1,false,List.of(),List.of());
+                    ActivityService.Text.literal(""),null,-1,false,controls,List.of());
             operationNotices.put(update.id(),notifications.publish(context,context.scope(),new NotificationService.Request(id,
                     content,update.error()?ActivityService.Priority.NORMAL:ActivityService.Priority.LOW,
-                    Duration.ofMillis(update.ttlMs()),id,NotificationService.Merge.REPLACE,null)));
+                    Duration.ofMillis(update.ttlMs()),id,NotificationService.Merge.REPLACE,
+                    target == null ? null : action -> {
+                        if (!VIEW_TASK.equals(action.id()) || !available() || !notificationsEnabled.getAsBoolean()) return;
+                        var current = settings();
+                        if (current.islandEnabled() && current.taskNotices() && target.valid()) openOperation.accept(target);
+                    })));
         }
     }
     private void publishNotices(MusicService.Frame frame, MusicOverlaySettings settings, long now) {

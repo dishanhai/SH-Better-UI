@@ -2818,6 +2818,7 @@
   "sh_better_ui.music_overlay.task.playback_failed": "Playback failed. Open the player for details.",
   "sh_better_ui.online_music.feedback.seek": "Seek to %s",
   "sh_better_ui.online_music.operations.title": "Background tasks",
+  "sh_better_ui.online_music.operations.view_task": "View task",
   "sh_better_ui.online_music.operations.empty": "No recent tasks",
   "sh_better_ui.online_music.operations.short_title": "History",
   "sh_better_ui.online_music.operations.action.restore": "Restore results",
