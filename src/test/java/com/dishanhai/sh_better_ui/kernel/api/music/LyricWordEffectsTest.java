@@ -25,6 +25,29 @@ class LyricWordEffectsTest {
         assertTrue(LyricWordEffects.rise(.5f,1000,2.5f)<=1.2f);
     }
 
+    @Test void inkExpansionIsBoundedAndReturnsExactlyToOriginalGeometry(){
+        for(float endpoint:new float[]{-1,0,1,2})
+            assertEquals(1,LyricWordEffects.verticalScale(endpoint,true));
+        for(int i=0;i<=1000;i++){
+            float fraction=i/1000f;
+            float expansion=LyricWordEffects.verticalScale(fraction,true);
+            assertTrue(expansion>=1&&expansion<=1.025f);
+            assertEquals(1,LyricWordEffects.verticalScale(fraction,false),
+                    "Reduced motion, browsing and scrub frames must retain static geometry");
+        }
+        assertEquals(1.025f,LyricWordEffects.verticalScale(.5f,true));
+        assertTrue(LyricWordEffects.verticalScale(.85f,true)<LyricWordEffects.verticalScale(.5f,true));
+    }
+
+    @Test void inkExpansionIsStatelessOnBackwardAndForwardSeeks(){
+        float original=LyricWordEffects.verticalScale(.4f,true);
+        LyricWordEffects.verticalScale(.9f,true);
+        LyricWordEffects.verticalScale(.1f,false);
+        assertEquals(original,LyricWordEffects.verticalScale(.4f,true));
+        assertEquals(0,LyricWordEffects.verticalScale(.0001f,true)-1,1e-6);
+        assertEquals(0,LyricWordEffects.verticalScale(.9999f,true)-1,1e-6);
+    }
+
     @Test void focusIsContinuousAboveAndBelowTheAnchorAndEdgesFade(){
         assertEquals(0,LyricWordEffects.focusDistance(100,100,20));
         assertEquals(LyricWordEffects.focusDistance(80,100,20),LyricWordEffects.focusDistance(120,100,20));

@@ -35,6 +35,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private StagePage stagePage=StagePage.LYRICS;
     private final MusicArtworkStage artworkStage=new MusicArtworkStage();
     private final OnlineCoverReveal coverReveal=new OnlineCoverReveal();
+    private final MusicMetadataReveal metadataReveal = new MusicMetadataReveal();
+    private MusicMetadataReveal.Frame metadataFrame = new MusicMetadataReveal.Frame(1f, 1f);
     private final Map<MusicTextControl,Object> resultIdentities=new IdentityHashMap<>();
     private MusicSegmentedControl sourceSegments;
     private List<String> searchSourceIds=List.of();
@@ -44,6 +46,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private UiButton nowPlayingMore;
     private NowPlayingMenuHost nowPlayingMenus;
     private void closeNowPlayingMenu() {
+        scrollParallax.reset(); // Menu, route and suspension share this interaction boundary.
         if(nowPlayingMenus!=null)nowPlayingMenus.interrupt();
         // Route, focus and host invalidation clear any pending settings-slider gesture too.
         if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
@@ -205,6 +208,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicSeekControl seek;
     private final OnlineMusicFeedback interactionFeedback = new OnlineMusicFeedback();
     private String observedLoginState = "";
+    private final MusicScrollParallax scrollParallax = new MusicScrollParallax();
+    private float parallaxY;
+    private record ParallaxScope(Page page, boolean immersive, StagePage stage, String source,
+                                 Library library, String librarySource, Object libraryGroup,
+                                 String playlist, long searchRevision, OnlineTrack track) {}
     private final OnlineMusicViewMotion visualMotion = new OnlineMusicViewMotion();
     private final com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicVinylStage vinylStage = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicVinylStage();
     private String musicThemeId() {
@@ -272,7 +280,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(queuePlaybackMode!=null)queuePlaybackMode.cancelInteraction();
         if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
         navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); navigation.clear();
-        routeMotion.reset();
+        routeMotion.reset(); scrollParallax.reset();
         host = context; layout = OnlineMusicLayout.of(context.viewport()); stage = null; queryField = null;
         stageControls.clear(); stageQueueRows.clear(); stageLyricKey=null;
         queueControls.clear(); queueRows.clear(); queueRemoves.clear(); queueUps.clear(); queueDowns.clear(); boundQueueFirst = -1;
@@ -341,16 +349,17 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void buildScrollRegions() {
         var area = listScrollArea();
         searchScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_search"), offset -> {
-            first = offset; updateRows();
+            scrollParallax.scroll(offset - first); first = offset; updateRows();
         }));
         libraryScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_library"), offset -> {
-            libraryFirst = offset; updateLibraryRows();
+            scrollParallax.scroll(offset - libraryFirst); libraryFirst = offset; updateLibraryRows();
         }));
         queueScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("queue.scroll"), offset -> {
-            queueFirst = offset; updateQueueRows();
+            scrollParallax.scroll(offset - queueFirst); queueFirst = offset; updateQueueRows();
         }));
         var lyrics = lyricContent();
         lyricsScroll = host.add(new OnlineMusicScrollRegion(lyrics.x(), lyrics.y(), lyrics.width(), Math.max(1, lyricArea().bottom() - lyrics.y()), label("view.scroll_lyrics"), offset -> {
+            scrollParallax.scroll(offset - lyricViewport.scrollPosition(activeLyric));
             lyricViewport.browseTo(offset, player.snapshot().lyrics().size(), System.nanoTime() / 1_000_000L);
         }));
         var c = layout.content();
@@ -595,6 +604,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 }
             }, host.preferences(), direction -> {
                 host.screen().setFocused(immersive ? stageReturnControl() : back);
+                scrollParallax.scroll(direction);
                 lyricViewport.scroll(direction, activeLyric, player.snapshot().lyrics().size(), System.nanoTime() / 1_000_000L);
             }));
             lyricRows.add(row); lyricControls.add(row);
@@ -1046,6 +1056,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if(OnlineLyricPresentation.seekable(now)&&position>=0&&position<=now.durationMs()&&Objects.equals(now.track(),stageLyricTrack)&&now.lyrics()==stageTimeline&&stageLyrics.contentKey()==stageLyricKey)
                 player.seek(position);
         }),()->stage.lyrics());
+        stageLyrics.setOnManualScroll(pixels -> scrollParallax.scroll(pixels / 36d));
         stageFollow=OnlineMusicScreen.addLyricsLayer(host,new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+Math.max(0,stage.lyrics().height()-20),Math.min(108,stage.lyrics().width()),20),label("view.follow_lyrics"),
                 host.preferences(),stageLyrics::follow),()->stage.lyrics());
         stageCoverEntry=host.add(new MusicStageButton(stage.cover(),label("stage.toggle_lyrics"),null,
@@ -1054,7 +1065,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 Math.max(12,stage.lyrics().width()),20),Component.empty(),this::cyclePlaybackMode,null);
         stageControls.add(stagePlaybackMode);
         stageQueueScroll=host.add(new OnlineMusicScrollRegion(stage.lyrics().x(),stage.lyrics().y()+Math.min(24,stage.lyrics().height()),stage.lyrics().width(),Math.max(1,stage.lyrics().height()-24),
-                label("queue.scroll"),offset->{stageQueueFirst=offset;updateStageQueueRows();}));
+                label("queue.scroll"),offset->{scrollParallax.scroll(offset-stageQueueFirst);stageQueueFirst=offset;updateStageQueueRows();}));
         stageQueueScroll.setOnBrowse(()->host.screen().setFocused(stageQueueScroll));
         int count=Math.max(1,Math.min(20,(stage.lyrics().height()-24)/32));
         for(int i=0;i<count;i++) {
@@ -1535,13 +1546,31 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 for(var widget:group)if(widget instanceof MusicTextControl text)text.cancelInteraction();
         }
         if (!layout.supported()) { text(ui, label("space"), layout.frame().x() + 4, layout.frame().y() + 4, Math.max(0, layout.frame().width() - 8)); return; }
-        if(nowPlayingMore!=null)nowPlayingMore.active=immersive&&player.snapshot().track()!=null;
+        pollOperations();
+        var current = player.snapshot();
+        queue.observe(current);
+        // Legacy view-local queues may advance playback while observing an ended track.
+        if (player.queue()==null && current.state()==OnlineMusicPlayer.State.ENDED) current=player.snapshot();
+        if(nowPlayingMore!=null)nowPlayingMore.active=immersive&&current.track()!=null;
         var theme = UiTheme.current();
         if (exitControl != null) {
             exitControl.setInk(theme.text()); exitControl.setPreferences(host.preferences());
             exitControl.setAvailable(!immersive && net.minecraft.client.Minecraft.getInstance().isWindowActive());
         }
-        if(qqStyle()&&!ui.preferences().highContrast()) qqBackground(ui,layout.frame());
+        parallaxY = scrollParallax.sample(new ParallaxScope(page, immersive, stagePage, source,
+                library, librarySource, libraryGroup, selectedPlaylist==null?null:selectedPlaylist.id(),
+                searchRowsRevision, current.track()), ui.nowMs(),
+                ui.preferences().reducedMotion() || ui.preferences().highContrast()
+                        || seek!=null && seek.isEditing() || stageSeek!=null && stageSeek.isEditing());
+        if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
+        else if (!immersive && (page==Page.SEARCH || page==Page.LIBRARY || page==Page.QUEUE || page==Page.LYRICS) && !ui.preferences().highContrast()) {
+            var palette = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette(
+                    com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.accent()|0xff000000,.045f),
+                    theme.background()|0xff000000, theme.background()|0xff000000,
+                    com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.surface()|0xff000000,.16f));
+            paintParallaxBackground(ui,layout.frame(),()->com.dishanhai.sh_better_ui.client.gui.scaled.MusicArtworkStageRender.background(
+                    ui.graphics(),parallaxBounds(layout.frame()),palette,0,true));
+        }
         else OnlineMusicViewPaint.panel(ui, layout.frame(), theme.background() | 0xff000000, false);
 
         if (layout.sidebar() && !immersive) {
@@ -1549,7 +1578,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
 
         }
-        pollOperations();
         if (pending != null && pending.isDone()) {
             try { results = pending.join(); searchState = results.isEmpty() ? "empty" : "results";
                 if (!results.isEmpty()) searchRowsRevision++;
@@ -1558,10 +1586,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             pending = null; feedback(label(searchState.equals("results")?"feedback.search_ready":searchState)); updateRows();
         }
         updateScrollRegions();
-        var current = player.snapshot();
-        queue.observe(current);
-        current = player.snapshot();
         updateQueueRows();
+        metadataFrame = metadataReveal.sample(current.track() == null ? null : trackKey(current.track()),
+                ui.nowMs(), ui.preferences().reducedMotion() || ui.preferences().highContrast());
         var visual = visualMotion.sample(System.nanoTime() / 1_000_000L, ui.preferences().reducedMotion(),
                 current.state() == OnlineMusicPlayer.State.PLAYING);
         if (immersive) { seek.cancelInteraction(); renderImmersive(ui, current); return; }
@@ -1607,7 +1634,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     void renderRouteHandoff(UiFrame ui) {
         if(nowPlayingMenus!=null)nowPlayingMenus.render(ui);
         if (closed || layout == null || !layout.supported()) {
-            routeMotion.reset();
+            routeMotion.reset(); scrollParallax.reset();
             return;
         }
         Object detail = immersive ? null : switch (page) {
@@ -1749,13 +1776,24 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(stageQueueScroll!=null)stageQueueScroll.cancelDrag();
         for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction();
     }
+    private Bounds parallaxBounds(Bounds area) {
+        int pad = MusicScrollParallax.LIMIT + 1;
+        return new Bounds(area.x(), area.y()-pad+Math.round(parallaxY), area.width(), area.height()+pad*2);
+    }
+    private void paintParallaxBackground(UiFrame ui, Bounds clip, Runnable paint) {
+        // Only the decorative pass overscans. Scissor and all interactive geometry stay fixed.
+        OnlineMusicViewPaint.clip(ui,clip);
+        try { paint.run(); } finally { OnlineMusicViewPaint.unclip(ui); }
+    }
     private void renderImmersive(UiFrame ui,OnlineMusicPlayer.Snapshot current) {
         boolean failed=current.state()==OnlineMusicPlayer.State.FAILED;
         if(failed!=stageFailure){stageFailure=failed;stage=FullscreenLyricLayout.of(layout.frame(),shellBack==null,failed,stagePage!=StagePage.ARTWORK);updateStageGeometry();}
         var loaded=artwork.texture(current.track());
-        if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,stage.frame());
-        else artworkStage.renderAudioBackground(ui,stage.frame(),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
-                current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
+        paintParallaxBackground(ui,stage.frame(),()-> {
+            if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,parallaxBounds(stage.frame()));
+            else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
+                    current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
+        });
         int ink=ui.preferences().highContrast()?UiTheme.current().text():MusicArtworkStage.FOREGROUND;
         int secondary=ui.preferences().highContrast()?ink:MusicArtworkStage.SECONDARY;
         var cover=loaded.orElse(null);
@@ -1769,8 +1807,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 +(current.track().album().isBlank()?"":" · "+current.track().album()));
         var trackDetails=title.copy().append("\n").append(subtitle).append("\n").append(label("stage.toggle_lyrics"));
         stageCoverEntry.setMessage(trackDetails);stageCoverEntry.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(trackDetails)));
-        OnlineMusicViewPaint.scaledLine(ui,host.font(),MusicTypography.bold(title),stage.info().x(),stage.info().y(),stage.info().width(),ink,stage.wide()?1.35f:1.1f);
-        OnlineMusicViewPaint.line(ui,host.font(),subtitle,stage.info().x(),stage.info().y()+22,stage.info().width(),secondary);
+        MusicMetadataPaint.line(ui,host.font(),MusicTypography.bold(title),stage.info().x(),stage.info().y(),stage.info().width(),ink,stage.wide()?1.35f:1.1f,metadataFrame);
+        MusicMetadataPaint.line(ui,host.font(),subtitle,stage.info().x(),stage.info().y()+22,stage.info().width(),secondary,1f,metadataFrame);
         boolean windowActive=net.minecraft.client.Minecraft.getInstance().isWindowActive();
         if(!windowActive)cancelStageInteractions();
         for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue}){

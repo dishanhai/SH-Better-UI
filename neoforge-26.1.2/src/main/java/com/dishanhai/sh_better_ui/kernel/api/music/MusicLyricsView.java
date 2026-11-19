@@ -13,6 +13,7 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.util.FormattedCharSequence;
 import java.util.*;
 import java.util.function.LongConsumer;
+import java.util.function.DoubleConsumer;
 import org.lwjgl.glfw.GLFW;
 
 /** Reusable native lyric viewport with wrapped text, real timestamp seeking and bounded keyboard scrolling.
@@ -21,6 +22,7 @@ import org.lwjgl.glfw.GLFW;
 public final class MusicLyricsView extends AbstractWidget {
     private final MusicLyricsModel model=new MusicLyricsModel();
     private final LongConsumer seek;
+    private DoubleConsumer onManualScroll = delta -> {};
     private UiPreferences preferences;
     private float scale=2f;
     private int primary=0xfffdfbfc,secondary=0xffbcb4b8,backdrop=0xff292229;
@@ -45,6 +47,14 @@ public final class MusicLyricsView extends AbstractWidget {
     public MusicLyricsView(Bounds bounds,Component title,UiPreferences preferences,LongConsumer seek){
         super(bounds.x(),bounds.y(),bounds.width(),bounds.height(),title);
         this.preferences=Objects.requireNonNull(preferences);this.seek=Objects.requireNonNull(seek);
+    }
+    /** Receives actual logical-pixel movement from explicit wheel/keyboard browsing only.
+     * Programmatic playback, follow, content and seek changes never invoke this callback. */
+    public void setOnManualScroll(DoubleConsumer listener) { onManualScroll = Objects.requireNonNull(listener); }
+    private void manualScrollTo(double next) {
+        double previous = offset;
+        offset = clamp(next);
+        if (offset != previous) onManualScroll.accept(offset - previous);
     }
     public MusicLyricsModel model(){return model;}
     public Object contentKey(){return model.contentKey();}
@@ -120,7 +130,7 @@ public final class MusicLyricsView extends AbstractWidget {
     @Override public void onClick(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick){layout(Minecraft.getInstance().font);int hit=hit(event.y());if(hit>=0)activate(hit);}
     public boolean mouseScrolled(double x,double y,double amount){
         if(!visible||!active||!isMouseOver(x,y)||amount==0||!Double.isFinite(amount))return false;
-        layout(Minecraft.getInstance().font);model.browse();offset=clamp(offset-amount*36*scale);return true;
+        layout(Minecraft.getInstance().font);model.browse();manualScrollTo(offset-amount*36*scale);return true;
     }
     public boolean mouseScrolled(double x,double y,double horizontal,double vertical){return mouseScrolled(x,y,vertical);}
     @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event){
@@ -136,12 +146,15 @@ public final class MusicLyricsView extends AbstractWidget {
             case GLFW.GLFW_KEY_DOWN -> model.moveFocus(1);
             case GLFW.GLFW_KEY_HOME -> model.focus(0);
             case GLFW.GLFW_KEY_END -> model.focus(model.lines().size()-1);
-            case GLFW.GLFW_KEY_PAGE_UP -> {model.browse();offset=clamp(offset-height*.75);return true;}
-            case GLFW.GLFW_KEY_PAGE_DOWN -> {model.browse();offset=clamp(offset+height*.75);return true;}
+            case GLFW.GLFW_KEY_PAGE_UP -> {model.browse();manualScrollTo(offset-height*.75);return true;}
+            case GLFW.GLFW_KEY_PAGE_DOWN -> {model.browse();manualScrollTo(offset+height*.75);return true;}
             case GLFW.GLFW_KEY_ENTER,GLFW.GLFW_KEY_KP_ENTER,GLFW.GLFW_KEY_SPACE -> {activate(model.focusedIndex()<0?model.activeIndex():model.focusedIndex());return true;}
             default -> {return false;}
         }
-        reveal(model.focusedIndex());return true;
+        double previous = offset;
+        reveal(model.focusedIndex());
+        if (offset != previous) onManualScroll.accept(offset - previous);
+        return true;
     }
     @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){
         if(width<=0||height<=0)return;
@@ -204,7 +217,8 @@ public final class MusicLyricsView extends AbstractWidget {
                         if(softMix*edge>.035f)drawSoftPart(g,font,part,rowY,opacity(color,softMix*edge),softness[i]);
                         int pending=GuiMotion.lerpColor(color,pendingInk,emphasis[i]);
                         drawTimedRow(g,font,timed.rows().get(row),timed.geometry(),line,
-                                position,rowY,opacity(pending,edge*(1-softMix)),opacity(color,edge*(1-softMix)));
+                                position,rowY,opacity(pending,edge*(1-softMix)),opacity(color,edge*(1-softMix)),
+                                !snap&&!model.browsing());
                     }else {
                         if(wordTiming)part=timedColors(part,line,position,pendingInk,ink);
                         if(softness[i]>.035f)drawSoftPart(g,font,part,rowY,opacity(color,edge),softness[i]);
@@ -252,7 +266,7 @@ public final class MusicLyricsView extends AbstractWidget {
     }
 
     private void drawTimedRow(GuiGraphicsExtractor g,Font font,List<LyricGlyphRuns.Run> runs,LyricSweepLayout layout,
-                              MusicLyricsModel.Line line,long position,double rowY,int pending,int ink){
+                              MusicLyricsModel.Line line,long position,double rowY,int pending,int ink,boolean motion){
         for(var run:runs){
             float fraction=0,width=0;
             if(run.word()>=0){
@@ -260,8 +274,9 @@ public final class MusicLyricsView extends AbstractWidget {
                 fraction=LyricPresentation.wordFraction(position,word.startMillis(),word.endMillis());
                 width=layout.width(run.word());
             }
-            float lift=LyricWordEffects.lift(fraction,scale);
-            float slope=width>0?LyricWordEffects.rise(fraction,width*scale,scale)/(width*scale):0;
+            float lift=motion?LyricWordEffects.lift(fraction,scale):0;
+            float verticalScale=LyricWordEffects.verticalScale(fraction,motion);
+            float slope=motion&&width>0?LyricWordEffects.rise(fraction,width*scale,scale)/(width*scale):0;
             var text=run.text();int color=fraction>=1?ink:pending;
             if(fraction>0&&fraction<1){
                 final float progress=fraction, wordWidth=width;
@@ -276,12 +291,14 @@ public final class MusicLyricsView extends AbstractWidget {
                 };
             }
             float x=getX()+8+run.x()*scale;
-            float baseline=(float)(rowY-lift-slope*run.wordOffset()*scale);
+            // Bottom-anchor the expansion; wrapping and hit targets keep their original geometry.
+            float baseline=(float)(rowY-lift-slope*run.wordOffset()*scale
+                    +MusicTypography.LINE_HEIGHT*scale*(1-verticalScale));
             g.pose().pushMatrix();
             try {
                 g.pose().translate(x,baseline);
                 if(slope!=0)g.pose().mul(new org.joml.Matrix3x2f(1,-slope,0,1,0,0));
-                g.pose().scale(scale,scale);g.text(font,text,0,0,color,false);
+                g.pose().scale(scale,scale*verticalScale);g.text(font,text,0,0,color,false);
             }finally {g.pose().popMatrix();}
         }
     }
