@@ -27,6 +27,13 @@ final class LyricWordEffects {
         return Math.min(scale * .48f, width * .022f) * envelope(fraction);
     }
 
+    /** Ink-only expansion: keep advances fixed and anchor the bottom of the glyph cell.
+     * The same timestamp envelope as lift/tilt makes seeks deterministic, without a spring
+     * or an extra animation clock. Browsing and discontinuities retain static geometry. */
+    static float verticalScale(float fraction, boolean motion) {
+        return motion ? 1 + .025f * envelope(fraction) : 1;
+    }
+
     private static float envelope(float fraction) {
         return smooth(fraction / .32f) * smooth((1 - fraction) / .38f);
     }

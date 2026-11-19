@@ -30,6 +30,8 @@ final class NowPlayingMenu  {
     private final boolean highContrast;
     private final int quickCount;
     private final Layout layout;
+    private final MenuContentReveal reveal=new MenuContentReveal();
+    private final boolean still;
     private int focus;
     private MusicTextControl pressed;
 
@@ -63,6 +65,7 @@ final class NowPlayingMenu  {
     NowPlayingMenu(Bounds bounds, UiPreferences preferences, Component title, List<Entry> entries,
                    BooleanSupplier valid, Runnable dismiss, Consumer<Entry> choose, Consumer<Component> narrate, Layout layout) {
         this.layout=layout;
+        this.still=preferences.reducedMotion()||preferences.highContrast();
         this.bounds=bounds; this.title=title; this.valid=valid; this.dismiss=dismiss; this.narrate=narrate;this.highContrast=preferences.highContrast();
         int y=bounds.y()+28;
         quickCount=layout==Layout.QUICK_ACTIONS?Math.min(3,entries.size()):0;
@@ -85,6 +88,9 @@ final class NowPlayingMenu  {
     public boolean dismissesOnOutsidePress(){return true;}
     public void render(GuiGraphicsExtractor g, int mouseX,int mouseY,float partialTick){
         if(!valid.getAsBoolean()){dismiss.run();return;}
+        int shown=reveal.sample(bounds.height(),System.nanoTime()/1_000_000L,still);
+        g.enableScissor(bounds.x(),bounds.y(),bounds.right(),bounds.y()+shown);
+        try {
         var font=Minecraft.getInstance().font;
         g.text(font,net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MusicTypography.text(title),Math.max(0,bounds.width()-20))),
                 bounds.x()+10,bounds.y()+9,UiTheme.current().text(),false);
@@ -100,9 +106,11 @@ final class NowPlayingMenu  {
                         control.getY()+40,control.active?UiTheme.current().text():UiTheme.current().secondaryText(0xff94a3b8,.25f),false);
             }
         }
+        } finally {g.disableScissor();}
     }
     public boolean mousePressed(double x,double y,int button,long now){
         if(!valid.getAsBoolean()){dismiss.run();return true;}
+        if(!reveal.contains(y,bounds.y()))return true;
         for(int i=0;i<controls.size();i++)if(controls.get(i).active&&controls.get(i).isMouseOver(x,y)){
             setFocus(i);if(controls.get(i).mouseClicked(x,y,button))pressed=controls.get(i);return true;
         }
@@ -118,6 +126,7 @@ final class NowPlayingMenu  {
             if(focus>=0&&next>=0&&next<controls.size()&&controls.get(next).active)setFocus(next);
             return true;
         }
+        reveal.finish(); // Keyboard focus and narration must never target clipped text.
         if(key==264||key==262){move(1);return true;}
         if(key==265||key==263){move(-1);return true;}
         if(key==268){focus=-1;move(1);return true;}
@@ -139,5 +148,5 @@ final class NowPlayingMenu  {
         narrate.accept(controls.get(index).getMessage());
     }
     public void cancel(long now){pressed=null;controls.forEach(MusicTextControl::cancelInteraction);}
-    public void close(){cancel(0);}
+    public void close(){cancel(0);reveal.close();}
 }
