@@ -110,6 +110,40 @@ class Mp3CrossfadeOutputTest {
         } finally { output.close(); }
     }
 
+    @Test void fastPlaybackTracksConsumedSourceTimeAfterSeekAndFreezesOnPause() throws Exception {
+        byte[] outgoing = fixture("outgoing");
+        short[] oldPcm = decode(outgoing);
+        var line = new TestLine(false);
+        var output = new Mp3Output(format -> {
+            assertEquals(8000, format.getSampleRate(), "no device format change");
+            return line.device;
+        });
+        try {
+            assertTrue(output.supportsPlaybackRate());
+            output.playbackRate(2);
+            assertFalse(output.supportsCrossfade());
+            output.start(outgoing, 1000, true);
+            line.allowThrough(512);
+            await(() -> output.state() == State.PLAYING && line.frames() == 512);
+            assertEquals(1000, output.positionMs(), "writes do not advance the media clock");
+            line.consumeThrough(256);
+            assertEquals(1064, output.positionMs());
+            output.pause();
+            line.consumeThrough(512);
+            assertEquals(1064, output.positionMs());
+            assertFalse(output.queueCrossfade(1, fixture("incoming"), 1, oldPcm.length / 8L));
+            output.resume();
+            line.consumeThrough(512);
+            assertEquals(1128, output.positionMs());
+            line.allowThrough(Integer.MAX_VALUE);
+            await(() -> output.state() == State.ENDED);
+            assertEquals(oldPcm.length / 8L, output.positionMs(), "EOF reports the decoded duration");
+            assertEquals((oldPcm.length - 8000 + 1) / 2, line.frames());
+            assertEquals(oldPcm[8000], line.samples()[0]);
+            assertEquals(oldPcm[8006], line.samples()[3]);
+        } finally { output.close(); }
+    }
+
     @Test void mismatchAndCancelledTokenNeverTouchOldAudio() throws Exception {
         byte[] outgoing = fixture("outgoing"), mismatch = fixture("mismatch");
         short[] oldPcm = decode(outgoing);

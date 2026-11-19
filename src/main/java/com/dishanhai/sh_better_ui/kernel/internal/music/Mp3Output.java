@@ -32,7 +32,8 @@ final class Mp3Output implements PlaybackOutput {
     private final PcmActivity activity = new PcmActivity();
     private volatile SourceDataLine line;
     private volatile PcmTrackTransition.Format format;
-    private volatile long publishedOrigin, baseMs, endedFrame;
+    private volatile long publishedOrigin, baseMs, endedFrame, endedMediaFrame;
+    private double playbackRate = 1;
     private Thread worker;
     private volatile float gain = 1f;
     private volatile PcmEqualizer.Preset equalizerPreset = PcmEqualizer.Preset.FLAT;
@@ -64,9 +65,15 @@ final class Mp3Output implements PlaybackOutput {
     }
     @Override public void volume(float value) { gain = PcmGain.normalize(value); }
 
-    @Override public boolean supportsCrossfade() { return true; }
+    @Override public boolean supportsPlaybackRate() { return true; }
+    @Override public synchronized void playbackRate(double rate) {
+        if (worker != null) throw new IllegalStateException("Configure playback rate before starting the output");
+        playbackRate = PcmRateResampler.checkedRate(rate);
+    }
+
+    @Override public boolean supportsCrossfade() { return playbackRate == 1; }
     @Override public boolean queueCrossfade(long token, byte[] mp3, int seconds, long outgoingDurationMs) throws IOException {
-        if (token <= 0 || seconds < 1 || seconds > PcmTrackTransition.MAX_SECONDS
+        if (!supportsCrossfade() || token <= 0 || seconds < 1 || seconds > PcmTrackTransition.MAX_SECONDS
                 || outgoingDurationMs < 2_000L * seconds) return false;
         var currentFormat = format;
         if (currentFormat == null || outgoingDurationMs > Long.MAX_VALUE / currentFormat.sampleRate()) return false;
@@ -225,9 +232,10 @@ final class Mp3Output implements PlaybackOutput {
                 at += count;
                 submitted += count;
             }
-            if (!closed) {
+            if (!closed && writer.finish()) {
                 device.drain();
                 endedFrame = device.getLongFramePosition();
+                endedMediaFrame = at;
                 state = State.ENDED;
             }
         } catch (Exception failure) {
@@ -270,7 +278,8 @@ final class Mp3Output implements PlaybackOutput {
 
     private final class LineWriter {
         private final SourceDataLine device;
-        private final short[] scratch;
+        private final short[] scratch, stretched;
+        private final PcmRateResampler resampler;
         private final byte[] pcm;
         private final int channels, rate;
         private PcmSoundEffects effects;
@@ -282,22 +291,33 @@ final class Mp3Output implements PlaybackOutput {
             this.scratch = scratch;
             this.channels = format.channels();
             this.rate = format.sampleRate();
-            pcm = new byte[scratch.length * 2];
+            resampler = playbackRate == 1 ? null : new PcmRateResampler(channels, playbackRate);
+            stretched = resampler == null ? scratch : new short[resampler.outputCapacity(IO_FRAMES) * channels];
+            pcm = new byte[stretched.length * 2];
             equalizer = new PcmEqualizer(format.sampleRate(), channels);
         }
 
         boolean write(int frames) throws InterruptedException {
+            return emit(resampler == null ? frames : resampler.append(scratch, frames, stretched));
+        }
+
+        boolean finish() throws InterruptedException {
+            return resampler == null || emit(resampler.finish(stretched));
+        }
+
+        private boolean emit(int frames) throws InterruptedException {
+            if (frames == 0) return !closed;
             equalizer.preset(equalizerPreset);
             int samples = frames * channels;
-            equalizer.process(scratch, 0, samples);
+            equalizer.process(stretched, 0, samples);
             var requestedEffect=soundEffect;
             if(requestedEffect!=null){
                 if(effects==null)effects=new PcmSoundEffects(rate,channels);
                 effects.preset(requestedEffect);
-                effects.process(scratch,0,samples);
+                effects.process(stretched,0,samples);
             }
             float requested = gain;
-            int length = PcmGain.write(scratch, 0, samples, channels, pcm, previousGain, requested);
+            int length = PcmGain.write(stretched, 0, samples, channels, pcm, previousGain, requested);
             previousGain = requested;
             int written = 0;
             while (written < length && awaitPlaying()) written += device.write(pcm, written, length - written);
@@ -330,7 +350,11 @@ final class Mp3Output implements PlaybackOutput {
     }
     @Override public long positionMs() {
         var currentFormat = format;
-        return currentFormat == null ? baseMs : Math.max(0, consumedFrames() - publishedOrigin) * 1000 / currentFormat.sampleRate();
+        if (currentFormat == null) return baseMs;
+        if (playbackRate == 1) return Math.max(0, consumedFrames() - publishedOrigin) * 1000 / currentFormat.sampleRate();
+        long sourceFrame = state == State.ENDED ? endedMediaFrame
+                : (long) (consumedFrames() * playbackRate) - publishedOrigin;
+        return Math.max(0, sourceFrame) * 1000 / currentFormat.sampleRate();
     }
     @Override public void close() {
         Mp3PcmStream abandoned = null;

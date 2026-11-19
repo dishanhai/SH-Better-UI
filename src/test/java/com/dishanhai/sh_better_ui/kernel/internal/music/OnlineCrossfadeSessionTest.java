@@ -60,6 +60,56 @@ class OnlineCrossfadeSessionTest {
         }
     }
 
+    private static class RateOutput extends Output {
+        double rate = 1.0;
+        public boolean supportsPlaybackRate() { return true; }
+        public void playbackRate(double value) { assertEquals(0, starts); rate = value; }
+    }
+    @Test void speedChangeRejectsAudibleOverlapThenRebuildsAfterConsumedHandoff() throws Exception {
+        var first = new RateOutput();
+        var replacement = new RateOutput();
+        var outputs = new AtomicInteger();
+        try (var session = new OnlinePlayerSession(List.of(new Source()),
+                () -> outputs.getAndIncrement() == 0 ? first : replacement, uri -> new byte[]{1})) {
+            session.crossfadeSeconds(3); session.queue().replace(List.of(A,B,C),0);
+            await(() -> session.snapshot().state() == State.PLAYING);
+            first.position = 7000;
+            await(() -> first.phase == CrossfadeStatus.READY);
+            first.phase = CrossfadeStatus.MIXING;
+            assertThrows(OnlineMusicQueue.TransitionInProgress.class, () -> session.playbackRate(1.5));
+            assertEquals(1.0, session.playbackRate());
+            assertFalse(first.closed);
+            first.phase = CrossfadeStatus.COMPLETE;
+            session.playbackRate(1.5);
+            assertEquals(B, session.snapshot().track());
+            assertEquals(3040, replacement.position);
+            assertEquals(1.5, replacement.rate);
+            assertTrue(first.closed);
+            assertEquals(1, session.queue().snapshot().index());
+        }
+    }
+    @Test void nonUnitySpeedCancelsPrefetchAndSkipsFutureOverlapAdmission() throws Exception {
+        var first = new RateOutput(); var faster = new RateOutput(); var normal = new RateOutput();
+        var outputs = new AtomicInteger();
+        try (var session = new OnlinePlayerSession(List.of(new Source()),
+                () -> List.of(first,faster,normal).get(outputs.getAndIncrement()), uri -> new byte[]{1})) {
+            session.crossfadeSeconds(3); session.queue().replace(List.of(A,B),0);
+            await(() -> session.snapshot().state() == State.PLAYING);
+            first.position = 7000; await(() -> first.phase == CrossfadeStatus.READY);
+            session.playbackRate(0.5);
+            assertEquals(CrossfadeStatus.NONE, first.phase);
+            assertTrue(first.closed);
+            var watch = OnlinePlayerSession.class.getDeclaredField("queueWatch"); watch.setAccessible(true);
+            var advance = OnlinePlayerSession.class.getDeclaredMethod("advanceQueue",long.class,long.class); advance.setAccessible(true);
+            synchronized (session) { advance.invoke(session,session.playbackGeneration(),watch.getLong(session)); }
+            assertEquals(0, faster.preparations);
+            assertEquals(0.5, faster.rate);
+            assertEquals(3, session.crossfadeSeconds(), "speed does not overwrite the user's fade setting");
+            session.playbackRate(1.0);
+            await(() -> normal.phase == CrossfadeStatus.READY);
+        }
+    }
+
     private static void await(BooleanSupplier condition) throws InterruptedException {
         long deadline=System.nanoTime()+TimeUnit.SECONDS.toNanos(3);
         while(!condition.getAsBoolean()&&System.nanoTime()<deadline)Thread.sleep(5);

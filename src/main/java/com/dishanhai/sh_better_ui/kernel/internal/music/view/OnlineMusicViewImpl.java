@@ -69,8 +69,31 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 MusicControlRenderer.Icon.SETTINGS,true,()->openQqEffects(track)));
         if(player.supportsEqualizer())actions.add(new NowPlayingMenu.Entry(label("menu.equalizer"),
                 MusicControlRenderer.Icon.SETTINGS,true,()->openEqualizer(track)));
-        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,NowPlayingMenu.Layout.QUICK_ACTIONS,
+        actions.add(new NowPlayingMenu.Entry(label(player.supportsPlaybackRate()?"menu.playback_rate":"menu.playback_rate_unavailable"),
+                MusicControlRenderer.Icon.SETTINGS,player.supportsPlaybackRate(),()->openPlaybackRate(track)));
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,
+                NowPlayingMenu.height(actions.size(),NowPlayingMenu.Layout.QUICK_ACTIONS)<=layout.frame().height()-16
+                        ?NowPlayingMenu.Layout.QUICK_ACTIONS:NowPlayingMenu.Layout.EFFECT_TILES,
                 ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track));
+    }
+    private void openPlaybackRate(OnlineTrack track) {
+        if(!player.supportsPlaybackRate()||!Objects.equals(player.snapshot().track(),track))return;
+        closeNowPlayingMenu();
+        double selected=player.playbackRate();
+        var entries=new ArrayList<NowPlayingMenu.Entry>();
+        for(double rate:PlaybackRateChoices.VALUES) {
+            var name=label("menu.playback_rate_value",PlaybackRateChoices.format(rate));
+            boolean current=Double.compare(rate,selected)==0;
+            entries.add(new NowPlayingMenu.Entry(current?label("menu.eq.current",name):name,null,true,()->{
+                // Recheck capabilities/track at activation, not only when the popover was opened.
+                if(!player.supportsPlaybackRate()||!Objects.equals(player.snapshot().track(),track))return;
+                if(Double.compare(player.playbackRate(),rate)==0)return;
+                perform(name,()->player.playbackRate(rate));
+            },current));
+        }
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.playback_rate_pitch"),entries,NowPlayingMenu.Layout.EFFECT_TILES,
+                ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track)&&player.supportsPlaybackRate()
+                        &&Double.compare(player.playbackRate(),selected)==0);
     }
     private void openEqualizer(OnlineTrack track) {
         if(!player.supportsEqualizer()||!Objects.equals(player.snapshot().track(),track))return;

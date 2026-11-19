@@ -13,6 +13,91 @@ import static org.junit.jupiter.api.Assertions.*;
 import static com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer.*;
 
 class OnlinePlayerSessionTest {
+    private static class RateOutput extends Output {
+        double rate;
+        boolean started;
+        @Override public boolean supportsPlaybackRate() { return true; }
+        @Override public void playbackRate(double value) {
+            assertFalse(started, "rate must be configured before start, never on a live device");
+            rate = value;
+        }
+        @Override public void start(byte[] bytes, long position, boolean playing) {
+            started = true;
+            super.start(bytes, position, playing);
+        }
+    }
+    @Test void rateRebuildsAtMediaPositionWithoutDownloadAndPreservesPauseAcrossSeekAndTrack() throws Exception {
+        var first = new RateOutput();
+        var next = new AtomicReference<Output>(first);
+        var downloads = new java.util.concurrent.atomic.AtomicInteger();
+        try (var session = new OnlinePlayerSession(List.of(new Source()), next::get,
+                uri -> { downloads.incrementAndGet(); return new byte[]{1}; })) {
+            assertEquals(1.0, session.playbackRate());
+            assertFalse(session.supportsPlaybackRate());
+            assertThrows(UnsupportedOperationException.class, () -> session.playbackRate(1.5));
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            assertTrue(session.supportsPlaybackRate());
+            assertEquals(1.0, first.rate);
+            first.position = 2345;
+            session.pause();
+            var faster = new RateOutput(); next.set(faster);
+            session.playbackRate(1.5);
+            assertTrue(first.closed);
+            assertEquals(1.5, faster.rate);
+            assertEquals(2345, faster.position);
+            assertEquals(State.PAUSED, session.snapshot().state());
+            assertEquals(1, downloads.get());
+            assertEquals(track("a"), session.snapshot().track());
+            var seek = new RateOutput(); next.set(seek); session.seek(4000);
+            assertEquals(1.5, seek.rate);
+            assertEquals(State.PAUSED, seek.state);
+            var later = new RateOutput(); next.set(later); session.play(track("b"));
+            await(() -> session.snapshot().state() == State.PLAYING);
+            assertEquals(1.5, later.rate);
+            assertEquals(2, downloads.get());
+            var normal = new RateOutput(); next.set(normal); session.playbackRate(1.0);
+            assertEquals(1.0, normal.rate);
+            assertEquals(State.PLAYING, normal.state);
+        }
+    }
+    @Test void rateChangeDuringDeviceLoadingDoesNotResumePausedIntent() throws Exception {
+        var loading = new RateOutput() {
+            @Override public void start(byte[] bytes, long position, boolean playing) {
+                super.start(bytes, position, playing);
+                state = State.LOADING;
+            }
+            @Override public void pause() { /* Real output leaves LOADING published until the device opens. */ }
+        };
+        var next = new AtomicReference<Output>(loading);
+        try (var session = new OnlinePlayerSession(List.of(new Source()), next::get, uri -> new byte[]{1})) {
+            session.play(track("slow")); await(session::supportsPlaybackRate);
+            session.pause();
+            var replacement = new RateOutput(); next.set(replacement);
+            session.playbackRate(0.75);
+            assertEquals(State.PAUSED, replacement.state);
+            assertEquals(0.75, replacement.rate);
+        }
+    }
+
+    @Test void invalidAndUnsupportedRatesLeavePreferenceAndOutputUntouched() throws Exception {
+        var out = new RateOutput();
+        try (var session = new OnlinePlayerSession(List.of(new Source()), () -> out, uri -> new byte[]{1})) {
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            for (double rate : new double[]{Double.NaN, Double.NEGATIVE_INFINITY, Double.POSITIVE_INFINITY, 0.49, 2.01})
+                assertThrows(IllegalArgumentException.class, () -> session.playbackRate(rate));
+            assertEquals(1.0, session.playbackRate());
+            assertFalse(out.closed);
+            session.playbackRate(1.0);
+            assertFalse(out.closed, "unchanged rate does not restart the device");
+        }
+        try (var session = new OnlinePlayerSession(List.of(new Source()), Output::new, uri -> new byte[]{1})) {
+            session.play(track("a")); await(() -> session.snapshot().state() == State.PLAYING);
+            assertFalse(session.supportsPlaybackRate());
+            assertThrows(UnsupportedOperationException.class, () -> session.playbackRate(0.5));
+            assertEquals(1.0, session.playbackRate());
+        }
+    }
+
     private static class EqualizedOutput extends Output {
         OnlineMusicEqualizerPreset preset;
         @Override public boolean supportsEqualizer() { return true; }

@@ -50,6 +50,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     private ScheduledFuture<?> queueTask;
     private long queueWatch, crossfadeToken;
     private int crossfadeSeconds;
+    private double playbackRate = 1.0;
     private boolean crossfadeAttempted;
     private PendingCrossfade crossfade;
 
@@ -443,6 +444,30 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         output.soundEffect(effect);
         soundEffect = effect;
     }
+    @Override public synchronized boolean supportsPlaybackRate() {
+        if (state == State.CLOSED || output == null || !output.supportsPlaybackRate()) return false;
+        var current = output.state();
+        return current == State.LOADING || current == State.PLAYING || current == State.PAUSED;
+    }
+    @Override public synchronized double playbackRate() { return playbackRate; }
+    @Override public synchronized void playbackRate(double rate) {
+        requireOpen();
+        if (!Double.isFinite(rate) || rate < 0.5 || rate > 2.0)
+            throw new IllegalArgumentException("Playback rate must be between 0.5 and 2.0");
+        if (!supportsPlaybackRate()) throw new UnsupportedOperationException("Music playback rate unavailable");
+        if (rate == playbackRate) return;
+        // A queued overlap can be discarded; audible mixed PCM must reach its handoff first.
+        beforeQueueEdit();
+        long position = output.positionMs();
+        boolean playing = playRequested;
+        playbackRate = rate;
+        var previous = output;
+        output = null;
+        try { previous.close(); }
+        catch (RuntimeException error) { failPlayback(Failure.AUDIO); return; }
+        if (startOutput(position, playing) && queue.attachedGeneration == generation && queueTask == null) queue.watch();
+        feed.clear();
+    }
     @Override public synchronized boolean supportsCrossfade() { return state != State.CLOSED; }
     @Override public synchronized int crossfadeSeconds() { return crossfadeSeconds; }
     @Override public synchronized void crossfadeSeconds(int seconds) {
@@ -462,7 +487,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     @Override public synchronized void seek(long positionMs) {
         requireOpen();
         if (audio == null || output == null) return;
-        boolean playing = output.state() != State.PAUSED;
+        boolean playing = playRequested;
         discardCrossfade();
         crossfadeAttempted = false;
         long target = Math.max(0, duration > 0 ? Math.min(duration, positionMs) : positionMs);
@@ -478,6 +503,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         try {
             output = Objects.requireNonNull(outputs.get(), "Missing audio output");
             output.volume(volume);
+            if (output.supportsPlaybackRate()) output.playbackRate(playbackRate);
             if (output.supportsEqualizer()) output.equalizerPreset(equalizerPreset);
             if (isQqTrack() && output.supportsSoundEffects()) output.soundEffect(soundEffect);
             output.start(audio, position, playing);
@@ -508,9 +534,11 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         return new Snapshot(track, current, position, duration, lyricsState, lyrics,
                 current == State.FAILED && failure == Failure.NONE ? Failure.AUDIO : failure, preview);
     }
-    record MediaObservation(Snapshot snapshot, long offsetMs, long generation) {}
+    record MediaObservation(Snapshot snapshot, long offsetMs, long generation, double playbackRate) {}
     /** Called on the bridge worker, under one session lock, never on the render thread. */
-    synchronized MediaObservation mediaObservation() { return new MediaObservation(snapshot(), offset, generation); }
+    synchronized MediaObservation mediaObservation() {
+        return new MediaObservation(snapshot(), offset, generation, supportsPlaybackRate() ? playbackRate : 1);
+    }
     /** Identity of the current playback attempt; reads share the playback mutation lock. */
     synchronized long playbackGeneration() { return generation; }
     @Override public LyricFeed lyricFeed() {
@@ -611,7 +639,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         }
         long requested = crossfadeSeconds * 1000L;
         long left = duration - output.positionMs();
-        if (requested == 0 || crossfadeAttempted || playback != State.PLAYING || !playRequested
+        if (requested == 0 || playbackRate != 1.0 || crossfadeAttempted || playback != State.PLAYING || !playRequested
                 || !output.supportsCrossfade() || preview || offset != 0 || duration < requested * 2
                 || left > requested + 8000 || left < requested) return false;
         int next = queue.peekCrossfadeSuccessor();
