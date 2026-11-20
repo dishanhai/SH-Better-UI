@@ -17,20 +17,16 @@ import org.lwjgl.opengl.GL30;
 public final class LyricGlyphMask {
     private static TextureTarget target;
     private static OwnershipLease lease;
-    private static final int MAX_SIZE = 2048;
     private LyricGlyphMask() {}
 
     public static boolean draw(GuiGraphics graphics, Bounds box, float anchor, float linePitch, Runnable text) {
         if (!VisualRevealRenderer.supportsGlyphMask()
                 || (graphics.pose().last().pose().properties() & org.joml.Matrix4fc.PROPERTY_IDENTITY) == 0) return false;
         var window = Minecraft.getInstance().getWindow();
-        double scale = window.getGuiScale();
-        if (!(scale > 0)) return false;
-        int left = (int)Math.floor(box.x()*scale), right = (int)Math.ceil(box.right()*scale);
-        int bottom = window.getHeight()-(int)Math.ceil(box.bottom()*scale);
-        int top = window.getHeight()-(int)Math.floor(box.y()*scale);
-        int width = right-left, height = top-bottom;
-        if (width <= 0 || height <= 0 || width > MAX_SIZE || height > MAX_SIZE) return false;
+        var mask=LyricMaskViewport.of(box,window.getGuiScaledWidth(),window.getGuiScaledHeight(),
+                window.getWidth(),window.getHeight());
+        if(mask==null)return false;
+        int width=mask.width(),height=mask.height();
         var main = Minecraft.getInstance().getMainRenderTarget();
         if(GL11.glGetInteger(GL30.GL_DRAW_FRAMEBUFFER_BINDING)!=main.frameBufferId)return false;
         graphics.flush();
@@ -52,7 +48,7 @@ public final class LyricGlyphMask {
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D,GL11.GL_TEXTURE_MAG_FILTER,GL11.GL_LINEAR);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D,GL11.GL_TEXTURE_WRAP_S,org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE);
             GL11.glTexParameteri(GL11.GL_TEXTURE_2D,GL11.GL_TEXTURE_WRAP_T,org.lwjgl.opengl.GL12.GL_CLAMP_TO_EDGE);
-            RenderSystem.viewport(-left,-bottom,window.getWidth(),window.getHeight());
+            RenderSystem.viewport(mask.originX(),mask.originY(),mask.fullWidth(),mask.fullHeight());
             text.run();
             graphics.flush();
         });
