@@ -19,7 +19,14 @@ public final class MpSettingsBridge {
         this(loader, "com.muoniumplayer.core.screens.hud.HudSettingsModel");
     }
     // Alternate public model name allows pure JVM compatibility fixtures without loading Minecraft.
+    private final Runnable saveAction;
+
     public MpSettingsBridge(ClassLoader loader, String modelName) {
+        this(loader, modelName, null);
+    }
+
+    MpSettingsBridge(ClassLoader loader, String modelName, Runnable saveAction) {
+        this.saveAction = saveAction == null ? () -> call(type("com.muoniumplayer.core.settings.HudConfig"), "save") : saveAction;
         this.loader = Objects.requireNonNull(loader);
         List<Category> result = new ArrayList<>();
         for (Object category : array(call(type(modelName), "categories"))) {
@@ -41,7 +48,7 @@ public final class MpSettingsBridge {
         if (!(boolean) call(type("com.muoniumplayer.core.screens.hud.OneConfigHudBridge"), "open")) throw new IllegalStateException("MuoniumConfig failed to open; inspect MP logs");
     }
     public List<Category> categories() { return categories; }
-    public void save() { call(type("com.muoniumplayer.core.settings.HudConfig"), "save"); }
+    public void save() { saveAction.run(); }
     public Object newHudEditor() {
         try { return type("com.muoniumplayer.core.screens.hud.GuiHudEditorPro").getConstructor().newInstance(); }
         catch (ReflectiveOperationException | LinkageError e) { throw failure(e); }

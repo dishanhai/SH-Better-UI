@@ -96,6 +96,31 @@ class AppleMusicAccountTest {
         }
     }
 
+    @Test void selectedSongsReuseOneBrowserAndArePresentBeforeLaunch() throws Exception {
+        var current = new AtomicReference<URI>();
+        var config = new java.util.HashMap<>(TEST_CONFIG);
+        try (var account = new AppleMusicAccount(k -> null, config::get, uri -> {
+            assertTrue(current.compareAndSet(null, uri));
+            try {
+                var req = HttpRequest.newBuilder(uri.resolve("/config"))
+                        .header("X-SHBUI-Session", uri.getFragment()).GET().build();
+                assertTrue(HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString())
+                        .body().contains("\"catalogId\":\"123\""));
+            } catch (InterruptedException e) { Thread.currentThread().interrupt(); throw new IOException(e); }
+        })) {
+            assertTrue(account.openSong("123"));
+            config.clear();
+            assertTrue(account.available());
+            assertTrue(account.openSong("456"));
+            var uri = current.get();
+            var req = HttpRequest.newBuilder(uri.resolve("/status"))
+                    .header("X-SHBUI-Session", uri.getFragment()).GET().build();
+            var body = HttpClient.newHttpClient().send(req, HttpResponse.BodyHandlers.ofString()).body();
+            assertTrue(body.contains("\"catalogId\":\"456\""));
+            assertTrue(body.contains("\"selectionRevision\":2"));
+        }
+    }
+
     @Test void browserLaunchFailureClosesTheNewLoopbackSession() throws Exception {
         var uri = new AtomicReference<URI>();
         try (var account = new AppleMusicAccount(k -> null, TEST_CONFIG::get, target -> {

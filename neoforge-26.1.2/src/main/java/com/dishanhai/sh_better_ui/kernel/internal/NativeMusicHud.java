@@ -25,7 +25,7 @@ public final class NativeMusicHud {
     private MusicService.Frame frame;
     NativeMusicHud(NativeMusicArtwork artwork) { this.artwork = artwork; }
     static boolean sceneVisible(Minecraft client) {
-        return client.level != null && client.player != null && !client.options.hideGui && client.isWindowActive()
+        return client.level != null && client.player != null && !NativePort.hudHidden(client) && client.isWindowActive()
                 && NativePort.screen(client) == null && !NativePort.hasOverlay(client) && !client.options.keyPlayerList.isDown();
     }
     static Bounds layout(int width, int height, MusicOverlaySettings settings, int lineHeight) {

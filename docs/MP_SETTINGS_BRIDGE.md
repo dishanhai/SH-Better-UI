@@ -1,5 +1,7 @@
 # Optional MuoniumPlayer settings integration
 
+The current embedded player is documented in [MuoniumPlayer 2.6.0](MUONIUM_PLAYER.md). This page records the earlier integration.
+
 Original SHBUI adapter, authored for dishanhai. API reference: MuoniumPlayer-multiversion
 9b4cc7e7bd143315da716075a6d024a0d4c0c81b (2.5.2), Apache-2.0.
 No upstream source bodies, fonts, images, native libraries, or JARs are embedded by this adapter.

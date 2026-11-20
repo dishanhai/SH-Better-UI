@@ -35,7 +35,7 @@ class MarkdownApiTest {
         assertTrue(run(result, "删除").getStyle().isStrikethrough());
         assertTrue(run(result, "强调").getStyle().isBold());
         assertTrue(run(result, "强调").getStyle().isItalic());
-        assertEquals(ChatFormatting.GRAY.getColor(), run(result, "**原样**").getStyle().getColor().getValue());
+        assertEquals(0xaaaaaa, run(result, "**原样**").getStyle().getColor().getValue());
         assertFalse(run(result, "**代码**").getStyle().isBold());
     }
 

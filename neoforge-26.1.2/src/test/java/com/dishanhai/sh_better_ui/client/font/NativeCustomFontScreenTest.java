@@ -14,7 +14,7 @@ class NativeCustomFontScreenTest {
     @Test void dropOnlyStagesOneFileAndResizePreservesPathWithoutImporting() throws Exception {
         try(var client=NativeTestClient.install()){
             var backend=new FakeBackend();var screen=new NativeCustomFontScreen(null,backend);
-            client.client().screen=screen;screen.width=120;screen.height=160;screen.init();
+            client.screen(screen);screen.width=120;screen.height=160;screen.init();
             screen.onFilesDrop(List.of(Path.of("font.ttf")));
             assertEquals("font.ttf",((EditBox)field(screen,"path")).getValue());assertEquals(0,backend.imports);
             var body=(AbstractContainerWidget)field(screen,"body");
@@ -29,19 +29,19 @@ class NativeCustomFontScreenTest {
     @Test void blankPathNeverRequestsImport() throws Exception {
         try(var client=NativeTestClient.install()){
             var backend=new FakeBackend();var screen=new NativeCustomFontScreen(null,backend);
-            client.client().screen=screen;screen.width=300;screen.height=220;screen.init();screen.confirmImport();
-            assertEquals(0,backend.imports);assertSame(screen,client.client().screen);
+            client.screen(screen);screen.width=300;screen.height=220;screen.init();screen.confirmImport();
+            assertEquals(0,backend.imports);assertSame(screen,client.screen());
         }
     }
     @Test void cancellationWaitsForBackendAndStaleCloseCannotNavigate() throws Exception {
         try(var client=NativeTestClient.install()){
             var backend=new FakeBackend();backend.busy=true;
-            var screen=new NativeCustomFontScreen(null,backend);client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            var screen=new NativeCustomFontScreen(null,backend);client.screen(screen);screen.width=300;screen.height=220;screen.init();
             var future=new CompletableFuture<NativeLocalFontService.Result>();set(screen,"pending",future);
-            screen.onClose();assertEquals(1,backend.cancels);assertSame(screen,client.client().screen);
+            screen.onClose();assertEquals(1,backend.cancels);assertSame(screen,client.screen());
             assertNotNull(field(screen,"pending"));
             backend.busy=false;future.complete(NativeLocalFontService.Result.CANCELLED);screen.tick();assertNull(field(screen,"pending"));
-            client.client().screen=null;screen.onClose();assertNull(client.client().screen);assertEquals(0,backend.closes);
+            client.screen(null);screen.onClose();assertNull(client.screen());assertEquals(0,backend.closes);
             screen.removed();assertEquals(1,backend.closes);
         }
     }

@@ -11,7 +11,7 @@ SH-Better-UI 是 Forge 1.20.1 與 NeoForge 1.21.1 的 Minecraft 客戶端 UI 庫
 - Minecraft 1.20.1、Forge 47.4.16 或更高、Java 17（執行端）。
 - [本機音樂 API 與 Windows 橋建置](docs/local-music.md)
 - [網易雲／QQ 線上音樂與同步歌詞](docs/ONLINE_MUSIC_API.md)
-- 必需 KotlinForForge 4.12.0（2.2.21 runtime），由整合包單獨提供；本庫不內嵌任何 jar。
+- 必需 KotlinForForge 4.12.0（2.2.21 runtime），由整合包單獨提供。播放器隨包提供固定版本的渲染與解碼依賴，詳見 [MuoniumPlayer 移植說明](docs/MUONIUM_PLAYER.md)。
 - 使用 LDLib 介面時另裝 `ldlib-forge-1.20.1-1.0.33.b.jar`；原生 Screen 使用者無須安裝 LDLib。
 - 開發時將 `kotlinforforge-4.12.0-all.jar` 及 `ldlib-forge-1.20.1-1.0.33.b.jar` 放入 `libs/`。
 

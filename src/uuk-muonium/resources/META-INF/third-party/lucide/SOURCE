@@ -1,0 +1,7 @@
+Lucide Icons 1.77.0
+Upstream: https://github.com/lucide-icons/lucide
+Package: https://registry.npmjs.org/lucide-static/-/lucide-static-1.77.0.tgz
+License: ISC, with MIT attribution for Feather-derived icons; see LICENSE.
+The TrueType fonts in muonium/fonts are renamed subsets with remapped codepoints
+from the Lucide static icon font. Music service marks use generic music or playback
+icons. The font paths and legacy codepoints remain compatible with the player.

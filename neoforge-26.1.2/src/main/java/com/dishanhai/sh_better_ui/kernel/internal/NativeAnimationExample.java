@@ -13,7 +13,7 @@ final class NativeAnimationExample implements UIModule {
     NativeAnimationExample(ClientScreens screens){this.screens=screens;}
     ModuleDiscovery.Candidate candidate(){return new ModuleDiscovery.Candidate("sh_better_ui",getClass().getName(),this,Set.of(),false,true);}
     public ModuleDescriptor descriptor(){return ModuleDescriptor.builder().id(UiId.parse("sh_better_ui:native_animation_example"))
-            .version("1.0.0").platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2))
+            .version("1.0.0").platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2, ModuleDescriptor.Platform.NEOFORGE_26_2))
             .initializationPhase(ModuleDescriptor.InitializationPhase.EXTENSION)
             .requiredCapability(UIApis.SCOPED_ANIMATION,VersionRange.ANY)
             .requiredCapability(new CapabilityKey(UIApis.COLLAPSE.id()),VersionRange.ANY)

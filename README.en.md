@@ -13,7 +13,7 @@ SH-Better-UI is a Minecraft client UI library for Forge 1.20.1 and NeoForge 1.21
 - Minecraft 1.20.1, Forge 47.4.16 or later, and Java 17 at runtime.
 - [Local music API and Windows bridge build](docs/local-music.md)
 - [NetEase Cloud Music / QQ Music and synchronized lyrics](docs/ONLINE_MUSIC_API.md)
-- KotlinForForge 4.12.0 (Kotlin 2.2.21 runtime) is required and must be supplied separately by the modpack. The library embeds no JARs.
+- KotlinForForge 4.12.0 (Kotlin 2.2.21 runtime) is required and must be supplied separately by the modpack. The integrated player includes its rendering and decoding dependencies. See the [MuoniumPlayer port notes](docs/MUONIUM_PLAYER.md).
 - Install `ldlib-forge-1.20.1-1.0.33.b.jar` when using the LDLib interfaces. Native `Screen` users do not need LDLib.
 - For development, place `kotlinforforge-4.12.0-all.jar` and `ldlib-forge-1.20.1-1.0.33.b.jar` in `libs/`.
 

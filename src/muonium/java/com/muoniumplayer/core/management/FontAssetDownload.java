@@ -1,0 +1,549 @@
+// Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
+package com.muoniumplayer.core.management;
+
+import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.net.HttpURLConnection;
+import java.net.URI;
+import java.net.URL;
+import java.nio.file.Files;
+import java.nio.file.StandardCopyOption;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
+import com.muoniumplayer.core.utils.network.HttpDownloadRace;
+
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Locale;
+
+/**
+ * 可选 Noto Sans KR 回退字体下载器。只有显式调用 {@link #ensureFonts()} 才开始下载，
+ * 文件通过大小和 SHA-256 校验后在渲染线程启用。已有缓存可在启动时直接使用。
+ */
+public final class FontAssetDownload {
+
+    /**
+     * 下载镜像链，前五路指向公开的清单仓库 {@code fonts/} 目录（ghfast / gh-proxy / raw /
+     * ghproxy.net / jsdelivr），后两路是官网系（Cloudflare）：Pages 直链与 R2 对象存储直链，
+     * 同一批文件的两个镜像。未命中该文件的镜像会 404，竞速下只是那一路白跑。
+     */
+    static final List<String> MIRRORS = List.of(
+            "https://file.melodifymc.cc.cd/fonts/",
+            "https://gh-proxy.com/https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/fonts/",
+            "http://muoniummc.cc.cd/dl/fonts/",
+            "https://melodifymc.cc.cd/dl/fonts/",
+            "https://ghfast.top/https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/fonts/",
+            "https://gcore.jsdelivr.net/gh/zihe114514/MuoniumPlayer-updates@main/fonts/",
+            "https://ghproxy.net/https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/fonts/",
+            "https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/fonts/");
+
+    /** 关闭自动下载的开关（默认开，只有显式 {@code =false} 才关）。包级可见：静态测试要读它。 */
+    static final String PROP_ENABLED = "muonium.fonts.autoDownload";
+
+    /** 开发期替代源：从一个本地目录取字体文件，不经网络。 */
+    static final String PROP_LOCAL_DIR = "muonium.fonts.dir";
+
+    /** 同一会话内最多尝试几次：网络断了不该每次重评都打一次。 */
+    private static final int MAX_ATTEMPTS = 5;
+
+    /** 两次尝试之间的冷却：给网络恢复留时间，也避免频繁重试刷日志。 */
+    private static final long RETRY_COOLDOWN_NANOS = 3L * 60L * 1_000_000_000L;
+
+    /** 下载中落盘的暂存后缀。加载侧只认正式文件名，半成品永远不会被读进去。 */
+    private static final String PART_SUFFIX = ".part";
+
+    /** 渲染线程重评钩子的节流：失败后的会话内重试由它驱动，而不是每次起游戏一次。 */
+    private static final long REPOLL_INTERVAL_NANOS = 20L * 1_000_000_000L;
+
+    /** 灵动岛进度卡的刷新下限：再快的镜像也不值得每 1% 都排一次队。 */
+    private static final long NOTICE_THROTTLE_MILLIS = 500L;
+
+    /** 一份完整字体：文件名 + 字节数 + sha256，三个都必须精确。 */
+    record Pack(String fileName, long bytes, String sha256) {
+    }
+
+    /**
+     * 四份完整字体，与清单仓库 {@code fonts/} 目录里实际托管的文件一致
+     * （sha256 以仓库文件为准，发布时由静态测试对拍）。前两份是苹方（主包带精简子集），
+     * 后两份是韩文 Noto Sans KR（Google Fonts 静态字重 400/700，OFL 许可，
+     * 主包刻意不带——首启动下载，见类注释）。
+     */
+    static final List<Pack> PACKS = List.of(
+            new Pack("notosanskr_regular.ttf", 6_191_364L,
+                    "b4a747e78805bc25b610dcfc3003cb5fb2e2ec034763774b24216ed15889eef4"),
+            new Pack("notosanskr_bold.ttf", 6_189_424L,
+                    "c76f806dc46b8e7981410cb083801f7f124b7f8bc0d181cdae80e78f16d0e9cc"));
+
+    /** 下载状态机；日志与排查用（进度展示走灵动岛，不逐帧读它）。 */
+    enum Phase {
+        IDLE,
+        DOWNLOADING,
+        /** 全部就位、校验通过，等待渲染线程热启用。 */
+        DONE,
+        FAILED
+    }
+
+    record State(Phase phase, String detail) {
+    }
+
+    private static final Object LOCK = new Object();
+    private static volatile State state = new State(Phase.IDLE, null);
+    private static boolean inFlight;
+    private static volatile int attempts;
+    private static long nextAttemptAtNanos;
+
+    /** 全部就位后置位；渲染线程在 {@link #pollFromRenderThread()} 里取走并热启用。 */
+    private static volatile boolean pendingSwap;
+    /**
+     * 下载线程上先行解析好的四个全量 {@code Font} 实例（苹方两份 + 韩文两份，已登记 Skija）。
+     * 解析 30 MB 字体要几百毫秒，放下载线程做，渲染线程只做引用替换，
+     * 热启用那一帧不掉帧。
+     */
+    private static volatile java.awt.Font[] pendingFonts;
+    /** 本会话已完成热启用：同一会话里重复消费没有意义（字体缓存里已经是全量实例）。 */
+    private static volatile boolean swappedThisSession;
+    /** 渲染线程重评节流的锚点。 */
+    private static volatile long lastPollNanos;
+    /** 灵动岛进度卡节流。 */
+    private static volatile long lastNoticeAtMillis = Long.MIN_VALUE;
+
+    private FontAssetDownload() {
+    }
+
+    static State state() {
+        return state;
+    }
+
+    public static String catalogPhase() {
+        return state.phase().name();
+    }
+
+    public static int catalogProgress() {
+        return -1;
+    }
+
+    public static boolean isDownloading() {
+        return state.phase() == Phase.DOWNLOADING;
+    }
+
+    public static boolean hasFailed() {
+        return state.phase() == Phase.FAILED;
+    }
+
+    public static String catalogFailure() {
+        return state.phase() == Phase.FAILED ? state.detail() : null;
+    }
+
+    /** 字体缓存目录，与模型目录（{@code config/muonium/models}）同一层级约定。 */
+    public static File fontCacheDir() {
+        return new File(new File("config", "muonium"), "fonts");
+    }
+
+    /** 某份字体在缓存目录里的正式落点。 */
+    public static File cachedFile(String fileName) {
+        return new File(fontCacheDir(), fileName);
+    }
+
+    /** 钉住的全量字节数；不在下载表里的文件名返回 -1。 */
+    public static long pinnedBytes(String fileName) {
+        for (Pack pack : PACKS) {
+            if (pack.fileName().equals(fileName)) {
+                return pack.bytes();
+            }
+        }
+        return -1L;
+    }
+
+    /**
+     * 缓存里两份完整字体是否全部就位。判据只看字节数（启动路径上跑，20 MB 的
+     * sha256 不值得每次启动都算）；内容完整性由下载时的整包 sha256 保证，
+     * 「大小恰好对上但内容损坏」在现实中轮不到这条路径来防。
+     */
+    public static boolean isCacheComplete() {
+        for (Pack pack : PACKS) {
+            File file = cachedFile(pack.fileName());
+            if (!file.isFile() || file.length() != pack.bytes()) {
+                return false;
+            }
+        }
+        return true;
+    }
+
+    /** 显式下载是否允许：只有显式设成 false 才关闭。 */
+    static boolean enabled() {
+        String value = System.getProperty(PROP_ENABLED);
+        return value == null || value.isBlank() || !"false".equalsIgnoreCase(value.trim());
+    }
+
+    /**
+     * 缓存没满时起一次后台下载，由资源操作显式调用；
+     * 失败后的会话内重试由 {@link #pollFromRenderThread()} 节流驱动。
+     * 只做判断就走，绝不在这里等网络。
+     */
+    public static void ensureFonts() {
+        if (!enabled() || isCacheComplete()) {
+            return;
+        }
+        synchronized (LOCK) {
+            if (inFlight || attempts >= MAX_ATTEMPTS) {
+                return;
+            }
+            long now = System.nanoTime();
+            if (now < nextAttemptAtNanos) {
+                return;
+            }
+            attempts++;
+            inFlight = true;
+            nextAttemptAtNanos = now + RETRY_COOLDOWN_NANOS;
+        }
+        Thread worker = new Thread(FontAssetDownload::run, "MuoniumPlayer-FontAsset");
+        worker.setDaemon(true);
+        worker.start();
+    }
+
+    /**
+     * 渲染线程每帧的钩子（挂在灵动岛的渲染入口上，五棵版本树零改动）：
+     * <ol>
+     *   <li>字体已就位且本会话还没启用 → 读出字节、{@link FontManager#applyKoreanFallback}
+     *       热启用、灵动岛报一次「已就绪」；</li>
+     *   <li>否则按 {@link #REPOLL_INTERVAL_NANOS} 节流地重评下载（网络恢复后的会话内重试）。</li>
+     * </ol>
+     */
+    public static void pollFromRenderThread() {
+        try {
+            if (pendingSwap && !swappedThisSession) {
+                pendingSwap = false;
+                swappedThisSession = applySwapped();
+            }
+            long now = System.nanoTime();
+            if (attempts > 0 && now - lastPollNanos >= REPOLL_INTERVAL_NANOS) {
+                lastPollNanos = now;
+                ensureFonts();
+            }
+        } catch (Throwable failure) {
+            // 钩子挂在每帧渲染路径上，任何异常都不许向上冒——字体最多保持子集，
+            // 下次启动走正常加载路径。
+            System.out.println("[MuoniumPlayer/FontAsset] 渲染线程热启用失败，保持精简子集："
+                    + failure);
+            pendingSwap = false;
+        }
+    }
+
+    /** 把下载线程解析好的全量实例交给 {@link FontManager} 热启用。 */
+    private static boolean applySwapped() {
+        java.awt.Font[] fonts = pendingFonts;
+        if (fonts == null || fonts.length != PACKS.size()) {
+            return false;
+        }
+        boolean applied = FontManager.applyKoreanFallback(fonts[0], fonts[1]);
+        if (!applied) {
+            // 字体缓存还没填好（FontManager 尚未 init）：实例不消费，下一帧再试，
+            // 否则这一份解析结果会被扔掉、本会话只能停在子集。
+            return false;
+        }
+        pendingFonts = null;
+        com.muoniumplayer.core.rendering.DownloadDynamicIsland.showFontAssetReady();
+        System.out.println("[MuoniumPlayer/FontAsset] 完整字体已热启用（本会话内生僻字/繁体/韩文即刻可用）");
+        return true;
+    }
+
+    /**
+     * 下载线程的收尾：读出四份已校验的字体字节（苹方两份 + 韩文两份）、解析成 AWT Font
+     * 并登记 Skija，然后置位待热启用。解析失败按整体失败处理（文件在磁盘上，冷却重试时
+     * 只会重走这一步而不会重新下载）。
+     */
+    private static void preparePendingFonts() throws IOException {
+        java.awt.Font[] parsed = new java.awt.Font[PACKS.size()];
+        try {
+            for (int i = 0; i < PACKS.size(); i++) {
+                byte[] data = Files.readAllBytes(cachedFile(PACKS.get(i).fileName()).toPath());
+                parsed[i] = FontManager.createRegisteredFont(data);
+            }
+        } catch (Exception failure) {
+            pendingFonts = null;
+            throw new IOException("全量字体解析失败：" + failure, failure);
+        }
+        pendingFonts = parsed;
+        pendingSwap = true;
+    }
+
+    /**
+     * 下载 → 校验 → 并入缓存目录 → 置位待热启用。逐份处理：先到先并入，
+     * 单份失败不回滚另一份；任何一份最终没到齐算整体失败，冷却后重评时只补缺的。
+     */
+    private static void run() {
+        try {
+            Files.createDirectories(fontCacheDir().toPath());
+            long totalBytes = 0L;
+            long doneBytes = 0L;
+            for (Pack pack : PACKS) {
+                if (!needsFetch(pack)) {
+                    doneBytes += pack.bytes();
+                    continue;
+                }
+                totalBytes += pack.bytes();
+            }
+            if (totalBytes == 0L) {
+                // 缓存在两次判断之间被补齐了（多开、或手动放进来的合法文件）
+                state = new State(Phase.DONE, null);
+                preparePendingFonts();
+                return;
+            }
+            state = new State(Phase.DOWNLOADING, null);
+            System.out.println("[MuoniumPlayer/FontAsset] 开始自动下载完整字体（镜像链 "
+                    + MIRRORS.size() + " 条，共 " + (totalBytes / 1024 / 1024) + " MB）");
+            announceProgress(0);
+            for (Pack pack : PACKS) {
+                if (!needsFetch(pack)) {
+                    continue;
+                }
+                fetch(pack, doneBytes, totalBytes);
+                doneBytes += pack.bytes();
+            }
+            state = new State(Phase.DONE, null);
+            preparePendingFonts();
+            System.out.println("[MuoniumPlayer/FontAsset] 完整字体已就位 → " + fontCacheDir().getAbsolutePath()
+                    + "，等待渲染线程热启用");
+        } catch (Throwable failure) {
+            state = new State(Phase.FAILED, safeMessage(failure));
+            com.muoniumplayer.core.rendering.DownloadDynamicIsland
+                    .showFontAssetFailure(safeMessage(failure));
+            System.out.println("[MuoniumPlayer/FontAsset] 自动下载失败："
+                    + failure.getClass().getName() + ": " + failure.getMessage()
+                    + "（冷却后自动重试；本次会话继续用精简子集）");
+        } finally {
+            synchronized (LOCK) {
+                inFlight = false;
+            }
+        }
+    }
+
+    /** 这一份要不要下：不存在、或大小与钉值不符（半成品/旧版本/损坏）都要下。 */
+    private static boolean needsFetch(Pack pack) {
+        File file = cachedFile(pack.fileName());
+        return !file.isFile() || file.length() != pack.bytes();
+    }
+
+    /**
+     * 取一份字体到缓存。本地替代源优先；否则按镜像链逐个试，任一成功即返回。
+     * 每次尝试都完整校验（字节数 + sha256），校验不过算这次失败、换下一路。
+     * 进度按「已收字节 / 全部待收字节」聚合推给灵动岛。
+     */
+    /**
+     * 取字体到缓存目录。本地替代源优先；否则多路竞速下载（见 {@link HttpDownloadRace}），
+     * 开关关掉时退回旧的逐路串行回退（带同镜像 Range 续传）。
+     */
+    private static void fetch(Pack pack, long baseBytes, long totalBytes) throws Exception {
+        String localDir = System.getProperty(PROP_LOCAL_DIR);
+        if (localDir != null && !localDir.isBlank()) {
+            File local = new File(localDir, pack.fileName());
+            if (!local.isFile()) {
+                throw new IOException("本地字体目录里没有 " + pack.fileName() + "：" + localDir);
+            }
+            verify(local, pack);
+            copyIntoPlace(local, pack);
+            return;
+        }
+        File part = new File(fontCacheDir(), pack.fileName() + PART_SUFFIX);
+        if (HttpDownloadRace.enabled()) {
+            List<String> urls = new ArrayList<String>(MIRRORS.size());
+            for (String mirror : MIRRORS) {
+                urls.add(mirror + pack.fileName());
+            }
+            // 四份字体共享一张进度卡：领先路字节加上前几份的 baseBytes 再换算总百分比。
+            HttpDownloadRace.fetch(urls, pack.bytes(), pack.sha256(), part, raceDone -> {
+                long overall = Math.min(totalBytes, baseBytes + raceDone);
+                announceProgress((int) Math.min(100L, overall * 100L / totalBytes));
+            });
+            copyIntoPlace(part, pack);
+            return;
+        }
+        Exception last = null;
+        for (String mirror : MIRRORS) {
+            try {
+                // 同镜像先续传重试（最多 3 次，download 内部按 .part 已收字节挂 Range）：
+                // gh-proxy 这类代理对大文件常在中途截断但支持 Range 续传，接着拉就能拿全，
+                // 不必整包重来、也不必急着换路。校验失败（哈希不符）说明已收前缀可疑，
+                // 续传没有意义，清掉 .part 从零来。
+                for (int retry = 0; retry <= 3; retry++) {
+                    try {
+                        download(pack, mirror + pack.fileName(), part, baseBytes, totalBytes);
+                        break;
+                    } catch (Exception attempt) {
+                        if (retry == 3) {
+                            throw attempt;
+                        }
+                        if (attempt instanceof IOException
+                                && String.valueOf(attempt.getMessage()).contains("sha256")) {
+                            Files.deleteIfExists(part.toPath());
+                        }
+                    }
+                }
+                copyIntoPlace(part, pack);
+                return;
+            } catch (Exception failure) {
+                last = failure;
+                try {
+                    Files.deleteIfExists(part.toPath());
+                } catch (Throwable ignored) {
+                }
+            }
+        }
+        throw last == null ? new IOException("没有可用的下载源") : last;
+    }
+
+    /** 单次下载：读流与校验同步走，整百分比变化时喂一次灵动岛（带时间下限）。支持断点续传。 */
+    private static void download(Pack pack, String url, File part,
+                                 long baseBytes, long totalBytes) throws Exception {
+        long already = part.isFile() ? part.length() : 0L;
+        if (already > pack.bytes()) {
+            throw new IOException(".part 超长：已有 " + already + " 字节，应为 " + pack.bytes());
+        }
+        HttpURLConnection connection = openFollowing(URI.create(url).toURL(), 0, already);
+        int code = connection.getResponseCode();
+        // 续传被服务端拒绝（不认 Range）时它会给全量 200：把 .part 清掉按从头下处理。
+        if (already > 0L && code == 200) {
+            connection.disconnect();
+            Files.deleteIfExists(part.toPath());
+            connection = openFollowing(URI.create(url).toURL(), 0, 0L);
+            code = connection.getResponseCode();
+            already = 0L;
+        }
+        if (code < 200 || code >= 300) {
+            throw new IOException("HTTP " + code);
+        }
+        if (already > 0L && code != 206) {
+            throw new IOException("续传未生效：HTTP " + code);
+        }
+        long contentLength = connection.getContentLengthLong();
+        if (contentLength > 0 && contentLength != pack.bytes() - already) {
+            throw new IOException("Content-Length 不符：得到 " + contentLength
+                    + "，应为 " + (pack.bytes() - already));
+        }
+        MessageDigest digest = MessageDigest.getInstance("SHA-256");
+        long done = 0L;
+        int shownPercent = -1;
+        try (InputStream input = new BufferedInputStream(connection.getInputStream());
+             FileOutputStream output = new FileOutputStream(part, already > 0L)) {
+            // 已收的前缀在续传时不再过哈希：整包 sha256 校验在收完后照做，
+            // 前缀损坏（极小概率）会在那里被抓住、换下一路重来。
+            digestSkip(input, already);
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                output.write(buffer, 0, read);
+                digest.update(buffer, 0, read);
+                done += read;
+                if (already + done > pack.bytes()) {
+                    throw new IOException("下超了：已收 " + (already + done) + " 字节，应为 " + pack.bytes());
+                }
+                int percent = (int) Math.min(100L, (baseBytes + already + done) * 100L / totalBytes);
+                if (percent != shownPercent) {
+                    shownPercent = percent;
+                    announceProgress(percent);
+                }
+            }
+        }
+        checkAgainst(pack, part.length(), hex(digest.digest()));
+    }
+
+    /** 续传时跳过已收前缀（服务端已按 Range 从该字节开始发）。 */
+    private static void digestSkip(InputStream input, long skip) throws IOException {
+        while (skip > 0) {
+            long jumped = input.skip(skip);
+            if (jumped <= 0) {
+                throw new IOException("续传前缀跳读失败：还剩 " + skip + " 字节");
+            }
+            skip -= jumped;
+        }
+    }
+
+    /** 校验通过后的并入：改名即生效（同目录同文件系统，原子性由 Rename 保证）。 */
+    private static void copyIntoPlace(File verified, Pack pack) throws IOException {
+        Files.move(verified.toPath(), cachedFile(pack.fileName()).toPath(),
+                StandardCopyOption.REPLACE_EXISTING,
+                StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /** 重定向自己跟（镜像会 30x 到 CDN），最多 6 跳，与 Skija/Folia 的下载器同款。rangeFrom &gt; 0 时挂 Range 续传头。 */
+    private static HttpURLConnection openFollowing(URL url, int depth, long rangeFrom) throws Exception {
+        if (depth > 6) {
+            throw new IOException("重定向过多");
+        }
+        HttpURLConnection connection = (HttpURLConnection) url.openConnection();
+        connection.setInstanceFollowRedirects(false);
+        connection.setConnectTimeout(20_000);
+        connection.setReadTimeout(60_000);
+        connection.setRequestProperty("User-Agent", "MuoniumPlayer-FontAsset/1.0");
+        if (rangeFrom > 0L) {
+            connection.setRequestProperty("Range", "bytes=" + rangeFrom + "-");
+        }
+        int code = connection.getResponseCode();
+        if (code >= 300 && code < 400) {
+            String location = connection.getHeaderField("Location");
+            connection.disconnect();
+            if (location == null) {
+                throw new IOException("重定向没有 Location");
+            }
+            return openFollowing(new URL(url, location), depth + 1, rangeFrom);
+        }
+        return connection;
+    }
+
+    /** 本地文件路径的校验（开发期替代源用），与下载路径同一套判据。 */
+    private static void verify(File file, Pack pack) throws IOException {
+        MessageDigest digest;
+        try {
+            digest = MessageDigest.getInstance("SHA-256");
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IOException("本机 JRE 没有 SHA-256", impossible);
+        }
+        try (InputStream input = new BufferedInputStream(new FileInputStream(file))) {
+            byte[] buffer = new byte[64 * 1024];
+            int read;
+            while ((read = input.read(buffer)) >= 0) {
+                digest.update(buffer, 0, read);
+            }
+        }
+        checkAgainst(pack, file.length(), hex(digest.digest()));
+    }
+
+    /** 整包校验：字节数与 sha256 都要对上钉住的值。 */
+    private static void checkAgainst(Pack pack, long bytes, String sha256) throws IOException {
+        if (bytes != pack.bytes()) {
+            throw new IOException("大小不符：得到 " + bytes + " 字节，应为 " + pack.bytes());
+        }
+        if (!pack.sha256().equalsIgnoreCase(sha256)) {
+            throw new IOException("sha256 不符：得到 " + sha256);
+        }
+    }
+
+    /** 灵动岛进度卡：百分比变了、且距上一张超过节流下限才发。 */
+    private static void announceProgress(int percent) {
+        long now = System.currentTimeMillis();
+        if (now - lastNoticeAtMillis < NOTICE_THROTTLE_MILLIS && percent < 100) {
+            return;
+        }
+        lastNoticeAtMillis = now;
+        com.muoniumplayer.core.rendering.DownloadDynamicIsland.showFontAssetProgress(percent);
+    }
+
+    private static String hex(byte[] bytes) {
+        StringBuilder out = new StringBuilder(bytes.length * 2);
+        for (byte value : bytes) {
+            out.append(String.format(Locale.ROOT, "%02x", value & 0xff));
+        }
+        return out.toString();
+    }
+
+    /** 状态里给用户看的一句人话；空消息退化成异常类名。 */
+    private static String safeMessage(Throwable failure) {
+        String message = failure == null ? null : failure.getMessage();
+        return message == null || message.isEmpty()
+                ? failure.getClass().getSimpleName() : message;
+    }
+}

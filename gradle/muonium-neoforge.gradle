@@ -1,0 +1,110 @@
+// Shared Muonium source roots and NeoForge dependencies.
+def shadowJarType = plugins.getPlugin('com.gradleup.shadow').class.classLoader
+        .loadClass('com.github.jengelman.gradle.plugins.shadow.tasks.ShadowJar')
+def muoniumModernUi = project.minecraft_version == '1.21.1'
+sourceSets.main {
+    java.srcDirs += [file('../src/muonium/java'), file('../src/uuk-muonium/java'),
+                     file('src/muonium/java')]
+    if (muoniumModernUi) java.srcDir(file('src/muonium/modernui'))
+    resources.srcDirs += [file('../src/muonium/resources'), file('../src/uuk-muonium/resources'),
+                          file('src/muonium/resources')]
+}
+kotlin.sourceSets.main.kotlin.srcDirs += [file('../src/muonium/kotlin'), file('../src/uuk-muonium/kotlin'),
+                                         file('src/muonium/kotlin')]
+
+repositories {
+    maven { url = 'https://maven.maxhenkel.de/repository/public' }
+    maven { url = 'https://maven.izzel.io/releases/'; content { includeGroup 'icyllis.modernui' } }
+}
+
+configurations {
+    muoniumEmbedded {
+        exclude group: 'com.google.code.gson', module: 'gson'
+        exclude group: 'net.java.dev.jna', module: 'jna'
+        exclude group: 'net.java.dev.jna', module: 'jna-platform'
+        exclude group: 'com.google.errorprone', module: 'error_prone_annotations'
+    }
+    muoniumDevSkija
+    muoniumNatives
+}
+
+def relocateMuoniumRhino = tasks.register('relocateMuoniumRhino', shadowJarType) {
+    destinationDirectory.set(layout.buildDirectory.dir('tmp/muonium-rhino'))
+    archiveClassifier.set('muonium-rhino')
+    configurations = [project.configurations.detachedConfiguration(project.dependencies.create('org.mozilla:rhino:1.7.15'))]
+    exclude 'META-INF/MANIFEST.MF', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+    relocate 'org.mozilla.javascript', 'muonium.rhino'
+    relocate 'org.mozilla.classfile', 'muonium.rhino.classfile'
+}
+
+def shadeMuoniumLibraries = tasks.register('shadeMuoniumLibraries', shadowJarType) {
+    destinationDirectory.set(layout.buildDirectory.dir('tmp/muonium-libs'))
+    archiveClassifier.set('muonium-libs')
+    configurations = [project.configurations.muoniumEmbedded, project.configurations.muoniumDevSkija]
+    mergeServiceFiles()
+    exclude 'META-INF/MANIFEST.MF', 'META-INF/*.SF', 'META-INF/*.DSA', 'META-INF/*.RSA', 'module-info.class'
+}
+
+def flattenMuoniumLibraries = tasks.register('flattenMuoniumLibraries', Jar) {
+    dependsOn shadeMuoniumLibraries
+    destinationDirectory.set(layout.buildDirectory.dir('tmp/muonium-flattened'))
+    archiveClassifier.set('muonium-libs')
+    duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+    includeEmptyDirs = false
+    from({ zipTree(shadeMuoniumLibraries.get().archiveFile) }) {
+        include 'META-INF/versions/**'
+        exclude '**/module-info.class'
+        eachFile { it.path = it.path.replaceFirst('^META-INF/versions/\\d+/', '') }
+    }
+    from({ zipTree(shadeMuoniumLibraries.get().archiveFile) }) { exclude 'META-INF/versions/**' }
+}
+
+dependencies {
+    muoniumEmbedded 'com.google.zxing:core:3.5.3'
+    muoniumEmbedded files(relocateMuoniumRhino)
+    compileOnly files(relocateMuoniumRhino)
+    implementation files(flattenMuoniumLibraries.map { it.archiveFile })
+    compileOnly 'de.maxhenkel.voicechat:voicechat-api:2.6.27'
+    compileOnly 'org.projectlombok:lombok:1.18.46'
+    annotationProcessor 'org.projectlombok:lombok:1.18.46'
+    jarJar('io.github.humbleui:types:0.2.0') { version { strictly '[0.1, 1.0)'; prefer '0.2.0' } }
+    jarJar 'io.github.humbleui:skija-shared:0.143.17'
+    compileOnly 'io.github.humbleui:types:0.2.0'
+    compileOnly 'io.github.humbleui:skija-shared:0.143.17'
+    muoniumDevSkija 'io.github.humbleui:types:0.2.0'
+    muoniumDevSkija 'io.github.humbleui:skija-shared:0.143.17'
+    ['windows-x64', 'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64',
+     'android-arm64', 'android-x64'].each { muoniumNatives "io.github.humbleui:skija-${it}:0.143.17" }
+    if (muoniumModernUi) {
+        compileOnly "icyllis.modernui:ModernUI-NeoForge:${project.minecraft_version}-3.13.0.1"
+        compileOnly('dev.icyllis:modernui-core:3.13.0') {
+        exclude group: 'org.slf4j', module: 'slf4j-api'
+        exclude group: 'org.apache.logging.log4j'
+        exclude group: 'com.google.code.findbugs', module: 'jsr305'
+        exclude group: 'org.jetbrains', module: 'annotations'
+        exclude group: 'com.ibm.icu', module: 'icu4j'
+        exclude group: 'it.unimi.dsi', module: 'fastutil'
+        }
+        compileOnly 'icyllis.modernui:ModernUI-Markflow:3.13.0'
+    }
+}
+
+tasks.named('classes') {
+    dependsOn flattenMuoniumLibraries
+    doLast {
+        copy {
+            from zipTree(flattenMuoniumLibraries.get().archiveFile)
+            into tasks.named('compileJava', JavaCompile).get().destinationDirectory.get().asFile
+            includeEmptyDirs = false
+            duplicatesStrategy = DuplicatesStrategy.EXCLUDE
+        }
+    }
+}
+tasks.withType(JavaCompile).configureEach { dependsOn flattenMuoniumLibraries }
+tasks.named('processResources') {
+    from({ configurations.muoniumNatives.collect { zipTree(it) } }) {
+        include 'io/github/humbleui/skija/**'
+        exclude '**/*.class'
+    }
+}
+tasks.named('jar') { exclude 'io/github/humbleui/**/*.class' }

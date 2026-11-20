@@ -37,6 +37,8 @@ public final class ShBetterUi {
     private static ModConfig clientConfig;
 
     public ShBetterUi(FMLJavaModLoadingContext context) {
+        net.minecraftforge.fml.DistExecutor.unsafeRunWhenOn(net.minecraftforge.api.distmarker.Dist.CLIENT,
+                () -> com.muoniumplayer.loader.forge.MuoniumPlayerForge::new);
         FumoRegistration.register(context.getModEventBus());
         PlatformLiveActivityNetwork.register();
         PlatformPageNetwork.register();
