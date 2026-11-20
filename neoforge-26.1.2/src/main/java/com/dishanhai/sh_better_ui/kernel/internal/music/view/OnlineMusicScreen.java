@@ -28,7 +28,11 @@ public final class OnlineMusicScreen {
     }
 
     public static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
-        return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).backgroundView());
+        return create(parent, returnFocus, () -> {
+            var music = UnifiedUI.get().require(OnlineMusicService.KEY);
+            return Boolean.getBoolean(MusicFrontendWorkspace.PREVIEW_FLAG)
+                    ? new MusicFrontendWorkspace(music.open()) : music.backgroundView();
+        });
     }
 
     /** A notice opens the matching history row, not an account or result action. */
@@ -50,7 +54,7 @@ public final class OnlineMusicScreen {
                                 com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.Glyph.BACK,
                                 screen.preferences(), screen::onClose));
                         owner.mount(new Context(screen, owner, exit));
-                        screen.onCloseRequest(() -> !(owner.view instanceof OnlineMusicViewImpl nativeView) || nativeView.permitsScreenClose());
+                        screen.onCloseRequest(() -> (owner.view instanceof MusicFrontendWorkspace workspace ? workspace.permitsScreenClose() : !(owner.view instanceof OnlineMusicViewImpl nativeView) || nativeView.permitsScreenClose()));
                     }
                     catch (ServiceUnavailable failure) { owner.close(); }
                 })

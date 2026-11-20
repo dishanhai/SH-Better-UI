@@ -53,15 +53,18 @@ class LyricWordEffectsTest {
         assertEquals(LyricWordEffects.focusDistance(80,100,20),LyricWordEffects.focusDistance(120,100,20));
         assertTrue(LyricWordEffects.focusDistance(138,100,20)>LyricWordEffects.focusDistance(137,100,20));
         assertEquals(1,LyricWordEffects.focusDistance(200,100,20));
-        assertEquals(0,LyricWordEffects.edgeOpacity(0,100,20));
-        assertEquals(.5f,LyricWordEffects.edgeOpacity(10,100,20));
-        assertEquals(1,LyricWordEffects.edgeOpacity(50,100,20));
-        assertEquals(0,LyricWordEffects.edgeOpacity(100,100,20));
+        assertEquals(0,LyricWordEffects.rowOpacity(true,0,100,20));
+        assertEquals(.5f,LyricWordEffects.rowOpacity(true,10,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(true,50,100,20));
+        assertEquals(0,LyricWordEffects.rowOpacity(true,100,100,20));
     }
 
-    @Test void incomingTimedRowKeepsResidualBlurUntilItsInkSettles(){
-        assertEquals(.4f,LyricWordEffects.softMix(.4f,0));
-        assertEquals(.2f,LyricWordEffects.softMix(.4f,.5f));
-        assertEquals(0,LyricWordEffects.softMix(.4f,1));
+    @Test void peripheralDepthDimsInkContinuouslyButDoesNotDimReadingRowsAtTheEdge(){
+        assertEquals(.36f,LyricWordEffects.distanceInkFade(100,100,20));
+        assertTrue(LyricWordEffects.distanceInkFade(138,100,20)>LyricWordEffects.distanceInkFade(137,100,20));
+        assertEquals(.76f,LyricWordEffects.distanceInkFade(200,100,20),1e-6f);
+        assertEquals(1,LyricWordEffects.rowOpacity(false,0,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(false,100,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(true,0,100,0));
     }
 }
