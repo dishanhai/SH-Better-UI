@@ -1,4 +1,4 @@
-// Author: dishanhai. Public Apple catalog reads only; the MusicKit SDK holds all credentials.
+// Author: dishanhai. The MusicKit SDK holds all Apple catalog and recommendation credentials.
 const storefrontPath = '/v1/catalog/{{storefrontId}}';
 const catalogId = { artists: /^[0-9]{1,30}$/, albums: /^[0-9]{1,30}$/, playlists: /^pl\.[A-Za-z0-9._-]{1,160}$/ };
 const songId = /^[0-9]{1,30}$/;
@@ -23,13 +23,13 @@ function track(item) {
   };
 }
 
-// Continuations may only point at the same endpoint in the current catalog storefront.
-function nextPage(next, expected, region) {
+// Only follow Apple-relative continuations for the exact original endpoint.
+function nextPage(next, expected) {
   if (next == null) return null;
-  if (typeof next !== 'string' || !next.startsWith('/v1/catalog/')) throw new Error('Invalid continuation');
+  if (typeof next !== 'string' || !next.startsWith(expected + '?')) throw new Error('Invalid continuation');
   const result = new URL(next, 'https://api.music.apple.com');
   if (result.origin !== 'https://api.music.apple.com' || result.hash ||
-      result.pathname !== expected.replace('{{storefrontId}}', region) || !result.search) throw new Error('Invalid continuation');
+      result.pathname !== expected || !result.search) throw new Error('Invalid continuation');
   return result.pathname + result.search;
 }
 export function createCatalog(music) {
@@ -54,7 +54,7 @@ export function createCatalog(music) {
       if (!Array.isArray(data.data)) throw new Error('Invalid catalog relationship');
       items.push(...data.data);
       if (items.length > 1000) throw new Error('Catalog collection exceeds safe queue limit');
-      next = nextPage(data.next, path, region);
+      next = nextPage(data.next, path);
     } while (next);
     if (music.storefrontCountryCode !== region) throw new Error('Storefront changed');
     return items;
@@ -74,22 +74,47 @@ export function createCatalog(music) {
       if (!results) throw new Error('Invalid chart response');
       return (results.playlists ?? []).flatMap(chart => chart.data ?? []).map(item => card(item, 'playlists')).filter(Boolean);
     },
-    async recommendations() {
+    async recommendations(isCurrent = () => true) {
       if (music.isAuthorized !== true) throw new Error('Authorization required');
       const { base, region } = root();
-      // MusicKit Web adds its own Music User Token; never read it or send this through Java.
-      const { data } = await request('/v1/me/recommendations');
-      if (music.isAuthorized !== true || music.storefrontCountryCode !== region) throw new Error('Apple Music session changed');
-      if (!Array.isArray(data)) throw new Error('Invalid recommendations response');
-      const seen = new Set(), result = [];
-      for (const recommendation of data) {
-        const items = recommendation?.relationships?.contents?.data;
-        if (recommendation?.type !== 'personal-recommendation' || !Array.isArray(items)) continue;
-        for (const item of items) {
-          const entry = card(item, 'playlists');
-          if (!entry || item.href !== `${base}/playlists/${entry.id}` || seen.has(entry.id)) continue;
-          seen.add(entry.id); result.push(entry);
+      const checkCurrent = () => {
+        if (!isCurrent() || music.isAuthorized !== true || music.storefrontCountryCode !== region) {
+          throw new Error('Apple Music session changed');
         }
+      };
+      // MusicKit Web adds its own Music User Token; never read it or send this through Java.
+      const requestPersonal = async path => {
+        checkCurrent();
+        const response = await request(path);
+        checkCurrent();
+        return response;
+      };
+      const path = '/v1/me/recommendations';
+      const { data } = await requestPersonal(path);
+      if (!Array.isArray(data)) throw new Error('Invalid recommendations response');
+      const seenPlaylists = new Set(), seenPages = new Set(), result = [];
+      let itemCount = data.length;
+      if (itemCount > 1000) throw new Error('Recommendation collection exceeds limit');
+      for (const recommendation of data) {
+        let contents = recommendation?.relationships?.contents;
+        if (recommendation?.type !== 'personal-recommendation' || contents == null) continue;
+        do {
+          if (!Array.isArray(contents.data)) throw new Error('Invalid recommendation contents');
+          itemCount += contents.data.length;
+          if (itemCount > 1000) throw new Error('Recommendation collection exceeds limit');
+          for (const item of contents.data) {
+            const entry = card(item, 'playlists');
+            if (!entry || item.href !== `${base}/playlists/${entry.id}` || seenPlaylists.has(entry.id)) continue;
+            seenPlaylists.add(entry.id); result.push(entry);
+          }
+          if (contents.next == null) break;
+          if (typeof recommendation.id !== 'string' || !recommendation.id) throw new Error('Invalid recommendation ID');
+          const relationshipPath = path + '/' + encodeURIComponent(recommendation.id) + '/contents';
+          const next = nextPage(contents.next, relationshipPath);
+          if (seenPages.has(next) || seenPages.size >= 30) throw new Error('Recommendation pagination unavailable');
+          seenPages.add(next);
+          contents = await requestPersonal(next);
+        } while (true);
       }
       return result;
     },

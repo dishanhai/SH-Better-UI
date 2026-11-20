@@ -134,7 +134,7 @@ export function createCatalogView(root, catalog, music, play) {
     results.replaceChildren(); detail.replaceChildren();
     notice.textContent = forYou ? '正在向 Apple Music 请求个人推荐…' : '正在加载目录…';
     try {
-      const entries = await load();
+      const entries = await load(() => !closed && current === revision);
       if (closed || current !== revision) return;
       results.replaceChildren();
       if (forYou && !entries.length) results.append(element('p', 'Apple Music 暂无可显示的个人推荐歌单。'));
@@ -143,7 +143,7 @@ export function createCatalogView(root, catalog, music, play) {
     } catch {
       if (closed || current !== revision) return;
       notice.textContent = forYou
-        ? '无法读取个人推荐。请检查 Apple Music 授权和订阅后重试。'
+        ? '无法读取完整的个人推荐。请检查网络、Apple Music 授权及订阅后重试。'
         : '无法读取 Apple Music 目录。请检查地区与连接后重试。';
     }
   }
@@ -155,7 +155,7 @@ export function createCatalogView(root, catalog, music, play) {
     void loadBrowse(() => catalog.charts(), 'Apple Music 地区热门歌单');
   });
   recommendations.addEventListener('click', () => {
-    void loadBrowse(() => catalog.recommendations(), '为你推荐的歌单', true);
+    void loadBrowse(isCurrent => catalog.recommendations(isCurrent), '为你推荐的歌单', true);
   });
   for (const input of browse.querySelectorAll('button, input')) input.disabled = input === recommendations && music.isAuthorized !== true;
   return {

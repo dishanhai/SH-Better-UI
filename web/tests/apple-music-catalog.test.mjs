@@ -72,6 +72,95 @@ test('personal request never substitutes public results on forbidden, unsupporte
   await assert.rejects(pending, /session changed/);
 });
 
+const personalPath = '/v1/me/recommendations';
+const contentsPath = id => personalPath + '/' + id + '/contents';
+const group = (id, contents) => ({ id, type: 'personal-recommendation', relationships: { contents } });
+const personalList = id => ({ ...playlist, id, href: root + '/playlists/' + id });
+
+test('a recommendation group with only albums on its first page retains playlists from its next page in provider order', async () => {
+  const next = contentsPath('6-first') + '?offset=1&l=zh-Hant';
+  const first = personalList('pl.first'), second = personalList('pl.second'), last = personalList('pl.last');
+  const { music, catalog, calls } = stub({
+    [personalPath]: { data: [group('6-first', { data: [album], next }), group('6-later', { data: [first, last] })] },
+    [next]: { data: [first, { ...last, href: '/v1/catalog/us/playlists/pl.last' }, album, second] }
+  });
+  music.isAuthorized = true;
+  const lists = await catalog.recommendations();
+  assert.deepEqual(lists.map(entry => entry.id), ['pl.first', 'pl.second', 'pl.last']);
+  assert.deepEqual(calls, [[personalPath, undefined], [next, undefined]]);
+});
+
+test('personal cursors cannot leave the exact Apple contents relationship or loop', async () => {
+  const path = contentsPath('6-fixture'), loop = path + '?offset=1';
+  for (const next of ['https://api.music.apple.com' + loop, '//example.com' + loop,
+    contentsPath('other') + '?offset=1', root + '/playlists/pl.test/tracks?offset=1', loop + '#fragment', loop]) {
+    const { music, catalog, calls } = stub({
+      [personalPath]: { data: [group('6-fixture', { data: [personalList('pl.first')], next })] },
+      [loop]: { data: [personalList('pl.second')], next: loop }
+    });
+    music.isAuthorized = true;
+    await assert.rejects(catalog.recommendations(), /continuation|pagination/);
+    assert.deepEqual(calls.map(([path]) => path), next === loop ? [personalPath, loop] : [personalPath]);
+  }
+});
+
+test('a recommendation continuation failure never returns a partial or empty success', async () => {
+  const next = contentsPath('6-fixture') + '?offset=1';
+  for (const response of [{ errors: [{ status: '403' }] }, { invalid: true }]) {
+    const { catalog, music } = stub({
+      [personalPath]: { data: [group('6-fixture', { data: [personalList('pl.first')], next })] },
+      [next]: response
+    });
+    music.isAuthorized = true;
+    await assert.rejects(catalog.recommendations(), /Catalog unavailable|Invalid recommendation contents/);
+  }
+});
+
+test('recommendation continuation budgets cap the whole response', async () => {
+  const path = contentsPath('6-fixture'), page = i => path + '?offset=' + i;
+  const routes = { [personalPath]: { data: [group('6-fixture', { data: [album], next: page(1) })] } };
+  for (let i = 1; i <= 30; i++) routes[page(i)] = { data: [album], next: page(i + 1) };
+  const { catalog, music, calls } = stub(routes);
+  music.isAuthorized = true;
+  await assert.rejects(catalog.recommendations(), /pagination unavailable/);
+  assert.equal(calls.length, 31);
+  const oversized = stub({
+    [personalPath]: { data: [group('6-fixture', { data: Array(1000).fill(album), next: page(1) })] }
+  });
+  oversized.music.isAuthorized = true;
+  await assert.rejects(oversized.catalog.recommendations(), /collection exceeds limit/);
+  assert.equal(oversized.calls.length, 1);
+});
+
+test('sign-out, storefront changes and superseded routes discard late pages without following their cursor', async () => {
+  const path = contentsPath('6-fixture'), first = path + '?offset=1', next = path + '?offset=2';
+  for (const action of ['signout', 'storefront', 'revision']) {
+    const { music, catalog, calls } = stub({
+      [personalPath]: { data: [group('6-fixture', { data: [album], next: first })] }
+    });
+    const original = music.api.music;
+    let entered, done;
+    const requested = new Promise(resolve => { entered = resolve; });
+    const reply = new Promise(resolve => { done = resolve; });
+    music.api.music = (path, query) => {
+      if (path !== first) return original(path, query);
+      calls.push([path, query]);
+      entered();
+      return reply;
+    };
+    music.isAuthorized = true;
+    let current = true;
+    const pending = catalog.recommendations(() => current);
+    await requested;
+    if (action === 'signout') music.isAuthorized = false;
+    if (action === 'storefront') music.storefrontCountryCode = 'us';
+    if (action === 'revision') current = false;
+    done({ data: { data: [personalList('pl.first')], next } });
+    await assert.rejects(pending, /session changed/);
+    assert.deepEqual(calls, [[personalPath, undefined], [first, undefined]]);
+  }
+});
+
 test('artist detail uses official top song, featured album and featured playlist views', async () => {
   const path = root + '/artists/3';
   const {catalog} = stub({
