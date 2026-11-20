@@ -40,8 +40,11 @@ final class MusicFrontendLibrary {
     private Pending pending;
     private View view = blank(null, 1, Status.IDLE);
     private long seenVersion;
+    private final LinkedHashMap<Key, Feed> feeds = new LinkedHashMap<>(4, .75f, true);
+    private record Feed(View view, long epoch, int failedPage) {}
+    private int failedExtension;
 
-    private record Pending(CompletableFuture<?> future, Key key, int page, long version) {}
+    private record Pending(CompletableFuture<?> future, Key key, int page, long version, boolean append) {}
 
     MusicFrontendLibrary(OnlineMusicPlayer player) {
         this(player, SessionMusicOperations.forPlayer(player)
@@ -62,12 +65,39 @@ final class MusicFrontendLibrary {
 
     void open(Key key) {
         if (Objects.equals(view.key(), key)) return;
-        if (key == null) { clear(); return; }
+        rememberFeed();
+        if (key == null) { discard(); view = blank(null, 1, Status.IDLE); failedExtension = 0; return; }
+        var saved = feeds.remove(key);
+        if (saved != null) {
+            synchronized (player) {
+                if (saved.epoch() == accountVersion.applyAsLong(key.source()) && player.authenticated(key.source())) {
+                    discard();
+                    view = saved.view();
+                    seenVersion = saved.epoch();
+                    failedExtension = saved.failedPage();
+                    return;
+                }
+            }
+        }
         load(key, pages.getOrDefault(key, 1));
     }
 
+    private void rememberFeed() {
+        if (view.key() == null || !current(view)) return;
+        if ((view.page() > 1 && view.page() != pages.getOrDefault(view.key(),1)) || failedExtension > 0
+                || pending != null && pending.append()) {
+            var saved = view.status() == Status.LOADING
+                    ? new View(view.key(), view.page(), view.playlists(), view.tracks(), null, true, Status.READY)
+                    : view;
+            feeds.put(view.key(), new Feed(saved, seenVersion, failedExtension));
+            if (feeds.size() > 4) feeds.remove(feeds.keySet().iterator().next());
+        }
+    }
+
     void retry() {
-        if (view.key() != null && view.status() != Status.LOADING) load(view.key(), view.page());
+        if (failedExtension > 0 && view.key() != null) {
+            load(view.key(), failedExtension, true);
+        } else if (view.key() != null && view.status() != Status.LOADING) load(view.key(), view.page());
     }
 
     void page(int direction) {
@@ -75,30 +105,37 @@ final class MusicFrontendLibrary {
         if (direction < 0 && view.page() > 1 || direction > 0 && view.more()) load(view.key(), view.page() + Integer.signum(direction));
     }
 
-    private void load(Key key, int page) {
-        clear();
-        pages.put(key, page);
+    boolean canExtend() { return pending == null && failedExtension == 0 && view.status() == Status.READY && view.more(); }
+
+    void extend() { if (canExtend()) load(view.key(), view.page() + 1, true); }
+
+    private void load(Key key, int page) { load(key, page, false); }
+    private void load(Key key, int page, boolean append) {
+        if (!append) { discard(); pages.put(key, page); }
         if (pages.size() > MAX_BOOKMARKS) {
             var oldest = pages.keySet().iterator();
             oldest.next();
             oldest.remove();
         }
         synchronized (player) {
+            if (append && !current(view)) return;
+            failedExtension = 0;
             seenVersion = accountVersion.applyAsLong(key.source());
             if (!providers().contains(key.source()) || key.kind() == Kind.DETAIL && !player.supportsPlaylistDetail(key.source())) {
                 view = blank(key, page, Status.UNSUPPORTED); return;
             }
             if (!player.authenticated(key.source())) { view = blank(key, page, Status.SIGN_IN); return; }
-            view = blank(key, page, Status.LOADING);
+            view = append ? new View(key, view.page(), view.playlists(), view.tracks(), null, false, Status.LOADING)
+                    : blank(key, page, Status.LOADING);
             try {
                 var future = switch (key.kind()) {
                     case PLAYLISTS -> player.playlists(key.source(), page);
                     case LIKED -> player.liked(key.source(), page);
                     case DETAIL -> player.playlistDetail(key.source(), key.id());
                 };
-                pending = new Pending(future, key, page, seenVersion);
+                pending = new Pending(future, key, page, seenVersion, append);
             } catch (RuntimeException failure) {
-                view = blank(key, page, error(failure));
+                fail(key, page, append, error(failure));
             }
         }
     }
@@ -119,6 +156,7 @@ final class MusicFrontendLibrary {
             var obsolete = pending;
             pending = null;
             seenVersion = actual;
+            failedExtension = 0;
             view = blank(key, view.page(), rejected && !player.authenticated(key.source())
                     ? Status.AUTHORIZATION : Status.CHANGED);
             return obsolete;
@@ -134,12 +172,28 @@ final class MusicFrontendLibrary {
         var current = pending;
         pending = null;
         try {
-            if (current.version() == actual && current.key().equals(key)) view = parse(current, current.future().join());
+            if (current.version() == actual && current.key().equals(key)) {
+                var loaded = parse(current, current.future().join());
+                if (!current.append()) view = loaded;
+                else if (loaded.status() == Status.FAILED) fail(key, current.page(), true, Status.FAILED);
+                else view = new View(key, loaded.page(),
+                        MusicPageAppend.append(view.playlists(), loaded.playlists()),
+                        MusicPageAppend.append(view.tracks(), loaded.tracks()), null, loaded.more(), Status.READY);
+            }
         } catch (RuntimeException failure) {
-            view = blank(key, view.page(), error(failure));
+            fail(key, current.page(), current.append(), error(failure));
         }
         return null;
     }
+
+    private void fail(Key key, int page, boolean append, Status status) {
+        if (append && status == Status.FAILED) {
+            failedExtension = page;
+            view = new View(key, view.page(), view.playlists(), view.tracks(), null, false, status);
+        } else view = blank(key, page, status);
+    }
+
+    boolean extensionFailed() { return failedExtension > 0; }
 
     private static View parse(Pending request, Object result) {
         var key = request.key();
@@ -191,5 +245,5 @@ final class MusicFrontendLibrary {
         pending = null;
         if (obsolete != null) obsolete.future().cancel(true);
     }
-    void clear() { discard(); view = blank(null, 1, Status.IDLE); }
+    void clear() { discard(); feeds.clear(); failedExtension = 0; view = blank(null, 1, Status.IDLE); }
 }

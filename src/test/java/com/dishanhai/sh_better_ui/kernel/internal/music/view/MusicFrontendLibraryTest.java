@@ -17,19 +17,18 @@ class MusicFrontendLibraryTest {
     private static final Key DETAIL = Key.detail("qq","44"), PLAYLISTS = Key.collection("qq",Kind.PLAYLISTS),
             LIKED = Key.collection("qq",Kind.LIKED);
 
-    @Test void minimumCompactLayoutHasOneItemAndNonoverlappingPager() {
+    @Test void minimumCompactLayoutHasOneItemAndNonoverlappingScrollViewport() {
         var frame=new com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds(0,0,208,240);
         var layout=MusicFrontendLayout.compute(frame,MusicFrontendLayout.Route.LIBRARY,false);
         assertTrue(layout.supported());
         var area=layout.body();
         assertEquals(1,MusicFrontendLibraryPanel.visibleRows(area));
         var row=MusicFrontendLibraryPanel.rowBounds(area,0);
-        var prev=MusicFrontendLibraryPanel.previousBounds(area);
-        var next=MusicFrontendLibraryPanel.nextBounds(area);
+        var viewport=MusicFrontendLibraryPanel.listBounds(area);
         assertTrue(row.y()>=layout.header().bottom());
-        assertTrue(row.bottom()<=prev.y());
-        assertTrue(prev.right()<=next.x());
-        assertTrue(next.bottom()<=layout.transport().y());
+        assertEquals(row.y(),viewport.y());
+        assertTrue(row.bottom()<=viewport.bottom());
+        assertTrue(viewport.bottom()<layout.transport().y());
     }
 
     @Test void supportedProvidersAndSignedOutRoutesDoNotStartReads() {
@@ -59,6 +58,37 @@ class MusicFrontendLibraryTest {
         rig.complete(detail("44",List.of(A)));
         rig.model.open(PLAYLISTS);
         assertEquals(new Call("playlists","qq",2),rig.calls.getLast());
+    }
+
+    @Test void likedScrollAppendsSingleFlightAndStopsAfterEmptyProviderPage() {
+        var rig = new Rig();
+        var page = java.util.Collections.nCopies(20,A);
+        rig.model.open(LIKED); rig.complete(page);
+        rig.model.extend(); rig.model.extend();
+        assertEquals(2,rig.calls.size());
+        assertEquals(page,rig.model.view().tracks());
+        rig.complete(page);
+        assertEquals(java.util.Collections.nCopies(40,A),rig.model.view().tracks());
+        rig.model.extend();
+        rig.complete(List.of());
+        assertEquals(40,rig.model.view().tracks().size());
+        assertFalse(rig.model.canExtend());
+    }
+
+    @Test void failedAppendKeepsRowsRetriesSamePageAndRejectsAChangedAccount() {
+        var rig = new Rig();
+        rig.model.open(LIKED); rig.complete(java.util.Collections.nCopies(20,A));
+        rig.model.extend();
+        rig.pending.completeExceptionally(new IllegalStateException("offline"));
+        rig.model.poll();
+        assertTrue(rig.model.extensionFailed());
+        assertEquals(20,rig.model.view().tracks().size());
+        rig.model.retry();
+        assertEquals(new Call("liked","qq",2),rig.calls.getLast());
+        ++rig.epoch;
+        rig.complete(List.of(B));
+        assertTrue(rig.model.view().tracks().isEmpty());
+        assertFalse(rig.model.extensionFailed());
     }
 
     @Test void playlistPlaybackKeepsDuplicateOccurrencesAndWholeListOrder() {

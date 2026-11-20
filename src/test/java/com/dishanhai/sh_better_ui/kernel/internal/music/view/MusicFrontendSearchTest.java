@@ -94,6 +94,23 @@ class MusicFrontendSearchTest {
         assertEquals(1, search.page());
     }
 
+    @Test void scrollAppendsSingleFlightKeepsAnchorAndStopsOnTerminalBlankPage() {
+        search.submit(); calls.get(0).finish(20); search.poll();
+        search.scrollTo(15,5);
+        var first = search.tracks();
+        search.extend(); search.extend();
+        assertEquals(2,calls.size());
+        calls.get(1).finish(20); search.poll();
+        assertEquals(40,search.tracks().size());
+        assertEquals(first,search.tracks().subList(0,20));
+        assertEquals(15,search.first());
+        search.extend();
+        calls.get(2).finish(0); search.poll();
+        assertEquals(40,search.tracks().size());
+        assertFalse(search.canExtend());
+        assertEquals(15,search.first());
+    }
+
     @Test void backRestoresSuccessfulSearchButInvalidatesUnfinishedPagination() {
         search.submit();
         calls.get(0).finish(20);

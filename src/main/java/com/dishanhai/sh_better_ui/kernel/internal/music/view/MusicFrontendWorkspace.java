@@ -49,8 +49,9 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private MusicTransportControl nowLyrics, nowQueue;
     private MusicFrontendNowPlayingLayout nowPlaying, playerDetail;
     private MusicLyricsView lyric;
-    private MusicTextControl source, previous, next, retry;
+    private MusicTextControl source, retry;
     private OnlineMusicScrollRegion searchScroll;
+    private Bounds searchList;
     private int searchRows, searchRowHeight;
     private List<OnlineTrack> paintedMatches = List.of();
     private int paintedFirst = -1;
@@ -151,27 +152,28 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         submit = control(new Bounds(area.x() + queryWidth + 6, area.y(), 22, 22), heading(Page.SEARCH), this::startSearch);
         submit.setGlyphOnly(MusicTransportControl.Glyph.SEARCH);
         source = control(new Bounds(area.right() - providerWidth, area.y(), providerWidth - 4, 22),
-                label("search_source"), () -> { catalog.cycleSource(); refreshRows(); });
+                label("search_source"), () -> { searchScroll.cancelDrag(); catalog.cycleSource(); refreshRows(); });
         int footer = area.bottom() - 22;
-        previous = control(new Bounds(area.x() + 4, footer, 22, 22), label("search_previous"),
-                () -> { catalog.previous(searchRows); refreshRows(); });
-        previous.setGlyphOnly(MusicTransportControl.Glyph.BACK);
-        next = control(new Bounds(area.right() - 26, footer, 22, 22), label("search_next"),
-                () -> { catalog.next(searchRows); refreshRows(); });
-        next.setGlyphOnly(MusicTransportControl.Glyph.NEXT);
         retry = control(new Bounds(area.right() - 74, footer, 44, 22), label("search_retry"),
                 () -> { catalog.retry(); refreshRows(); });
         int listHeight = Math.max(0, footer - area.y() - 24);
         searchRowHeight = listHeight >= 56 ? 28 : 24;
         searchRows = Math.min(12, listHeight / searchRowHeight);
-        searchScroll = ctx.add(new OnlineMusicScrollRegion(area.x() + inset, area.y() + 24,
-                area.width() - 2 * inset, searchRows * searchRowHeight, label("search_results"),
+        searchList = new Bounds(area.x()+inset, area.y()+24, area.width()-2*inset, searchRows*searchRowHeight);
+        searchScroll = ctx.add(new OnlineMusicScrollRegion(searchList.x(), searchList.y(), searchList.width(),
+                searchList.height(), label("search_results"),
                 offset -> { catalog.scrollTo(offset, searchRows); refreshRows(); }));
         searchScroll.setOnBrowse(() -> ctx.screen().setFocused(searchScroll));
-        for (int i=0; i<Math.min(12, Math.max(searchRows, area.height()/23)); i++) {
+        searchScroll.onEnd(catalog::canExtend, () -> { catalog.extend(); refreshRows(); });
+        int spill = MusicScrollRows.spill(ctx, searchRows);
+        if (spill > 0) searchScroll.pixelRows(searchRowHeight, shift -> positionSearchRows());
+        for (int i=0; i<Math.max(searchRows + spill, Math.min(12, area.height()/23)); i++) {
             final int index = i;
-            var row = control(new Bounds(area.x()+inset, area.y()+i*23, area.width()-2*inset, 22),
-                    Component.empty(), () -> selectRow(index));
+            var row = MusicScrollRows.add(ctx, new MusicTextControl(
+                    new Bounds(area.x()+inset, area.y()+i*23, area.width()-2*inset, 22),
+                    Component.empty(), ctx.preferences(), () -> selectRow(index)),
+                    () -> routes.current().page() == Page.SEARCH ? searchList : layout.body());
+            row.setInk(INK, MUTED);
             row.setVariant(MusicTextControl.Variant.ROW);
             rows.add(row);
         }
@@ -285,8 +287,6 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         if (focused == search) searchFocus = "query";
         else if (focused == submit) searchFocus = "submit";
         else if (focused == source) searchFocus = "source";
-        else if (focused == previous) searchFocus = "previous";
-        else if (focused == next) searchFocus = "next";
         else if (focused == retry) searchFocus = "retry";
         else if (focused == searchScroll) searchFocus = "scroll";
         else for (int i = 0; i < rows.size(); i++) {
@@ -302,8 +302,6 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         var target = switch (searchFocus) {
             case "submit" -> submit;
             case "source" -> source;
-            case "previous" -> previous;
-            case "next" -> next;
             case "retry" -> retry;
             case "scroll" -> searchScroll;
             case "row" -> {
@@ -316,6 +314,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     }
     private void startSearch() {
         status = "";
+        searchScroll.cancelDrag();
         catalog.submit();
         refreshRows();
     }
@@ -329,8 +328,9 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                 else if (index == providers.size()) selectPrimary(Page.SEARCH);
             }
             case SEARCH -> {
+                if (!rows.get(index).visible) return;
                 try {
-                    if (catalog.play(paintedMatches, paintedFirst, index, searchRows)) status="";
+                    if (catalog.play(paintedMatches, paintedFirst, index, searchRows + 1)) status="";
                 } catch (OnlineMusicQueue.TransitionInProgress busy) { status="busy"; }
             }
             default -> { }
@@ -340,6 +340,17 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         var content = lyricContent;
         if (!closed && routes.current().page() == Page.LYRICS && content != null && lyric.contentKey() == content
                 && Minecraft.getInstance().isWindowActive()) transport.seekLyric(content, songPosition);
+    }
+
+    private void positionSearchRows() {
+        if (routes.current().page() != Page.SEARCH) return;
+        for (int slot = 0; slot < rows.size(); slot++) {
+            var row = rows.get(slot);
+            int y = searchList.y() + slot * searchRowHeight - searchScroll.rowShift();
+            row.setY(y);
+            row.setVisible(paintedFirst + slot < paintedMatches.size()
+                    && MusicScrollRows.intersects(y, row.getHeight(), searchList));
+        }
     }
 
     private void refreshRows() {
@@ -352,7 +363,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         history.refresh();
         search.visible = searching; submit.setVisible(searching); source.setVisible(searching);
         searchScroll.visible = searching;
-        previous.setVisible(searching); next.setVisible(searching); retry.setVisible(searching && catalog.canRetry());
+        retry.setVisible(searching && catalog.canRetry());
         if (searching) {
             var sourceId = catalog.source();
             var sourceName = switch (sourceId) {
@@ -367,8 +378,6 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             submit.active = !sourceId.isEmpty();
             catalog.scrollTo(catalog.first(), searchRows);
             searchScroll.configure(catalog.first(), catalog.tracks().size(), searchRows);
-            previous.active = catalog.hasPrevious();
-            next.active = catalog.hasNext(searchRows);
             if (paintedMatches != catalog.tracks() || paintedFirst != catalog.first()) {
                 rows.forEach(MusicTextControl::cancelInteraction);
                 paintedMatches = catalog.tracks();
@@ -401,7 +410,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             var item=rows.get(i);
             var body=layout.body();
             item.setWidth(body.width() - 8 - (searching && searchScroll.active ? 8 : 0));
-            item.setY(body.y()+(searching ? 24+i*searchRowHeight : i*23));
+            if (!searching) item.setY(body.y()+i*23);
             item.setHeight(searching ? searchRowHeight : 22);
             Component primary=null, secondary=Component.empty();
             int ordinal = searching ? paintedFirst + i : i;
@@ -411,12 +420,13 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                     primary = Component.translatable("sh_better_ui.online_music.source." + providers.get(i));
                     secondary = heading(Page.DISCOVERY);
                 } else if (i == providers.size()) primary = heading(Page.SEARCH);
-            } else if ((!searching || i < searchRows) && ordinal < shown.size()) {
+            } else if (searching && i <= searchRows && ordinal >= 0 && ordinal < shown.size()) {
                 primary=MusicTypography.text(shown.get(ordinal).title()); secondary=MusicTypography.text(shown.get(ordinal).artist());
             }
             if(primary!=null&&!primary.equals(item.getMessage())) item.rebind(primary);
             item.setSecondary(secondary); item.setVisible(primary!=null);
         }
+        if (searching) positionSearchRows();
     }
 
     private void paintTabIndicator(UiFrame ui, float tabPosition) {
@@ -446,6 +456,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         }
         catalog.poll();
         refreshRows();
+        searchScroll.tick();
         var route = routes.current();
         var page = route.page();
         int selectedTab = MusicFrontendLayout.DESTINATIONS.indexOf(MusicFrontendLayout.Route.valueOf(routes.rootPage().name()));
@@ -487,8 +498,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                 case END -> label("search_end");
                 case UNAVAILABLE -> Component.empty(); // The source control already describes this state.
                 case IDLE -> !status.isEmpty() ? label(status) : catalog.tracks().isEmpty() ? Component.empty()
-                        : label("search_position", catalog.page(), (catalog.page() - 1) * 20 + catalog.first() + 1,
-                                (catalog.page() - 1) * 20 + Math.min(catalog.first() + searchRows, catalog.tracks().size()));
+                        : Component.translatable("sh_better_ui.online_music.library.track_count", catalog.tracks().size());
             };
             OnlineMusicViewPaint.line(ui, host.font(), feedback, body.x() + 31, body.bottom() - 16,
                     body.width() - (catalog.canRetry() ? 107 : 62), MUTED);

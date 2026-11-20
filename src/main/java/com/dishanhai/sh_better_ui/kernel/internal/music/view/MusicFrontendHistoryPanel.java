@@ -6,7 +6,6 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
-import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
 import net.minecraft.network.chat.Component;
@@ -28,9 +27,9 @@ final class MusicFrontendHistoryPanel {
     private final List<MusicTextControl> rows = new ArrayList<>();
     private final List<MusicFrontendHistory.Key> bindings = new ArrayList<>();
     private PreviewContext host;
-    private Bounds body;
+    private Bounds body, listBounds;
+    private int capacity;
     private OnlineMusicScrollRegion scroll;
-    private MusicTextControl previous, next;
     private MusicFrontendHistory.Key focus;
     private boolean missing, restoreFocus;
     private int first;
@@ -53,31 +52,24 @@ final class MusicFrontendHistoryPanel {
     void mount(PreviewContext host, Bounds body, int ink, int muted) {
         this.host = host; this.body = body;
         rows.clear(); bindings.clear();
-        int count = Math.min(12, Math.max(0, (body.height() - 38) / ROW_PITCH));
-        scroll = host.add(new OnlineMusicScrollRegion(body.x()+4, body.y()+16, body.width()-8, count*ROW_PITCH,
+        capacity = Math.min(12, Math.max(0, (body.height() - 38) / ROW_PITCH));
+        listBounds = new Bounds(body.x()+4, body.y()+16, body.width()-8, capacity*ROW_PITCH);
+        scroll = host.add(new OnlineMusicScrollRegion(listBounds.x(), listBounds.y(), listBounds.width(), listBounds.height(),
                 stock("operations.title"), this::scrollTo));
         scroll.setOnBrowse(() -> host.screen().setFocused(scroll));
-        for (int i = 0; i < count; i++) {
+        int spill = MusicScrollRows.spill(host, capacity);
+        if (spill > 0) scroll.pixelRows(ROW_PITCH, shift -> positionRows());
+        for (int i = 0; i < capacity+spill; i++) {
             int slot = i;
-            var row = host.add(new MusicTextControl(new Bounds(body.x()+4, body.y()+16+i*ROW_PITCH, body.width()-8, ROW_HEIGHT),
-                    Component.empty(), host.preferences(), () -> open(slot)));
+            var row = MusicScrollRows.add(host, new MusicTextControl(
+                    new Bounds(body.x()+4, body.y()+16+i*ROW_PITCH, body.width()-8, ROW_HEIGHT),
+                    Component.empty(), host.preferences(), () -> open(slot)), () -> listBounds);
             row.setVariant(MusicTextControl.Variant.ROW);
             row.setInk(ink, muted);
             rows.add(row); bindings.add(null);
         }
-        previous = pager(body.x()+4, "previous", MusicTransportControl.Glyph.PREVIOUS, -1);
-        next = pager(body.right()-28, "next", MusicTransportControl.Glyph.NEXT, 1);
-        previous.setInk(ink, muted);
-        next.setInk(ink, muted);
         restoreFocus = focus != null;
         refresh();
-    }
-
-    private MusicTextControl pager(int x, String label, MusicTransportControl.Glyph glyph, int direction) {
-        var button = host.add(new MusicTextControl(new Bounds(x,body.bottom()-22,24,20),
-                stock(label),host.preferences(),() -> scrollTo(first + direction * rows.size())));
-        button.setGlyphOnly(glyph);
-        return button;
     }
 
     void routeChanged() {
@@ -114,19 +106,17 @@ final class MusicFrontendHistoryPanel {
         if (scroll == null) return;
         boolean list = routes.current().page() == HISTORY && routes.current().id().isEmpty();
         var entries = list ? model.entries() : List.<MusicFrontendHistory.Entry>of();
-        int maximum = Math.max(0, entries.size() - rows.size());
+        int maximum = Math.max(0, entries.size() - capacity);
         if (list && restoreFocus && focus != null) {
             int at = 0;
             while (at < entries.size() && !entries.get(at).key().equals(focus)) at++;
             if (at == entries.size() || model.lookup(focus) == null) {
                 missing = true; focus = null;
-            } else if (at < first || at >= first + rows.size()) first = at;
+            } else if (at < first || at >= first + capacity) first = at;
         }
         if (list) first = Math.min(Math.max(0, first), maximum);
         scroll.visible = list;
-        scroll.configure(first, entries.size(), rows.size());
-        previous.setVisible(list && maximum > 0); previous.active = first > 0;
-        next.setVisible(list && maximum > 0); next.active = first < maximum;
+        scroll.configure(first, entries.size(), capacity);
         for (int i = 0; i < rows.size(); i++) {
             var row = rows.get(i);
             var entry = i + first < entries.size() ? entries.get(i + first) : null;
@@ -147,11 +137,22 @@ final class MusicFrontendHistoryPanel {
                 if (restoreFocus && row.active && key.equals(focus)) host.screen().setFocused(row);
             }
         }
+        positionRows();
         if (list && !rows.isEmpty()) restoreFocus = false;
+    }
+
+    private void positionRows() {
+        for (int i = 0; i < rows.size(); i++) {
+            var row = rows.get(i);
+            int y = listBounds.y() + i * ROW_PITCH - scroll.rowShift();
+            row.setY(y);
+            row.setVisible(scroll.visible && bindings.get(i) != null && MusicScrollRows.intersects(y, ROW_HEIGHT, listBounds));
+        }
     }
 
     void render(UiFrame ui, int color) {
         if (routes.current().page() != HISTORY || body == null) return;
+        scroll.tick();
         if (routes.current().id().isEmpty()) {
             line(ui, missing ? stock("operations.expired") : stock(bindings.stream().anyMatch(Objects::nonNull)
                     ? "operations.hint" : "operations.empty"), 2, color);

@@ -33,7 +33,9 @@ final class MusicFrontendSoundPanel {
     private final List<MusicTextControl> slots = new ArrayList<>();
     private PreviewContext host;
     private Bounds panel;
-    private MusicTextControl previous, next, back, utility;
+    private int capacity;
+    private MusicTextControl back, utility;
+    private OnlineMusicScrollRegion scroll;
     private MusicSeekControl slider;
     private List<Row> visibleRows = List.of();
     private MusicFrontendSound.State displayed;
@@ -68,19 +70,24 @@ final class MusicFrontendSoundPanel {
         panel = fit(area);
         slots.clear();
         visibleRows = List.of();
-        int capacity = rowCapacity(panel.height());
-        for (int i = 0; i < capacity; i++) {
+        capacity = Math.max(0, rowCapacity(panel.height()));
+        scroll = host.add(new OnlineMusicScrollRegion(panel.x(), panel.y(), panel.width(),
+                Math.max(0, capacity * (ROW_HEIGHT + SPACING)), builtin("page.settings"), value -> {
+                    slots.forEach(MusicTextControl::cancelInteraction);
+                    offset = value;
+                    refresh();
+                }));
+        scroll.setOnBrowse(() -> host.screen().setFocused(scroll));
+        int spill = MusicScrollRows.spill(host, capacity);
+        if (spill > 0) scroll.pixelRows(ROW_HEIGHT+SPACING, shift -> positionRows());
+        for (int i = 0; i < capacity+spill; i++) {
             int index = i;
-            var item = button(new Bounds(panel.x(), panel.y() + i * (ROW_HEIGHT + SPACING), panel.width(), ROW_HEIGHT),
-                    Component.empty(), () -> apply(index));
+            var item = MusicScrollRows.add(host, new MusicTextControl(
+                    new Bounds(panel.x(), panel.y() + i * (ROW_HEIGHT + SPACING), panel.width(), ROW_HEIGHT),
+                    Component.empty(), host.preferences(), () -> apply(index)), this::listBounds);
             item.setVariant(MusicTextControl.Variant.ROW);
             slots.add(item);
         }
-        int footer = panel.bottom() - 22;
-        previous = button(new Bounds(panel.right() - 50, footer, 22, 22), builtin("search_previous"), () -> page(-1));
-        previous.setGlyphOnly(MusicTransportControl.Glyph.BACK);
-        next = button(new Bounds(panel.right() - 22, footer, 22, 22), builtin("search_next"), () -> page(1));
-        next.setGlyphOnly(MusicTransportControl.Glyph.NEXT);
         slider = host.add(new MusicSeekControl(new Bounds(panel.x()+8, panel.y()+19, panel.width()-16, 22),
                 title(Screen.VOLUME), host.preferences(), edit -> {}, edit -> commitSlider(edit), edit -> {}));
     }
@@ -91,8 +98,7 @@ final class MusicFrontendSoundPanel {
 
     void cancel() {
         slots.forEach(MusicTextControl::cancelInteraction);
-        if (previous != null) previous.cancelInteraction();
-        if (next != null) next.cancelInteraction();
+        if (scroll != null) scroll.cancelInteraction();
         if (slider != null) slider.cancelInteraction();
     }
 
@@ -192,9 +198,8 @@ final class MusicFrontendSoundPanel {
         if (focused == null) return null;
         if (focused == back) return "@back";
         if (focused == utility) return "@utility";
+        if (focused == scroll) return "@scroll";
         if (focused == slider && slider.visible && slider.active) return "@slider";
-        if (focused == previous && previous.visible && previous.active) return "@previous";
-        if (focused == next && next.visible && next.active) return "@next";
         for (int i = 0; i < visibleRows.size(); i++) {
             if (focused == slots.get(i) && slots.get(i).active) return visibleRows.get(i).id();
         }
@@ -220,9 +225,8 @@ final class MusicFrontendSoundPanel {
             switch (id) {
                 case "@back" -> { focusControl(back); return; }
                 case "@utility" -> { focusControl(utility); return; }
+                case "@scroll" -> { if (scroll.active) { focusControl(scroll); return; } }
                 case "@slider" -> { if (slider.visible && slider.active) { focusControl(slider); return; } }
-                case "@previous" -> { if (previous.visible && previous.active) { focusControl(previous); return; } }
-                case "@next" -> { if (next.visible && next.active) { focusControl(next); return; } }
                 default -> {
                     for (int i = 0; i < visibleRows.size(); i++) {
                         if (id.equals(visibleRows.get(i).id()) && slots.get(i).active) {
@@ -280,7 +284,6 @@ final class MusicFrontendSoundPanel {
                 ? List.of(new Row("mute", sound(now.volume() == 0 ? "unmute" : "mute"), Component.empty(), true, false, false,
                         () -> sound.toggleMute(now)))
                 : rows(now);
-        int capacity = slots.size();
         if (capacity == 0) return;
         if (restored != null) {
             offset = restored.first();
@@ -289,14 +292,15 @@ final class MusicFrontendSoundPanel {
                 if (row.available() && row.id().equals(restored.focus())) { offset = i; break; }
             }
         }
-        offset = (Math.max(0, Math.min(offset, rows.size() - 1)) / capacity) * capacity;
-        boolean paged = rows.size() > capacity;
-        visibleRows = rows.subList(offset, Math.min(rows.size(), offset + capacity));
-        for (int i = 0; i < capacity; i++) {
+        offset = Math.max(0, Math.min(offset, rows.size() - capacity));
+        scroll.visible = screen != null && !slider.visible;
+        scroll.configure(offset, rows.size(), capacity);
+        visibleRows = rows.subList(offset, Math.min(rows.size(), offset + slots.size()));
+        for (int i = 0; i < slots.size(); i++) {
             var item = slots.get(i);
             var row = i < visibleRows.size() ? visibleRows.get(i) : null;
-            item.setY(panel.y() + (volume ? 45 : 0) + i * (ROW_HEIGHT + SPACING));
             item.setVisible(row != null);
+            item.setWidth(panel.width() - (scroll.visible && scroll.active ? 8 : 0));
             item.setAvailable(row != null && row.available());
             if (row == null) continue;
             var label = row.value().equals(Component.empty()) ? row.title() : sound("summary", row.title(), row.value());
@@ -307,20 +311,27 @@ final class MusicFrontendSoundPanel {
             item.setSelected(row.selected());
             item.setTrailingGlyph(row.submenu() ? MusicTransportControl.Glyph.NEXT : null);
         }
-        previous.setVisible(paged); previous.setAvailable(offset > 0);
-        next.setVisible(paged); next.setAvailable(offset + capacity < rows.size());
+        positionRows();
     }
 
-    private void page(int direction) {
-        cancel();
-        offset = Math.max(0, offset + direction * slots.size());
-        refresh();
-        if (direction > 0 && !next.active && previous.active) focusControl(previous);
-        if (direction < 0 && !previous.active && next.active) focusControl(next);
+    private Bounds listBounds() {
+        int top = panel.y() + (screen == Screen.VOLUME ? 45 : 0);
+        return new Bounds(panel.x(), top, panel.width(), Math.min(capacity*(ROW_HEIGHT+SPACING),
+                Math.max(0, panel.bottom()-22-top)));
+    }
+
+    private void positionRows() {
+        var list = listBounds();
+        for (int i = 0; i < slots.size(); i++) {
+            var row = slots.get(i);
+            int y = list.y() + i * (ROW_HEIGHT+SPACING) - scroll.rowShift();
+            row.setY(y);
+            row.setVisible(i < visibleRows.size() && MusicScrollRows.intersects(y, ROW_HEIGHT, list));
+        }
     }
 
     private void apply(int index) {
-        if (screen == null || index >= visibleRows.size()) return;
+        if (screen == null || index >= visibleRows.size() || !slots.get(index).visible) return;
         var row = visibleRows.get(index);
         if (row.selected()) return;
         if (row.submenu()) activatingRow = row.id();
@@ -350,23 +361,16 @@ final class MusicFrontendSoundPanel {
 
     void render(UiFrame ui, int muted) {
         if (screen == null) return;
+        scroll.tick();
         int top = panel.y() + (screen == Screen.VOLUME && !visibleRows.isEmpty() ? 45 : 0);
         if (!visibleRows.isEmpty()) {
             RoundedCorners.draw(ui.graphics(), panel.x(), top, panel.width(),
-                    visibleRows.size() * (ROW_HEIGHT + SPACING) - SPACING, 8, 0, 0, SURFACE);
-            for (int i = 1; i < visibleRows.size(); i++) {
-                int y = top + i * (ROW_HEIGHT + SPACING) - 1;
-                ui.graphics().fill(panel.x()+10, y, panel.right()-10, y+1, 0xff3a3a3c);
-            }
+                    Math.min(listBounds().height(), visibleRows.size()*(ROW_HEIGHT+SPACING)-SPACING), 8, 0, 0, SURFACE);
         }
         for (var slot : slots) {
             slot.setPreferences(ui.preferences());
             slot.setInk(INK, muted);
         }
-        previous.setPreferences(ui.preferences());
-        next.setPreferences(ui.preferences());
-        previous.setInk(INK, muted);
-        next.setInk(INK, muted);
         slider.setPreferences(ui.preferences());
         slider.setInk(INK);
         if (slider.visible && slider.active && (screen != Screen.VOLUME || feedback.equals(Component.empty()))) {
@@ -385,7 +389,7 @@ final class MusicFrontendSoundPanel {
         if (!note.equals(Component.empty())) {
             if (screen == Screen.SPEED && displayed.speedAvailable() || !visibleRows.isEmpty() && !slider.visible) {
                 OnlineMusicViewPaint.line(ui, host.font(), note, panel.x()+8, panel.bottom()-16,
-                        panel.width()-(previous.visible ? 66 : 16), muted);
+                        panel.width()-16, muted);
             } else {
                 int y = slider.visible && slider.active ? panel.y()+43 : panel.y()+5;
                 if (screen == Screen.VOLUME && slider.active) y = panel.y()+4;

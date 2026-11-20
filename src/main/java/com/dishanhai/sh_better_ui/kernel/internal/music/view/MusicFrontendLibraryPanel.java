@@ -10,7 +10,6 @@ import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicQueue;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicInputAppearance;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
-import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -31,10 +30,12 @@ final class MusicFrontendLibraryPanel {
     private final Consumer<String> browse;
     private final List<MusicTextControl> rows = new ArrayList<>();
     private List<Entry> entries = List.of();
-    private MusicTextControl previous, next, browseButton, open;
+    private MusicTextControl retry, browseButton, open;
+    private OnlineMusicScrollRegion scroll;
     private UiTextField link;
     private PreviewContext host;
-    private Bounds body;
+    private Bounds body, list;
+    private int capacity;
     private Route shownRoute;
     private MusicFrontendLibrary.View shownView;
     private String draft = "", message = "";
@@ -56,23 +57,34 @@ final class MusicFrontendLibraryPanel {
     static Bounds rowBounds(Bounds body,int slot) {
         return new Bounds(body.x()+4,body.y()+17+slot*ROW_PITCH,body.width()-8,ROW_HEIGHT);
     }
-    static Bounds previousBounds(Bounds body) { return new Bounds(body.x()+4,body.bottom()-22,24,20); }
-    static Bounds nextBounds(Bounds body) { return new Bounds(body.right()-28,body.bottom()-22,24,20); }
+    static Bounds listBounds(Bounds body) {
+        return new Bounds(body.x()+4, body.y()+17, body.width()-8, visibleRows(body)*ROW_PITCH);
+    }
 
     void mount(PreviewContext host, Bounds bounds) {
         this.host = host; body = bounds; rows.clear();
-        for(int i=0;i<visibleRows(body);i++) {
+        list = listBounds(body);
+        capacity = visibleRows(body);
+        scroll = host.add(new OnlineMusicScrollRegion(list.x(), list.y(), list.width(), list.height(),
+                stock("view.scroll_library"), offset -> {
+                    rows.forEach(MusicTextControl::cancelInteraction);
+                    first = offset;
+                    routes.remember("", first);
+                    refresh();
+                }));
+        scroll.setOnBrowse(() -> host.screen().setFocused(scroll));
+        scroll.onEnd(model::canExtend, () -> { model.extend(); refresh(); });
+        int spill = MusicScrollRows.spill(host, capacity);
+        if (spill > 0) scroll.pixelRows(ROW_PITCH, shift -> positionRows());
+        for(int i=0;i<capacity+spill;i++) {
             final int slot=i;
-            var row=add(rowBounds(body,i),
-                    Component.empty(),()->choose(slot));
+            var row=MusicScrollRows.add(host, new MusicTextControl(rowBounds(body,i),
+                    Component.empty(),host.preferences(),()->choose(slot)), () -> list);
             row.setVariant(MusicTextControl.Variant.ROW);
             rows.add(row);
         }
-        previous=add(previousBounds(body), stock("previous"), ()->step(-1));
-        previous.setGlyphOnly(MusicTransportControl.Glyph.PREVIOUS);
-        next=add(nextBounds(body), stock("next"), ()->step(1));
-        next.setGlyphOnly(MusicTransportControl.Glyph.NEXT);
-
+        retry = add(new Bounds(body.right()-64, body.bottom()-22, 60, 20), stock("library.retry"),
+                () -> { model.retry(); refresh(); });
         link=host.add(new UiTextField(host.font(),new Bounds(body.x()+4,body.y()+2,body.width()-60,22),
                 stock("discovery.paste"),2048,host.preferences()));
         MusicInputAppearance.apply(link);
@@ -97,6 +109,7 @@ final class MusicFrontendLibraryPanel {
                 draft="";
                 if(link!=null)link.setValue("");
             }
+            if (scroll != null) scroll.cancelInteraction();
             shownRoute=route; first=routes.memory().scroll(); message="";
         }
         model.open(key(route));
@@ -145,23 +158,8 @@ final class MusicFrontendLibraryPanel {
     }
 
     private void choose(int slot) {
-        if(!Objects.equals(shownRoute,routes.current())||slot<0||first+slot>=entries.size())return;
+        if(!Objects.equals(shownRoute,routes.current())||slot<0||first+slot>=entries.size()||!rows.get(slot).visible)return;
         entries.get(first+slot).action().run();
-    }
-
-    private void step(int direction) {
-        if (!Objects.equals(shownRoute,routes.current())) return;
-        var view=model.view();
-        int size=rows.size();
-        if(size==0)return;
-        if(direction<0&&first>0)first=Math.max(0,first-size);
-        else if(direction>0&&first+size<entries.size())first+=size;
-        else {
-            if(direction<0&&view.page()>1||direction>0&&view.more()) {
-                model.page(direction);first=0;
-            }
-        }
-        routes.remember("",first);shownView=null;refresh();
     }
 
     private List<Entry> makeEntries(Route route, MusicFrontendLibrary.View view) {
@@ -174,7 +172,7 @@ final class MusicFrontendLibraryPanel {
         if (view.status()==MusicFrontendLibrary.Status.SIGN_IN || view.status()==MusicFrontendLibrary.Status.AUTHORIZATION)
             return List.of(new Entry(stock("library.sign_in"),Component.empty(),
                     ()->open(Route.forProvider(Page.ACCOUNT,view.key().source()))));
-        if (view.status()==MusicFrontendLibrary.Status.FAILED || view.status()==MusicFrontendLibrary.Status.CHANGED)
+        if (view.status()==MusicFrontendLibrary.Status.FAILED && !model.extensionFailed() || view.status()==MusicFrontendLibrary.Status.CHANGED)
             return List.of(new Entry(stock("library.retry"),Component.empty(),model::retry));
         if (!view.playlists().isEmpty()) return view.playlists().stream().map(item->new Entry(MusicTypography.text(item.name()),
                 stock("library.track_count",item.trackCount()),()->{
@@ -209,20 +207,31 @@ final class MusicFrontendLibraryPanel {
             for(var row:rows)row.cancelInteraction();
         }
         // Keep the saved position while the reopened route is loading.
-        if(!entries.isEmpty()&&!rows.isEmpty())first=Math.min(first,Math.max(0,(entries.size()-1)/rows.size()*rows.size()));
+        if (!entries.isEmpty() && !rows.isEmpty()) first = Math.min(first, Math.max(0, entries.size() - capacity));
+        scroll.visible = visible && !input;
+        scroll.configure(first, entries.size(), capacity);
+        retry.setVisible(scroll.visible && model.extensionFailed());
         for(int i=0;i<rows.size();i++){
             var row=rows.get(i);int at=first+i;
             boolean show=visible&&!input&&at<entries.size();
             row.setVisible(show);
+            row.setWidth(body.width()-8-(scroll.active ? 8 : 0));
             if(show){
                 var item=entries.get(at);
                 if(!item.title().equals(row.getMessage()))row.rebind(item.title());
                 row.setSecondary(item.subtitle());
             }
         }
-        boolean loaded=visible&&!input&&!rows.isEmpty()&&view.status()!=MusicFrontendLibrary.Status.LOADING;
-        previous.setVisible(loaded&&(first>0||view.page()>1));
-        next.setVisible(loaded&&(first+rows.size()<entries.size()||view.more()));
+        positionRows();
+    }
+
+    private void positionRows() {
+        for (int i = 0; i < rows.size(); i++) {
+            var row = rows.get(i);
+            int y = list.y() + i * ROW_PITCH - scroll.rowShift();
+            row.setY(y);
+            row.setVisible(scroll.visible && first+i<entries.size() && MusicScrollRows.intersects(y, ROW_HEIGHT, list));
+        }
     }
 
     Component heading() {
@@ -241,8 +250,9 @@ final class MusicFrontendLibraryPanel {
 
     void render(UiFrame ui,int muted) {
         if (!controls(routes.current().page())||body==null)return;
-        var old=model.view();model.poll();
-        if(model.view()!=old)refresh();
+        model.poll();
+        if(model.view()!=shownView)refresh();
+        scroll.tick();
         var route=routes.current();var view=model.view();
         Component status=Component.empty();
         if(!message.isEmpty())status=message.startsWith("library.")?label(message):stock(message);
@@ -251,8 +261,8 @@ final class MusicFrontendLibraryPanel {
         else if(view.key()!=null)status=switch(view.status()){
             case IDLE->Component.empty();
             case READY->view.key().kind()==MusicFrontendLibrary.Kind.LIKED
-                    ?label("library.liked_page",view.page()):view.key().kind()==MusicFrontendLibrary.Kind.DETAIL
-                    ?stock("library.track_count",view.tracks().size()):label("library.page",view.page());
+                    ?stock("library.track_count",view.tracks().size()):view.key().kind()==MusicFrontendLibrary.Kind.DETAIL
+                    ?stock("library.track_count",view.tracks().size()):Component.empty();
             case LOADING->stock(view.key().kind()==MusicFrontendLibrary.Kind.DETAIL?"discovery.loading":"library.loading");
             case EMPTY->stock("library.empty");
             case SIGN_IN,AUTHORIZATION->label("library.sign_in");
@@ -267,7 +277,7 @@ final class MusicFrontendLibraryPanel {
         }else OnlineMusicViewPaint.line(ui,host.font(),status,body.x()+4,body.y(),body.width()-8,muted);
     }
 
-    void close() { model.clear(); }
+    void close() { if (scroll != null) scroll.cancelInteraction(); model.clear(); }
 
     private static Component stock(String key,Object... args){
         return Component.translatable("sh_better_ui.online_music."+key,args);

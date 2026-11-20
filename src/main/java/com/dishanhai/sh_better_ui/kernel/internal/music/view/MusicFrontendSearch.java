@@ -26,7 +26,7 @@ final class MusicFrontendSearch {
     private List<OnlineTrack> tracks = List.of();
     private State state = State.IDLE;
     private int first;
-    private boolean more;
+    private boolean more, append;
 
     MusicFrontendSearch(OnlineMusicPlayer player, MusicFrontendRoutes routes) {
         this.player = player;
@@ -110,8 +110,21 @@ final class MusicFrontendSearch {
         else start(new Query(source, displayed.text(), displayed.page() + 1));
     }
 
+    boolean canExtend() {
+        return pending == null && failed == null && more && displayed != null && !tracks().isEmpty();
+    }
+
+    void extend() {
+        synchronized (player) {
+            if (!canExtend()) return;
+            start(new Query(source, displayed.text(), displayed.page() + 1), true);
+        }
+    }
+
     void retry() {
-        if (canRetry()) start(failed);
+        synchronized (player) {
+            if (canRetry() && (!append || !tracks().isEmpty())) start(failed, append);
+        }
     }
 
     void poll() {
@@ -133,8 +146,12 @@ final class MusicFrontendSearch {
             } else {
                 displayed = job.query();
                 displayedOperation = job.operation();
-                tracks = result;
-                first = 0;
+                if (append) {
+                    tracks = MusicPageAppend.append(tracks, result);
+                } else {
+                    tracks = result;
+                    first = 0;
+                }
                 more = result.size() >= RESULTS_PER_PAGE && displayed.page() < LAST_PAGE;
                 state = result.isEmpty() ? State.EMPTY : State.IDLE;
             }
@@ -170,9 +187,11 @@ final class MusicFrontendSearch {
         state = State.IDLE;
     }
 
-    private void start(Query query) {
+    private void start(Query query) { start(query, false); }
+    private void start(Query query, boolean append) {
         if (routes.current().page() != MusicFrontendRoutes.Page.SEARCH) return;
         cancel();
+        this.append = append;
         failed = null;
         var token = routes.request("search");
         try {

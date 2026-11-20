@@ -14,6 +14,37 @@ class ScrollRegionStateTest {
         assertTrue(scroll.wheel(1)); assertEquals(14, scroll.offset());
         assertFalse(scroll.wheel(Double.NaN)); assertFalse(scroll.wheel(Double.POSITIVE_INFINITY));
     }
+    @Test void dampedPositionIsFractionalInterruptibleAndEndsWithoutOvershoot() {
+        var scroll = new ScrollRegionState();
+        scroll.pixelRows(); scroll.configure(0, 20, 5); scroll.setStep(2);
+        assertTrue(scroll.wheel(-1, 1000, false));
+        assertEquals(0, scroll.offset());
+        scroll.advance(1008);
+        assertEquals(0, scroll.offset());
+        assertTrue(scroll.shift(32) > 0);
+        int shift = scroll.shift(32);
+        scroll.configure(scroll.offset(), 20, 5);
+        assertEquals(shift, scroll.shift(32), "frame configuration must not snap the fractional paint offset");
+        assertTrue(scroll.wheel(1, 1016, false));
+        for (int i=2;i<50;i++) scroll.advance(1000L + i * 8);
+        assertEquals(0, scroll.offset());
+        assertEquals(0, scroll.shift(32));
+        scroll.wheel(-300, 1500, false);
+        for (int i=1;i<50;i++) {
+            scroll.advance(1500L + i * 8);
+            assertTrue(scroll.offset() <= 15);
+        }
+        assertEquals(15, scroll.offset());
+        assertTrue(scroll.atForwardLimit());
+        assertFalse(scroll.wheel(-1, 1900, false));
+    }
+
+    @Test void repeatedReducedMotionInputStillRetainsFractionalWheelDeltas() {
+        var scroll = new ScrollRegionState(); scroll.configure(0, 20, 5);
+        for (int i=0;i<4;i++) assertTrue(scroll.wheel(-.25, i, true));
+        assertEquals(1, scroll.offset());
+    }
+
     @Test void supportsPixelScrollStepAndViewportPageSize() {
         var scroll = new ScrollRegionState(); scroll.configure(0, 280, 100); scroll.setStep(24);
         scroll.wheel(-1); assertEquals(24, scroll.offset());
