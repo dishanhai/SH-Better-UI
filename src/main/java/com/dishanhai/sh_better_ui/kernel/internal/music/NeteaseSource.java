@@ -78,6 +78,34 @@ final class NeteaseSource implements OnlineMusicSource {
         }
         return songDetails(selected, session);
     }
+    @Override public boolean supportsPlaylistDetail() { return true; }
+    @Override public OnlinePlaylistDetail playlistDetail(String playlistId) throws Exception {
+        if (!playlistId.matches("[1-9][0-9]{0,23}")) throw new IllegalArgumentException("Invalid playlist");
+        String session = credentialsSnapshot();
+        var response = accountCall("/weapi/v6/playlist/detail", Map.of("id", playlistId, "n", "1", "s", "8"), session);
+        var detail = object(response, "playlist");
+        if (!playlistId.equals(text(detail, "id"))) throw new IOException("Playlist identity changed");
+        requireArray(detail, "trackIds");
+        var ids = array(detail, "trackIds");
+        if (ids.size() > OnlinePlaylistDetail.MAX_TRACKS || !detail.has("trackCount")
+                || !Integer.toString(ids.size()).equals(text(detail, "trackCount"))) {
+            throw new IOException("NetEase playlist order is incomplete");
+        }
+        var tracks = new ArrayList<OnlineTrack>(ids.size());
+        for (int start = 0; start < ids.size(); start += 100) {
+            checkInterrupted();
+            var selected = new ArrayList<String>(100);
+            for (int i = start; i < Math.min(start + 100, ids.size()); i++) {
+                String songId = ids.get(i).isJsonObject() ? text(ids.get(i).getAsJsonObject(), "id") : "";
+                if (!songId.matches("[0-9]{1,24}")) throw new IOException("Invalid playlist track identity");
+                selected.add(songId);
+            }
+            var page = songDetails(selected, session);
+            if (page.size() != selected.size()) throw new IOException("NetEase playlist song details are incomplete");
+            tracks.addAll(page);
+        }
+        return new OnlinePlaylistDetail(new OnlinePlaylist(id(), playlistId, text(detail, "name"), ids.size()), tracks);
+    }
     @Override public List<OnlineTrack> liked(int page, int limit) throws Exception {
         checkPage(page, limit);
         String session = credentialsSnapshot();

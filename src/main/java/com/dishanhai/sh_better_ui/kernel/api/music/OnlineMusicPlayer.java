@@ -35,6 +35,9 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default CompletableFuture<OnlineMusicAccount> account(String source) { return unsupported(); }
     default CompletableFuture<List<OnlinePlaylist>> playlists(String source, int page) { return unsupported(); }
     default CompletableFuture<List<OnlineTrack>> playlist(OnlinePlaylist playlist, int page) { return unsupported(); }
+    default boolean supportsPlaylistDetail(String source) { return false; }
+    /** Read an ordered snapshot under the source's current account. No audio is resolved. */
+    default CompletableFuture<OnlinePlaylistDetail> playlistDetail(String source, String playlistId) { return unsupported(); }
     default CompletableFuture<List<OnlineTrack>> liked(String source, int page) { return unsupported(); }
     default CompletableFuture<Void> like(OnlineTrack track, boolean liked) { return unsupported(); }
     /** Whether this provider implements verified write requests for the liked collection. */

@@ -7,6 +7,15 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class SpotifySearchLinkTest {
+    @Test void madeForYouUsesOnlyTheOfficialFixedHub() {
+        var url = URI.create(SpotifySearchLink.madeForYou());
+        assertEquals("https", url.getScheme());
+        assertEquals("open.spotify.com", url.getHost());
+        assertEquals("/genre/0JQ5DAt0tbjZptfcdMSKl3", url.getRawPath());
+        assertNull(url.getRawQuery());
+        assertNull(url.getFragment());
+    }
+
     @Test void noQueryOpensSpotifySearchWithoutKeywords() {
         assertEquals("https://open.spotify.com/search", SpotifySearchLink.forQuery(" \t\n "));
     }

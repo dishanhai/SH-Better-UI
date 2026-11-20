@@ -895,11 +895,17 @@ class OnlineMusicQueueViewTest {
             var history = (MusicTextControl) field(view,"searchHistory");
             assertNotNull(spotify);
             assertTrue(spotify.active);
+            var mixes = view.spotifyExternalControl(true);
+            assertNotNull(mixes);
+            assertTrue(mixes.active);
+            assertTrue(mixes.getX() + mixes.getWidth() <= 208);
+            assertTrue(mixes.getY() + mixes.getHeight() <= nativeSearch.getY());
             assertTrue(nativeSearch.getX()+nativeSearch.getWidth() <= spotify.getX());
             assertTrue(spotify.getX()+spotify.getWidth() <= history.getX());
             assertFalse(player.sources().contains("spotify"));
             queuePage(view);
             assertNull(view.spotifySearchControl());
+            assertNull(view.spotifyExternalControl(true));
         }
     }
 
@@ -907,6 +913,7 @@ class OnlineMusicQueueViewTest {
         var f = new Fixture(); f.providers = List.of();
         f.view.layout(new Host());
         assertTrue(f.view.spotifySearchControl().active);
+        assertTrue(f.view.spotifyExternalControl(true).active);
         assertFalse(((MusicTextControl) field(f.view,"searchButton")).active);
         var query = (com.dishanhai.sh_better_ui.client.gui.scaled.UiTextField) field(f.view,"queryField");
         assertTrue(query.active);
@@ -923,6 +930,7 @@ class OnlineMusicQueueViewTest {
         var same = new OnlineMusicViewImpl(f.player, false);
         same.layout(new Host());
         assertSame(same.spotifySearchControl(), same.restoreExternalSearch(bookmark));
+        assertSame(same.spotifyExternalControl(true), same.restoreExternalSearch(bookmark, true));
         assertEquals("edited draft", field(same,"query"));
         assertEquals("qq", field(same,"source"));
         assertEquals("completed query", field(same,"submittedQuery"));

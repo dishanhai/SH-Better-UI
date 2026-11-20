@@ -275,6 +275,20 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         Objects.requireNonNull(playlist); checkPage(page); var provider = source(playlist.source()).requestSnapshot();
         return request(playlist.source(), true, () -> List.copyOf(provider.playlist(playlist, page, 20)));
     }
+    @Override public synchronized boolean supportsPlaylistDetail(String sourceId) {
+        requireOpen(); return source(sourceId).supportsPlaylistDetail();
+    }
+    @Override public synchronized CompletableFuture<OnlinePlaylistDetail> playlistDetail(String sourceId, String playlistId) {
+        Objects.requireNonNull(playlistId);
+        var provider = source(sourceId).requestSnapshot();
+        return request(sourceId, true, () -> {
+            var detail = provider.playlistDetail(playlistId);
+            if (!sourceId.equals(detail.playlist().source()) || !playlistId.equals(detail.playlist().id())) {
+                throw new java.io.IOException("Playlist identity changed");
+            }
+            return detail;
+        });
+    }
     @Override public synchronized CompletableFuture<List<OnlineTrack>> liked(String sourceId, int page) {
         checkPage(page); var provider = source(sourceId).requestSnapshot();
         return request(sourceId, true, () -> List.copyOf(provider.liked(page, 20)));

@@ -8,7 +8,11 @@ import java.nio.charset.StandardCharsets;
 final class SpotifySearchLink {
     private static final String SEARCH = "https://open.spotify.com/search";
 
+    private static final String MADE_FOR_YOU = "https://open.spotify.com/genre/0JQ5DAt0tbjZptfcdMSKl3";
+
     private SpotifySearchLink() {}
+
+    static String madeForYou() { return MADE_FOR_YOU; }
 
     static String forQuery(String text) {
         String query = text.strip();

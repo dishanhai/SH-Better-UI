@@ -30,6 +30,11 @@ public interface OnlineMusicSource {
     default OnlineMusicAccount account() throws Exception { throw new UnsupportedOperationException("Account unavailable"); }
     default List<OnlinePlaylist> playlists(int page, int limit) throws Exception { throw new UnsupportedOperationException("Account playlists unavailable"); }
     default List<OnlineTrack> playlist(OnlinePlaylist playlist, int page, int limit) throws Exception { throw new UnsupportedOperationException("Playlist tracks unavailable"); }
+    /** A complete ordered detail, if implemented by this source. Do not return a partial playlist. */
+    default boolean supportsPlaylistDetail() { return false; }
+    default OnlinePlaylistDetail playlistDetail(String playlistId) throws Exception {
+        throw new UnsupportedOperationException("Ordered playlist detail unavailable");
+    }
     default List<OnlineTrack> liked(int page, int limit) throws Exception { throw new UnsupportedOperationException("Liked tracks unavailable"); }
     /** Whether this provider supports modifying liked tracks. */
     default boolean supportsLikes() { return false; }
