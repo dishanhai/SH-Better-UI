@@ -48,6 +48,21 @@ class OnlineMusicFrameBridgeTest {
         assertFalse(session.capabilities().contains(MusicSnapshot.Capability.PLAYBACK_CONTROL));
         assertEquals(3, current.revision());
     }
+
+    @Test void playbackRateScalesHudLyricClockAndPreservesPreviewOffset() {
+        long anchor = 1_000_000L;
+        long sampled = anchor + 500_000_000L;
+        var faster = OnlineMusicFrameBridge.frame(sample(OnlineMusicPlayer.State.PLAYING, true),
+                45000, "session", 3, anchor, null, 1.5).snapshot().session();
+        assertEquals(1.5, faster.rate().orElseThrow());
+        assertEquals(47750, faster.positionAt(sampled));
+        var slower = OnlineMusicFrameBridge.frame(sample(OnlineMusicPlayer.State.PLAYING, false),
+                0, "session", 3, anchor, null, 0.5).snapshot().session();
+        assertEquals(2250, slower.positionAt(sampled));
+        var paused = OnlineMusicFrameBridge.frame(sample(OnlineMusicPlayer.State.PAUSED, false),
+                0, "session", 3, anchor, null, 2).snapshot().session();
+        assertEquals(2000, paused.positionAt(sampled));
+    }
     @Test void scopedSelectionNeverResurrectsOldPublisherOrKeepsStalledFrames() {
         var frames = new ForegroundMusicFrames();
         var system = frame(OnlineMusicPlayer.State.PAUSED);

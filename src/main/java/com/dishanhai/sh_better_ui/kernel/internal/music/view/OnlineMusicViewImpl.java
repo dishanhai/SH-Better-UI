@@ -55,6 +55,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private StagePage stagePage=StagePage.LYRICS;
     private final MusicArtworkStage artworkStage=new MusicArtworkStage();
     private final OnlineCoverReveal coverReveal=new OnlineCoverReveal();
+    private final MusicMetadataReveal metadataReveal = new MusicMetadataReveal();
+    private MusicMetadataReveal.Frame metadataFrame = new MusicMetadataReveal.Frame(1f, 1f);
     private final Map<MusicTextControl,Object> resultIdentities=new IdentityHashMap<>();
     private MusicSegmentedControl sourceSegments;
     private List<String> searchSourceIds=List.of();
@@ -63,7 +65,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicTransportControl exitControl;
     private UiButton nowPlayingMore;
     private NowPlayingMenuHost nowPlayingMenus;
-    private void closeNowPlayingMenu() { if(nowPlayingMenus!=null)nowPlayingMenus.interrupt(); }
+    private void closeNowPlayingMenu() {
+        scrollParallax.reset(); // Menu, route and suspension share this interaction boundary.
+        if(nowPlayingMenus!=null)nowPlayingMenus.interrupt();
+        // Route, focus and host invalidation clear any pending settings-slider gesture too.
+        if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
+    }
     private void openNowPlayingMenu() {
         var track=player.snapshot().track();
         if(track==null||!immersive)return;
@@ -88,8 +95,31 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 MusicControlRenderer.Icon.SETTINGS,true,()->openQqEffects(track)));
         if(player.supportsEqualizer())actions.add(new NowPlayingMenu.Entry(label("menu.equalizer"),
                 MusicControlRenderer.Icon.SETTINGS,true,()->openEqualizer(track)));
-        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,NowPlayingMenu.Layout.QUICK_ACTIONS,
+        actions.add(new NowPlayingMenu.Entry(label(player.supportsPlaybackRate()?"menu.playback_rate":"menu.playback_rate_unavailable"),
+                MusicControlRenderer.Icon.SETTINGS,player.supportsPlaybackRate(),()->openPlaybackRate(track)));
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.title"),actions,
+                NowPlayingMenu.height(actions.size(),NowPlayingMenu.Layout.QUICK_ACTIONS)<=layout.frame().height()-16
+                        ?NowPlayingMenu.Layout.QUICK_ACTIONS:NowPlayingMenu.Layout.EFFECT_TILES,
                 ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track));
+    }
+    private void openPlaybackRate(OnlineTrack track) {
+        if(!player.supportsPlaybackRate()||!Objects.equals(player.snapshot().track(),track))return;
+        closeNowPlayingMenu();
+        double selected=player.playbackRate();
+        var entries=new ArrayList<NowPlayingMenu.Entry>();
+        for(double rate:PlaybackRateChoices.VALUES) {
+            var name=label("menu.playback_rate_value",PlaybackRateChoices.format(rate));
+            boolean current=Double.compare(rate,selected)==0;
+            entries.add(new NowPlayingMenu.Entry(current?label("menu.eq.current",name):name,null,true,()->{
+                // Recheck capabilities/track at activation, not only when the popover was opened.
+                if(!player.supportsPlaybackRate()||!Objects.equals(player.snapshot().track(),track))return;
+                if(Double.compare(player.playbackRate(),rate)==0)return;
+                perform(name,()->player.playbackRate(rate));
+            },current));
+        }
+        nowPlayingMenus.open(nowPlayingMore,layout.frame(),label("menu.playback_rate_pitch"),entries,NowPlayingMenu.Layout.EFFECT_TILES,
+                ()->!closed&&immersive&&Objects.equals(player.snapshot().track(),track)&&player.supportsPlaybackRate()
+                        &&Double.compare(player.playbackRate(),selected)==0);
     }
     private void openEqualizer(OnlineTrack track) {
         if(!player.supportsEqualizer()||!Objects.equals(player.snapshot().track(),track))return;
@@ -171,7 +201,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicTextControl queueUndo, queueClear, queueLocate, queueEdit;
     private boolean queueEditing;
     private int queueFirst;
-    private MusicTextControl queuePlaybackMode, stagePlaybackMode;
+    private MusicTextControl queuePlaybackMode, stagePlaybackMode, crossfadeEntry;
+    private MusicSeekControl crossfadeSlider;
+    private boolean crossfadeOpen;
+    private static final int MAX_CROSSFADE_SECONDS = 12;
     private final LyricViewport lyricViewport = new LyricViewport();
     private final OnlineArtworkTexture artwork = new OnlineArtworkTexture();
     private OnlineTrack lyricTrack;
@@ -212,6 +245,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private MusicSeekControl seek;
     private final OnlineMusicFeedback interactionFeedback = new OnlineMusicFeedback();
     private String observedLoginState = "";
+    private final MusicScrollParallax scrollParallax = new MusicScrollParallax();
+    private float parallaxY;
+    private record ParallaxScope(Page page, boolean immersive, StagePage stage, String source,
+                                 Library library, String librarySource, Object libraryGroup,
+                                 String playlist, long searchRevision, OnlineTrack track) {}
     private final OnlineMusicViewMotion visualMotion = new OnlineMusicViewMotion();
     private final com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicVinylStage vinylStage = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicVinylStage();
     private String musicThemeId() {
@@ -285,8 +323,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         closeNowPlayingMenu();
         if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction();
         if(queuePlaybackMode!=null)queuePlaybackMode.cancelInteraction();
+        if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
         navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); navigation.clear();
-        routeMotion.reset();
+        routeMotion.reset(); scrollParallax.reset();
         host = context; layout = OnlineMusicLayout.of(context.viewport()); stage = null; queryField = null;
         stageControls.clear(); stageQueueRows.clear(); stageLyricKey=null;
         queueControls.clear(); queueRows.clear(); queueRemoves.clear(); queueUps.clear(); queueDowns.clear(); boundQueueFirst = -1;
@@ -312,6 +351,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if(page==Page.ARTIST){leaveArtist();return;}
             if(returnFromLibraryLogin()||returnFromHistoryDestination()) return;
             if(page==Page.HISTORY) { leaveHistory();
+            } else if(page==Page.QUEUE&&crossfadeOpen) { setCrossfadeOpen(false);
             } else if(page==Page.QUEUE&&queueEditing) { setQueueEditing(false);
             } else if (dismissListen1Editor()) { return;
             } else if(page==Page.LIBRARY&&library==Library.DISCOVERY_TRACKS) {
@@ -358,16 +398,17 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void buildScrollRegions() {
         var area = listScrollArea();
         searchScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_search"), offset -> {
-            first = offset; updateRows();
+            scrollParallax.scroll(offset - first); first = offset; updateRows();
         }));
         libraryScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_library"), offset -> {
-            libraryFirst = offset; updateLibraryRows();
+            scrollParallax.scroll(offset - libraryFirst); libraryFirst = offset; updateLibraryRows();
         }));
         queueScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("queue.scroll"), offset -> {
-            queueFirst = offset; updateQueueRows();
+            scrollParallax.scroll(offset - queueFirst); queueFirst = offset; updateQueueRows();
         }));
         var lyrics = lyricContent();
         lyricsScroll = host.add(new OnlineMusicScrollRegion(lyrics.x(), lyrics.y(), lyrics.width(), Math.max(1, lyricArea().bottom() - lyrics.y()), label("view.scroll_lyrics"), offset -> {
+            scrollParallax.scroll(offset - lyricViewport.scrollPosition(activeLyric));
             lyricViewport.browseTo(offset, player.snapshot().lyrics().size(), System.nanoTime() / 1_000_000L);
         }));
         var c = layout.content();
@@ -393,7 +434,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         clamped = Math.min(libraryFirst, Math.max(0, librarySize() - visibleRows));
         if (libraryFirst != clamped) { libraryFirst = clamped; updateLibraryRows(); }
         libraryScroll.configure(libraryFirst, librarySize(), visibleRows);
-        scrollVisibility(queueScroll, page == Page.QUEUE);
+        scrollVisibility(queueScroll, page == Page.QUEUE && !immersive && !crossfadeOpen);
         queueFirst = Math.min(queueFirst, Math.max(0, queue.tracks().size() - visibleRows));
         queueScroll.configure(queueFirst, queue.tracks().size(), visibleRows);
         scrollVisibility(lyricsScroll, page == Page.LYRICS);
@@ -687,6 +728,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 }
             }, host.preferences(), direction -> {
                 host.screen().setFocused(immersive ? stageReturnControl() : back);
+                scrollParallax.scroll(direction);
                 lyricViewport.scroll(direction, activeLyric, player.snapshot().lyrics().size(), System.nanoTime() / 1_000_000L);
             }));
             lyricRows.add(row); lyricControls.add(row);
@@ -842,6 +884,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void buildQueue() {
         var c = layout.content();
         var modes = layout.sourceBar();
+        var header = layout.searchBar();
+        int crossfadeWidth=Math.min(144,header.width()-96);
+        crossfadeEntry=button(new Bounds(header.right()-crossfadeWidth,header.y()+2,crossfadeWidth,22),
+                label("crossfade.title"),()->setCrossfadeOpen(true),queueControls);
+        crossfadeSlider=host.add(new MusicSeekControl(new Bounds(c.x()+8,c.y()+17,c.width()-16,20),
+                label("crossfade.title"),host.preferences(),edit->{},edit->applyCrossfade(edit.positionMs()),edit->{}));
+        crossfadeSlider.setKeyboardStep(1,1);
+        crossfadeSlider.setValueFormatter((seconds,total)->crossfadeValue(seconds));
         queuePlaybackMode = button(new Bounds(modes.x(), modes.y(), Math.max(12, modes.width()-96), 20),
                 Component.empty(), this::cyclePlaybackMode, queueControls);
         queueAppend = button(new Bounds(layout.sourceBar().right() - 60, layout.sourceBar().y(), 24, 20), label("queue.append_current"), () -> {
@@ -879,6 +929,40 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 () -> { queue.clear(); updateQueueRows(); updateScrollRegions(); }, queueControls);
         queueClear.setPreview(label("queue.clear_hint"));
     }
+    private static Component crossfadeValue(long seconds) {
+        return seconds==0?label("crossfade.off"):label("crossfade.seconds",seconds);
+    }
+    private void setCrossfadeOpen(boolean open) {
+        if (open && (immersive || page!=Page.QUEUE || !player.supportsCrossfade())) return;
+        if (crossfadeOpen==open) return;
+        crossfadeOpen=open;
+        if(open) {
+            queueEditing=false;
+            for(var control:queueControls)if(control instanceof MusicTextControl text)text.cancelInteraction();
+        } else crossfadeSlider.cancelInteraction();
+        updateQueueRows();updateScrollRegions();
+        host.screen().setFocused(open?crossfadeSlider:crossfadeEntry.visible?crossfadeEntry:back);
+    }
+    private void applyCrossfade(long seconds) {
+        if(!crossfadeOpen||immersive||page!=Page.QUEUE||!player.supportsCrossfade())return;
+        int clamped=(int)Math.max(0,Math.min(MAX_CROSSFADE_SECONDS,seconds));
+        if(player.crossfadeSeconds()!=clamped) {
+            perform(label("crossfade.caption",crossfadeValue(clamped)),()->player.crossfadeSeconds(clamped));
+        }
+        updateQueueRows();
+    }
+    private void syncCrossfadeControls(boolean queuePage, boolean supported) {
+        int seconds=supported?player.crossfadeSeconds():0;
+        var caption=label("crossfade.caption",crossfadeValue(seconds));
+        crossfadeEntry.setVisible(queuePage&&supported&&!crossfadeOpen&&!queueEditing);
+        crossfadeEntry.setAvailable(crossfadeEntry.visible);
+        if (!crossfadeEntry.getMessage().equals(caption)) {
+            crossfadeEntry.setMessage(caption);crossfadeEntry.setPreview(caption.copy().append("\n").append(label("crossfade.hint")));
+        }
+        crossfadeEntry.setSelected(seconds>0);
+        crossfadeSlider.visible=queuePage&&supported&&crossfadeOpen;
+        crossfadeSlider.sync("queue-crossfade",seconds,MAX_CROSSFADE_SECONDS,crossfadeSlider.visible);
+    }
     private void setQueueEditing(boolean editing) {
         queueEditing = editing;
         for (var control : queueControls) if (control instanceof MusicTextControl text) text.cancelInteraction();
@@ -903,6 +987,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (queueEdit == null) return;
         queueFirst = Math.min(queueFirst, Math.max(0, queue.tracks().size() - visibleRows));
         var tracks = queue.tracks();
+        boolean queuePage = !immersive && page == Page.QUEUE;
+        boolean crossfadeAvailable = queuePage && player.supportsCrossfade();
+        if (crossfadeOpen && !crossfadeAvailable) {
+            crossfadeOpen=false;crossfadeSlider.cancelInteraction();
+            if(host.screen().getFocused()==crossfadeSlider)host.screen().setFocused(back);
+        }
+        boolean showQueue = queuePage && !crossfadeOpen;
         if (boundQueueFirst != queueFirst || !boundQueueTracks.equals(tracks)) {
             for (var control : queueControls) if (control instanceof MusicTextControl text) text.cancelInteraction();
             boundQueueTracks = tracks; boundQueueFirst = queueFirst;
@@ -910,14 +1001,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var trackToAppend = player.snapshot().track();
         if (!java.util.Objects.equals(queueAppendTrack, trackToAppend)) queueAppend.cancelInteraction();
         queueAppendTrack = trackToAppend;
-        queueAppend.setVisible(!immersive && page == Page.QUEUE && queueEditing && queue.supportsEditing());
+        queueAppend.setVisible(showQueue && queueEditing && queue.supportsEditing());
         queueAppend.setAvailable(queueAppendTrack != null);
         queueAppend.setPreview(queueAppendTrack == null ? label("queue.append_current") : label("queue.append_track", queueAppendTrack.title()));
         var rowBounds = musicRows();
         for (int slot = 0; slot < queueRows.size(); slot++) {
             int i = queueFirst + slot;
             var row = queueRows.get(slot); var remove = queueRemoves.get(slot);
-            row.visible = !immersive && page == Page.QUEUE && i < queue.tracks().size();
+            row.visible = showQueue && i < tracks.size();
             remove.visible = row.visible && queueEditing;
             row.setWidth(rowBounds.get(slot).width() - (queueEditing ? (queue.supportsEditing() ? 84 : 28) : 0));
             row.active = remove.active = row.visible;
@@ -936,13 +1027,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             row.setSelected(i == queue.index());
             remove.setPreview(label("queue.remove_track", track.title()));
         }
-        boolean queuePage = !immersive && page == Page.QUEUE;
-        queueEdit.setVisible(queuePage);
+        queueEdit.setVisible(showQueue);
+        queueLocate.setVisible(showQueue);
+        queuePlaybackMode.setVisible(showQueue);
         queueEdit.setMessage(label(queueEditing ? "queue.done" : "queue.edit"));
-        queueUndo.setVisible(queuePage && queueEditing); queueClear.setVisible(queuePage && queueEditing);
+        queueUndo.setVisible(showQueue && queueEditing); queueClear.setVisible(showQueue && queueEditing);
         queueClear.active = !queue.tracks().isEmpty(); queueUndo.active = queue.canUndo();
         queueLocate.active = queue.index() >= 0;
         updatePlaybackModeControls();
+        syncCrossfadeControls(queuePage,crossfadeAvailable);
         if(!navigation.isEmpty()) {
             var entry=navigation.get(Page.QUEUE.ordinal());
             var details=queue.tracks().isEmpty()?label("queue.empty").append("\n").append(label("queue.empty_hint")):label("queue.count",queue.tracks().size());
@@ -969,7 +1062,19 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void renderQueue(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var h = layout.searchBar(); var c = layout.content();
-        if (queueEditing || !layout.expanded()) text(ui, label(queueEditing ? "queue.edit" : "view.queue"), h.x() + back.getWidth() + 8, h.y() + 8, h.width() - back.getWidth() - 8);
+        int titleX=h.x()+back.getWidth()+8;
+        if(crossfadeOpen) {
+            text(ui,label("crossfade.title"),titleX,h.y()+8,h.right()-titleX);
+            text(ui,crossfadeValue(crossfadeSlider.previewPositionMs()),c.x()+8,c.y()+3,c.width()-16);
+            crossfadeSlider.setPreferences(ui.preferences());
+            crossfadeSlider.setInk(UiTheme.current().text());
+            OnlineMusicViewPaint.paragraph(ui,host.font(),label("crossfade.hint"),
+                    new Bounds(c.x()+8,c.y()+40,c.width()-16,Math.max(0,c.height()-40)),
+                    UiTheme.current().secondaryText(0xff94a3b8,.25f));
+            return;
+        }
+        if ((queueEditing || !layout.expanded()) && !crossfadeEntry.visible)
+            text(ui,label(queueEditing ? "queue.edit" : "view.queue"),titleX,h.y()+8,h.right()-titleX);
         if(layout.listHeadingHeight()>=20)muted(ui, label("queue.count", queue.tracks().size()), c.x() + 6, c.y() + 4, Math.max(0, c.width() - 110));
         for (int slot = 0; slot < queueRows.size(); slot++) {
             int i = queueFirst + slot; if (i >= queue.tracks().size()) break;
@@ -1035,9 +1140,21 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void perform(Component actionName, Runnable action) {
         feedback(label("feedback.requested", actionName));
         try { action.run(); }
-        catch (RuntimeException failure) { interactionFeedback.show(label("feedback.failed"),System.nanoTime()/1_000_000L,true); visualMotion.pulse(System.nanoTime()/1_000_000L); }
+        catch (RuntimeException failure) {
+            long now=System.nanoTime()/1_000_000L;
+            interactionFeedback.show(label(failure instanceof OnlineMusicQueue.TransitionInProgress
+                    ?"crossfade.busy":"feedback.failed"),now,true);
+            visualMotion.pulse(now);
+        }
     }
     private Component feedbackMessage() { return interactionFeedback.current(System.nanoTime() / 1_000_000L); }
+    /** The transport's time row is narrow. Preserve the full explanation in the play tooltip. */
+    static Component immersiveFeedback(Component operation, OnlineMusicPlayer.State state) {
+        if (operation.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents text
+                && text.getKey().equals(TEXT + "crossfade.busy"))
+            return label(state == OnlineMusicPlayer.State.PAUSED ? "crossfade.resume_short" : "crossfade.wait_short");
+        return operation;
+    }
     private net.minecraft.client.gui.components.events.GuiEventListener stageReturnControl() {
         return shellBack==null?stageBack:shellBack;
     }
@@ -1063,6 +1180,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(!immersive&&page==Page.LIBRARY&&library==Library.TRACKS){returnToPlaylistList();return false;}
         if(!immersive&&page==Page.HISTORY){leaveHistory();return false;}
         if(!immersive&&page==Page.ACCOUNTS&&accountDetail){returnToAccountList();return false;}
+        if(!immersive&&page==Page.QUEUE&&crossfadeOpen) {
+            if(crossfadeSlider.isEditing())crossfadeSlider.cancelInteraction();
+            else setCrossfadeOpen(false);
+            return false;
+        }
         if (!immersive && page == Page.QUEUE && queueEditing) { setQueueEditing(false); return false; }
         if (!immersive) return true;
         if(stageSeek!=null&&stageSeek.isEditing()){stageSeek.cancelInteraction();return false;}
@@ -1116,15 +1238,16 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             var target=new LyricSeekTarget(stageLyricTrack,stageTimeline,position,previewLyricOffset(now)).position(now);
             if(target.isPresent()&&target.getAsLong()<=now.durationMs())player.seek(target.getAsLong());
         }),()->stage.lyrics());
+        stageLyrics.setOnManualScroll(pixels -> scrollParallax.scroll(pixels / 36d));
         stageFollow=OnlineMusicScreen.addLyricsLayer(host,new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y()+Math.max(0,stage.lyrics().height()-20),Math.min(108,stage.lyrics().width()),20),label("view.follow_lyrics"),
                 host.preferences(),stageLyrics::follow),()->stage.lyrics());
         stageCoverEntry=host.add(new MusicStageButton(stage.cover(),label("stage.toggle_lyrics"),null,
                 ()->setStagePage(stagePage==StagePage.LYRICS?StagePage.ARTWORK:StagePage.LYRICS),host.preferences(),false,true));
-        stagePlaybackMode=host.add(new MusicTextControl(new Bounds(stage.lyrics().x(),stage.lyrics().y(),
-                Math.max(12,stage.lyrics().width()),20),Component.empty(),host.preferences(),this::cyclePlaybackMode));
+        stagePlaybackMode=button(new Bounds(stage.lyrics().x(),stage.lyrics().y(),
+                Math.max(12,stage.lyrics().width()),20),Component.empty(),this::cyclePlaybackMode,null);
         stageControls.add(stagePlaybackMode);
         stageQueueScroll=host.add(new OnlineMusicScrollRegion(stage.lyrics().x(),stage.lyrics().y()+Math.min(24,stage.lyrics().height()),stage.lyrics().width(),Math.max(1,stage.lyrics().height()-24),
-                label("queue.scroll"),offset->{stageQueueFirst=offset;updateStageQueueRows();}));
+                label("queue.scroll"),offset->{scrollParallax.scroll(offset-stageQueueFirst);stageQueueFirst=offset;updateStageQueueRows();}));
         stageQueueScroll.setOnBrowse(()->host.screen().setFocused(stageQueueScroll));
         int count=Math.max(1,Math.min(20,(stage.lyrics().height()-24)/32));
         for(int i=0;i<count;i++) {
@@ -1175,7 +1298,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (immersive) { immersive = false; }
         if (next == Page.LYRICS && page != Page.LYRICS) lyricsReturnPage = page;
         for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag();
-        if (page != next) { historyDestination=null; cancelLike(); queueEditing=false; }
+        if (page != next) {
+            historyDestination=null;cancelLike();queueEditing=false;crossfadeOpen=false;
+            if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
+        }
         if (page == Page.ACCOUNTS && next != page){leaveAccountDetail();libraryLoginReturn=false;}
         if(page==Page.LIBRARY&&next!=page){boolean loading=pendingPlaylists!=null||pendingLibrary!=null;detachLibrary();cancelListen1();if(loading)library=Library.NONE;}
         if (page == Page.SEARCH && next != page) { detachSearch(); cancelSuggestions(); }
@@ -1746,13 +1872,31 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 for(var widget:group)if(widget instanceof MusicTextControl text)text.cancelInteraction();
         }
         if (!layout.supported()) { text(ui, label("space"), layout.frame().x() + 4, layout.frame().y() + 4, Math.max(0, layout.frame().width() - 8)); return; }
-        if(nowPlayingMore!=null)nowPlayingMore.active=immersive&&player.snapshot().track()!=null;
+        pollOperations();
+        var current = player.snapshot();
+        queue.observe(current);
+        // Legacy view-local queues may advance playback while observing an ended track.
+        if (player.queue()==null && current.state()==OnlineMusicPlayer.State.ENDED) current=player.snapshot();
+        if(nowPlayingMore!=null)nowPlayingMore.active=immersive&&current.track()!=null;
         var theme = UiTheme.current();
         if (exitControl != null) {
             exitControl.setInk(theme.text()); exitControl.setPreferences(host.preferences());
             exitControl.setAvailable(!immersive && net.minecraft.client.Minecraft.getInstance().isWindowActive());
         }
-        if(qqStyle()&&!ui.preferences().highContrast()) qqBackground(ui,layout.frame());
+        parallaxY = scrollParallax.sample(new ParallaxScope(page, immersive, stagePage, source,
+                library, librarySource, libraryGroup, selectedPlaylist==null?null:selectedPlaylist.id(),
+                searchRowsRevision, current.track()), ui.nowMs(),
+                ui.preferences().reducedMotion() || ui.preferences().highContrast()
+                        || seek!=null && seek.isEditing() || stageSeek!=null && stageSeek.isEditing());
+        if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
+        else if (!immersive && (page==Page.SEARCH || page==Page.LIBRARY || page==Page.QUEUE || page==Page.LYRICS) && !ui.preferences().highContrast()) {
+            var palette = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette(
+                    com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.accent()|0xff000000,.045f),
+                    theme.background()|0xff000000, theme.background()|0xff000000,
+                    com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.surface()|0xff000000,.16f));
+            paintParallaxBackground(ui,layout.frame(),()->com.dishanhai.sh_better_ui.client.gui.scaled.MusicArtworkStageRender.background(
+                    ui.graphics(),parallaxBounds(layout.frame()),palette,0,true));
+        }
         else OnlineMusicViewPaint.panel(ui, layout.frame(), theme.background() | 0xff000000, false);
 
         if (layout.sidebar() && !immersive) {
@@ -1760,7 +1904,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
 
         }
-        pollOperations();
         if (pending != null && pending.isDone()) {
             try { results = pending.join(); searchState = results.isEmpty() ? "empty" : "results";
                 if (!results.isEmpty()) searchRowsRevision++;
@@ -1769,10 +1912,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             pending = null; feedback(label(searchState.equals("results")?"feedback.search_ready":searchState)); updateRows();
         }
         updateScrollRegions();
-        var current = player.snapshot();
-        queue.observe(current);
-        current = player.snapshot();
         updateQueueRows();
+        metadataFrame = metadataReveal.sample(current.track() == null ? null : trackKey(current.track()),
+                ui.nowMs(), ui.preferences().reducedMotion() || ui.preferences().highContrast());
         var visual = visualMotion.sample(System.nanoTime() / 1_000_000L, ui.preferences().reducedMotion(),
                 current.state() == OnlineMusicPlayer.State.PLAYING);
         if (immersive) { seek.cancelInteraction(); renderImmersive(ui, current); return; }
@@ -1819,7 +1961,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     void renderRouteHandoff(UiFrame ui) {
         if(nowPlayingMenus!=null)nowPlayingMenus.render(ui);
         if (closed || layout == null || !layout.supported()) {
-            routeMotion.reset();
+            routeMotion.reset(); scrollParallax.reset();
             return;
         }
         Object detail = immersive ? null : switch (page) {
@@ -1827,7 +1969,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             case LIBRARY -> new LibraryRoute(librarySource, libraryGroup,
                     (library == Library.TRACKS || library == Library.DISCOVERY_TRACKS) && selectedPlaylist != null ? selectedPlaylist.id() : null, libraryRowsRevision);
             case ACCOUNTS -> accountDetail ? accountSource : null;
-            case QUEUE -> queueEditing;
+            case QUEUE -> crossfadeOpen?"crossfade":queueEditing;
             default -> null;
         };
         var next = new OnlineMusicRouteMotion.Route(page, detail, immersive ? stagePage : null);
@@ -1972,13 +2114,24 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(stageQueueScroll!=null)stageQueueScroll.cancelDrag();
         for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction();
     }
+    private Bounds parallaxBounds(Bounds area) {
+        int pad = MusicScrollParallax.LIMIT + 1;
+        return new Bounds(area.x(), area.y()-pad+Math.round(parallaxY), area.width(), area.height()+pad*2);
+    }
+    private void paintParallaxBackground(UiFrame ui, Bounds clip, Runnable paint) {
+        // Only the decorative pass overscans. Scissor and all interactive geometry stay fixed.
+        OnlineMusicViewPaint.clip(ui,clip);
+        try { paint.run(); } finally { OnlineMusicViewPaint.unclip(ui); }
+    }
     private void renderImmersive(UiFrame ui,OnlineMusicPlayer.Snapshot current) {
         boolean failed=current.state()==OnlineMusicPlayer.State.FAILED;
         if(failed!=stageFailure){stageFailure=failed;stage=FullscreenLyricLayout.of(layout.frame(),shellBack==null,failed,stagePage!=StagePage.ARTWORK);updateStageGeometry();}
         var loaded=artwork.texture(current.track());
-        if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,stage.frame());
-        else artworkStage.renderAudioBackground(ui,stage.frame(),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
-                current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
+        paintParallaxBackground(ui,stage.frame(),()-> {
+            if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,parallaxBounds(stage.frame()));
+            else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
+                    current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
+        });
         int ink=ui.preferences().highContrast()?UiTheme.current().text():MusicArtworkStage.FOREGROUND;
         int secondary=ui.preferences().highContrast()?ink:MusicArtworkStage.SECONDARY;
         var cover=loaded.orElse(null);
@@ -1992,8 +2145,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 +(current.track().album().isBlank()?"":" · "+current.track().album()));
         var trackDetails=title.copy().append("\n").append(subtitle).append("\n").append(label("stage.toggle_lyrics"));
         stageCoverEntry.setMessage(trackDetails);stageCoverEntry.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(trackDetails)));
-        OnlineMusicViewPaint.scaledLine(ui,host.font(),MusicTypography.bold(title),stage.info().x(),stage.info().y(),stage.info().width(),ink,stage.wide()?1.35f:1.1f);
-        OnlineMusicViewPaint.line(ui,host.font(),subtitle,stage.info().x(),stage.info().y()+22,stage.info().width(),secondary);
+        MusicMetadataPaint.line(ui,host.font(),MusicTypography.bold(title),stage.info().x(),stage.info().y(),stage.info().width(),ink,stage.wide()?1.35f:1.1f,metadataFrame);
+        MusicMetadataPaint.line(ui,host.font(),subtitle,stage.info().x(),stage.info().y()+22,stage.info().width(),secondary,1f,metadataFrame);
         boolean windowActive=net.minecraft.client.Minecraft.getInstance().isWindowActive();
         if(!windowActive)cancelStageInteractions();
         for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue}){
@@ -2014,8 +2167,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         OnlineMusicViewPaint.line(ui,host.font(),MusicTypography.text(time(position)),stage.seek().x(),stage.seek().bottom()+2,36,secondary);
         OnlineMusicViewPaint.line(ui,host.font(),MusicTypography.text("−"+time(Math.max(0,current.durationMs()-position))),stage.seek().right()-40,stage.seek().bottom()+2,40,secondary);
         var operation=feedbackMessage();
+        var inlineOperation=immersiveFeedback(operation,current.state());
         if(!failed && (current.preview() || !operation.getString().isEmpty()))
-            OnlineMusicViewPaint.line(ui,host.font(),current.preview()?(operation.getString().isEmpty()?label("preview"):operation.copy().append(" · ").append(label("preview"))):operation,stage.seek().x()+42,stage.seek().bottom()+2,Math.max(0,stage.seek().width()-86),secondary);
+            OnlineMusicViewPaint.line(ui,host.font(),current.preview()?(operation.getString().isEmpty()?label("preview"):inlineOperation.copy().append(" · ").append(label("preview"))):inlineOperation,stage.seek().x()+42,stage.seek().bottom()+2,Math.max(0,stage.seek().width()-86),secondary);
         stagePlay.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(operation.getString().isEmpty()?stagePlay.getMessage():operation)));
         syncStageLyrics(current,windowActive);
         stageLyrics.setMessage(label("lyrics."+current.lyricsState().name().toLowerCase(Locale.ROOT)));

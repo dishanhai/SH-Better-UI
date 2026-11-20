@@ -46,34 +46,36 @@ final class OnlineMusicFrameBridge implements AutoCloseable {
         try {
             OnlineMusicPlayer.Snapshot snapshot;
             long offset = 0, playbackRevision = -1;
+            double playbackRate = 1;
             String observedSession = sessionId;
             if (player instanceof OnlinePlayerSession internal) {
                 var observation = internal.mediaObservation();
                 snapshot = observation.snapshot(); offset = observation.offsetMs();
                 observedSession = sessionId(observation.generation());
                 playbackRevision = observation.generation();
+                playbackRate = observation.playbackRate();
             } else snapshot = player.snapshot();
             if (!Objects.equals(track, snapshot.track())) {
                 track = snapshot.track(); revision++;
             }
             long observedRevision = playbackRevision >= 0 ? playbackRevision : revision;
             long now = clock.getAsLong();
-            var projected = frame(snapshot, offset, observedSession, observedRevision, now);
+            var projected = frame(snapshot, offset, observedSession, observedRevision, now, null, playbackRate);
             boolean failed = failureWindow.visible(snapshot.state(), observedSession, now);
             if (snapshot.state() == OnlineMusicPlayer.State.FAILED && !failed) projected = null;
             // Withdraw/cancel obsolete artwork work on terminal playback, rather than starting a download for it.
             var artwork = covers.artwork(projected == null || failed ? null : snapshot.track());
-            lease.publish(projected == null ? null : frame(snapshot, offset, observedSession, observedRevision, now, artwork), now);
+            lease.publish(projected == null ? null : frame(snapshot, offset, observedSession, observedRevision, now, artwork, playbackRate), now);
         } catch (RuntimeException unavailable) {
             // A third-party player may be closed concurrently. Never leave its last song on the HUD.
             lease.publish(null, clock.getAsLong());
         }
     }
     static MusicService.Frame frame(OnlineMusicPlayer.Snapshot sample, long offset, String sessionId, long revision, long now) {
-        return frame(sample, offset, sessionId, revision, now, null);
+        return frame(sample, offset, sessionId, revision, now, null, 1);
     }
     static MusicService.Frame frame(OnlineMusicPlayer.Snapshot sample, long offset, String sessionId, long revision,
-                                    long now, MusicSnapshot.Artwork artwork) {
+                                    long now, MusicSnapshot.Artwork artwork, double playbackRate) {
         if (sample.state() == OnlineMusicPlayer.State.FAILED)
             return new MusicService.Frame(new MusicSnapshot(PROVIDER, MusicSnapshot.State.TEMPORARILY_UNAVAILABLE, null),
                     new MusicService.Lyrics(MusicService.LyricsState.NO_TRACK, LyricTimeline.empty()), revision);
@@ -100,7 +102,7 @@ final class OnlineMusicFrameBridge implements AutoCloseable {
         if (artwork != null) capabilities.add(MusicSnapshot.Capability.ARTWORK);
         var session = new MusicSnapshot.Session(sessionId,
                 MusicSnapshot.Track.of(song.source() + ":" + song.id(), song.title(), song.artist(), song.album()),
-                status, OptionalLong.of(position), OptionalLong.of(duration), OptionalDouble.of(1), now, artwork, capabilities);
+                status, OptionalLong.of(position), OptionalLong.of(duration), OptionalDouble.of(playbackRate), now, artwork, capabilities);
         return new MusicService.Frame(new MusicSnapshot(PROVIDER, MusicSnapshot.State.AVAILABLE, session),
                 new MusicService.Lyrics(lyricState, lyricState == MusicService.LyricsState.AVAILABLE ? sample.lyrics() : LyricTimeline.empty()), revision);
     }

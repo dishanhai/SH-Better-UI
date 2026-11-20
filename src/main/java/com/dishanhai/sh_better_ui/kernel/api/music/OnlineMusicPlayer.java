@@ -77,6 +77,24 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default void equalizerPreset(OnlineMusicEqualizerPreset preset) {
         throw new UnsupportedOperationException("Music equalizer unavailable");
     }
+    /** True only when the current native output can change playback speed. */
+    default boolean supportsPlaybackRate() { return false; }
+    /** Session-selected speed; 1.0 is normal speed. */
+    default double playbackRate() { return 1.0; }
+    /** Sets a finite speed from 0.5 through 2.0. Native speed changes may also change pitch.
+     * Requires supportsPlaybackRate(); an already audible crossfade must finish first. */
+    default void playbackRate(double rate) {
+        if (!Double.isFinite(rate) || rate < 0.5 || rate > 2.0)
+            throw new IllegalArgumentException("Playback rate must be between 0.5 and 2.0");
+        throw new UnsupportedOperationException("Music playback rate unavailable");
+    }
+    /** Whether this player exposes the native automatic queue crossfade setting. */
+    default boolean supportsCrossfade() { return false; }
+    /** Session preference: 0 is off; 1–12 requests a bounded overlap. */
+    default int crossfadeSeconds() { return 0; }
+    default void crossfadeSeconds(int seconds) {
+        throw new UnsupportedOperationException("Music crossfade unavailable");
+    }
     /** Whether the current QQ track uses a native output that can apply local sound effects. */
     default boolean supportsSoundEffects() { return false; }
     /** Remembered session preference; no effect is applied when this capability is unavailable. */
