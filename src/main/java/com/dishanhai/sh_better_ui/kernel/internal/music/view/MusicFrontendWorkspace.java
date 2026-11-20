@@ -47,7 +47,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private UiTextField search;
     private MusicTextControl back, utility, submit;
     private MusicTransportControl nowLyrics, nowQueue;
-    private MusicFrontendNowPlayingLayout nowPlaying;
+    private MusicFrontendNowPlayingLayout nowPlaying, playerDetail;
     private MusicLyricsView lyric;
     private MusicTextControl source, previous, next, retry;
     private OnlineMusicScrollRegion searchScroll;
@@ -132,11 +132,12 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         sound.mount(ctx, area, back, utility);
         if (ctx.screen() instanceof UiScreen screen) screen.onFocusChanged(sound::rememberFocus);
         library.mount(ctx,area);
-        nowPlaying = MusicFrontendNowPlayingLayout.fit(area);
-        nowLyrics = nowPlaying.usable() ? ctx.add(new MusicTransportControl(nowPlaying.lyrics(), heading(Page.LYRICS),
-                MusicTransportControl.Glyph.LYRICS, ctx.preferences(), () -> navigate(Page.LYRICS))) : null;
-        nowQueue = nowPlaying.usable() ? ctx.add(new MusicTransportControl(nowPlaying.queue(), heading(Page.QUEUE),
-                MusicTransportControl.Glyph.QUEUE, ctx.preferences(), () -> navigate(Page.QUEUE))) : null;
+        nowPlaying = MusicFrontendNowPlayingLayout.fit(layout.frame(), false);
+        playerDetail = MusicFrontendNowPlayingLayout.fit(layout.frame(), true);
+        nowLyrics = ctx.add(new MusicTransportControl(nowPlaying.lyrics(), heading(Page.LYRICS),
+                MusicTransportControl.Glyph.LYRICS, ctx.preferences(), () -> selectPlayerPane(Page.LYRICS)));
+        nowQueue = ctx.add(new MusicTransportControl(nowPlaying.queue(), heading(Page.QUEUE),
+                MusicTransportControl.Glyph.QUEUE, ctx.preferences(), () -> selectPlayerPane(Page.QUEUE)));
 
         int inset = 4, providerWidth = Math.min(104, area.width() / 2 - 8);
         int queryWidth = area.width() - 34 - providerWidth;
@@ -174,8 +175,9 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             row.setVariant(MusicTextControl.Variant.ROW);
             rows.add(row);
         }
-        lyric = ctx.add(new MusicLyricsView(area, heading(Page.LYRICS), ctx.preferences(), this::seekLyric));
-        followLyrics = control(new Bounds(header.right() - 96, header.y(), 92, 22),
+        lyric = ctx.add(new MusicLyricsView(playerDetail.detail(), heading(Page.LYRICS), ctx.preferences(), this::seekLyric));
+        lyric.scale(playerDetail.split() ? 2.3f : 2f);
+        followLyrics = control(new Bounds(layout.frame().right() - 108, layout.frame().y() + 8, 96, 22),
                 Component.translatable("sh_better_ui.online_music.view.follow_lyrics"), () -> {
                     lyric.follow();
                     followLyrics.setVisible(false);
@@ -183,7 +185,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                 });
         followLyrics.setVisible(false);
         lyricContent = null;
-        queuePanel = new MusicFrontendQueuePanel(ctx, area, playingNext);
+        queuePanel = new MusicFrontendQueuePanel(ctx, playerDetail.detail(), playingNext);
         var controls = layout.transportControls();
         mini = new MusicFrontendMiniPlayer(ctx, new MusicFrontendMiniPlayer.Placement(layout.transport(), controls.track(),
                 controls.previous(),controls.playPause(),controls.next(),controls.progress()),transport,
@@ -212,6 +214,17 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         if (state != null) settingsReturns.put(origin, state);
         changed();
         if (layout != null && layout.supported()) sound.focusEntry();
+    }
+    private static boolean playerPage(Page page) {
+        return page == Page.NOW_PLAYING || page == Page.LYRICS || page == Page.QUEUE;
+    }
+    private void selectPlayerPane(Page page) {
+        var current = routes.current().page();
+        if (current == Page.LYRICS || current == Page.QUEUE) {
+            backFromRoute();
+            if (current == page) return;
+        }
+        navigate(page);
     }
     private void selectPrimary(Page page) {
         if (!routes.select(page)) return;
@@ -253,7 +266,12 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         history.routeChanged();
         sound.cancel();
         status=""; lyricContent=null;
-        if (mini!=null) mini.cancelInteraction();
+        if (mini != null) {
+            mini.cancelInteraction();
+            if (mini.trackFocused()) host.screen().setFocused(back);
+        }
+        if (nowLyrics != null) nowLyrics.cancelInteraction();
+        if (nowQueue != null) nowQueue.cancelInteraction();
         if (searchScroll != null) searchScroll.cancelInteraction();
         rows.forEach(MusicTextControl::cancelInteraction);
         refreshRows();
@@ -358,12 +376,26 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         }
         lyric.visible=page==Page.LYRICS;
         if (!lyric.visible) followLyrics.setVisible(false);
-        if(nowLyrics!=null) {
-            boolean show=page==Page.NOW_PLAYING;
-            nowLyrics.visible=show; nowQueue.visible=show;
-            nowLyrics.setAvailable(show); nowQueue.setAvailable(show);
+        boolean immersive = playerPage(page);
+        var playerLayout = !immersive ? null : page == Page.NOW_PLAYING ? nowPlaying : playerDetail;
+        var focused = host.screen().getFocused();
+        if (immersive && (focused == utility || nav.contains(focused))) host.screen().setFocused(back);
+        if (!immersive && (focused == nowLyrics || focused == nowQueue || focused == lyric)) host.screen().setFocused(back);
+        utility.setVisible(!immersive);
+        for (int i = 0; i < nav.size(); i++) {
+            nav.get(i).setVisible(!immersive);
+            nav.get(i).setSelected(MusicFrontendLayout.DESTINATIONS.get(i).name().equals(routes.rootPage().name()));
         }
-        for(int i=0;i<nav.size();i++) nav.get(i).setSelected(MusicFrontendLayout.DESTINATIONS.get(i).name().equals(routes.rootPage().name()));
+        if (immersive) {
+            nowLyrics.setX(playerLayout.lyrics().x()); nowLyrics.setY(playerLayout.lyrics().y());
+            nowQueue.setX(playerLayout.queue().x()); nowQueue.setY(playerLayout.queue().y());
+        }
+        nowLyrics.visible = immersive; nowQueue.visible = immersive;
+        boolean engaged = immersive && Minecraft.getInstance().isWindowActive();
+        nowLyrics.setAvailable(engaged); nowQueue.setAvailable(engaged);
+        nowLyrics.setInk(page == Page.LYRICS ? 0xffffb9c7 : INK);
+        nowQueue.setInk(page == Page.QUEUE ? 0xffffb9c7 : INK);
+        mini.immersive(playerLayout);
         queuePanel.updateVisible(page == Page.QUEUE);
         List<OnlineTrack> shown=searching?paintedMatches:List.of();
         for(int i=0;i<rows.size();i++) {
@@ -416,6 +448,10 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         int selectedTab = MusicFrontendLayout.DESTINATIONS.indexOf(MusicFrontendLayout.Route.valueOf(routes.rootPage().name()));
         var routeFrame = motion.sample(route, selectedTab, ui.nowMs(),
                 ui.preferences().reducedMotion() || ui.preferences().highContrast());
+        if (playerPage(page)) {
+            renderPlayer(ui, page, routeFrame);
+            return;
+        }
         contentFade = routeFrame.contentFade();
         var header=layout.header();
         var panel=layout.navigation();
@@ -456,22 +492,31 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                     body.width() - (catalog.canRetry() ? 107 : 62), MUTED);
         } else if (!status.isEmpty()) OnlineMusicViewPaint.line(ui,host.font(),label(status),body.x()+4,
                 body.y()+4,body.width()-8,MUTED);
-        if(page==Page.NOW_PLAYING && nowPlaying.usable()) {
-            var song=player.snapshot().track();
-            mini.paintCover(ui,routeFrame.artwork(nowPlaying.cover(), mini.coverBounds()),song);
-            var trackTitle=nowPlaying.title(); var subtitle=nowPlaying.subtitle();
-            OnlineMusicViewPaint.scaledLine(ui,host.font(),song==null?label("nothing_playing"):MusicTypography.text(song.title()),
-                    trackTitle.x(),trackTitle.y(),trackTitle.width(),INK,1.4f);
-            if(song!=null && subtitle.height()>=MusicTypography.LINE_HEIGHT) OnlineMusicViewPaint.line(ui,host.font(),MusicTypography.text(song.artist()),
-                    subtitle.x(),subtitle.y(),subtitle.width(),MUTED);
-        }
         accounts.render(ui, MUTED);
         sound.render(ui, MUTED);
         history.render(ui, MUTED);
+        mini.render(ui);
+    }
+
+    private void renderPlayer(UiFrame ui, Page page, MusicFrontendRouteMotion.Frame routeFrame) {
+        var placement = page == Page.NOW_PLAYING ? nowPlaying : playerDetail;
+        var song = player.snapshot().track();
+        mini.renderBackdrop(ui, layout.frame(), song);
+        back.setInk(INK, MUTED);
+        var art = placement.cover();
+        mini.paintCover(ui, page == Page.NOW_PLAYING ? routeFrame.artwork(art, mini.coverBounds()) : art, song);
+        var title = placement.title();
+        var artist = placement.subtitle();
+        OnlineMusicViewPaint.scaledLine(ui, host.font(),
+                MusicTypography.bold(song == null ? label("nothing_playing") : MusicTypography.text(song.title())),
+                title.x(), title.y(), title.width(), INK, page == Page.NOW_PLAYING ? 1.65f : 1.45f);
+        if (song != null) OnlineMusicViewPaint.line(ui, host.font(), MusicTypography.text(song.artist()),
+                artist.x(), artist.y(), artist.width(), MUTED);
         if(page==Page.LYRICS) {
             boolean engaged = Minecraft.getInstance().isWindowActive();
             var lyrics = transport.lyrics(engaged);
             lyric.preferences(ui.preferences());
+            lyric.palette(INK, 0xffddd8df, 0xff211e24);
             lyric.active = engaged;
             if (!Objects.equals(lyricContent, lyrics.content())) {
                 lyricContent = lyrics.content();
@@ -505,6 +550,8 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         sound.cancel();
         history.cancelInteraction();
         if (followLyrics != null) followLyrics.cancelInteraction();
+        if (nowLyrics != null) nowLyrics.cancelInteraction();
+        if (nowQueue != null) nowQueue.cancelInteraction();
         if (mini != null) mini.cancelInteraction();
         if (queuePanel != null) queuePanel.cancelInteraction();
     }

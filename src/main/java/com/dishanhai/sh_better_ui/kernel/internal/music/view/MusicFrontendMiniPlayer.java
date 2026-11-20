@@ -8,7 +8,9 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette;
 import com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicArtworkStage;
+import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.Minecraft;
 import java.util.Objects;
@@ -19,7 +21,9 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
     private final MusicFrontendTransport transport;
     private final OnlineArtworkTexture artwork = new OnlineArtworkTexture();
     private final MusicArtworkStage artworkPaint = new MusicArtworkStage();
-    private final Bounds surface, cover;
+    private final Placement placement;
+    private final Bounds cover;
+    private MusicFrontendNowPlayingLayout immersive;
     private final MusicTextControl track;
     private final MusicTransportControl previous, playPause, next;
     private final MusicSeekControl progress;
@@ -30,7 +34,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
     MusicFrontendMiniPlayer(PreviewContext host, Placement boxes, MusicFrontendTransport transport,
                             Runnable openNowPlaying) {
         this.transport = transport;
-        surface = boxes.surface();
+        placement = boxes;
         var meta = boxes.track();
         int artSize = Math.min(28, Math.max(0, Math.min(meta.height() - 4, meta.width() - 42)));
         cover = new Bounds(meta.x() + 4, meta.y() + (meta.height() - artSize) / 2, artSize, artSize);
@@ -47,6 +51,40 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         progress.setTimePreviewEnabled(true);
     }
 
+    void immersive(MusicFrontendNowPlayingLayout nextLayout) {
+        if (Objects.equals(immersive, nextLayout)) return;
+        cancelInteraction();
+        immersive = nextLayout;
+        track.visible = immersive == null;
+        if (!track.visible) track.setAvailable(false);
+        progress.setTimePreviewEnabled(immersive == null);
+        var boxes = immersive == null
+                ? new MusicFrontendLayout.Transport(placement.track(), placement.previous(), placement.playPause(),
+                        placement.next(), placement.progress())
+                : immersive.transport();
+        place(previous, boxes.previous());
+        place(playPause, boxes.playPause());
+        place(next, boxes.next());
+        place(progress, boxes.progress());
+    }
+
+    private static void place(AbstractWidget widget, Bounds bounds) {
+        widget.setX(bounds.x()); widget.setY(bounds.y());
+        widget.setWidth(bounds.width()); widget.setHeight(bounds.height());
+    }
+
+    void renderBackdrop(UiFrame ui, Bounds frame, OnlineTrack song) {
+        if (ui.preferences().highContrast()) {
+            ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(), 0xff000000);
+            return;
+        }
+        var palette = artwork.texture(song).map(OnlineArtworkTexture.Texture::palette)
+                .orElseGet(() -> ArtworkPalette.fallback(0xff3b333e));
+        artworkPaint.renderAudioBackground(ui, frame, palette, ui.nowMs(), true, 0f);
+        // A uniform scrim keeps even very light artwork behind white foreground text.
+        ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(), 0x33000000);
+    }
+
     void render(UiFrame ui) {
         if (closed) return;
         var frame = transport.frame();
@@ -57,7 +95,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
             renderedTrack = song;
         }
         boolean engaged = Minecraft.getInstance().isWindowActive();
-        track.setAvailable(song != null && engaged);
+        track.setAvailable(track.visible && song != null && engaged);
         previous.setAvailable(frame.previous() && engaged);
         next.setAvailable(frame.next() && engaged);
         var primary = frame.primary();
@@ -72,6 +110,12 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         }
         playPause.setAvailable(engaged && primary != MusicFrontendTransport.Primary.NONE);
         progress.sync(frame.seekKey(), frame.playback().positionMs(), frame.playback().durationMs(), frame.seekable() && engaged);
+        if (immersive != null) {
+            drawTimes(ui, progress.isEditing() ? progress.previewPositionMs() : frame.playback().positionMs(),
+                    frame.playback().durationMs());
+            return;
+        }
+        var surface = placement.surface();
         boolean contrast = ui.preferences().highContrast();
         RoundedCorners.draw(ui.graphics(), surface.x(), surface.y(), surface.width(), surface.height(),
                 contrast ? 6 : 11, contrast ? 1 : 0, 0xffffffff, contrast ? 0xff000000 : 0xf5242428);
@@ -79,6 +123,27 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
             paintCover(ui,cover,song);
         }
     }
+
+    private void drawTimes(UiFrame ui, long position, long duration) {
+        if (duration <= 0) return;
+        var font = Minecraft.getInstance().font;
+        position = Math.min(duration, Math.max(0, position));
+        var elapsed = MusicTypography.text(time(position));
+        var remaining = MusicTypography.text("−" + time(duration - position));
+        int ink = ui.preferences().highContrast() ? 0xffffffff : 0xffd7d4da;
+        var left = immersive.elapsed();
+        var right = immersive.remaining();
+        OnlineMusicViewPaint.line(ui, font, elapsed, left.x(), left.y() + 1, left.width(), ink);
+        int rightX = Math.max(right.x(), right.right() - font.width(remaining.getVisualOrderText()));
+        OnlineMusicViewPaint.line(ui, font, remaining, rightX, right.y() + 1, right.right() - rightX, ink);
+    }
+
+    private static String time(long millis) {
+        long s = millis / 1000;
+        return s / 60 + ":" + (s % 60 < 10 ? "0" : "") + s % 60;
+    }
+
+    boolean trackFocused() { return track.isFocused(); }
 
     Bounds coverBounds() { return cover; }
 

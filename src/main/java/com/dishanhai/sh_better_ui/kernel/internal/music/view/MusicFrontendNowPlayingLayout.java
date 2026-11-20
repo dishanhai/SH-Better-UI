@@ -3,31 +3,44 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 
-/** Keep artwork, title and secondary actions separate even when GUI scale leaves a short body. */
-record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle, Bounds lyrics, Bounds queue) {
-    static MusicFrontendNowPlayingLayout fit(Bounds body) {
-        var empty = new Bounds(body.x(), body.y(), 0, 0);
-        if (body.width() < 96 || body.height() < 58) {
-            return new MusicFrontendNowPlayingLayout(empty, empty, empty, empty, empty);
-        }
-        int actionY = body.bottom() - 26;
-        int width = body.width();
-        boolean stacked = width < 360 && body.height() >= 178;
-        int size = stacked
-            ? Math.min(192, Math.min(width - 24, body.height() - 77))
-            : Math.min(252, Math.min(width * 45 / 100, body.height() - 34));
-        int artX = stacked ? body.x() + (width - size) / 2 : body.x() + 8;
-        int artTop = stacked ? body.y() + 2 : body.y() + Math.max(2, (actionY - body.y() - size) / 2);
-        var cover = new Bounds(artX, artTop, size, size);
-        int textX = stacked ? body.x() + 8 : cover.right() + 12;
-        int textY = stacked ? cover.bottom() + 6 : body.y() + Math.max(4, (actionY - body.y() - 38) / 2);
-        int textWidth = body.right() - textX - 8;
-        var title = new Bounds(textX, textY, textWidth, 18);
-        var subtitle = new Bounds(textX, textY + 19, textWidth, Math.min(14, Math.max(0, actionY - textY - 19)));
-        var lyrics = new Bounds(body.right() - 58, actionY, 24, 24);
-        var queue = new Bounds(body.right() - 28, actionY, 24, 24);
-        return new MusicFrontendNowPlayingLayout(cover, title, subtitle, lyrics, queue);
-    }
+/** Immersive player geometry; every glyph uses the same rectangle for paint and input. */
+record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle, Bounds detail,
+                                    Bounds lyrics, Bounds queue, Bounds elapsed, Bounds remaining,
+                                    MusicFrontendLayout.Transport transport, boolean split) {
+    static MusicFrontendNowPlayingLayout fit(Bounds frame, boolean detailOpen) {
+        int inset = frame.width() >= 420 ? 24 : 16;
+        int width = frame.width() - 2 * inset;
+        boolean split = detailOpen && width >= 420;
+        int contentWidth = Math.min(width, split ? 810 : detailOpen ? 490 : 340);
+        int left = frame.x() + (frame.width() - contentWidth) / 2;
+        int top = frame.y() + 34;
+        int bottom = frame.bottom() - 12;
+        int modeY = bottom - 24;
+        int controlY = modeY - 29;
+        int progressY = controlY - 26;
+        int leftWidth = split ? Math.min(284, (contentWidth - 30) * 42 / 100) : contentWidth;
+        int center = left + leftWidth / 2;
+        var empty = new Bounds(left, top, 0, 0);
+        var transport = new MusicFrontendLayout.Transport(empty,
+                new Bounds(center - 62, controlY, 36, 28), new Bounds(center - 22, controlY - 1, 44, 30),
+                new Bounds(center + 26, controlY, 36, 28), new Bounds(left, progressY, leftWidth, 12));
+        var elapsed = new Bounds(left, progressY + 12, leftWidth / 2, 12);
+        var remaining = new Bounds(elapsed.right(), elapsed.y(), leftWidth - elapsed.width(), 12);
+        var lyrics = new Bounds(center - 38, modeY, 32, 24);
+        var queue = new Bounds(center + 6, modeY, 32, 24);
 
-    boolean usable() { return cover.width() > 0; }
+        int metadata = 38;
+        int size = detailOpen && !split ? 38 : Math.min(leftWidth, progressY - top - metadata);
+        int stageY = detailOpen && !split ? top : top + Math.max(0, (progressY - top - metadata - size) / 2);
+        var cover = new Bounds(detailOpen && !split ? left : center - size / 2, stageY, size, size);
+        int textX = detailOpen && !split ? cover.right() + 10 : left;
+        int textY = detailOpen && !split ? stageY + 2 : cover.bottom() + 6;
+        var title = new Bounds(textX, textY, left + leftWidth - textX, 18);
+        var subtitle = new Bounds(textX, title.bottom() + 1, title.width(), 12);
+
+        var detail = !detailOpen ? empty : split
+                ? new Bounds(left + leftWidth + 30, top, contentWidth - leftWidth - 30, bottom - top)
+                : new Bounds(left, cover.bottom() + 6, contentWidth, progressY - cover.bottom() - 7);
+        return new MusicFrontendNowPlayingLayout(cover, title, subtitle, detail, lyrics, queue, elapsed, remaining, transport, split);
+    }
 }
