@@ -337,7 +337,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); navigation.clear();
         routeMotion.reset(); scrollParallax.reset();
         host = context; layout = OnlineMusicLayout.of(context.viewport()); stage = null; queryField = null;
-        stageControls.clear(); stageQueueRows.clear(); stageLyricKey=null;
+        stageControls.clear(); stageQueueRows.clear(); stageLyricKey=null;searchHistory=null;
         queueControls.clear(); queueRows.clear(); queueRemoves.clear(); queueUps.clear(); queueDowns.clear(); boundQueueFirst = -1;
         sourceSegments=null;resultIdentities.clear();
         libraryHeaderControls.clear();librarySources=null;libraryGroups=null;discoveryInput=null;discoveryOpen=null;discoveryBrowse=null;listen1Path=null;listen1ImportButton=null;
@@ -407,6 +407,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             else item.setLeadingIcon(icon);
             navigation.add(item);
         }
+        if(layout.sidebar()&&operations()!=null)buildActivity(DefaultMusicChromeLayout.sidebarRow(n,4));
+    }
+    private void buildActivity(Bounds bounds) {
+        searchHistory=button(bounds,label("operations.short_title"),
+                ()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},null);
+        searchHistory.setVariant(MusicTextControl.Variant.NAVIGATION);
+        if(layout.sidebar())searchHistory.setLeadingIcon(MusicControlRenderer.Icon.HISTORY);
+        else searchHistory.setGlyphOnly(MusicControlRenderer.Icon.HISTORY);
+        searchHistory.setPreview(label("operations.title"));
     }
     private Bounds rowViewport;
     private List<Bounds> rowSlots;
@@ -573,17 +582,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         spotifySearch=button(new Bounds(searchRight+4,h.y()+2,spotifyWidth,22),
                 spotifyLabel,() -> openSpotify(queryField.getValue().isBlank()),searchControls);
         spotifySearch.setPreview(label("spotify.hint"));
-        searchHistory=null;
-        if(hasHistory){
-            var nav=layout.navigation();
-            var historyBounds=layout.sidebar()?DefaultMusicChromeLayout.sidebarRow(nav,4)
-                    :new Bounds(sourceBar.right()-24,sourceBar.y(),24,22);
-            searchHistory=button(historyBounds,label("operations.short_title"),()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},null);
-            searchHistory.setVariant(MusicTextControl.Variant.NAVIGATION);
-            if(layout.sidebar())searchHistory.setLeadingIcon(MusicControlRenderer.Icon.HISTORY);
-            else searchHistory.setGlyphOnly(MusicControlRenderer.Icon.HISTORY);
-            searchHistory.setPreview(label("operations.title"));
-        }
+        if(hasHistory&&!layout.sidebar())
+            buildActivity(new Bounds(sourceBar.right()-24,sourceBar.y(),24,22));
         visibleRows = layout.rows().size();
         for (var row : rowSlots) {
             int slot = resultRows.size();

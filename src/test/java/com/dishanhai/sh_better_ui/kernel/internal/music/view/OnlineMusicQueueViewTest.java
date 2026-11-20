@@ -561,11 +561,14 @@ class OnlineMusicQueueViewTest {
         for(int[] size:new int[][]{{208,240},{393,270},{590,406},{960,540}}) {
             var f=new Fixture();var host=new Host();host.width=size[0];host.height=size[1];f.view.layout(host);
             assertInstanceOf(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl.class,field(f.view,"seek"));
-            for(String name:List.of("playback","stop","lyricsToggle","miniQueue")) {
+            for(String name:List.of("playback","lyricsToggle","miniQueue")) {
                 var w=assertInstanceOf(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.class,field(f.view,name));
                 assertTrue(w.visible);assertTrue(w.getX()>=0);assertTrue(w.getX()+w.getWidth()<=size[0]);
                 assertTrue(w.getY()>=0);assertTrue(w.getY()+w.getHeight()<=size[1]);
             }
+            var more=assertInstanceOf(com.dishanhai.sh_better_ui.client.gui.scaled.UiButton.class,field(f.view,"miniMore"));
+            assertTrue(more.visible);
+            assertTrue(more.getX()+more.getWidth()<=size[0]);
             for(Object w:(List<?>)field(f.view,"navigation"))assertInstanceOf(MusicTextControl.class,w);
             assertInstanceOf(MusicTextControl.class,field(f.view,"searchButton"));
             ((Runnable)field(field(f.view,"miniQueue"),"action")).run();assertEquals("QUEUE",field(f.view,"page").toString());
@@ -911,7 +914,7 @@ class OnlineMusicQueueViewTest {
         } finally {release.countDown();}
     }
 
-    @Test void historyEntryLivesBesideSearchAndFitsSmallestLayout() throws Exception {
+    @Test void activityEntryLivesInTheToolRowAndFitsSmallestLayout() throws Exception {
         var release=new java.util.concurrent.CountDownLatch(0);
         try(var player=session(release)) {
             var view=new OnlineMusicViewImpl(player,false);var host=new Host();host.width=208;host.height=240;view.layout(host);
@@ -919,8 +922,10 @@ class OnlineMusicQueueViewTest {
             var query=(net.minecraft.client.gui.components.AbstractWidget)field(view,"queryField");
             var search=(MusicTextControl)field(view,"searchButton");
             assertTrue(entry.visible);assertTrue(entry.active);
-            assertTrue(query.getX()+query.getWidth()<=search.getX());
-            assertTrue(search.getX()+search.getWidth()<=entry.getX());
+            assertTrue(search.getX()+search.getWidth()<=query.getX());
+            assertTrue(entry.getY()+entry.getHeight()<=search.getY());
+            var clear=(MusicTextControl)field(view,"clearSearch");
+            assertTrue(query.getX()+query.getWidth()<=clear.getX());
             assertTrue(entry.getX()+entry.getWidth()<=host.width);
             assertFalse(((List<?>)field(view,"accountControls")).contains(entry));
             entry.onPress();assertEquals("HISTORY",field(view,"page").toString());
@@ -1064,7 +1069,7 @@ class OnlineMusicQueueViewTest {
                 }
             }
             var fullSearch=(MusicTextControl)field(view,"searchButton");
-            assertTrue(fullSearch.getX()+fullSearch.getWidth()<=entry.getX());
+            assertTrue(entry.getX()+entry.getWidth()<fullSearch.getX());
             host.width=208;host.height=240;view.layout(host);
             var compact=(MusicTextControl)field(view,"searchHistory");
             assertEquals(24,compact.getWidth());
@@ -1122,12 +1127,10 @@ class OnlineMusicQueueViewTest {
             assertNotNull(spotify);
             assertTrue(spotify.active);
             var mixes = view.spotifyExternalControl(true);
-            assertNotNull(mixes);
-            assertTrue(mixes.active);
-            assertTrue(mixes.getX() + mixes.getWidth() <= 208);
-            assertTrue(mixes.getY() + mixes.getHeight() <= nativeSearch.getY());
-            assertTrue(nativeSearch.getX()+nativeSearch.getWidth() <= spotify.getX());
-            assertTrue(spotify.getX()+spotify.getWidth() <= history.getX());
+            assertSame(spotify,mixes,"one handoff control for search and recommendations");
+            assertTrue(spotify.getX()+spotify.getWidth()<=208);
+            assertTrue(history.getY()+history.getHeight()<=spotify.getY());
+            assertTrue(nativeSearch.getX()+nativeSearch.getWidth()<=spotify.getX());
             assertFalse(player.sources().contains("spotify"));
             queuePage(view);
             assertNull(view.spotifySearchControl());
