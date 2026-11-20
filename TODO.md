@@ -742,3 +742,9 @@ PR #1 整合快照以 JDK 21 編譯核心並保留 Java 17 classfile。雙端 `k
 
 - [ ] 在 Forge 1.20.1、NeoForge 1.21.1、26.1.2 客户端验收开发者图库的 PillNav：深浅主题、分离／合并、填充与翻滚、滑块与圆点、尺寸与材质、自动折叠、滚轮菜单、按压拖离取消、Esc、失焦、受控选择、资源重载、GUI 缩放、高对比、减少动效与旁白；逐帧对照所给 React/CSS 源码。
 - [ ] 全量回归：2026-11-16 的 PillNav 验证中，Forge／NeoForge 1.21.1 均在 `GraphicIconShaderTest.builtInShadersReferenceTheirPackagedFragmentsAndSharedVertexStage` 出现一项非 PillNav 失败。待图标效果的工作区改动稳定后重新执行全量 `build`；本次不覆盖该功能的未提交修改。
+
+### 預設音樂播放器畫面驗收
+
+- [ ] 補拍原版和修改後的 Minecraft 實機對照：GUI 寬度 360 / 560 / 864 / 960，各用縮放 2 / 3 / 4，另驗深色、淺色、高對比及無模糊；緊湊版另驗 208×240。
+- [ ] 實機檢查鍵盤焦點順序、旁白、迷你播放器更多選單，以及播放進度控件按下、拖動、放開、取消和邊界。
+- [ ] 驗證 NeoForge 1.21.1 的 `test kernelTest build verifyLibraryJar` 與 NeoForge 26.x 提取式渲染。雲環境不能下載 1.21.1 的 Gradle wrapper 時，改用已有 Gradle 9.2.1 的工作機。

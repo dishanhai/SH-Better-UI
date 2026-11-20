@@ -36,20 +36,25 @@ final class MusicGlass {
     }
 
     static void chrome(UiFrame ui, Bounds first, Bounds second) {
-        chrome(ui, first, second, false);
+        chrome(ui, first, second, null, false);
     }
 
     static void paletteChrome(UiFrame ui, Bounds first, Bounds second) {
-        int ink = UiTheme.current().text();
-        boolean darkInk = ((ink >> 16 & 255) * 54 + (ink >> 8 & 255) * 183 + (ink & 255) * 19) < 128 * 256;
-        chrome(ui, first, second, darkInk);
+        paletteChrome(ui,first,second,null);
     }
 
-    private static void chrome(UiFrame ui, Bounds first, Bounds second, boolean lightSurface) {
+    static void paletteChrome(UiFrame ui, Bounds first, Bounds second, Bounds third) {
+        int ink = UiTheme.current().text();
+        boolean darkInk = ((ink >> 16 & 255) * 54 + (ink >> 8 & 255) * 183 + (ink & 255) * 19) < 128 * 256;
+        chrome(ui, first, second, third, darkInk);
+    }
+
+    private static void chrome(UiFrame ui, Bounds first, Bounds second, Bounds third, boolean lightSurface) {
         // Always submit related plates together, before artwork or widgets can enter the snapshot.
-        var areas = new ArrayList<Bounds>(2);
+        var areas = new ArrayList<Bounds>(3);
         if (nonEmpty(first)) areas.add(first);
         if (nonEmpty(second)) areas.add(second);
+        if (nonEmpty(third)) areas.add(third);
         if (areas.isEmpty()) return;
         boolean optical = ui.preferences().useBackdropBlur() && MusicGlassPlatform.draw(ui, areas, lightSurface);
         if (!optical) for (var area : areas) fallback(ui, area, lightSurface);

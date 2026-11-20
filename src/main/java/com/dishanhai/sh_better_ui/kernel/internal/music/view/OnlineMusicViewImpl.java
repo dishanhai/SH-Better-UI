@@ -388,7 +388,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         int offset=exitControl==null?0:30;
         int tabWidth=Math.max(1,(n.width()-offset)/5);
         for(var target:List.of(Page.SEARCH,Page.LIBRARY,Page.LYRICS,Page.QUEUE,Page.ACCOUNTS)) {
-            var box=layout.sidebar()?new Bounds(n.x()+6,n.y()+34+(target==Page.ACCOUNTS&&operations()!=null?5:target.ordinal())*Math.min(30,(n.height()-40)/6),n.width()-12,Math.min(28,(n.height()-40)/6-2))
+            var box=layout.sidebar()?DefaultMusicChromeLayout.sidebarRow(n,target==Page.ACCOUNTS?5:target.ordinal())
                     :new Bounds(n.x()+offset+target.ordinal()*tabWidth,n.y(),tabWidth,26);
             var item=button(box,label("view."+target.name().toLowerCase(Locale.ROOT)),()->navigate(target),null);
             item.setVariant(MusicTextControl.Variant.NAVIGATION);item.setPreview(item.getMessage());
@@ -576,8 +576,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         searchHistory=null;
         if(hasHistory){
             var nav=layout.navigation();
-            int pitch=Math.min(30,(nav.height()-40)/6);
-            var historyBounds=layout.sidebar()?new Bounds(nav.x()+6,nav.y()+34+4*pitch,nav.width()-12,pitch-2)
+            var historyBounds=layout.sidebar()?DefaultMusicChromeLayout.sidebarRow(nav,4)
                     :new Bounds(sourceBar.right()-24,sourceBar.y(),24,22);
             searchHistory=button(historyBounds,label("operations.short_title"),()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},null);
             searchHistory.setVariant(MusicTextControl.Variant.NAVIGATION);
@@ -2163,8 +2162,16 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         else if (defaultGlassCanvas && !immersive && !ui.preferences().highContrast()) MusicGlass.canvas(ui, layout.frame());
         else OnlineMusicViewPaint.panel(ui, layout.frame(), theme.background() | 0xff000000, false);
 
-        if (glass && !immersive)
-            MusicGlass.paletteChrome(ui, layout.navigation(), layout.transport());
+        if (!immersive){
+            var c=layout.content();
+            var mainPlate=new Bounds(c.x()-3,c.y()-2,c.width()+6,c.height()+4);
+            if(glass)MusicGlass.paletteChrome(ui,layout.navigation(),layout.transport(),mainPlate);
+            else {
+                int fill=theme.surface()|0xff000000;
+                RoundedCorners.draw(ui.graphics(),mainPlate.x(),mainPlate.y(),mainPlate.width(),mainPlate.height(),9,
+                        ui.preferences().highContrast()?1.5f:1f,theme.border(),fill);
+            }
+        }
         if (layout.sidebar() && !immersive) {
             if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
             text(ui, MusicTypography.bold(label("view.brand")), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
@@ -2382,6 +2389,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(!windowActive)seek.cancelInteraction();
         updateMiniMetadata(current);
         miniMore.active=windowActive&&canStop(state);
+        if(!nowPlayingMenus.supported())miniMore.setMessage(label(state==OnlineMusicPlayer.State.LOADING?"cancel":"stop"));
         var playBounds=MusicMiniPlayerLayout.of(layout.transport(),layout.expanded()).play();
         int side=Math.min(playBounds.width(),playBounds.height());
         var theme=UiTheme.current();
@@ -2391,10 +2399,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var t = layout.transport();
         var elapsed=MusicTypography.text(time(seek.previewPositionMs()));
         var remaining=MusicTypography.text("−" + time(Math.max(0,current.durationMs()-seek.previewPositionMs())));
-        int leftWidth=seek.getX()-t.x()-12,rightLimit=t.right()-8;
-        int remainingWidth=Math.min(rightLimit-(seek.getX()+seek.getWidth())-4,host.font().width(remaining));
-        muted(ui,elapsed,t.x()+8,seek.getY()+4,leftWidth);
-        muted(ui,remaining,rightLimit-remainingWidth,seek.getY()+4,remainingWidth);
+        var leftTime=DefaultMusicChromeLayout.elapsed(t,layout.seekBar());
+        var rightTime=DefaultMusicChromeLayout.remaining(t,layout.seekBar(),host.font().width(remaining));
+        muted(ui,elapsed,leftTime.x(),leftTime.y(),leftTime.width());
+        muted(ui,remaining,rightTime.x(),rightTime.y(),rightTime.width());
         var status = state == OnlineMusicPlayer.State.FAILED ? label("failure." + current.failure().name().toLowerCase(Locale.ROOT))
                 : label("state." + state.name().toLowerCase(Locale.ROOT));
         if (current.preview()) status = label("preview").append(" · ").append(status);
