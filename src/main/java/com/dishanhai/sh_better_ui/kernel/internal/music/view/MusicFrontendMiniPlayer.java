@@ -85,7 +85,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(), 0x33000000);
     }
 
-    void render(UiFrame ui) {
+    void render(UiFrame ui, boolean glass) {
         if (closed) return;
         var frame = transport.frame();
         var song = frame.playback().track();
@@ -117,7 +117,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         }
         var surface = placement.surface();
         boolean contrast = ui.preferences().highContrast();
-        RoundedCorners.draw(ui.graphics(), surface.x(), surface.y(), surface.width(), surface.height(),
+        if (!glass) RoundedCorners.draw(ui.graphics(), surface.x(), surface.y(), surface.width(), surface.height(),
                 contrast ? 6 : 11, contrast ? 1 : 0, 0xffffffff, contrast ? 0xff000000 : 0xf5242428);
         if (cover.width() > 0) {
             paintCover(ui,cover,song);

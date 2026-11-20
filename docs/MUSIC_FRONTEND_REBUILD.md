@@ -1,6 +1,6 @@
 # Apple Music-inspired native frontend rebuild
 
-The new workspace is an opt-in implementation slice, not a redesign of the legacy screen's colors. The default music screen is unchanged until parity and in-game visual acceptance. To try the new workspace, add `-Dshbui.music.previewRedesign=true` to the client JVM arguments and open the existing music menu. The built-in preview borrows the same kernel-owned player, queue and HUD bridge as the stock route. Exiting the workspace closes only its UI, local requests and Apple browser listener; playback and HUD controls remain live. The ordinary route stays the default. Activity-notice links follow the same preview flag and select only the original operation in the shared session history. This does not update the release modpack.
+The new workspace is an opt-in implementation slice, not a redesign of the legacy screen's colors. The default music layout is unchanged until parity and in-game visual acceptance. To try the new workspace, add `-Dshbui.music.previewRedesign=true` to the client JVM arguments and open the existing music menu. The built-in preview borrows the same kernel-owned player, queue and HUD bridge as the stock route. Exiting the workspace closes only its UI, local requests and Apple browser listener; playback and HUD controls remain live. The ordinary route stays the default. Activity-notice links follow the same preview flag and select only the original operation in the shared session history. This does not update the release modpack.
 
 ## Layout and behavior
 
@@ -23,3 +23,9 @@ The new workspace is an opt-in implementation slice, not a redesign of the legac
 - In-game Forge 1.20.1 preview smoke used a local playback fixture on draft baseline `f5b4bc4`. Wide and narrow lyrics rendered with readable CJK text; native input opened Now Playing → Lyrics and Settings → Accounts. This was not a real provider login, audio or lyric-animation test.
 - Regression coverage checks three acceptance issues: a painted Cancel cannot become Sign Out on QR confirmation, a Settings subpage returns to the same row and page on narrow layouts, and a search result cannot enqueue after its account context is invalidated.
 - Outstanding acceptance: actual QQ, NetEase and Apple login and playback, real audio continuity and lyric scrubbing, and in-game keyboard focus, reduced motion and high contrast. Do not bundle Apple fonts, logos or app assets.
+
+## Music appearance
+
+Liquid Glass is now the default **music chrome** under the default SHBUI palette, on both the ordinary player and the opt-in workspace above. The layout option is independent of the theme. The native material is limited to navigation and playback controls, using one backdrop snapshot per batch. Covers, lyrics, queue text, and focus indicators are painted after those surfaces and never fed back through them.
+
+Light, QQ and other non-glass custom themes continue to use their previous surfaces; registered glass themes keep glass. To keep the old dark music appearance without changing the global palette, add `-Dshbui.music.theme=classic` to the client JVM arguments. No existing options are rewritten. High contrast, disabling blur or disabling glass sampling, and unavailable backdrop capture fall back to solid chrome.

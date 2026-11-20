@@ -7,6 +7,12 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle, Bounds detail,
                                     Bounds lyrics, Bounds queue, Bounds elapsed, Bounds remaining,
                                     MusicFrontendLayout.Transport transport, boolean split) {
+    Bounds transportChrome() {
+        var progress = transport.progress();
+        // Stay below compact lyrics, and stay in the same column as the controls.
+        return new Bounds(progress.x(), progress.y(), progress.width(), queue.bottom() - progress.y());
+    }
+
     static MusicFrontendNowPlayingLayout fit(Bounds frame, boolean detailOpen) {
         int inset = frame.width() >= 420 ? 24 : 16;
         int width = frame.width() - 2 * inset;

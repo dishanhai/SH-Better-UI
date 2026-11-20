@@ -438,8 +438,12 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         contentFade = 0;
         if(closed||layout==null)return;
         var frame=layout.frame();
-        ui.graphics().fill(frame.x(),frame.y(),frame.right(),frame.bottom(),0xff171719);
-        if(!layout.supported()) { OnlineMusicViewPaint.line(ui,host.font(),label("small"),frame.x()+4,frame.y()+4,frame.width()-8,INK); return; }
+        boolean glass = MusicGlass.active();
+        if (!layout.supported()) {
+            paintBrowsingCanvas(ui, frame, glass);
+            OnlineMusicViewPaint.line(ui, host.font(), label("small"), frame.x()+4, frame.y()+4, frame.width()-8, INK);
+            return;
+        }
         catalog.poll();
         refreshRows();
         var route = routes.current();
@@ -448,17 +452,16 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         var routeFrame = motion.sample(route, selectedTab, ui.nowMs(),
                 ui.preferences().reducedMotion() || ui.preferences().highContrast());
         if (playerPage(page)) {
-            renderPlayer(ui, page, routeFrame);
+            renderPlayer(ui, page, routeFrame, glass);
             return;
         }
+        paintBrowsingCanvas(ui, frame, glass);
         contentFade = routeFrame.contentFade();
         var header=layout.header();
         var panel=layout.navigation();
-        if(layout.mode()==MusicFrontendLayout.Mode.DESKTOP) {
-            RoundedCorners.draw(ui.graphics(),panel.x(),panel.y(),panel.width(),panel.height(),9,0,0,0xff212124);
-        }
-        if (layout.mode() == MusicFrontendLayout.Mode.COMPACT)
-            RoundedCorners.draw(ui.graphics(),panel.x(),panel.y(),panel.width(),panel.height(),8,0,0,0xff212124);
+        if (glass) MusicGlass.chrome(ui, panel, layout.transport());
+        else RoundedCorners.draw(ui.graphics(), panel.x(), panel.y(), panel.width(), panel.height(),
+                layout.mode() == MusicFrontendLayout.Mode.DESKTOP ? 9 : 8, 0, 0, 0xff212124);
         paintTabIndicator(ui, routeFrame.tabPosition());
         for (int i = 0; i < nav.size(); i++) {
             boolean selected = i == selectedTab;
@@ -494,13 +497,20 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         accounts.render(ui, MUTED);
         sound.render(ui, MUTED);
         history.render(ui, MUTED);
-        mini.render(ui);
+        mini.render(ui, glass);
     }
 
-    private void renderPlayer(UiFrame ui, Page page, MusicFrontendRouteMotion.Frame routeFrame) {
+    private static void paintBrowsingCanvas(UiFrame ui, Bounds frame, boolean glass) {
+        if (glass && !ui.preferences().highContrast()) MusicGlass.canvas(ui, frame);
+        else ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(),
+                glass ? 0xff000000 : 0xff171719);
+    }
+
+    private void renderPlayer(UiFrame ui, Page page, MusicFrontendRouteMotion.Frame routeFrame, boolean glass) {
         var placement = page == Page.NOW_PLAYING ? nowPlaying : playerDetail;
         var song = player.snapshot().track();
         mini.renderBackdrop(ui, layout.frame(), song);
+        if (glass) MusicGlass.chrome(ui, placement.transportChrome(), null);
         back.setInk(INK, MUTED);
         if (page == Page.LYRICS || page == Page.QUEUE) {
             var selected = page == Page.LYRICS ? placement.lyrics() : placement.queue();
@@ -534,13 +544,14 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             followLyrics.setAvailable(engaged);
         }
         queuePanel.render(ui, MUTED);
-        mini.render(ui);
+        mini.render(ui, glass);
     }
     /** Paint only the destination body; nav, MiniPlayer, keyboard focus and hit testing stay live. */
     void renderRouteHandoff(UiFrame ui) {
         if (closed || layout == null || contentFade <= 0) return;
         var body = layout.body();
-        ui.graphics().fill(body.x(), body.y(), body.right(), body.bottom(), (contentFade << 24) | 0x171719);
+        int background = MusicGlass.active() ? MusicGlass.DARK : 0xff171719;
+        ui.graphics().fill(body.x(), body.y(), body.right(), body.bottom(), (contentFade << 24) | (background & 0xffffff));
     }
 
     boolean permitsScreenClose() { return !backFromRoute(); }

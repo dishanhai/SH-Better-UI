@@ -38,6 +38,30 @@ class MusicFrontendNowPlayingLayoutTest {
         }
     }
 
+    @Test void glassChromeContainsTransportAndDoesNotCoverArtworkOrDetails() {
+        for (int width : List.of(208, 320, 451, 452, 560, 900)) {
+            for (int height : List.of(240, 300, 550)) {
+                for (boolean detail : List.of(false, true)) {
+                    var frame = new Bounds(12, 17, width, height);
+                    var layout = MusicFrontendNowPlayingLayout.fit(frame, detail);
+                    var box = layout.transportChrome();
+                    var t = layout.transport();
+                    for (var control : List.of(t.progress(), t.previous(), t.playPause(), t.next(),
+                            layout.elapsed(), layout.remaining(), layout.lyrics(), layout.queue())) {
+                        assertTrue(box.x() <= control.x() && box.right() >= control.right());
+                        assertTrue(box.y() <= control.y() && box.bottom() >= control.bottom());
+                    }
+                    for (var content : List.of(layout.cover(), layout.title(), layout.subtitle(), layout.detail())) {
+                        assertTrue(content.width() == 0 || content.right() <= box.x() || content.x() >= box.right()
+                                || content.bottom() <= box.y(), "Glass chrome must not sit behind the reading pane");
+                    }
+                    assertTrue(box.x() >= frame.x() && box.right() <= frame.right()
+                            && box.y() >= frame.y() && box.bottom() <= frame.bottom());
+                }
+            }
+        }
+    }
+
     @Test void coverLeadsInNowPlayingAndOnlyBecomesThumbnailInCompactDetail() {
         var narrow = new Bounds(0, 0, 320, 300);
         var album = MusicFrontendNowPlayingLayout.fit(narrow, false);

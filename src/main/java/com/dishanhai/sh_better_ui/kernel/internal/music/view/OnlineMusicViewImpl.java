@@ -1888,19 +1888,24 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 searchRowsRevision, current.track()), ui.nowMs(),
                 ui.preferences().reducedMotion() || ui.preferences().highContrast()
                         || seek!=null && seek.isEditing() || stageSeek!=null && stageSeek.isEditing());
+        boolean glass = MusicGlass.active();
         if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
         else if (!immersive && (page==Page.SEARCH || page==Page.LIBRARY || page==Page.QUEUE || page==Page.LYRICS) && !ui.preferences().highContrast()) {
             var palette = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette(
                     com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.accent()|0xff000000,.045f),
-                    theme.background()|0xff000000, theme.background()|0xff000000,
+                    glass ? MusicGlass.DARK : theme.background()|0xff000000,
+                    glass ? MusicGlass.CANVAS_TOP : theme.background()|0xff000000,
                     com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.surface()|0xff000000,.16f));
             paintParallaxBackground(ui,layout.frame(),()->com.dishanhai.sh_better_ui.client.gui.scaled.MusicArtworkStageRender.background(
                     ui.graphics(),parallaxBounds(layout.frame()),palette,0,true));
         }
+        else if (glass && !immersive && !ui.preferences().highContrast()) MusicGlass.canvas(ui, layout.frame());
         else OnlineMusicViewPaint.panel(ui, layout.frame(), theme.background() | 0xff000000, false);
 
+        if (glass && !immersive)
+            MusicGlass.chrome(ui, layout.navigation(), layout.transport());
         if (layout.sidebar() && !immersive) {
-            OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
+            if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
             text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
 
         }
@@ -1917,10 +1922,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 ui.nowMs(), ui.preferences().reducedMotion() || ui.preferences().highContrast());
         var visual = visualMotion.sample(System.nanoTime() / 1_000_000L, ui.preferences().reducedMotion(),
                 current.state() == OnlineMusicPlayer.State.PLAYING);
-        if (immersive) { seek.cancelInteraction(); renderImmersive(ui, current); return; }
+        if (immersive) { seek.cancelInteraction(); renderImmersive(ui, current, glass); return; }
         stageSeek.sync(current.track()==null?"":trackKey(current.track()),current.positionMs(),current.durationMs(),false);
         stageVolume.sync("volume",0,1000,false);
-        OnlineMusicViewPaint.transportSurface(ui, layout.transport(), Math.max(visual.activity(),visual.emphasis()));
+        if (!glass) OnlineMusicViewPaint.transportSurface(ui, layout.transport(), Math.max(visual.activity(),visual.emphasis()));
         if (layout.expanded()) {
             if (page != Page.LYRICS) OnlineMusicViewPaint.hero(ui, host.font(), browsingHero(), label("view.brand"),
                     page==Page.LIBRARY&&(library==Library.TRACKS||library==Library.DISCOVERY_TRACKS)&&selectedPlaylist!=null?MusicTypography.text(selectedPlaylist.name()):label("refresh." + page.name().toLowerCase(Locale.ROOT)), Component.empty(), visual.emphasis());
@@ -2123,7 +2128,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         OnlineMusicViewPaint.clip(ui,clip);
         try { paint.run(); } finally { OnlineMusicViewPaint.unclip(ui); }
     }
-    private void renderImmersive(UiFrame ui,OnlineMusicPlayer.Snapshot current) {
+    private void renderImmersive(UiFrame ui, OnlineMusicPlayer.Snapshot current, boolean glass) {
         boolean failed=current.state()==OnlineMusicPlayer.State.FAILED;
         if(failed!=stageFailure){stageFailure=failed;stage=FullscreenLyricLayout.of(layout.frame(),shellBack==null,failed,stagePage!=StagePage.ARTWORK);updateStageGeometry();}
         var loaded=artwork.texture(current.track());
@@ -2132,6 +2137,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
                     current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
         });
+        if (glass) MusicGlass.chrome(ui, stage.transport(), null);
         int ink=ui.preferences().highContrast()?UiTheme.current().text():MusicArtworkStage.FOREGROUND;
         int secondary=ui.preferences().highContrast()?ink:MusicArtworkStage.SECONDARY;
         var cover=loaded.orElse(null);
