@@ -35,6 +35,7 @@ public final class MusicLyricsView extends AbstractWidget {
     private long lastFrame,observedPosition=-1;
     private boolean layoutDirty=true;
     private boolean completeRowsOnly;
+    private boolean immersiveReading;
     private boolean seekingPreview, previewChanged;
     private Font layoutFont;
     private net.minecraft.locale.Language layoutLanguage;
@@ -84,6 +85,8 @@ public final class MusicLyricsView extends AbstractWidget {
                 &&Double.isFinite(viewportHeight)&&rowHeight>0&&viewportHeight>=rowHeight
                 &&rowY>=top&&rowY-top<=viewportHeight-rowHeight;
     }
+    /** Stronger visual hierarchy and stable resting baselines for a full-screen player. */
+    public void immersiveReading(boolean value){immersiveReading=value;}
     public boolean browsing(){return model.browsing();}
     public void follow(){
         model.follow();
@@ -176,11 +179,15 @@ public final class MusicLyricsView extends AbstractWidget {
                 ?LyricInterlude.at(model.lines(),position):null;
         double gapY=gap==null?0:tops[gap.next()]-MusicTypography.LINE_HEIGHT*scale;
         int previewAnchor=seekingPreview||previewChanged?model.previewAnchor():-1;
+        double previousOffset=offset;
         if(!model.browsing()&&(current>=0||gap!=null||previewAnchor>=0)){
             double target=clamp((current>=0?tops[current]:gap!=null?gapY:tops[previewAnchor])-height*.24);
             if(snap)followMotion.reset(target);
             offset=clamp(followMotion.step(target,frameSeconds));
         }else followMotion.reset(offset);
+        boolean stillRows=immersiveReading&&!seekingPreview
+                &&(preferences.reducedMotion()||(!previewChanged&&offset==previousOffset&&followMotion.settled()));
+        double framebufferScale=stillRows?Minecraft.getInstance().getWindow().getGuiScale():1d;
         previewChanged=false;observedPosition=position;observedActive=current;lastFrame=now;
         int hovered=isMouseOver(mx,my)?hit(my):-1;
         int ink=ContrastPolicy.readable(primary,0,backdrop,4.5);
@@ -197,6 +204,8 @@ public final class MusicLyricsView extends AbstractWidget {
                 double pitch=Math.max(MusicTypography.LINE_HEIGHT*scale,heights[i])+Math.min(10*scale,height*.25);
                 float distanceFade=depthShading?LyricWordEffects.distanceInkFade(y,getY()+height*.24,pitch)
                         :LyricPresentation.distanceFade(i-current);
+                if(immersiveReading&&depthShading&&!model.browsing()&&current>=0)
+                    distanceFade=LyricWordEffects.stageInkFade(distanceFade,y,getY()+height*.24,pitch);
                 int subdued=preferences.highContrast()?ink:ContrastPolicy.readable(
                         GuiMotion.lerpColor(ink,secondary,distanceFade),0,backdrop,3);
                 int color=GuiMotion.lerpColor(subdued,ink,emphasis[i]);
@@ -216,14 +225,15 @@ public final class MusicLyricsView extends AbstractWidget {
                             rowY-getY()+MusicTypography.LINE_HEIGHT*scale*.5,height,
                             Math.min(height*.22,MusicTypography.LINE_HEIGHT*scale*1.65));
                     if(edge<.035f)continue;
+                    double paintY=LyricWordEffects.restingBaseline(rowY,framebufferScale,stillRows);
                     // Render one glyph image. Shifted copies (even cross-faded) double dense strokes.
                     if(sweep){
                         int pending=GuiMotion.lerpColor(color,pendingInk,emphasis[i]);
                         drawTimedRow(g,font,timed.rows().get(row),timed.geometry(),line,
-                                position,rowY,opacity(pending,edge),opacity(color,edge),!snap&&!model.browsing());
+                                position,paintY,opacity(pending,edge),opacity(color,edge),!snap&&!model.browsing());
                     }else {
                         if(wordTiming)part=timedColors(part,line,position,pendingInk,ink);
-                        drawPart(g,font,part,rowY,opacity(color,edge));
+                        drawPart(g,font,part,paintY,opacity(color,edge));
                     }
                 }
             }

@@ -67,4 +67,25 @@ class LyricWordEffectsTest {
         assertEquals(1,LyricWordEffects.rowOpacity(false,100,100,20));
         assertEquals(1,LyricWordEffects.rowOpacity(true,0,100,0));
     }
+    @Test void stageContrastFavorsCurrentAndUpcomingVersusFinishedRows() {
+        float upcoming=LyricWordEffects.stageInkFade(.60f,140,100,40);
+        float finished=LyricWordEffects.stageInkFade(.60f,60,100,40);
+        assertTrue(upcoming>.60f && finished>upcoming);
+        assertEquals(.96f,LyricWordEffects.stageInkFade(.76f,60,100,40));
+    }
+
+    @Test void restingGlyphOriginSnapsAtTheDeviceScaleWithoutRoundingMotion() {
+        double row=41.24;
+        assertEquals(41,LyricWordEffects.restingBaseline(row,2,true));
+        assertEquals(41+1d/3,LyricWordEffects.restingBaseline(row,3,true));
+        assertEquals(row,LyricWordEffects.restingBaseline(row,3,false));
+        assertEquals(row,LyricWordEffects.restingBaseline(row,0,true));
+        var spring=new LyricFollowMotion();
+        spring.reset(0);
+        assertTrue(spring.settled());
+        spring.step(30,.016);
+        assertFalse(spring.settled());
+        spring.step(30,2);
+        assertTrue(spring.settled());
+    }
 }

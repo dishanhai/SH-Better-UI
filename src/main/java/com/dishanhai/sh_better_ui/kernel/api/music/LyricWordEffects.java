@@ -48,6 +48,18 @@ final class LyricWordEffects {
         return .36f + .40f * focusDistance(rowY, anchorY, rowPitch);
     }
 
+    /** Suppress finished lines a little more strongly than the upcoming words. */
+    static float stageInkFade(float regular, double y, double anchorY, double pitch) {
+        float lead = pitch > 0 ? smooth((float)((anchorY - y) / pitch)) : 0;
+        return Math.min(.96f, regular + .24f + .11f * lead);
+    }
+
+    /** Paint-only correction; keep the measured rows and moving scroll at full precision. */
+    static double restingBaseline(double y, double physicalScale, boolean still) {
+        return still && physicalScale > 0 && Double.isFinite(physicalScale)
+                ? Math.rint(y * physicalScale) / physicalScale : y;
+    }
+
     /** Only peripheral rows fade into the clip edge; reading/focused rows keep full ink. */
     static float rowOpacity(boolean peripheral, double y, double height, double fadeHeight) {
         if (!peripheral || !(fadeHeight > 0)) return 1;

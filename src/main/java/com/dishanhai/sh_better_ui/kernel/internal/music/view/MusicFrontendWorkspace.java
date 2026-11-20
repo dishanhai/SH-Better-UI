@@ -177,6 +177,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         }
         lyric = ctx.add(new MusicLyricsView(playerDetail.detail(), heading(Page.LYRICS), ctx.preferences(), this::seekLyric));
         lyric.scale(playerDetail.split() ? 2.3f : 2f);
+        lyric.immersiveReading(true);
         followLyrics = control(new Bounds(layout.frame().right() - 108, layout.frame().y() + 8, 96, 22),
                 Component.translatable("sh_better_ui.online_music.view.follow_lyrics"), () -> {
                     lyric.follow();
@@ -520,7 +521,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             boolean engaged = Minecraft.getInstance().isWindowActive();
             var lyrics = transport.lyrics(engaged);
             lyric.preferences(ui.preferences());
-            lyric.palette(INK, 0xffddd8df, 0xff211e24);
+            lyric.palette(INK, 0xff9b909d, 0xff403642);
             lyric.active = engaged;
             if (!Objects.equals(lyricContent, lyrics.content())) {
                 lyricContent = lyrics.content();
