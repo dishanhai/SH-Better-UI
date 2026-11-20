@@ -108,7 +108,7 @@ record MusicFrontendLayout(Bounds frame, boolean supported, Mode mode, Bounds ba
         var previous = new Bounds(first, y + 4, 24, 24);
         var playPause = new Bounds(first + 28, y + 4, 24, 24);
         var next = new Bounds(first + 56, y + 4, 24, 24);
-        var progress = new Bounds(x, bar.bottom() - 14, right - x, 10);
+        var progress = new Bounds(x, bar.bottom() - 14, right - x, 12);
         return new Transport(metadata, previous, playPause, next, progress);
     }
 }

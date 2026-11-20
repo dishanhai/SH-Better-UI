@@ -10,6 +10,14 @@ import static com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFronten
 import static org.junit.jupiter.api.Assertions.*;
 
 class MusicFrontendLayoutTest {
+    @Test void minimumLayoutProvidesUsableNativeControlHitAreas() {
+        var p = MusicFrontendLayout.compute(new Bounds(0,0,208,240), MusicFrontendLayout.Route.QUEUE, false);
+        assertTrue(p.supported());
+        assertTrue(p.transportControls().progress().height() >= 12);
+        assertTrue(p.transportControls().progress().width() >= 16);
+        assertTrue(p.body().height() >= 70);
+    }
+
     @Test void compactNavigationFollowsMiniPlayerAndReservesOnlyThreePrimaryDestinations() {
         var layout = compute(new Bounds(12, -3, 208, 240), Route.SEARCH, true);
         assertEquals(Mode.COMPACT, layout.mode());

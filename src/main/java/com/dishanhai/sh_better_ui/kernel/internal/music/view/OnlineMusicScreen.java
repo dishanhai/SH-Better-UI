@@ -29,8 +29,10 @@ public final class OnlineMusicScreen {
     public static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
         return create(parent, returnFocus, () -> {
             var music = UnifiedUI.get().require(OnlineMusicService.KEY);
-            return Boolean.getBoolean(MusicFrontendWorkspace.PREVIEW_FLAG)
-                    ? new MusicFrontendWorkspace(music.open()) : music.backgroundView();
+            if (Boolean.getBoolean(MusicFrontendWorkspace.PREVIEW_FLAG) && music instanceof ClientOnlineMusic nativeMusic) {
+                return nativeMusic.redesignedBackgroundView();
+            }
+            return music.backgroundView();
         });
     }
 
@@ -93,6 +95,13 @@ public final class OnlineMusicScreen {
 
     private static final class ServiceUnavailable extends RuntimeException {
         ServiceUnavailable(RuntimeException cause) { super(cause); }
+    }
+
+    static GuiEventListener restoreRebuiltLibrary(PreviewContext context, MusicFrontendWorkspace origin,
+                                                  MusicFrontendRoutes.Page root, MusicFrontendRoutes.Route route, String draft) {
+        if (!(context instanceof Context nativeContext)) return origin.restoreRebuiltLibrary(root,route,draft);
+        return nativeContext.owner.view instanceof MusicFrontendWorkspace workspace
+                ? workspace.restoreRebuiltLibrary(root,route,draft) : null;
     }
 
     static GuiEventListener restorePlaylistDiscovery(PreviewContext context, OnlineMusicViewImpl origin,

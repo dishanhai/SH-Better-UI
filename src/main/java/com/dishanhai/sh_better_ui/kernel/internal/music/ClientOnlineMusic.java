@@ -67,7 +67,7 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
         }
     }
 
-    @Override public synchronized OnlineMusicView backgroundView() {
+    private OnlineMusicPlayer backgroundPlayer() {
         if (closed) throw new IllegalStateException("Music service closed");
         if (background == null || background.snapshot().state() == OnlineMusicPlayer.State.CLOSED) {
             if (bridge != null) bridge.close();
@@ -75,7 +75,17 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
             listen1 = new Listen1Backup.Session();
             bridge = new OnlineMusicFrameBridge(background, lease.get());
         }
-        return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(background, false, listen1);
+        return background;
+    }
+
+    @Override public synchronized OnlineMusicView backgroundView() {
+        return new com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl(
+                backgroundPlayer(), false, listen1);
+    }
+
+    /** Opt-in frontend over the same queue, account session and HUD bridge as the ordinary view. */
+    public synchronized OnlineMusicView redesignedBackgroundView() {
+        return com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendWorkspace.borrowed(backgroundPlayer());
     }
 
     @Override public synchronized List<SessionMusicOperations.Snapshot> operationsSnapshot() {

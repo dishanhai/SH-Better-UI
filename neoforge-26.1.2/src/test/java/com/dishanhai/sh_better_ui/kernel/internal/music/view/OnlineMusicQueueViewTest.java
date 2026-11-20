@@ -103,6 +103,27 @@ class OnlineMusicQueueViewTest {
         public void select(int selected) { index = selected; }
         public void next() {} public void previous() {} public void remove(int selected) {} public void clear() {}
     }
+    @Test void rebuiltWorkspaceMountsNativeControlsAtCompactAndWideSizes() throws Exception {
+        var fixture = new Fixture();
+        var thread = com.mojang.blaze3d.systems.RenderSystem.class.getDeclaredField("renderThread");
+        thread.setAccessible(true);
+        var previousThread = thread.get(null);
+        thread.set(null, Thread.currentThread());
+        try (var preview = MusicFrontendWorkspace.borrowed(fixture.player)) {
+            var compact = new Host(); compact.width = 208; compact.height = 240;
+            preview.layout(compact);
+            assertTrue(compact.widgets.stream().anyMatch(
+                    element -> element instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl
+                            && element.getHeight() >= 12));
+            var wide = new Host();
+            preview.layout(wide);
+            assertTrue(wide.widgets.stream().anyMatch(
+                    element -> element instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl
+                            && element.getHeight() >= 12));
+        } finally { thread.set(null, previousThread); }
+        assertEquals(0, fixture.closed);
+    }
+
     @Test void nativeCrossfadeAllowsReversiblePreviewAndSecondsKeyboardWithoutSeeking() throws Exception {
         var f=new Fixture(new EditableQueue()); f.nativeCrossfade=true;
         var host=new Host();host.width=208;host.height=240;
