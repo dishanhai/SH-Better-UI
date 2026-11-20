@@ -3020,5 +3020,17 @@
   "sh_better_ui.online_music.redesign.page.discovery": "Discover Playlists",
   "sh_better_ui.online_music.redesign.page.artist": "Artist",
   "sh_better_ui.online_music.redesign.page.playlist": "Playlist",
-  "sh_better_ui.online_music.redesign.page.history": "Activity"
+  "sh_better_ui.online_music.redesign.page.history": "Activity",
+  "sh_better_ui.online_music.redesign.sound.playback": "Playback",
+  "sh_better_ui.online_music.redesign.sound.sound": "Sound",
+  "sh_better_ui.online_music.redesign.sound.volume": "Volume",
+  "sh_better_ui.online_music.redesign.sound.percent": "%s%%",
+  "sh_better_ui.online_music.redesign.sound.mute": "Mute",
+  "sh_better_ui.online_music.redesign.sound.unmute": "Unmute",
+  "sh_better_ui.online_music.redesign.sound.summary": "%s · %s",
+  "sh_better_ui.online_music.redesign.sound.unavailable": "Unavailable",
+  "sh_better_ui.online_music.redesign.sound.changed": "Track changed. Try again.",
+  "sh_better_ui.online_music.redesign.sound.native_only": "Requires native playback.",
+  "sh_better_ui.online_music.redesign.sound.qq_only": "Requires native QQ Music playback.",
+  "sh_better_ui.online_music.redesign.sound.native_crossfade": "Applies to supported native tracks only."
 }

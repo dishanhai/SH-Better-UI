@@ -38,6 +38,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         track = host.add(new MusicTextControl(new Bounds(meta.x() + textInset, meta.y(),
                 meta.width() - textInset, meta.height()), label("redesign.nothing_playing"), host.preferences(), openNowPlaying));
         track.setVariant(MusicTextControl.Variant.ROW);
+        track.setInk(0xfff5f5f7, 0xffb4b4ba);
         previous = transport(host, boxes.previous(), "previous", MusicTransportControl.Glyph.PREVIOUS, () -> transport.skip(false));
         playPause = transport(host, boxes.playPause(), "play", MusicTransportControl.Glyph.PLAY, transport::activate);
         next = transport(host, boxes.next(), "next", MusicTransportControl.Glyph.NEXT, () -> transport.skip(true));

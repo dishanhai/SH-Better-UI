@@ -3020,5 +3020,17 @@
   "sh_better_ui.online_music.redesign.page.discovery": "发现歌单",
   "sh_better_ui.online_music.redesign.page.artist": "艺人",
   "sh_better_ui.online_music.redesign.page.playlist": "歌单",
-  "sh_better_ui.online_music.redesign.page.history": "活动"
+  "sh_better_ui.online_music.redesign.page.history": "活动",
+  "sh_better_ui.online_music.redesign.sound.playback": "播放",
+  "sh_better_ui.online_music.redesign.sound.sound": "声音",
+  "sh_better_ui.online_music.redesign.sound.volume": "音量",
+  "sh_better_ui.online_music.redesign.sound.percent": "%s%%",
+  "sh_better_ui.online_music.redesign.sound.mute": "静音",
+  "sh_better_ui.online_music.redesign.sound.unmute": "取消静音",
+  "sh_better_ui.online_music.redesign.sound.summary": "%s · %s",
+  "sh_better_ui.online_music.redesign.sound.unavailable": "不可用",
+  "sh_better_ui.online_music.redesign.sound.changed": "歌曲已切换，请重试。",
+  "sh_better_ui.online_music.redesign.sound.native_only": "仅支持游戏内原生播放。",
+  "sh_better_ui.online_music.redesign.sound.qq_only": "仅支持游戏内原生播放的 QQ 音乐。",
+  "sh_better_ui.online_music.redesign.sound.native_crossfade": "仅适用于支持的原生曲目。"
 }

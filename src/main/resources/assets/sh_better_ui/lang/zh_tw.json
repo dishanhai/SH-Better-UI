@@ -2211,5 +2211,17 @@
   "sh_better_ui.online_music.redesign.page.discovery": "探索歌單",
   "sh_better_ui.online_music.redesign.page.artist": "藝人",
   "sh_better_ui.online_music.redesign.page.playlist": "播放清單",
-  "sh_better_ui.online_music.redesign.page.history": "活動"
+  "sh_better_ui.online_music.redesign.page.history": "活動",
+  "sh_better_ui.online_music.redesign.sound.playback": "播放",
+  "sh_better_ui.online_music.redesign.sound.sound": "聲音",
+  "sh_better_ui.online_music.redesign.sound.volume": "音量",
+  "sh_better_ui.online_music.redesign.sound.percent": "%s%%",
+  "sh_better_ui.online_music.redesign.sound.mute": "靜音",
+  "sh_better_ui.online_music.redesign.sound.unmute": "取消靜音",
+  "sh_better_ui.online_music.redesign.sound.summary": "%s · %s",
+  "sh_better_ui.online_music.redesign.sound.unavailable": "無法使用",
+  "sh_better_ui.online_music.redesign.sound.changed": "歌曲已切換，請再試一次。",
+  "sh_better_ui.online_music.redesign.sound.native_only": "僅支援遊戲內原生播放。",
+  "sh_better_ui.online_music.redesign.sound.qq_only": "僅支援遊戲內原生播放的 QQ 音樂。",
+  "sh_better_ui.online_music.redesign.sound.native_crossfade": "僅適用於支援的原生曲目。"
 }

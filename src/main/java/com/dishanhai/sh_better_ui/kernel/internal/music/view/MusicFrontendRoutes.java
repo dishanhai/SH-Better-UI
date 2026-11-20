@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 import java.util.ArrayDeque;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 
@@ -58,6 +59,10 @@ final class MusicFrontendRoutes {
         }
     }
 
+    /** Immutable UI-only checkpoint; the first ancestor is the immediate Back destination. */
+    record Bookmark(Page root, Route current, List<Route> ancestors, Map<Route, Memory> memories,
+                    String searchDraft, long generation) {}
+
     /** Opaque, valid once, and local to its controller. Compare by identity. */
     static final class Request {
         private final String lane;
@@ -89,6 +94,24 @@ final class MusicFrontendRoutes {
     Page rootPage() { return rootPage; }
     boolean canGoBack() { return !history.isEmpty(); }
     long generation() { return generation; }
+
+    Bookmark bookmark() {
+        return new Bookmark(rootPage, current, List.copyOf(history),
+                java.util.Collections.unmodifiableMap(new LinkedHashMap<>(memories)), searchDraft, generation);
+    }
+
+    /** Never overwrite newer navigation in a replacement view or revive its old in-flight requests. */
+    boolean restoreFresh(Bookmark bookmark) {
+        if (generation != 0) return false;
+        rootPage = bookmark.root();
+        history.clear();
+        history.addAll(bookmark.ancestors());
+        memories.clear();
+        memories.putAll(bookmark.memories());
+        searchDraft = bookmark.searchDraft();
+        move(bookmark.current());
+        return true;
+    }
 
     /** A primary tab takes the user to its root, with that tab's prior list position. */
     boolean select(Page page) {

@@ -119,7 +119,7 @@ final class MusicFrontendLibraryPanel {
         draft=value;
         if(link!=null)link.setValue(value);
         refresh();
-        return browseButton;
+        return browseButton != null && browseButton.visible ? browseButton : null;
     }
 
     private static boolean official(Route route) { return route.page()==Page.DISCOVERY&&route.id().equals("official"); }

@@ -84,6 +84,35 @@ final class BackgroundMusicControlsTest {
             assertNotEquals(OnlineMusicPlayer.State.CLOSED, f.player.snapshot().state());
         }
     }
+    @Test void noticeUsesOptInHistoryOverSameSessionWithoutStartingAnotherSearch() {
+        var flag = com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendWorkspace.PREVIEW_FLAG;
+        var previous = System.getProperty(flag);
+        try (var f = new Fixture(false)) {
+            f.service.backgroundView().close();
+            var task = f.player.operations().startSearch("test", "only this query", 1);
+            task.detach();
+            var target = f.service.operationTarget(task.id()).orElseThrow();
+
+            System.clearProperty(flag);
+            try (var stock = f.service.backgroundOperationView(target).orElseThrow()) {
+                assertInstanceOf(com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl.class, stock);
+                assertSame(f.player, stock.player());
+            }
+            System.setProperty(flag, "true");
+            try (var preview = f.service.backgroundOperationView(target).orElseThrow()) {
+                assertInstanceOf(com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendWorkspace.class, preview);
+                assertSame(f.player, preview.player());
+            }
+            assertEquals(1, f.creations.get());
+            assertEquals(1, f.player.operations().snapshots().size());
+            assertTrue(task.snapshot().background());
+            task.attach();
+            assertTrue(f.service.backgroundOperationView(target).isEmpty());
+        } finally {
+            if (previous == null) System.clearProperty(flag);
+            else System.setProperty(flag, previous);
+        }
+    }
     @Test void queryingAbsentSessionNeverCreatesOrStartsAnything() {
         try (var f = new Fixture(false)) {
             var target = new BackgroundTarget("missing", "test:a");

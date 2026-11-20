@@ -39,6 +39,11 @@ class OnlineMusicQueueViewTest {
             case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
+            case "volume" -> 1.0f;
+            case "supportsPlaybackRate", "supportsEqualizer", "supportsSoundEffects" -> false;
+            case "playbackRate" -> 1.0d;
+            case "equalizerPreset" -> OnlineMusicEqualizerPreset.FLAT;
+            case "soundEffect" -> OnlineMusicSoundEffect.OFF;
             case "supportsCrossfade" -> this.nativeCrossfade;
             case "crossfadeSeconds" -> {
                 if(args==null)yield this.crossfade;
@@ -115,6 +120,28 @@ class OnlineMusicQueueViewTest {
             assertTrue(compact.widgets.stream().anyMatch(
                     element -> element instanceof com.dishanhai.sh_better_ui.kernel.api.music.control.MusicSeekControl
                             && element.getHeight() >= 12));
+            @SuppressWarnings("unchecked")
+            var landingRows = (List<MusicTextControl>) field(preview, "rows");
+            assertEquals(3, landingRows.stream().filter(row -> row.visible).count(),
+                    "Both providers and Search must fit at the minimum supported size");
+            var geometry = (MusicFrontendLayout) field(preview, "layout");
+            assertTrue(landingRows.stream().filter(row -> row.visible)
+                    .allMatch(row -> row.getY() + row.getHeight() <= geometry.body().bottom()));
+            var previous = (MusicTextControl) field(preview, "previous");
+            var scroll = (net.minecraft.client.gui.components.AbstractWidget) field(preview, "searchScroll");
+            assertTrue((int) field(preview, "searchRows") >= 1);
+            assertTrue(scroll.getY() + scroll.getHeight() <= previous.getY());
+            ((MusicTextControl) field(preview, "utility")).onPress();
+            var sound = (MusicFrontendSoundPanel) field(preview, "sound");
+            @SuppressWarnings("unchecked")
+            var settingRows = (List<MusicTextControl>) field(sound, "slots");
+            var settingsNext = (MusicTextControl) field(sound, "next");
+            assertEquals(2, settingRows.stream().filter(row -> row.visible).count());
+            assertTrue(settingsNext.visible && settingsNext.active);
+            settingsNext.onPress();
+            assertTrue(settingRows.get(0).visible, "Audio settings remain accessible on the next page");
+            settingRows.get(0).onPress();
+            assertSame(fixture.player, preview.player());
             var wide = new Host();
             preview.layout(wide);
             assertTrue(wide.widgets.stream().anyMatch(

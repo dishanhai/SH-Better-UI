@@ -17,7 +17,7 @@ import java.util.Objects;
 
 /** Quiet reusable music text action, navigation item or list row. No vanilla button/slider skin. */
 public final class MusicTextControl extends AbstractWidget {
-    public enum Variant { ACTION, NAVIGATION, ROW }
+    public enum Variant { ACTION, NAVIGATION, ROW, STACKED_NAVIGATION }
     private Variant variant=Variant.ACTION;
     private UiPreferences preferences;
     private final Runnable action,feedback;
@@ -133,6 +133,14 @@ public final class MusicTextControl extends AbstractWidget {
         }
         if(iconOnly&&leading!=null){
             MusicControlRenderer.transport(g,new Bounds(getX(),getY(),width,height),leading,false,false,false,true,ink,preferences);
+            return;
+        }
+        if(variant==Variant.STACKED_NAVIGATION && outline!=null && height>=24){
+            var primary=MusicTextLayout.ellipsize(font,getMessage(),Math.max(0,width-8),MusicTypography.font());
+            MusicControlRenderer.icon(g,new Bounds(getX(),getY()+1,width,height-MusicTypography.LINE_HEIGHT-2),
+                    outline,isArmed(),active,outlineInk,preferences);
+            g.text(font,primary,getX()+(width-font.width(primary))/2,
+                    getY()+height-MusicTypography.LINE_HEIGHT-1,ink,false);
             return;
         }
         int padding=variant==Variant.ACTION?6:10;

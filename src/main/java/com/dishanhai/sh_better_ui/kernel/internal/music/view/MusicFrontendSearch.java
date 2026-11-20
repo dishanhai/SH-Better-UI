@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
+import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
 
@@ -12,10 +13,13 @@ final class MusicFrontendSearch {
     private static final int LAST_PAGE = 1000;
     enum State { IDLE, LOADING, EMPTY, END, FAILED, UNAVAILABLE }
     private record Query(String source, String text, int page) {}
-    private record Job(Query query, MusicFrontendRoutes.Request token, CompletableFuture<List<OnlineTrack>> result) {}
+    private record Job(Query query, MusicFrontendRoutes.Request token, CompletableFuture<List<OnlineTrack>> result,
+                       SessionMusicOperations.Handle<List<OnlineTrack>> operation) {}
 
     private final OnlineMusicPlayer player;
     private final MusicFrontendRoutes routes;
+    private final SessionMusicOperations operations;
+    private SessionMusicOperations.Handle<List<OnlineTrack>> displayedOperation;
     private String source = "";
     private Query displayed, failed;
     private Job pending;
@@ -27,6 +31,7 @@ final class MusicFrontendSearch {
     MusicFrontendSearch(OnlineMusicPlayer player, MusicFrontendRoutes routes) {
         this.player = player;
         this.routes = routes;
+        this.operations = SessionMusicOperations.forPlayer(player).orElse(null);
         updateSources();
     }
 
@@ -53,7 +58,9 @@ final class MusicFrontendSearch {
     }
 
     String source() { return source; }
-    List<OnlineTrack> tracks() { return tracks; }
+    List<OnlineTrack> tracks() {
+        return displayedOperation != null && !displayedOperation.displayValid() ? List.of() : tracks;
+    }
     int first() { return first; }
     int page() { return displayed == null ? 1 : displayed.page(); }
     State state() { return state; }
@@ -95,10 +102,12 @@ final class MusicFrontendSearch {
 
     void poll() {
         updateSources();
+        if (displayedOperation != null && !displayedOperation.displayValid()) clear();
         if (pending == null || !pending.result().isDone()) return;
         var job = pending;
         pending = null;
-        if (!routes.complete(job.token()) || !source.equals(job.query().source())) {
+        if (!routes.complete(job.token()) || !source.equals(job.query().source())
+                || job.operation() != null && !job.operation().displayValid()) {
             state = State.IDLE;
             return;
         }
@@ -109,6 +118,7 @@ final class MusicFrontendSearch {
                 state = State.END;
             } else {
                 displayed = job.query();
+                displayedOperation = job.operation();
                 tracks = result;
                 first = 0;
                 more = result.size() >= RESULTS_PER_PAGE && displayed.page() < LAST_PAGE;
@@ -120,11 +130,18 @@ final class MusicFrontendSearch {
         }
     }
 
-    void cancel() {
+    void cancel() { discard(false); }
+    void detach() { discard(true); }
+
+    private void discard(boolean keepBackground) {
         if (pending != null) {
             var job = pending;
             pending = null;
             routes.complete(job.token());
+            if (job.operation() != null) {
+                if (keepBackground) job.operation().detach();
+                else job.operation().cancel();
+            }
             job.result().cancel(true);
         }
         if (state == State.LOADING) state = State.IDLE;
@@ -132,6 +149,7 @@ final class MusicFrontendSearch {
 
     private void clear() {
         failed = displayed = null;
+        displayedOperation = null;
         tracks = List.of();
         first = 0;
         more = false;
@@ -144,7 +162,9 @@ final class MusicFrontendSearch {
         failed = null;
         var token = routes.request("search");
         try {
-            pending = new Job(query, token, java.util.Objects.requireNonNull(player.search(query.source(), query.text(), query.page())));
+            var operation = operations == null ? null : operations.startSearch(query.source(), query.text(), query.page());
+            var result = operation == null ? player.search(query.source(), query.text(), query.page()) : operation.observe();
+            pending = new Job(query, token, java.util.Objects.requireNonNull(result), operation);
             state = State.LOADING;
         } catch (RuntimeException unavailable) {
             routes.complete(token);

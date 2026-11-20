@@ -100,10 +100,10 @@ public final class OnlineMusicScreen {
     }
 
     static GuiEventListener restoreRebuiltLibrary(PreviewContext context, MusicFrontendWorkspace origin,
-                                                  MusicFrontendRoutes.Page root, MusicFrontendRoutes.Route route, String draft) {
-        if (!(context instanceof Context nativeContext)) return origin.restoreRebuiltLibrary(root,route,draft);
+                                                  MusicFrontendBrowserReturn.Ticket ticket) {
+        if (!(context instanceof Context nativeContext)) return origin.restoreRebuiltLibrary(origin,ticket);
         return nativeContext.owner.view instanceof MusicFrontendWorkspace workspace
-                ? workspace.restoreRebuiltLibrary(root,route,draft) : null;
+                ? workspace.restoreRebuiltLibrary(origin,ticket) : null;
     }
 
     static GuiEventListener restorePlaylistDiscovery(PreviewContext context, OnlineMusicViewImpl origin,
