@@ -12,7 +12,7 @@ import java.util.Objects;
 
 /** Unframed UUK transport glyph, with independent custom drawing and release-to-activate input. */
 public final class MusicTransportControl extends AbstractWidget {
-    public enum Glyph { PREVIOUS, PLAY, PAUSE, NEXT, BACK, LYRICS, QUEUE, STOP, CANCEL, SEARCH, FAVORITE, REMOVE, USER }
+    public enum Glyph { PREVIOUS, PLAY, PAUSE, NEXT, BACK, LYRICS, QUEUE, STOP, CANCEL, SEARCH, FAVORITE, REMOVE, USER, QUOTES }
     private Glyph glyph;
     private final TransportGlyphMotion glyphMotion = new TransportGlyphMotion();
     private final TransportPressMotion pressMotion = new TransportPressMotion();

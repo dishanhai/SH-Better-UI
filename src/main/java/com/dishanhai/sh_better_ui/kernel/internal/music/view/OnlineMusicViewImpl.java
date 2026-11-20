@@ -214,13 +214,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private final Map<AbstractWidget, Integer> accountPositions = new IdentityHashMap<>();
     private final List<MusicTextControl> libraryRows = new ArrayList<>(), searchLikes = new ArrayList<>(), searchUnlikes = new ArrayList<>(),
             libraryLikes = new ArrayList<>(), libraryUnlikes = new ArrayList<>();
+    private UiButton miniMore;
     private final List<MusicTextControl> navigation = new ArrayList<>();
     private final Map<String, MusicTextControl> sources = new LinkedHashMap<>(), accounts = new LinkedHashMap<>(), loginSources = new LinkedHashMap<>();
     private PreviewContext host;
     private OnlineMusicLayout layout;
     private UiTextField queryField;
     private MusicTextControl searchButton, searchContinuationRetry, spotifySearch, clearSearch, nowPlaying, back;
-    private MusicTransportControl playback, stop, lyricsToggle, miniQueue, miniPrevious, miniNext;
+    private MusicTransportControl playback, lyricsToggle, miniQueue, miniPrevious, miniNext;
     private MusicTextControl loginRefresh, loginImport, loginSignOut;
     private final Map<String, Boolean> confirmedLikes = new HashMap<>();
     private final Map<String, Long> confirmedLikeEpochs = new HashMap<>();
@@ -1219,14 +1220,33 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         miniPrevious=miniControl(mini.previous(),"queue.previous",MusicTransportControl.Glyph.PREVIOUS,()->queue.previous());
         playback=miniControl(mini.play(),"play",MusicTransportControl.Glyph.PLAY,this::togglePlayback);
         miniNext=miniControl(mini.next(),"queue.next",MusicTransportControl.Glyph.NEXT,()->queue.next());
-        stop=miniControl(mini.stop(),"stop",MusicTransportControl.Glyph.STOP,player::stop);
-        lyricsToggle=miniControl(mini.lyrics(),"view.lyrics",MusicTransportControl.Glyph.LYRICS,this::enterImmersive);
+        lyricsToggle=miniControl(mini.lyrics(),"view.lyrics",MusicTransportControl.Glyph.QUOTES,this::enterImmersive);
         miniQueue=miniControl(mini.queue(),"view.queue",MusicTransportControl.Glyph.QUEUE,()->show(Page.QUEUE));
+        var extra=mini.more();
+        miniMore=host.add(new UiButton(extra.x(),extra.y(),extra.width(),extra.height(),Component.literal("…"),
+                ignored->openMiniMenu(),host.preferences(),false));
+        miniMore.setPreview(label("menu.title"));
+        miniMore.setCornerRadius(12);
         seek=host.add(new MusicSeekControl(layout.seekBar(),label("seek",0),host.preferences(),ignored->{},edit->{
             var current=player.snapshot();if(current.track()!=null&&trackKey(current.track()).equals(edit.trackKey()))perform(label("feedback.seek",time(edit.positionMs())),()->player.seek(edit.positionMs()));
         },ignored->{}));
         seek.setTimePreviewEnabled(true);
     }
+    private void openMiniMenu(){
+        if(immersive||closed)return;
+        var current=player.snapshot();
+        if(!canStop(current.state()))return;
+        var action=label(current.state()==OnlineMusicPlayer.State.LOADING?"cancel":"stop");
+        if(!nowPlayingMenus.supported()){perform(action,player::stop);return;}
+        nowPlayingMenus.open(miniMore,layout.frame(),label("menu.title"),
+                List.of(new NowPlayingMenu.Entry(action,MusicControlRenderer.Icon.CLOSE,true,()->perform(action,player::stop))),
+                NowPlayingMenu.Layout.LIST,()->!closed&&!immersive&&Objects.equals(current.track(),player.snapshot().track())&&canStop(player.snapshot().state()));
+    }
+
+    private static boolean canStop(OnlineMusicPlayer.State state){
+        return state!=OnlineMusicPlayer.State.IDLE&&state!=OnlineMusicPlayer.State.CLOSED;
+    }
+
     private MusicTextControl rowButton(Bounds b, Component name, Runnable action, List<AbstractWidget> group) {
         return button(b, name, action, group, true);
     }
@@ -1471,9 +1491,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         positionAccounts();
         navigation.forEach(w->w.setVisible(!immersive));
         sources.values().forEach(w -> w.setVisible(!immersive && page == Page.SEARCH));
-        for (var w : new AbstractWidget[]{nowPlaying, playback, stop, lyricsToggle, miniQueue, miniPrevious, miniNext, seek, back})
+        for (var w : new AbstractWidget[]{nowPlaying, playback, lyricsToggle, miniQueue, miniPrevious, miniNext, seek, back})
             if (immersive) w.visible = false;
-        if (!immersive) { nowPlaying.visible = playback.visible = stop.visible = lyricsToggle.visible = miniQueue.visible = seek.visible = true; miniPrevious.visible=miniNext.visible=true; }
+        if (!immersive) { nowPlaying.visible = playback.visible = lyricsToggle.visible = miniQueue.visible = seek.visible = true; miniPrevious.visible=miniNext.visible=true; }
+        if(miniMore!=null)miniMore.visible=!immersive;
         stageControls.forEach(w -> w.visible = immersive);
         if(nowPlayingMore!=null){nowPlayingMore.visible=immersive&&nowPlayingMenus.supported();nowPlayingMore.active=player.snapshot().track()!=null;}
         stageBack.visible = immersive && shellBack==null;
@@ -1491,7 +1512,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         coverEntry.visible = !immersive && layout.expanded();
         for(var group:List.of(searchControls,lyricControls,queueControls,accountControls,detailControls,libraryControls,historyControls))
             for(var widget:group)if(!widget.visible&&widget instanceof MusicTextControl text)text.cancelInteraction();
-        if(immersive){nowPlaying.cancelInteraction();back.cancelInteraction();seek.cancelInteraction();for(var control:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})control.cancelInteraction();}
+        if(immersive){nowPlaying.cancelInteraction();back.cancelInteraction();seek.cancelInteraction();for(var control:new MusicTransportControl[]{playback,lyricsToggle,miniQueue,miniPrevious,miniNext})control.cancelInteraction();}
         var lyricsBox = lyricArea();
         lyricsScroll.setBounds(lyricsBox);
         followLyrics.setX(lyricsBox.x()); followLyrics.setY(lyricsBox.bottom()+2);
@@ -2104,7 +2125,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             closeNowPlayingMenu();
             seek.cancelInteraction();
             if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction();
-            for(var control:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})control.cancelInteraction();
+            for(var control:new MusicTransportControl[]{playback,lyricsToggle,miniQueue,miniPrevious,miniNext})control.cancelInteraction();
             navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction();
             for(var group:List.of(searchControls,lyricControls,queueControls,accountControls,detailControls,libraryControls,historyControls))
                 for(var widget:group)if(widget instanceof MusicTextControl text)text.cancelInteraction();
@@ -2348,13 +2369,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean retry = state == OnlineMusicPlayer.State.FAILED && player.canRetryCurrent();
         playback.active = canUsePlaybackTimeline(state) || retry;
         playback.setMessage(label(retry ? "retry_track" : playing ? "pause" : "play")); playback.setGlyph(playing ? MusicTransportControl.Glyph.PAUSE : MusicTransportControl.Glyph.PLAY);
-        stop.active = state != OnlineMusicPlayer.State.IDLE && state != OnlineMusicPlayer.State.CLOSED;
-        stop.setMessage(label(state == OnlineMusicPlayer.State.LOADING ? "cancel" : "stop"));
         boolean windowActive=net.minecraft.client.Minecraft.getInstance().isWindowActive();
         seek.active = windowActive && current.durationMs() > 0 && canUsePlaybackTimeline(state);
         seek.sync(current.track()==null?"":trackKey(current.track()),current.positionMs(),current.durationMs(),seek.active);
         miniPrevious.active=queue.canPrevious();miniNext.active=queue.canNext();
-        for(var control:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext}) {
+        for(var control:new MusicTransportControl[]{playback,lyricsToggle,miniQueue,miniPrevious,miniNext}) {
             control.setInk(UiTheme.current().text());control.setPreferences(ui.preferences());control.setAvailable(control.active&&windowActive);
         }
         if(qqStyle()&&!ui.preferences().highContrast())playback.setInk(0xff35d89a);
@@ -2362,7 +2381,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         seek.setInk(UiTheme.current().text());seek.setPreferences(ui.preferences());
         if(!windowActive)seek.cancelInteraction();
         updateMiniMetadata(current);
-        stop.setGlyph(state==OnlineMusicPlayer.State.LOADING?MusicTransportControl.Glyph.CANCEL:MusicTransportControl.Glyph.STOP);
+        miniMore.active=windowActive&&canStop(state);
+        var playBounds=MusicMiniPlayerLayout.of(layout.transport(),layout.expanded()).play();
+        int side=Math.min(playBounds.width(),playBounds.height());
+        var theme=UiTheme.current();
+        int surface=GuiMotion.lerpColor(theme.surface(),theme.text(),ui.preferences().highContrast()?.25f:.14f);
+        RoundedCorners.draw(ui.graphics(),playBounds.x()+(playBounds.width()-side)/2f,playBounds.y(),
+                side,side,side/2f,ui.preferences().highContrast()?1:0,theme.text(),surface);
         var t = layout.transport();
         var elapsed=MusicTypography.text(time(seek.previewPositionMs()));
         var remaining=MusicTypography.text("−" + time(Math.max(0,current.durationMs()-seek.previewPositionMs())));
@@ -2378,7 +2403,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean important = state==OnlineMusicPlayer.State.FAILED || state==OnlineMusicPlayer.State.LOADING || current.preview();
         if (!MusicMiniPlayerLayout.stacked(t.width()) && (important || !operation.getString().isEmpty()))
             muted(ui,important?status:operation,t.x()+4,t.bottom()-12,t.width()-8);
-        playback.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(retry ? label("retry_track").append("\n").append(status) : status))); stop.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(status.copy().append("\n").append(label("stop_hint")))));
+        playback.setTooltip(net.minecraft.client.gui.components.Tooltip.create(MusicTypography.text(retry ? label("retry_track").append("\n").append(status) : status)));
     }
     private void updateMiniMetadata(OnlineMusicPlayer.Snapshot current) {
         var title=current.track()==null?label("view.now_playing"):MusicTypography.text(current.track().title());
@@ -2627,6 +2652,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return MusicTypography.text(Component.translatable(TEXT + key, args)); }
-    @Override public void suspend() { artistDetail.cancel(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
+    @Override public void suspend() { artistDetail.cancel(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
     @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
 }

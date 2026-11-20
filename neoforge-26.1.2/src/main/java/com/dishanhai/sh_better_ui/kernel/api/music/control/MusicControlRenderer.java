@@ -100,12 +100,12 @@ public final class MusicControlRenderer {
         float x=b.x()+4,w=b.width()-8,cy=b.y()+b.height()/2f;
         boolean contrast=preferences.highContrast();
         int ink=contrast?(foreground|0xff000000):foreground;
-        float thickness=2+engaged;
+        float thickness=2+2*engaged;
         RoundedCorners.draw(g,x,cy-thickness/2,w,thickness,thickness/2,0,0,alpha(ink,contrast?.5f:enabled?.24f:.12f));
         float fill=(float)(w*(Double.isFinite(fraction)?Math.max(0,Math.min(1,fraction)):0));
         if(fill>0)RoundedCorners.draw(g,x,cy-thickness/2,fill,thickness,thickness/2,0,0,alpha(ink,enabled?.8f:.3f));
         if(enabled&&engaged>0){
-            float radius=2+1.5f*engaged;
+            float radius=2+2*engaged;
             RoundedCorners.draw(g,x+fill-radius,cy-radius,radius*2,radius*2,radius,0,0,alpha(ink,engaged));
         }
         if(focused)RoundedCorners.draw(g,b.x(),b.y()+2,b.width(),Math.max(1,b.height()-4),5,1,alpha(ink,.7f),0);
@@ -159,6 +159,13 @@ public final class MusicControlRenderer {
                 triangle(g,cx,cy-size*.43f,size*.64f,size*.86f,right,ink);
             }
             case BACK -> {stroke(g,cx-size*.27f,cy,cx+size*.22f,cy-size*.38f,2,ink);stroke(g,cx-size*.27f,cy,cx+size*.22f,cy+size*.38f,2,ink);}
+            case QUOTES -> {
+                for(int i=0;i<2;i++){
+                    float x=cx+(i==0?-.46f:.08f)*size;
+                    bar(g,x,cy-size*.27f,size*.37f,size*.33f,ink);
+                    stroke(g,x+size*.28f,cy,x+size*.1f,cy+size*.32f,Math.max(1.5f,size*.13f),ink);
+                }
+            }
             case LYRICS -> {
                 bar(g,cx-size*.45f,cy-size*.4f,size*.9f,2,ink);
                 bar(g,cx-size*.45f,cy-1,size*.7f,2,ink);
