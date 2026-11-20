@@ -2,6 +2,9 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicControlRenderer;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
+import com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import java.util.List;
@@ -48,6 +51,51 @@ class NowPlayingMenuTest {
         var chosen=new AtomicInteger();var valid=new AtomicBoolean(true);var dismissed=new AtomicInteger();var m=menu(chosen,valid,dismissed);
         m.mousePressed(100,40,0,0);valid.set(false);m.mouseReleased(100,40,0,1);
         assertEquals(0,chosen.get());assertEquals(1,dismissed.get());
+    }
+    @Test void miniCancelCannotStopTheSongIfLoadingFinishesBeforeRelease(){
+        for(boolean keyboard:new boolean[]{false,true}) {
+            var playback=new AtomicReference<>(miniSnapshot(OnlineMusicPlayer.State.LOADING));
+            var chosen=new AtomicInteger();var dismissed=new AtomicInteger();
+            var captured=OnlineMusicViewImpl.MiniPlaybackAction.capture(playback.get(),10);
+            var loading=miniMenu("Cancel",playback,captured,chosen,dismissed);
+            press(loading,keyboard);
+            playback.set(miniSnapshot(OnlineMusicPlayer.State.PLAYING));
+            release(loading,keyboard);
+            assertEquals(0,chosen.get());
+            assertEquals(1,dismissed.get());
+
+            var stop=miniMenu("Stop",playback,OnlineMusicViewImpl.MiniPlaybackAction.capture(playback.get(),10),chosen,dismissed);
+            press(stop,keyboard);release(stop,keyboard);
+            assertEquals(1,chosen.get());
+        }
+    }
+    @Test void miniActionDoesNotApplyToARepeatedAttemptOfTheSameTrack(){
+        var playback=miniSnapshot(OnlineMusicPlayer.State.LOADING);
+        var cancel=OnlineMusicViewImpl.MiniPlaybackAction.capture(playback,10);
+        assertTrue(cancel.matches(playback,10));
+        assertFalse(cancel.matches(playback,11));
+        var playing=miniSnapshot(OnlineMusicPlayer.State.PLAYING);
+        var stop=OnlineMusicViewImpl.MiniPlaybackAction.capture(playing,10);
+        assertTrue(stop.matches(miniSnapshot(OnlineMusicPlayer.State.PAUSED),10));
+        assertFalse(stop.matches(playing,11));
+        assertFalse(stop.matches(playback,10));
+    }
+    private static OnlineMusicPlayer.Snapshot miniSnapshot(OnlineMusicPlayer.State state){
+        return new OnlineMusicPlayer.Snapshot(new OnlineTrack("qq","1","1","Track","Artist","",1000),state,0,1000,
+                OnlineMusicPlayer.LyricsState.EMPTY,LyricTimeline.empty(),OnlineMusicPlayer.Failure.NONE,false);
+    }
+    private NowPlayingMenu miniMenu(String title,AtomicReference<OnlineMusicPlayer.Snapshot> playback,
+                                    OnlineMusicViewImpl.MiniPlaybackAction target,AtomicInteger chosen,AtomicInteger dismissed){
+        return new NowPlayingMenu(new Bounds(0,0,208,66),UiPreferences.DEFAULT,Component.literal("More"),List.of(entry(title,true)),
+                ()->target.matches(playback.get(),10),dismissed::incrementAndGet,e->chosen.incrementAndGet(),text->{},false);
+    }
+    private static void press(NowPlayingMenu menu,boolean keyboard){
+        if(keyboard)assertTrue(menu.keyPressed(257,0,0,0));
+        else assertTrue(menu.mousePressed(100,40,0,0));
+    }
+    private static void release(NowPlayingMenu menu,boolean keyboard){
+        if(keyboard)menu.keyReleased(257,0,0,1);
+        else menu.mouseReleased(100,40,0,1);
     }
     @Test void equalizerUsesFullWidthRowsAndFitsTheSmallestPlayer(){
         var choices=List.of(entry("Flat",true),entry("Bass",true),entry("Voice",true),entry("Treble",true));

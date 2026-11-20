@@ -18,6 +18,7 @@ import net.minecraft.network.chat.MutableComponent;
 import java.util.*;
 import com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
+import com.dishanhai.sh_better_ui.kernel.internal.music.OnlinePlaybackOccurrence;
 import java.io.IOException;
 import java.nio.file.Path;
 import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
@@ -1247,13 +1248,41 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void openMiniMenu(){
         if(immersive||closed)return;
-        var current=player.snapshot();
-        if(!canStop(current.state()))return;
-        var action=label(current.state()==OnlineMusicPlayer.State.LOADING?"cancel":"stop");
-        if(!nowPlayingMenus.supported()){perform(action,player::stop);return;}
+        MiniPlaybackAction target;
+        synchronized (player) {
+            var current=player.snapshot();
+            if(!canStop(current.state()))return;
+            target=MiniPlaybackAction.capture(current,OnlinePlaybackOccurrence.generation(player));
+        }
+        var action=label(target.cancelLoading()?"cancel":"stop");
+        Runnable activate=()->{
+            synchronized (player) {
+                if(miniActionValid(target))perform(action,player::stop);
+            }
+        };
+        if(!nowPlayingMenus.supported()){activate.run();return;}
         nowPlayingMenus.open(miniMore,layout.frame(),label("menu.title"),
-                List.of(new NowPlayingMenu.Entry(action,MusicControlRenderer.Icon.CLOSE,true,()->perform(action,player::stop))),
-                NowPlayingMenu.Layout.LIST,()->!closed&&!immersive&&Objects.equals(current.track(),player.snapshot().track())&&canStop(player.snapshot().state()));
+                List.of(new NowPlayingMenu.Entry(action,MusicControlRenderer.Icon.CLOSE,true,activate)),
+                NowPlayingMenu.Layout.LIST,()->miniActionValid(target));
+    }
+
+    private boolean miniActionValid(MiniPlaybackAction target) {
+        if(closed||immersive)return false;
+        synchronized (player) {
+            return target.matches(player.snapshot(),OnlinePlaybackOccurrence.generation(player));
+        }
+    }
+
+    record MiniPlaybackAction(OnlineTrack track, boolean cancelLoading, long generation) {
+        static MiniPlaybackAction capture(OnlineMusicPlayer.Snapshot playback,long generation) {
+            return new MiniPlaybackAction(playback.track(),playback.state()==OnlineMusicPlayer.State.LOADING,generation);
+        }
+
+        boolean matches(OnlineMusicPlayer.Snapshot playback,long currentGeneration) {
+            // A repeat may use an equal track, and "Cancel" must never become "Stop".
+            return generation==currentGeneration&&Objects.equals(track,playback.track())
+                    &&canStop(playback.state())&&cancelLoading==(playback.state()==OnlineMusicPlayer.State.LOADING);
+        }
     }
 
     private static boolean canStop(OnlineMusicPlayer.State state){
