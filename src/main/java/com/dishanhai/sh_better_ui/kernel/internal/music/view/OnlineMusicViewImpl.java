@@ -2114,7 +2114,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (layout.expanded()) {
             if (page != Page.LYRICS) OnlineMusicViewPaint.hero(ui, host.font(), browsingHero(), label("view.brand"),
                     page==Page.LIBRARY&&(library==Library.TRACKS||library==Library.DISCOVERY_TRACKS)&&selectedPlaylist!=null?MusicTypography.text(selectedPlaylist.name()):label("refresh." + page.name().toLowerCase(Locale.ROOT)), Component.empty(), visual.emphasis());
-            paintArtwork(ui, layout.cover(), current.track(), visual.activity());
+            paintArtwork(ui, layout.cover(), current.track());
         }
         renderTransport(ui, current);
         if (page == Page.ARTIST) artistDetail.render(ui);
@@ -2340,8 +2340,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         int secondary=ui.preferences().highContrast()?ink:MusicArtworkStage.SECONDARY;
         if(vinylStyle()&&!ui.preferences().highContrast()) {
             vinylStage.renderLabel(ui,stage.cover(),current.state()==OnlineMusicPlayer.State.PLAYING,
-                    labelBounds -> OnlineCoverPresentation.paint(ui, artworkStage, labelBounds, 0f, cover));
-        } else OnlineCoverPresentation.paint(ui, artworkStage, stage.cover(), 0f, cover);
+                    labelBounds -> OnlineCoverPresentation.paint(ui, artworkStage, labelBounds, cover));
+        } else OnlineCoverPresentation.paint(ui, artworkStage, stage.cover(), cover);
         var title=current.track()==null?label("stage.empty_title"):MusicTypography.bold(current.track().title());
         var subtitle=current.track()==null?label("stage.empty_detail"):MusicTypography.text(current.track().artist()
                 +(current.track().album().isBlank()?"":" · "+current.track().album()));
@@ -2424,8 +2424,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 c.width() * 56 / 100 - 8, Math.max(0, c.bottom() - top - 38))
                 : new Bounds(c.x(), top, c.width(), Math.max(0, c.bottom() - top - 38));
     }
-    private void paintArtwork(UiFrame ui, Bounds bounds, OnlineTrack track, float activity) {
-        OnlineCoverPresentation.paint(ui, artworkStage, bounds, activity, artwork.sample(ui, track));
+    private void paintArtwork(UiFrame ui, Bounds bounds, OnlineTrack track) {
+        OnlineCoverPresentation.paint(ui, artworkStage, bounds, artwork.sample(ui, track));
     }
     private void renderLyrics(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var c = lyricContent(); var lines = lyricArea();
@@ -2435,7 +2435,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             int column = c.width() * 44 / 100;
             int size = Math.max(16, Math.min(column - 32, c.height() - 46));
             var cover = new Bounds(c.x() + (column - size) / 2, c.y() + Math.max(0, (c.height() - size - 38) / 2), size, size);
-            paintArtwork(ui, cover, current.track(), 0f);
+            paintArtwork(ui, cover, current.track());
             text(ui, title, cover.x(), cover.bottom() + 10, size);
             if (current.track() != null) muted(ui, MusicTypography.text(current.track().artist()), cover.x(), cover.bottom() + 23, size);
         } else if (!immersive) text(ui, title, c.x() + 4, c.y() + 2, c.width() - 8);
