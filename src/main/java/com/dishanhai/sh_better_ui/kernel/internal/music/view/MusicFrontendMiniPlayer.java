@@ -9,6 +9,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkStageMotion;
 import com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicArtworkStage;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.network.chat.Component;
@@ -19,7 +20,8 @@ import java.util.Objects;
 final class MusicFrontendMiniPlayer implements AutoCloseable {
     record Placement(Bounds surface, Bounds track, Bounds previous, Bounds playPause, Bounds next, Bounds progress) {}
     private final MusicFrontendTransport transport;
-    private final OnlineArtworkTexture artwork = new OnlineArtworkTexture();
+    private final OnlineCoverPresentation artwork = new OnlineCoverPresentation();
+    private final ArtworkStageMotion backdrop = new ArtworkStageMotion();
     private final MusicArtworkStage artworkPaint = new MusicArtworkStage();
     private final Placement placement;
     private final Bounds cover;
@@ -85,12 +87,15 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
 
     void renderBackdrop(UiFrame ui, Bounds frame, OnlineTrack song) {
         if (ui.preferences().highContrast()) {
+            backdrop.reset();
             ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(), 0xff000000);
             return;
         }
-        var palette = artwork.texture(song).map(OnlineArtworkTexture.Texture::palette)
-                .orElseGet(() -> ArtworkPalette.fallback(0xff3b333e));
-        artworkPaint.renderAudioBackground(ui, frame, palette, ui.nowMs(), true, 0f);
+        var palette = artwork.sample(ui, song).background();
+        if (palette == null) palette = ArtworkPalette.fallback(0xff3b333e);
+        // Resolve the color transition separately; keep the inexpensive four-corner mesh.
+        var shown = backdrop.sample(palette, ui.nowMs(), ui.preferences().reducedMotion(), false);
+        artworkPaint.renderAudioBackground(ui, frame, shown.palette(), ui.nowMs(), true, 0f);
         // A uniform scrim keeps even very light artwork behind white foreground text.
         ui.graphics().fill(frame.x(), frame.y(), frame.right(), frame.bottom(), 0x33000000);
     }
@@ -161,9 +166,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
 
     void paintCover(UiFrame ui, Bounds bounds, OnlineTrack song) {
         if(bounds.width()<=0||bounds.height()<=0)return;
-        RoundedCorners.draw(ui.graphics(),bounds.x(),bounds.y(),bounds.width(),bounds.height(),6,0,0,0xff38383d);
-        artwork.texture(song).ifPresent(texture ->
-                artworkPaint.renderCover(ui, bounds, texture.id(), texture.width(), texture.height()));
+        OnlineCoverPresentation.paint(ui, artworkPaint, bounds, 0f, artwork.sample(ui, song));
     }
 
     void cancelInteraction() {
