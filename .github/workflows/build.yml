@@ -1,0 +1,92 @@
+name: Build SH-Better-UI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: platform-build-${{ github.event_name }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    name: ${{ matrix.platform }}
+    runs-on: ubuntu-24.04
+    timeout-minutes: 40
+    # 26.2 is tracked here without blocking the supported targets. See TODO.md.
+    continue-on-error: ${{ matrix.experimental }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - platform: forge-1.20.1
+            project: .
+            gradle: '8.8'
+            java: '21'
+            experimental: false
+          - platform: neoforge-1.21.1
+            project: neoforge-1.21.1
+            gradle: '9.2.1'
+            java: '21'
+            experimental: false
+          - platform: neoforge-26.1.2
+            project: neoforge-26.1.2
+            gradle: '9.2.1'
+            java: '25'
+            experimental: false
+          - platform: neoforge-26.2
+            project: neoforge-26.2
+            gradle: '9.2.1'
+            java: '25'
+            experimental: true
+
+    steps:
+      - name: Check out source
+        uses: actions/checkout@d23441a48e516b6c34aea4fa41551a30e30af803 # v6
+        with:
+          persist-credentials: false
+
+      - name: Set up Java 17 and 21 toolchains
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: |
+            17
+            21
+          cache: gradle
+          cache-dependency-path: |
+            **/*.gradle
+            **/gradle.properties
+            .github/workflows/build.yml
+            scripts/ci-build.sh
+
+      - name: Set up Java 25 for NeoForge 26
+        if: matrix.java == '25'
+        uses: actions/setup-java@b6effb05e454b25005698d916606bdc6ffcbf961 # v5
+        with:
+          distribution: temurin
+          java-version: '25'
+
+      - name: Build, run tests, and verify the mod JAR
+        env:
+          GRADLE_VERSION: ${{ matrix.gradle }}
+          PROJECT_DIR: ${{ matrix.project }}
+        run: bash scripts/ci-build.sh "$GRADLE_VERSION" "$PROJECT_DIR"
+
+      - name: Upload verified mod JAR
+        uses: actions/upload-artifact@b7c566a772e6b6bfb58ed0dc250532a479d7789f # v6
+        with:
+          name: shbui-${{ matrix.platform }}
+          path: |
+            ${{ matrix.project }}/build/libs/sh_better_ui-${{ matrix.platform }}-*.jar
+            !${{ matrix.project }}/build/libs/*-sources.jar
+            !${{ matrix.project }}/build/libs/*-dev.jar
+            !${{ matrix.project }}/build/libs/*-raw.jar
+          if-no-files-found: error
+          retention-days: 14
