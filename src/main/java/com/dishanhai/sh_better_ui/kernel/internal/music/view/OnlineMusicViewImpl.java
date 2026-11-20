@@ -219,7 +219,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private PreviewContext host;
     private OnlineMusicLayout layout;
     private UiTextField queryField;
-    private MusicTextControl searchButton, searchContinuationRetry, spotifySearch, spotifyMadeForYou, nowPlaying, back;
+    private MusicTextControl searchButton, searchContinuationRetry, spotifySearch, clearSearch, nowPlaying, back;
     private MusicTransportControl playback, stop, lyricsToggle, miniQueue, miniPrevious, miniNext;
     private MusicTextControl loginRefresh, loginImport, loginSignOut;
     private final Map<String, Boolean> confirmedLikes = new HashMap<>();
@@ -271,6 +271,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private SessionMusicOperations.Handle<?> displayedSearchOperation, displayedLibraryOperation;
     private SessionMusicOperations.Handle<List<OnlinePlaylist>> playlistsOperation;
     private MusicTextControl searchHistory;
+    private Bounds searchCapsule;
+    private final Deque<String> recentSearches = new ArrayDeque<>();
+    private final List<MusicTextControl> recentSearchButtons = new ArrayList<>();
+    private MusicTextControl searchDiscover;
     private Page historyDestination;
     private long historyReturnId;
     private final List<AbstractWidget> historyControls = new ArrayList<>();
@@ -383,7 +387,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         int offset=exitControl==null?0:30;
         int tabWidth=Math.max(1,(n.width()-offset)/5);
         for(var target:List.of(Page.SEARCH,Page.LIBRARY,Page.LYRICS,Page.QUEUE,Page.ACCOUNTS)) {
-            var box=layout.sidebar()?new Bounds(n.x()+6,n.y()+34+target.ordinal()*Math.min(30,(n.height()-40)/5),n.width()-12,Math.min(28,(n.height()-40)/5-2))
+            var box=layout.sidebar()?new Bounds(n.x()+6,n.y()+34+(target==Page.ACCOUNTS&&operations()!=null?5:target.ordinal())*Math.min(30,(n.height()-40)/6),n.width()-12,Math.min(28,(n.height()-40)/6-2))
                     :new Bounds(n.x()+offset+target.ordinal()*tabWidth,n.y(),tabWidth,26);
             var item=button(box,label("view."+target.name().toLowerCase(Locale.ROOT)),()->navigate(target),null);
             item.setVariant(MusicTextControl.Variant.NAVIGATION);item.setPreview(item.getMessage());
@@ -534,11 +538,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         searchSourceIds=List.copyOf(player.sources());
         if(!searchSourceIds.isEmpty()&&!searchSourceIds.contains(source))source=searchSourceIds.get(0);
         var sourceBar = layout.sourceBar();
-        var madeForYouLabel = label("spotify.made_for_you");
-        int madeForYouWidth = Math.min(112, Math.max(74, host.font().width(madeForYouLabel) + 16));
-        int sourceWidth = layout.expanded() ? sourceBar.width() : sourceBar.width() - madeForYouWidth - 4;
-        var searchProviders = new Bounds(sourceBar.right() - madeForYouWidth - 4 - sourceWidth,
-                sourceBar.y(), sourceWidth, sourceBar.height());
+        boolean hasHistory=operations()!=null;
+        int toolWidth=hasHistory&&!layout.sidebar()?28:0;
+        var searchProviders = new Bounds(sourceBar.x(),sourceBar.y(),sourceBar.width()-toolWidth,sourceBar.height());
         if(searchSourceIds.size()>=2&&searchSourceIds.size()<=5) {
             sourceSegments=host.add(new MusicSegmentedControl(searchProviders,label("view.sources"),
                     searchSourceIds.stream().map(this::sourceLabel).toList(),searchSourceIds.indexOf(source),host.preferences(),
@@ -548,32 +550,38 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             var provider=button(searchProviders,searchSourceIds.isEmpty()?label("spotify.no_native_sources"):sourceLabel(source),()->{},searchControls);
             provider.active=false;
         }
-        spotifyMadeForYou = button(new Bounds(sourceBar.right() - madeForYouWidth, sourceBar.y(),
-                madeForYouWidth, sourceBar.height()), madeForYouLabel, () -> openSpotify(true), searchControls);
-        spotifyMadeForYou.setPreview(label("spotify.made_for_you_hint"));
-        boolean hasHistory=operations()!=null;
-        int historyWidth=hasHistory?(h.width()>=260?Math.min(100,Math.max(64,host.font().width(label("operations.short_title"))+18)):24):0;
         var spotifyLabel=label("spotify.link");
-        int spotifyWidth=Math.min(84,Math.max(58,host.font().width(spotifyLabel)+18));
-        int spotifyRight=h.right()-(hasHistory?historyWidth+4:0);
-        int searchRight=spotifyRight-spotifyWidth-4;
-        queryField = host.add(new UiTextField(host.font(), new Bounds(h.x(), h.y() + 2, Math.max(1,searchRight-h.x()-28), 22), label("query"), 200, host.preferences()));
+        int spotifyWidth=Math.min(h.width()/2-4,Math.max(58,host.font().width(spotifyLabel)+16));
+        int searchRight=h.right()-spotifyWidth-4;
+        searchCapsule=new Bounds(h.x(),h.y()+2,searchRight-h.x(),22);
+        queryField = host.add(new UiTextField(host.font(), new Bounds(h.x()+24,h.y()+2,searchRight-h.x()-48,22), label("query"), 200, host.preferences()));
         MusicInputAppearance.apply(queryField);
         searchControls.add(queryField);
         queryField.setValue(query); queryField.setHint(label("query")); queryField.setOnChange(this::queryChanged);
         queryField.setOnSubmit(value -> { query = value; submitSearch(); });
-        searchButton = button(new Bounds(searchRight - 24, h.y() + 2, 24, 22), label("search"), () -> {
+        searchButton = button(new Bounds(h.x(), h.y() + 2, 24, 22), label("search"), () -> {
             if (pending != null) { cancelSearch(); searchState = "cancelled"; updateRows(); }
             else submitSearch();
         }, searchControls);
-        searchButton.setIcon(GraphicIcon.SEARCH);
-        spotifySearch=button(new Bounds(spotifyRight-spotifyWidth,h.y()+2,spotifyWidth,22),
-                spotifyLabel,() -> openSpotify(false),searchControls);
+        searchButton.setGlyphOnly(MusicControlRenderer.Icon.SEARCH);
+        clearSearch=button(new Bounds(searchRight-24,h.y()+2,24,22),label("search_clear"),()->{
+            queryField.setValue("");queryChanged("");host.screen().setFocused(queryField);
+        },searchControls);
+        clearSearch.setGlyphOnly(MusicControlRenderer.Icon.CLOSE);
+        clearSearch.setPreview(label("search_clear"));
+        spotifySearch=button(new Bounds(searchRight+4,h.y()+2,spotifyWidth,22),
+                spotifyLabel,() -> openSpotify(queryField.getValue().isBlank()),searchControls);
         spotifySearch.setPreview(label("spotify.hint"));
         searchHistory=null;
         if(hasHistory){
-            searchHistory=button(new Bounds(h.right()-historyWidth,h.y()+2,historyWidth,22),historyWidth==24?label("operations.title"):label("operations.short_title"),()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},searchControls);
-            if(historyWidth==24)searchHistory.setGlyphOnly(MusicControlRenderer.Icon.HISTORY);
+            var nav=layout.navigation();
+            int pitch=Math.min(30,(nav.height()-40)/6);
+            var historyBounds=layout.sidebar()?new Bounds(nav.x()+6,nav.y()+34+4*pitch,nav.width()-12,pitch-2)
+                    :new Bounds(sourceBar.right()-24,sourceBar.y(),24,22);
+            searchHistory=button(historyBounds,label("operations.short_title"),()->{if(!returnFromHistoryDestination())show(Page.HISTORY);},null);
+            searchHistory.setVariant(MusicTextControl.Variant.NAVIGATION);
+            if(layout.sidebar())searchHistory.setLeadingIcon(MusicControlRenderer.Icon.HISTORY);
+            else searchHistory.setGlyphOnly(MusicControlRenderer.Icon.HISTORY);
             searchHistory.setPreview(label("operations.title"));
         }
         visibleRows = layout.rows().size();
@@ -590,8 +598,48 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             searchLikes.add(trackAction(row, slot, false, true));
             searchUnlikes.add(trackAction(row, slot, false, false));
         }
+        buildSearchStart();
         searchContinuationRetry = button(continuationActionBounds(), label("library.retry"), this::submitSearch, searchControls);
     }
+    private void buildSearchStart() {
+        var c=layout.content();
+        recentSearchButtons.clear();
+        int width=Math.max(12,(c.width()-24)/2);
+        for(int i=0;i<3;i++){
+            int slot=i;
+            var control=button(new Bounds(c.x()+8,c.y()+76+i*19,width,18),Component.empty(),()->{
+                var entries=List.copyOf(recentSearches);
+                if(slot>=entries.size())return;
+                var value=entries.get(slot);
+                queryField.setValue(value);query=value;submitSearch();
+            },searchControls);
+            control.setVariant(MusicTextControl.Variant.NAVIGATION);
+            recentSearchButtons.add(control);
+        }
+        searchDiscover=button(new Bounds(c.right()-width-8,c.y()+76,width,18),label("search_discover"),()->{
+            if(discoverySource()==null)return;
+            librarySource=discoverySource();show(Page.LIBRARY);openDiscovery();
+        },searchControls);
+        searchDiscover.setPreview(label("search_discover"));
+    }
+
+    private String discoverySource() {
+        return libraryProviders.contains(source)&&NativePlaylistDiscovery.discoveryUrl(source)!=null?source:null;
+    }
+
+    private void updateSearchStart(boolean showing) {
+        var available=layout.pager().y();
+        var items=List.copyOf(recentSearches);
+        for(int i=0;i<recentSearchButtons.size();i++){
+            var item=recentSearchButtons.get(i);
+            boolean visible=showing&&i<items.size()&&item.getY()+item.getHeight()<=available;
+            var caption=visible?MusicTypography.text(items.get(i)):Component.empty();
+            if(!caption.equals(item.getMessage())){item.rebind(caption);item.setPreview(caption);}
+            item.setVisible(visible);
+        }
+        searchDiscover.setVisible(showing&&searchDiscover.getY()+searchDiscover.getHeight()<=available&&discoverySource()!=null);
+    }
+
     record ExternalSearchBookmark(OnlineMusicPlayer player, String source, String query, String submittedQuery,
                                   int remotePage, int first, List<OnlineTrack> results, String state,
                                   long accountVersion, SessionMusicOperations.Handle<?> displayed,
@@ -655,15 +703,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     MusicTextControl spotifySearchControl() { return spotifyExternalControl(false); }
 
     MusicTextControl spotifyExternalControl(boolean madeForYou) {
-        var control = madeForYou ? spotifyMadeForYou : spotifySearch;
+        var control = spotifySearch;
         return !closed && queryField != null && control != null && control.visible ? control : null;
     }
 
-    private Bounds browsingHero() {
-        var hero = layout.hero();
-        if (page != Page.SEARCH || spotifyMadeForYou == null) return hero;
-        return new Bounds(hero.x(), hero.y(), Math.max(1, hero.width() - spotifyMadeForYou.getWidth() - 4), hero.height());
-    }
+    private Bounds browsingHero() { return layout.hero(); }
     private void buildHistory() {
         historyControls.clear();historyRows.clear();historyBindings.clear();
         for(var box:rowSlots) {
@@ -1387,6 +1431,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void updateVisibility() {
         if (queryField == null) return;
+        if(searchHistory!=null){searchHistory.setVisible(!immersive&&(layout.sidebar()||page==Page.SEARCH));searchHistory.setSelected(page==Page.HISTORY);}
         artistDetail.visible(!immersive&&page==Page.ARTIST);
         if (exitControl != null) { exitControl.visible = !immersive; if (immersive) exitControl.cancelInteraction(); }
         historyControls.forEach(w->w.visible=!immersive&&page==Page.HISTORY);
@@ -1477,7 +1522,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(searchSourceIds.isEmpty())return;
         String text = fresh ? query.strip() : submittedQuery;
         if (text.isEmpty()) { searchState = "search_hint"; return; }
-        detachSearch(); cancelSuggestions(); likeState = ""; if (fresh) submittedQuery = text;
+        detachSearch(); cancelSuggestions(); likeState = "";
+        if (fresh) {
+            submittedQuery = text;
+            recentSearches.remove(text);recentSearches.addFirst(text);
+            while(recentSearches.size()>3)recentSearches.removeLast();
+        }
         searchAppend = !fresh && (pageNumber > remotePage || pageNumber == failedSearchExtension) && !results.isEmpty();
         failedSearchExtension = 0;
         if (!searchAppend) { searchScroll.cancelDrag(); first = 0; results = List.of(); }
@@ -2037,6 +2087,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         searchButton.setGlyphOnly(pending != null ? MusicControlRenderer.Icon.CLOSE
                 : retryingSearchExtension() ? MusicControlRenderer.Icon.REFRESH : MusicControlRenderer.Icon.SEARCH);
         searchButton.setAvailable(!searchSourceIds.isEmpty());
+        updateSearchStart(!immersive&&page==Page.SEARCH&&results.isEmpty()&&!showSuggestions()&&pending==null);
+        clearSearch.setVisible(!immersive&&page==Page.SEARCH&&!queryField.getValue().isEmpty());
         updateSearchFeedback();
     }
     private void updateSearchFeedback() {
@@ -2094,7 +2146,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             MusicGlass.paletteChrome(ui, layout.navigation(), layout.transport());
         if (layout.sidebar() && !immersive) {
             if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
-            text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
+            text(ui, MusicTypography.bold(label("view.brand")), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
 
         }
         if (pending != null && pending.isDone()) {
@@ -2189,7 +2241,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
 
     private void renderResults(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var c = layout.content();
-        if(layout.listHeadingHeight()>=20)muted(ui, label(showSuggestions() ? "suggestions" : "view.song"), c.x() + 6, c.y() + 4, c.width() - 12);
+        var theme=UiTheme.current();
+        RoundedCorners.draw(ui.graphics(),searchCapsule.x(),searchCapsule.y(),searchCapsule.width(),searchCapsule.height(),7,
+                ui.preferences().highContrast()?1.5f:1f,theme.border(),theme.surface());
+        if(layout.listHeadingHeight()>=20&&(!results.isEmpty()||showSuggestions()))muted(ui, label(showSuggestions() ? "suggestions" : "view.song"), c.x() + 6, c.y() + 4, c.width() - 12);
         for (int slot = 0; slot < resultRows.size(); slot++) {
             int i = first + slot; if (showSuggestions() || i >= results.size()) break;
             var track = results.get(i);
@@ -2217,8 +2272,25 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (results.isEmpty() && !showSuggestions()) {
             updateSearchFeedback();
             if (loading) text(ui, label(searchState), pager.x() + 30, pager.y() + 6, pager.width() - 60);
-            else searchStatus.render(ui,host.font(),new Bounds(c.x()+8,c.y()+layout.listHeadingHeight(),c.width()-16,
-                    Math.max(0,layout.pager().y()-c.y()-layout.listHeadingHeight()-4)));
+            else {
+                var card=new Bounds(c.x()+4,c.y()+2,c.width()-8,Math.min(138,layout.pager().y()-c.y()));
+                RoundedCorners.draw(ui.graphics(),card.x(),card.y(),card.width(),card.height(),9,
+                        ui.preferences().highContrast()?1.5f:1f,theme.border(),theme.surface());
+                OnlineMusicViewPaint.clip(ui,card);
+                try {
+                    muted(ui,label(searchSourceIds.isEmpty()?"spotify.hint":searchState),card.x()+10,card.y()+9,card.width()-20);
+                    if(!searchSourceIds.isEmpty()&&card.height()>=39)
+                        muted(ui,label("search_enter"),card.x()+10,card.y()+26,card.width()-20);
+                    if(recentSearchButtons.get(0).visible)
+                        text(ui,MusicTypography.bold(label("search_recent")),card.x()+10,c.y()+60,card.width()-20);
+                    if(card.width()>=340&&card.height()>=80) {
+                        int x=card.right()-56,y=card.y()+39;
+                        RoundedCorners.draw(ui.graphics(),x,y,32,32,16,1,theme.border(),theme.background());
+                        RoundedCorners.draw(ui.graphics(),x+9,y+9,14,14,7,1,theme.border(),theme.surface());
+                        RoundedCorners.draw(ui.graphics(),x+14,y+14,4,4,2,0,0,theme.accent());
+                    }
+                } finally { OnlineMusicViewPaint.unclip(ui); }
+            }
         }
 
     }
