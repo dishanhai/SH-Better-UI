@@ -2,12 +2,14 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SHBUI · Apple Music 授权</title>
 <style>
-:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{margin:0;background:#16161a;color:#f5f5f7}main{max-width:850px;margin:4vh auto;padding:clamp(16px,4vw,32px)}h1{font-size:32px;letter-spacing:-.04em}p{line-height:1.7;color:#b9b9c2}button{font:inherit;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:#fc3c5b;color:white;margin:8px 8px 8px 0}button.secondary{background:#303039}button:disabled{opacity:.45;cursor:default}input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:4px}#status{min-height:3em;color:#fff}a{color:#ff8195}.note{font-size:14px}#cancel{display:none}
+:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{margin:0;background:#16161a;color:#f5f5f7}main{max-width:850px;margin:4vh auto;padding:clamp(16px,4vw,32px)}h1{font-size:32px;letter-spacing:-.04em}p{line-height:1.7;color:#b9b9c2}button{font:inherit;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:#fc3c5b;color:white;margin:8px 8px 8px 0}button.secondary{background:#303039}button:disabled{opacity:.45;cursor:default}input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:4px}#status{min-height:3em;color:#fff}a{color:#ff8195}.note{font-size:14px}#cancel{display:none}
 
-input{font:inherit;min-height:2.3rem;padding:0 .65rem;border:1px solid #4d4d58;border-radius:8px;background:#202025;color:inherit;max-width:88%}
+input,select{font:inherit;min-height:2.3rem;padding:0 .65rem;border:1px solid #4d4d58;border-radius:8px;background:#202025;color:inherit;max-width:88%}
 section{border-top:1px solid #383841;padding:1.1rem 0;margin-top:1.2rem}
 summary{cursor:pointer;color:#c5c5cc}
 .catalog-controls{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.catalog-recommendation-section{border:0;margin:.75rem 0 1.5rem;padding:0}
+.catalog-recommendation-section h3{margin:.65rem 0 .4rem}
 .catalog-controls form{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
 .catalog-hero{display:flex;gap:clamp(1rem,4vw,2rem);align-items:center;margin:1rem 0}
 .catalog-hero h3{font-size:clamp(1.45rem,5vw,2.55rem);margin:.25rem 0;overflow-wrap:anywhere}
@@ -52,7 +54,7 @@ button.catalog-row-play:not(:disabled):hover,button.catalog-card:hover{backgroun
 </section>
 <section id="catalog" aria-labelledby="catalog-heading">
 <h2 id="catalog-heading">探索 Apple Music</h2>
-<p class="note">查看艺人、代表专辑和热门歌单。地区榜单和艺人精选来自公开目录。登录后，点击「为你推荐」才会向 Apple Music 请求个人推荐。浏览不会改变当前播放。</p>
+<p class="note">查看艺人、代表专辑和热门歌单。地区/曲风榜单和艺人精选来自公开目录。登录后，点击「为你推荐」才会向 Apple Music 请求个人推荐。浏览不会改变当前播放。</p>
 <p id="catalog-status" role="status" aria-live="polite"></p>
 <div id="catalog-browse">
 <div class="catalog-controls">
@@ -60,7 +62,10 @@ button.catalog-row-play:not(:disabled):hover,button.catalog-card:hover{backgroun
 <button type="submit" disabled>搜索</button></form>
 <button type="button" id="catalog-charts" class="secondary" disabled>浏览热门歌单</button>
 <button type="button" id="catalog-recommendations" class="secondary" disabled>为你推荐</button>
-</div><div id="catalog-results"></div>
+</div>
+<div id="catalog-genre-filter" hidden><label for="catalog-genre">曲风</label>
+<select id="catalog-genre"><option value="">全部曲风</option></select></div>
+<div id="catalog-results"></div>
 </div><div id="catalog-detail" hidden></div>
 </section>
 <a href="https://support.apple.com/apple-music" target="_blank" rel="noopener noreferrer">Apple Music 帮助</a>

@@ -34,12 +34,27 @@ test('search and chart distinguish catalog lists from personal recommendations',
   ]);
 });
 
+test('regional charts use named chart genres without authorization, preserve Apple order and reject stale stores', async () => {
+  const genre = (id, name) => ({ type: 'genres', id, attributes: { name } });
+  const browse = stub({
+    [root + '/genres']: { data: [genre('20', 'Alternative'), album, genre('20', 'Duplicate'), genre('14', 'Pop')] },
+    [root + '/charts']: { results: { playlists: [{ data: [playlist, { ...playlist, id: 'pl.second' }] }] } }
+  });
+  assert.deepEqual(await browse.catalog.chartGenres(), [{ id:'20', name:'Alternative' }, { id:'14', name:'Pop' }]);
+  assert.deepEqual((await browse.catalog.charts('20')).map(entry => entry.id), ['pl.test', 'pl.second']);
+  assert.deepEqual(browse.calls, [[root + '/genres', undefined], [root + '/charts', { types:'playlists', limit:16, genre:'20' }]]);
+  await assert.rejects(browse.catalog.charts('20&types=songs'), /Invalid chart genre/);
+  const pending = browse.catalog.chartGenres();
+  browse.music.storefrontCountryCode = 'us';
+  await assert.rejects(pending, /Chart genres unavailable/);
+});
+
 test('personal recommendation fixture uses Apple group/contents/catalog shape and requires existing authorization', async () => {
   const personal = { ...playlist, id: 'pl.pm-fixture', href: root + '/playlists/pl.pm-fixture',
     attributes: { name: 'Made-for-you mix', playlistType: 'personal-mix', curatorName: 'Apple Music for Me' } };
   const recommendations = { data: [{
     id: '6-fixture', type: 'personal-recommendation', href: '/v1/me/recommendations/6-fixture',
-    attributes: { resourceTypes: ['playlists'], title: { stringForDisplay: 'Made for You' }, kind: 'music-recommendations' },
+    attributes: { resourceTypes: ['playlists'], title: { stringForDisplay: 'Made for You' }, reason: { stringForDisplay: 'Based on your listening' }, kind: 'music-recommendations' },
     relationships: { contents: { href: '/v1/me/recommendations/6-fixture/contents', data: [
       { type: 'stations', id: 'ra.station', href: root + '/stations/ra.station' },
       album, { ...personal, type: 'library-playlists' },
@@ -55,6 +70,7 @@ test('personal recommendation fixture uses Apple group/contents/catalog shape an
   music.isAuthorized = true;
   const entries = await catalog.recommendations();
   assert.deepEqual(entries.map(entry => entry.id), ['pl.pm-fixture']);
+  assert.deepEqual(entries[0].section, { index:0, title:'Made for You', reason:'Based on your listening' });
   assert.deepEqual(calls, [['/v1/me/recommendations', undefined]]);
   const detail = await catalog.detail(entries[0].kind, entries[0].id);
   assert.deepEqual(detail.tracks.map(track => track.id), ['8', '2']);

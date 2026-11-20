@@ -68,10 +68,23 @@ export function createCatalog(music) {
       if (!results) throw new Error('Invalid catalog search');
       return ['artists', 'playlists'].flatMap(kind => (results[kind]?.data ?? []).map(item => card(item, kind)).filter(Boolean));
     },
-    async charts() {
-      const { base } = root();
-      const { results } = await request(base + '/charts', { types: 'playlists', limit: 16 });
-      if (!results) throw new Error('Invalid chart response');
+    async chartGenres() {
+      const { base, region } = root();
+      const { data } = await request(base + '/genres');
+      if (!Array.isArray(data) || music.storefrontCountryCode !== region) throw new Error('Chart genres unavailable');
+      const seen = new Set(), genres = [];
+      for (const item of data) {
+        const name = label(item?.attributes?.name), id = item?.id;
+        if (item?.type !== 'genres' || typeof id !== 'string' || !songId.test(id) || !name || seen.has(id)) continue;
+        seen.add(id); genres.push({ id, name });
+      }
+      return genres;
+    },
+    async charts(genre = '') {
+      if (typeof genre !== 'string' || (genre && !songId.test(genre))) throw new Error('Invalid chart genre');
+      const { base, region } = root();
+      const { results } = await request(base + '/charts', { types: 'playlists', limit: 16, ...(genre && { genre }) });
+      if (!results || music.storefrontCountryCode !== region) throw new Error('Invalid chart response');
       return (results.playlists ?? []).flatMap(chart => chart.data ?? []).map(item => card(item, 'playlists')).filter(Boolean);
     },
     async recommendations(isCurrent = () => true) {
@@ -95,9 +108,13 @@ export function createCatalog(music) {
       const seenPlaylists = new Set(), seenPages = new Set(), result = [];
       let itemCount = data.length;
       if (itemCount > 1000) throw new Error('Recommendation collection exceeds limit');
-      for (const recommendation of data) {
+      for (const [index, recommendation] of data.entries()) {
         let contents = recommendation?.relationships?.contents;
         if (recommendation?.type !== 'personal-recommendation' || contents == null) continue;
+        const section = {
+          index, title: label(recommendation.attributes?.title?.stringForDisplay),
+          reason: label(recommendation.attributes?.reason?.stringForDisplay)
+        };
         do {
           if (!Array.isArray(contents.data)) throw new Error('Invalid recommendation contents');
           itemCount += contents.data.length;
@@ -105,7 +122,7 @@ export function createCatalog(music) {
           for (const item of contents.data) {
             const entry = card(item, 'playlists');
             if (!entry || item.href !== `${base}/playlists/${entry.id}` || seenPlaylists.has(entry.id)) continue;
-            seenPlaylists.add(entry.id); result.push(entry);
+            seenPlaylists.add(entry.id); result.push({ ...entry, section });
           }
           if (contents.next == null) break;
           if (typeof recommendation.id !== 'string' || !recommendation.id) throw new Error('Invalid recommendation ID');

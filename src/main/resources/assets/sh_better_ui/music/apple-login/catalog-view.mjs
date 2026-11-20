@@ -5,7 +5,11 @@ export function createCatalogView(root, catalog, music, play) {
   const notice = root.querySelector('#catalog-status'), search = root.querySelector('form');
   const results = browse.querySelector('#catalog-results');
   const recommendations = root.querySelector('#catalog-recommendations');
+  const chartButton = root.querySelector('#catalog-charts');
+  const genreFilter = root.querySelector('#catalog-genre-filter');
+  const genreSelect = root.querySelector('#catalog-genre');
   let revision = 0, closed = false, busy = false, activeDetail = null, personal = false;
+  let source = '', genreRegion, genreRequest = 0;
   let playbackBlocked = true, displayedRegion = music.storefrontCountryCode;
   const element = (tag, text = '', css = '') => {
     const node = document.createElement(tag);
@@ -126,10 +130,31 @@ export function createCatalogView(root, catalog, music, play) {
       notice.textContent = '无法载入目录详情或完整曲目列表。请检查地区与连接后重试。';
     }
   }
-  async function loadBrowse(load, title, forYou = false) {
+  function personalSections(entries, title) {
+    if (!entries.length) {
+      results.append(element('p', 'Apple Music 暂无可显示的个人推荐歌单。'));
+      return;
+    }
+    const groups = new Map();
+    for (const entry of entries) {
+      const key = entry.section?.index;
+      if (!groups.has(key)) groups.set(key, []);
+      groups.get(key).push(entry);
+    }
+    for (const group of groups.values()) {
+      const section = element('section', '', 'catalog-recommendation-section');
+      const { title: name, reason } = group[0].section ?? {};
+      cards(section, group, name || title, showBrowse);
+      if (reason) section.insertBefore(element('p', reason, 'note'), section.children[1]);
+      results.append(section);
+    }
+  }
+  async function loadBrowse(load, title, nextSource) {
+    const forYou = nextSource === 'recommendations';
     if (closed || (forYou && music.isAuthorized !== true)) return;
     const current = ++revision;
-    busy = false; personal = forYou;
+    busy = false; personal = forYou; source = nextSource;
+    genreFilter.hidden = nextSource !== 'charts' || genreSelect.options.length <= 1;
     // Drop any previous personal content before switching to a different browse source.
     results.replaceChildren(); detail.replaceChildren();
     notice.textContent = forYou ? '正在向 Apple Music 请求个人推荐…' : '正在加载目录…';
@@ -137,7 +162,7 @@ export function createCatalogView(root, catalog, music, play) {
       const entries = await load(() => !closed && current === revision);
       if (closed || current !== revision) return;
       results.replaceChildren();
-      if (forYou && !entries.length) results.append(element('p', 'Apple Music 暂无可显示的个人推荐歌单。'));
+      if (forYou) personalSections(entries, title);
       else cards(results, entries, title, showBrowse);
       notice.textContent = `共 ${entries.length} 项`;
     } catch {
@@ -149,20 +174,44 @@ export function createCatalogView(root, catalog, music, play) {
   }
   search.addEventListener('submit', event => {
     event.preventDefault();
-    void loadBrowse(() => catalog.search(search.querySelector('input').value), '艺人与歌单搜索');
+    void loadBrowse(() => catalog.search(search.querySelector('input').value), '艺人与歌单搜索', 'search');
   });
-  browse.querySelector('#catalog-charts').addEventListener('click', () => {
-    void loadBrowse(() => catalog.charts(), 'Apple Music 地区热门歌单');
+  function loadCharts() {
+    const genre = genreSelect.value;
+    const name = genre && genreSelect.selectedOptions[0]?.textContent;
+    void loadBrowse(() => catalog.charts(genre), name ? name + ' · 热门歌单' : 'Apple Music 地区热门歌单', 'charts');
+  }
+  function resetGenres() {
+    const all = element('option', '全部曲风'); all.value = '';
+    genreSelect.replaceChildren(all);
+    genreFilter.hidden = true; genreRegion = undefined; ++genreRequest;
+  }
+  chartButton.addEventListener('click', () => {
+    loadCharts();
+    const region = music.storefrontCountryCode;
+    if (genreRegion === region) return;
+    genreRegion = region;
+    const request = ++genreRequest;
+    void catalog.chartGenres().then(genres => {
+      if (closed || request !== genreRequest || music.storefrontCountryCode !== region) return;
+      for (const {id, name} of genres) {
+        const option = element('option', name); option.value = id; genreSelect.append(option);
+      }
+      genreFilter.hidden = source !== 'charts' || !genres.length;
+    }).catch(() => { if (request === genreRequest) genreRegion = undefined; });
   });
+  genreSelect.addEventListener('change', loadCharts);
   recommendations.addEventListener('click', () => {
-    void loadBrowse(isCurrent => catalog.recommendations(isCurrent), '为你推荐的歌单', true);
+    void loadBrowse(isCurrent => catalog.recommendations(isCurrent), '为你推荐的歌单', 'recommendations');
   });
   for (const input of browse.querySelectorAll('button, input')) input.disabled = input === recommendations && music.isAuthorized !== true;
   return {
     update(blocked, authorized) {
       recommendations.disabled = !authorized;
-      if (personal && (!authorized || displayedRegion !== music.storefrontCountryCode)) {
-        personal = false;
+      const regionChanged = displayedRegion !== music.storefrontCountryCode;
+      if (regionChanged) resetGenres();
+      if (regionChanged || (personal && !authorized)) {
+        personal = false; source = '';
         showBrowse(false); results.replaceChildren(); detail.replaceChildren();
       }
       if (playbackBlocked !== blocked || displayedRegion !== music.storefrontCountryCode) {
