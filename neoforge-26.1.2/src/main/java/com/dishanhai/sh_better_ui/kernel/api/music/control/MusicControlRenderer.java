@@ -112,25 +112,26 @@ public final class MusicControlRenderer {
     }
     public static void transport(GuiGraphicsExtractor g,Bounds b,MusicTransportControl.Glyph glyph,boolean hover,
                                  boolean focus,boolean pressed,boolean enabled,int foreground,UiPreferences preferences){
-        transport(g,b,glyph,1f,hover,focus,pressed,enabled,foreground,preferences);
+        transport(g,b,glyph,1f,hover,focus,pressed,pressed && !preferences.reducedMotion()
+                && !preferences.highContrast() ? 1f : 0f,enabled,foreground,preferences);
     }
     static void transport(GuiGraphicsExtractor g,Bounds b,MusicTransportControl.Glyph glyph,float glyphWeight,boolean hover,
-                          boolean focus,boolean pressed,boolean enabled,int foreground,UiPreferences preferences){
+                          boolean focus,boolean pressed,float compression,boolean enabled,int foreground,UiPreferences preferences){
         if(b.width()<1||b.height()<1)return;
         int ink=preferences.highContrast()?(foreground|0xff000000):foreground;
         if(!enabled)ink=alpha(ink,.3f);
         float side=Math.min(b.width(),b.height());float cx=b.x()+b.width()/2f,cy=b.y()+b.height()/2f;
-        if((hover||focus||pressed)&&enabled)
+        if((hover||focus||pressed||compression>0f)&&enabled)
             RoundedCorners.draw(g,cx-side/2,cy-side/2,side,side,side/2,focus?1:0,
-                    alpha(ink,.65f),alpha(ink,pressed?.14f:.07f));
+                    alpha(ink,.65f),alpha(ink,pressed?.14f:(hover||focus?.07f:0f)+.07f*compression));
         if(glyphWeight<1f) drawTransportGlyph(g,TransportGlyphMotion.pairedWith(glyph),
-                cx,cy,side,pressed,alpha(ink,1f-glyphWeight),preferences);
-        if(glyphWeight>0f) drawTransportGlyph(g,glyph,cx,cy,side,pressed,alpha(ink,glyphWeight),preferences);
+                cx,cy,side,compression,alpha(ink,1f-glyphWeight),preferences);
+        if(glyphWeight>0f) drawTransportGlyph(g,glyph,cx,cy,side,compression,alpha(ink,glyphWeight),preferences);
     }
     private static void drawTransportGlyph(GuiGraphicsExtractor g,MusicTransportControl.Glyph glyph,float cx,float cy,
-                                           float side,boolean pressed,int ink,UiPreferences preferences){
+                                           float side,float compression,int ink,UiPreferences preferences){
         float size=Math.min(glyph==MusicTransportControl.Glyph.PLAY||glyph==MusicTransportControl.Glyph.PAUSE?26:18,side*.55f);
-        if(pressed&&!preferences.reducedMotion())size*=.94f;
+        size*=1f-.08f*compression;
         switch(glyph){
             case STOP -> bar(g,cx-size*.38f,cy-size*.38f,size*.76f,size*.76f,ink);
             case CANCEL -> {stroke(g,cx-size*.32f,cy-size*.32f,cx+size*.32f,cy+size*.32f,2,ink);stroke(g,cx-size*.32f,cy+size*.32f,cx+size*.32f,cy-size*.32f,2,ink);}

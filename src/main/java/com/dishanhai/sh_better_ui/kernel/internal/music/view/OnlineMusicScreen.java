@@ -27,7 +27,13 @@ public final class OnlineMusicScreen {
     }
 
     public static UiScreen create(Screen parent, Supplier<? extends GuiEventListener> returnFocus) {
-        return create(parent, returnFocus, () -> UnifiedUI.get().require(OnlineMusicService.KEY).backgroundView());
+        return create(parent, returnFocus, () -> {
+            var music = UnifiedUI.get().require(OnlineMusicService.KEY);
+            if (Boolean.getBoolean(MusicFrontendWorkspace.PREVIEW_FLAG) && music instanceof ClientOnlineMusic nativeMusic) {
+                return nativeMusic.redesignedBackgroundView();
+            }
+            return music.backgroundView();
+        });
     }
 
     /** A notice opens the matching history row, not an account or result action. */
@@ -49,7 +55,7 @@ public final class OnlineMusicScreen {
                                 com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl.Glyph.BACK,
                                 screen.context().preferences(), screen::onClose));
                         owner.mount(new Context(screen, owner, exit));
-                        screen.onCloseRequest(() -> !(owner.view instanceof OnlineMusicViewImpl nativeView) || nativeView.permitsScreenClose());
+                        screen.onCloseRequest(() -> (owner.view instanceof MusicFrontendWorkspace workspace ? workspace.permitsScreenClose() : !(owner.view instanceof OnlineMusicViewImpl nativeView) || nativeView.permitsScreenClose()));
                     }
                     catch (ServiceUnavailable failure) { owner.close(); }
                 })
@@ -61,6 +67,7 @@ public final class OnlineMusicScreen {
                 })
                 .onForeground((screen, frame) -> {
                     if (owner.view instanceof OnlineMusicViewImpl nativeView) nativeView.renderRouteHandoff(frame);
+                    else if (owner.view instanceof MusicFrontendWorkspace workspace) workspace.renderRouteHandoff(frame);
                     if (owner.overlays != null) owner.overlays.render(frame.graphics(), frame.mouse() == null ? -1 : (int)frame.mouse().x(), frame.mouse() == null ? -1 : (int)frame.mouse().y(), frame.partialTick());
                 })
                 .onRemoved(screen -> owner.close()).build();
@@ -89,6 +96,13 @@ public final class OnlineMusicScreen {
 
     private static final class ServiceUnavailable extends RuntimeException {
         ServiceUnavailable(RuntimeException cause) { super(cause); }
+    }
+
+    static GuiEventListener restoreRebuiltLibrary(PreviewContext context, MusicFrontendWorkspace origin,
+                                                  MusicFrontendBrowserReturn.Ticket ticket) {
+        if (!(context instanceof Context nativeContext)) return origin.restoreRebuiltLibrary(origin,ticket);
+        return nativeContext.owner.view instanceof MusicFrontendWorkspace workspace
+                ? workspace.restoreRebuiltLibrary(origin,ticket) : null;
     }
 
     static GuiEventListener restorePlaylistDiscovery(PreviewContext context, OnlineMusicViewImpl origin,

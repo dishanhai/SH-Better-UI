@@ -23,11 +23,11 @@ final class OnlineMusicRouteMotion {
     record Frame(Surface surface, float strength) {
         int opacity(boolean highContrast) {
             float maxOpacity = switch (surface) {
-                case SHELL -> .70f;
-                case PAGE, STAGE_PANE -> .78f;
-                case DETAIL -> .68f;
+                case SHELL -> .31f;
+                case PAGE, STAGE_PANE -> .38f;
+                case DETAIL -> .28f;
             };
-            // A readable residual remains visible while the new body's full contrast fades in.
+            // Keep labels readable throughout; this is a paint layer, not a content mask.
             return Math.round(255f * strength * (highContrast ? maxOpacity * .50f : maxOpacity));
         }
     }

@@ -38,18 +38,31 @@ final class LyricWordEffects {
         return smooth(fraction / .32f) * smooth((1 - fraction) / .38f);
     }
 
-    /** Continuous soft focus on both sides of the actual on-screen reading anchor. */
+    /** Continuous ink hierarchy on both sides of the actual on-screen reading anchor. */
     static float focusDistance(double rowY, double anchorY, double rowPitch) {
         if (!(rowPitch > 0)) return 0;
         return smooth((float) ((Math.abs(rowY - anchorY) / rowPitch - .12) / 2.1));
     }
 
-    static float softMix(float softness, float emphasis) {
-        return softness * (1 - smooth(emphasis));
+    static float distanceInkFade(double rowY, double anchorY, double rowPitch) {
+        return .36f + .40f * focusDistance(rowY, anchorY, rowPitch);
     }
 
-    static float edgeOpacity(double y, double height, double fadeHeight) {
-        if (!(fadeHeight > 0)) return 1;
+    /** Suppress finished lines a little more strongly than the upcoming words. */
+    static float stageInkFade(float regular, double y, double anchorY, double pitch) {
+        float lead = pitch > 0 ? smooth((float)((anchorY - y) / pitch)) : 0;
+        return Math.min(.96f, regular + .24f + .11f * lead);
+    }
+
+    /** Paint-only correction; keep the measured rows and moving scroll at full precision. */
+    static double restingBaseline(double y, double physicalScale, boolean still) {
+        return still && physicalScale > 0 && Double.isFinite(physicalScale)
+                ? Math.rint(y * physicalScale) / physicalScale : y;
+    }
+
+    /** Only peripheral rows fade into the clip edge; reading/focused rows keep full ink. */
+    static float rowOpacity(boolean peripheral, double y, double height, double fadeHeight) {
+        if (!peripheral || !(fadeHeight > 0)) return 1;
         return smooth((float) Math.min(y / fadeHeight, (height - y) / fadeHeight));
     }
 }

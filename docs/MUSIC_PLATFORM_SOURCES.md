@@ -103,6 +103,12 @@ var login = new AppleMusicBrowserLogin(projectDeveloperToken);
 
 Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, configuredPort)` 使用已配置端口；端口被占用时失败，不悄悄更换 origin。随机端口构造器仅适合 token/授权配置明确支持该来源的测试，不建议为了让它工作而移除 origin 安全限制。Apple 官方开发者论坛 DTS 回复也指出文档没有保证 local origin 是否可接受，并有 Windows Chrome/Edge 授权失败调查，因此仍以真实配置与账号验证为门禁：https://developer.apple.com/forums/thread/853567 。
 
+### 游戏客户端账户控件接入
+
+账户控件应在用户明确点击“在浏览器打开 Apple Music 登录”时调用会话控制器，视图销毁或用户点击“关闭本地浏览器会话”时清理本机监听器。不要显示、复制或记录会话地址。关闭本机连接不等于浏览器登出，玩家必须在浏览器中使用“断开连接”。
+
+客户端读取项目维护者部署的短期令牌和端口：环境变量 `SHBUI_APPLE_MUSIC_DEVELOPER_TOKEN`、`SHBUI_APPLE_MUSIC_LOOPBACK_PORT`，或同名用途的 JVM 属性 `shbui.appleMusic.developerToken`、`shbui.appleMusic.loopbackPort`（优先）。推荐从本机受控环境注入，不要把私钥或凭证写进 JAR、整合包、公开配置、日志或工单。端口须匹配项目的授权 origin；仅在项目明确允许随机 origin 的测试环境中设置为 `0`。未配置时应显示说明，不能让玩家用个人 Apple 账号代替。
+
 ### 授权原型验证结果
 
 - 最终源码 Forge 1.20.1、NeoForge 1.21.1 各 13 项 Apple 定向测试通过（目录 8 + 本机 HTTP/生命周期 5），零跳过。

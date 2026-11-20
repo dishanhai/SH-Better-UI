@@ -53,15 +53,39 @@ class LyricWordEffectsTest {
         assertEquals(LyricWordEffects.focusDistance(80,100,20),LyricWordEffects.focusDistance(120,100,20));
         assertTrue(LyricWordEffects.focusDistance(138,100,20)>LyricWordEffects.focusDistance(137,100,20));
         assertEquals(1,LyricWordEffects.focusDistance(200,100,20));
-        assertEquals(0,LyricWordEffects.edgeOpacity(0,100,20));
-        assertEquals(.5f,LyricWordEffects.edgeOpacity(10,100,20));
-        assertEquals(1,LyricWordEffects.edgeOpacity(50,100,20));
-        assertEquals(0,LyricWordEffects.edgeOpacity(100,100,20));
+        assertEquals(0,LyricWordEffects.rowOpacity(true,0,100,20));
+        assertEquals(.5f,LyricWordEffects.rowOpacity(true,10,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(true,50,100,20));
+        assertEquals(0,LyricWordEffects.rowOpacity(true,100,100,20));
     }
 
-    @Test void incomingTimedRowKeepsResidualBlurUntilItsInkSettles(){
-        assertEquals(.4f,LyricWordEffects.softMix(.4f,0));
-        assertEquals(.2f,LyricWordEffects.softMix(.4f,.5f));
-        assertEquals(0,LyricWordEffects.softMix(.4f,1));
+    @Test void peripheralDepthDimsInkContinuouslyButDoesNotDimReadingRowsAtTheEdge(){
+        assertEquals(.36f,LyricWordEffects.distanceInkFade(100,100,20));
+        assertTrue(LyricWordEffects.distanceInkFade(138,100,20)>LyricWordEffects.distanceInkFade(137,100,20));
+        assertEquals(.76f,LyricWordEffects.distanceInkFade(200,100,20),1e-6f);
+        assertEquals(1,LyricWordEffects.rowOpacity(false,0,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(false,100,100,20));
+        assertEquals(1,LyricWordEffects.rowOpacity(true,0,100,0));
+    }
+    @Test void stageContrastFavorsCurrentAndUpcomingVersusFinishedRows() {
+        float upcoming=LyricWordEffects.stageInkFade(.60f,140,100,40);
+        float finished=LyricWordEffects.stageInkFade(.60f,60,100,40);
+        assertTrue(upcoming>.60f && finished>upcoming);
+        assertEquals(.96f,LyricWordEffects.stageInkFade(.76f,60,100,40));
+    }
+
+    @Test void restingGlyphOriginSnapsAtTheDeviceScaleWithoutRoundingMotion() {
+        double row=41.24;
+        assertEquals(41,LyricWordEffects.restingBaseline(row,2,true));
+        assertEquals(41+1d/3,LyricWordEffects.restingBaseline(row,3,true));
+        assertEquals(row,LyricWordEffects.restingBaseline(row,3,false));
+        assertEquals(row,LyricWordEffects.restingBaseline(row,0,true));
+        var spring=new LyricFollowMotion();
+        spring.reset(0);
+        assertTrue(spring.settled());
+        spring.step(30,.016);
+        assertFalse(spring.settled());
+        spring.step(30,2);
+        assertTrue(spring.settled());
     }
 }

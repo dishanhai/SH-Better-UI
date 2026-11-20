@@ -6,6 +6,31 @@ import org.junit.jupiter.api.Test;
 import java.util.*;
 import static org.junit.jupiter.api.Assertions.*;
 class MusicLyricsManualScrollTest {
+    @Test void temporaryScrubDoesNotClearTheManualAnchorOrEnableLineSeeking() throws Exception {
+        var view = new MusicLyricsView(new Bounds(0, 0, 200, 100), Component.empty(), UiPreferences.DEFAULT, p -> {});
+        view.setLines("song", List.of(new MusicLyricsModel.Line("a", 0), new MusicLyricsModel.Line("b", 4_000)));
+        var height = MusicLyricsView.class.getDeclaredField("totalHeight");
+        height.setAccessible(true);
+        height.setDouble(view, 400);
+        var offset = MusicLyricsView.class.getDeclaredField("offset");
+        offset.setAccessible(true);
+        offset.setDouble(view, 85);
+        view.model().focus(0);
+
+        view.playback(6_000, true, true);
+        assertTrue(view.browsing());
+        assertEquals(0, view.model().focusedIndex());
+        assertEquals(1, view.model().activeIndex());
+        assertTrue(view.model().seekTarget(1).isEmpty());
+        offset.setDouble(view, 210); // Simulate the rendered scrub position.
+        view.playback(2_000, true, false);
+        assertEquals(85, offset.getDouble(view));
+        assertTrue(view.browsing());
+        view.follow();
+        assertFalse(view.browsing());
+        assertEquals(-1, view.model().focusedIndex());
+    }
+
     @Test void manualMovementReportsClampedDeltaButProgrammaticChangesStaySilent() throws Exception {
         var view=new MusicLyricsView(new Bounds(0,0,200,100),Component.empty(),UiPreferences.DEFAULT,p->{});
         var deltas=new ArrayList<Double>(); view.setOnManualScroll(deltas::add);

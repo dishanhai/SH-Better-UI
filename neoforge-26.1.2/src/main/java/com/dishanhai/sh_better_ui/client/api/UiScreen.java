@@ -168,6 +168,9 @@ public final class UiScreen extends Screen {
         return widget;
     }
 
+    /** Native initial focus already honors the logical target restored during layout. */
+    public void restoreLayoutFocus(GuiEventListener target) { setFocused(target); }
+
     @Override public void setFocused(GuiEventListener listener) {
         if (getFocused() != listener) { super.setFocused(listener); focusChanged.accept(listener); }
     }

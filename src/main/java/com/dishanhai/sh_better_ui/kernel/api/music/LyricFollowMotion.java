@@ -23,6 +23,8 @@ final class LyricFollowMotion {
         return position;
     }
 
+    boolean settled() { return velocity == 0; }
+
     static boolean discontinuity(long previous, long current, double seconds) {
         return previous >= 0 && current >= 0
                 && (current < previous - 100 || current - previous > 550 + seconds * 1000);

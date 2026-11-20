@@ -30,12 +30,14 @@ public final class MusicLyricsView extends AbstractWidget {
     private Map<Integer,LyricGlyphRuns> timedRows=Map.of();
     private final LyricFollowMotion followMotion=new LyricFollowMotion();
     private double[] tops=new double[0],heights=new double[0];
-    private float[] emphasis=new float[0],softness=new float[0];
+    private float[] emphasis=new float[0];
     private double offset,totalHeight;
     private long lastFrame,observedPosition=-1;
     private boolean layoutDirty=true;
     private boolean completeRowsOnly;
-    private boolean seekingPreview, previewChanged;
+    private boolean immersiveReading;
+    private boolean seekingPreview, previewChanged, returnToCurrent;
+    private final LyricBrowseViewport browseViewport = new LyricBrowseViewport();
     private Font layoutFont;
     private net.minecraft.locale.Language layoutLanguage;
     private static volatile long fontMetricsRevision;
@@ -63,14 +65,17 @@ public final class MusicLyricsView extends AbstractWidget {
     public void setLines(Object contentKey,List<MusicLyricsModel.Line> lines){
         boolean changed=!Objects.equals(model.contentKey(),contentKey)||!model.lines().equals(lines);
         model.content(contentKey,lines);
-        if(changed){layoutDirty=true;offset=0;lastFrame=0;observedActive=-2;observedPosition=-1;emphasis=new float[0];softness=new float[0];}
+        if(changed){
+            layoutDirty=true;offset=0;lastFrame=0;observedActive=-2;observedPosition=-1;emphasis=new float[0];
+            browseViewport.clear();seekingPreview=false;previewChanged=false;returnToCurrent=false;
+        }
     }
     public void playback(long positionMillis,boolean seekable){playback(positionMillis,seekable,false);}
     /** A scrub position controls the lyric viewport but never makes a lyric line seekable. */
     public void playback(long positionMillis,boolean seekable,boolean preview){
         previewChanged|=seekingPreview!=preview;
         seekingPreview=preview;
-        if(preview&&model.browsing())follow();
+        offset=clamp(browseViewport.playback(preview,model.browsing(),offset));
         model.playback(positionMillis,seekable&&!preview);
     }
     public void preferences(UiPreferences value){preferences=Objects.requireNonNull(value);}
@@ -84,13 +89,17 @@ public final class MusicLyricsView extends AbstractWidget {
                 &&Double.isFinite(viewportHeight)&&rowHeight>0&&viewportHeight>=rowHeight
                 &&rowY>=top&&rowY-top<=viewportHeight-rowHeight;
     }
-    public boolean browsing(){return model.browsing();}
+    /** Stronger visual hierarchy and stable resting baselines for a full-screen player. */
+    public void immersiveReading(boolean value){immersiveReading=value;}
+    /** A transport drag temporarily takes over the viewport without discarding the manual bookmark. */
+    public boolean browsing(){return !seekingPreview && model.browsing();}
     public void follow(){
         model.follow();
         // Unsynchronized/unavailable playback has no active line to pull an old
         // manual offset back into view on re-entry. Return to the beginning.
         if(!model.synchronizedLyrics()||model.positionMillis()<0)offset=0;
         followMotion.reset(offset);
+        returnToCurrent=true;
     }
     private double clamp(double value){return Math.max(0,Math.min(Math.max(0,totalHeight-height),value));}
     private void layout(Font font){
@@ -99,7 +108,7 @@ public final class MusicLyricsView extends AbstractWidget {
         var lines=new ArrayList<List<FormattedCharSequence>>(model.lines().size());
         var timed=new HashMap<Integer,LyricGlyphRuns>();
         tops=new double[model.lines().size()];heights=new double[tops.length];
-        if(emphasis.length!=tops.length){emphasis=new float[tops.length];softness=new float[tops.length];}
+        if(emphasis.length!=tops.length)emphasis=new float[tops.length];
         double y=height*.24;
         for(int i=0;i<tops.length;i++){
             var line=model.lines().get(i);
@@ -135,14 +144,17 @@ public final class MusicLyricsView extends AbstractWidget {
     private void reveal(int index){if(index>=0&&index<tops.length)offset=clamp(tops[index]-height*.24);}
     private int hit(double y){double local=y-getY()+offset;for(int i=0;i<tops.length;i++)if(local>=tops[i]&&local<tops[i]+heights[i])return i;return -1;}
     private void activate(int index){model.focus(index);model.seekTarget(index).ifPresent(seek);}
-    @Override public void onClick(double x,double y){layout(Minecraft.getInstance().font);int hit=hit(y);if(hit>=0)activate(hit);}
+    @Override public void onClick(double x,double y){layout(Minecraft.getInstance().font);int hit=hit(y);if(!seekingPreview&&hit>=0)activate(hit);}
     public boolean mouseScrolled(double x,double y,double amount){
-        if(!visible||!active||!isMouseOver(x,y)||amount==0||!Double.isFinite(amount))return false;
-        layout(Minecraft.getInstance().font);model.browse();manualScrollTo(offset-amount*36*scale);return true;
+        if(!visible||!active||seekingPreview||!isMouseOver(x,y)||amount==0||!Double.isFinite(amount))return false;
+        layout(Minecraft.getInstance().font);
+        double target=clamp(offset-amount*36*scale);
+        if(target==offset)return false;
+        model.browse();manualScrollTo(target);return true;
     }
     public boolean mouseScrolled(double x,double y,double horizontal,double vertical){return mouseScrolled(x,y,vertical);}
     @Override public boolean keyPressed(int key,int scan,int mods){
-        if(!visible||!active||!isFocused())return false;
+        if(!visible||!active||seekingPreview||!isFocused())return false;
         if(key==GLFW.GLFW_KEY_ESCAPE){
             if(model.browsing()){follow();return true;}
             return false;
@@ -169,19 +181,24 @@ public final class MusicLyricsView extends AbstractWidget {
         int current=model.activeIndex();long now=PageTransition.nowMs();
         double frameSeconds=lastFrame==0?0:Math.max(0,(now-lastFrame)/1000d);
         long position=model.positionMillis();
-        boolean snap=seekingPreview||previewChanged||lastFrame==0||frameSeconds>.38||preferences.reducedMotion()
+        boolean snap=seekingPreview||previewChanged||returnToCurrent||lastFrame==0||frameSeconds>.38||preferences.reducedMotion()
                 ||LyricFollowMotion.discontinuity(observedPosition,position,frameSeconds)
                 ||(current>=0&&observedActive>=0&&Math.abs(current-observedActive)>6);
-        LyricInterlude gap=current<0&&model.synchronizedLyrics()&&!model.browsing()&&!completeRowsOnly
+        boolean steer=browseViewport.steering(model.browsing());
+        LyricInterlude gap=current<0&&model.synchronizedLyrics()&&steer&&!completeRowsOnly
                 ?LyricInterlude.at(model.lines(),position):null;
         double gapY=gap==null?0:tops[gap.next()]-MusicTypography.LINE_HEIGHT*scale;
-        int previewAnchor=seekingPreview||previewChanged?model.previewAnchor():-1;
-        if(!model.browsing()&&(current>=0||gap!=null||previewAnchor>=0)){
+        int previewAnchor=seekingPreview||previewChanged||returnToCurrent?model.previewAnchor():-1;
+        double previousOffset=offset;
+        if(steer&&(current>=0||gap!=null||previewAnchor>=0)){
             double target=clamp((current>=0?tops[current]:gap!=null?gapY:tops[previewAnchor])-height*.24);
             if(snap)followMotion.reset(target);
             offset=clamp(followMotion.step(target,frameSeconds));
         }else followMotion.reset(offset);
-        previewChanged=false;observedPosition=position;observedActive=current;lastFrame=now;
+        boolean stillRows=immersiveReading&&!seekingPreview
+                &&(preferences.reducedMotion()||(!previewChanged&&offset==previousOffset&&followMotion.settled()));
+        double framebufferScale=stillRows?Minecraft.getInstance().getWindow().getGuiScale():1d;
+        previewChanged=false;returnToCurrent=false;observedPosition=position;observedActive=current;lastFrame=now;
         int hovered=isMouseOver(mx,my)?hit(my):-1;
         int ink=ContrastPolicy.readable(primary,0,backdrop,4.5);
         int muted=preferences.highContrast()?ink:ContrastPolicy.readable(secondary,0,backdrop,3);
@@ -189,17 +206,16 @@ public final class MusicLyricsView extends AbstractWidget {
         try {
             for(int i=0;i<tops.length;i++){
                 double y=getY()+tops[i]-offset;if(y+heights[i]<getY()||y>getY()+height)continue;
-                boolean reading=i==hovered||isFocused()&&i==model.focusedIndex()||model.browsing();
-                boolean bright=!model.synchronizedLyrics()||i==current||(i==hovered&&model.seekTarget(i).isPresent());
+                boolean reading=!seekingPreview&&(i==hovered||isFocused()&&i==model.focusedIndex());
+                boolean bright=!model.synchronizedLyrics()||i==current||reading;
                 emphasis[i]=LyricPresentation.approach(emphasis[i],bright?1:0,frameSeconds,snap);
-                boolean softFocus=model.synchronizedLyrics()&&position>=0&&!completeRowsOnly
+                boolean depthShading=model.synchronizedLyrics()&&position>=0&&!completeRowsOnly
                         &&!preferences.reducedMotion()&&!preferences.highContrast();
                 double pitch=Math.max(MusicTypography.LINE_HEIGHT*scale,heights[i])+Math.min(10*scale,height*.25);
-                float focusDistance=softFocus?LyricWordEffects.focusDistance(y,getY()+height*.24,pitch):0;
-                float desiredSoftness=reading?0:focusDistance*(1-emphasis[i]);
-                softness[i]=LyricPresentation.approach(softness[i],desiredSoftness,frameSeconds,
-                        snap||preferences.highContrast()||completeRowsOnly);
-                float distanceFade=softFocus?.36f+.40f*focusDistance:LyricPresentation.distanceFade(i-current);
+                float distanceFade=depthShading?LyricWordEffects.distanceInkFade(y,getY()+height*.24,pitch)
+                        :LyricPresentation.distanceFade(i-current);
+                if(immersiveReading&&depthShading&&steer&&current>=0)
+                    distanceFade=LyricWordEffects.stageInkFade(distanceFade,y,getY()+height*.24,pitch);
                 int subdued=preferences.highContrast()?ink:ContrastPolicy.readable(
                         GuiMotion.lerpColor(ink,secondary,distanceFade),0,backdrop,3);
                 int color=GuiMotion.lerpColor(subdued,ink,emphasis[i]);
@@ -207,7 +223,7 @@ public final class MusicLyricsView extends AbstractWidget {
                 var timed=timedRows.get(i);
                 boolean wordTiming=i==current&&timed!=null&&!preferences.highContrast();
                 int pendingInk=LyricPresentation.pendingInk(i==current,muted,subdued);
-                if(isFocused()&&i==model.focusedIndex())g.renderOutline(getX()+1,(int)y-3,width-2,(int)Math.min(height,heights[i]+6),ink);
+                if(!seekingPreview&&isFocused()&&i==model.focusedIndex())g.renderOutline(getX()+1,(int)y-3,width-2,(int)Math.min(height,heights[i]+6),ink);
                 var parts=wrapped.get(i);
                 int first=Math.max(0,(int)Math.floor((getY()-y)/(MusicTypography.LINE_HEIGHT*scale)));
                 int last=Math.min(parts.size(),(int)Math.ceil((getY()+height-y)/(MusicTypography.LINE_HEIGHT*scale)));
@@ -215,22 +231,19 @@ public final class MusicLyricsView extends AbstractWidget {
                 for(int row=first;row<last;row++){
                     var part=parts.get(row);double rowY=y+row*MusicTypography.LINE_HEIGHT*scale;
                     if(completeRowsOnly&&!completeRowVisible(rowY,MusicTypography.LINE_HEIGHT*scale,getY(),height))continue;
-                    float edge=softFocus&&!model.browsing()?LyricWordEffects.edgeOpacity(rowY-getY()+MusicTypography.LINE_HEIGHT*scale*.5,
-                            height,Math.min(height*.22,MusicTypography.LINE_HEIGHT*scale*1.65)):1;
+                    float edge=LyricWordEffects.rowOpacity(depthShading&&steer&&i!=current&&!reading,
+                            rowY-getY()+MusicTypography.LINE_HEIGHT*scale*.5,height,
+                            Math.min(height*.22,MusicTypography.LINE_HEIGHT*scale*1.65));
                     if(edge<.035f)continue;
+                    double paintY=LyricWordEffects.restingBaseline(rowY,framebufferScale,stillRows);
+                    // Render one glyph image. Shifted copies (even cross-faded) double dense strokes.
                     if(sweep){
-                        // Blend the residual soft image out as the timed foreground
-                        // resolves; the row change must not bypass the blur transition.
-                        float softMix=LyricWordEffects.softMix(softness[i],emphasis[i]);
-                        if(softMix*edge>.035f)drawSoftPart(g,font,part,rowY,opacity(color,softMix*edge),softness[i]);
                         int pending=GuiMotion.lerpColor(color,pendingInk,emphasis[i]);
                         drawTimedRow(g,font,timed.rows().get(row),timed.geometry(),line,
-                                position,rowY,opacity(pending,edge*(1-softMix)),opacity(color,edge*(1-softMix)),
-                                !snap&&!model.browsing());
+                                position,paintY,opacity(pending,edge),opacity(color,edge),!snap&&!model.browsing());
                     }else {
                         if(wordTiming)part=timedColors(part,line,position,pendingInk,ink);
-                        if(softness[i]>.035f)drawSoftPart(g,font,part,rowY,opacity(color,edge),softness[i]);
-                        else drawPart(g,font,part,rowY,opacity(color,edge));
+                        drawPart(g,font,part,paintY,opacity(color,edge));
                     }
                 }
             }
@@ -253,24 +266,6 @@ public final class MusicLyricsView extends AbstractWidget {
 
     private static int opacity(int color,float multiplier){
         return (color&0xffffff)|(Math.max(4,Math.round((color>>>24)*multiplier))<<24);
-    }
-
-    /** Compact five-tap soft focus: no stationary sharp copy, and both radius
-     * and tap strength ease with distance instead of toggling at a timestamp. */
-    private void drawSoftPart(GuiGraphics g,Font font,FormattedCharSequence part,double rowY,int color,float softness){
-        float radius=Math.min(2.5f,scale*1.15f)*softness;
-        float side=.22f*softness;
-        for(int tap=0;tap<5;tap++){
-            float weight=tap==0?1-4*side:side;
-            if((color>>>24)*weight<4)continue;
-            float dx=tap==1?-radius:tap==2?radius:0;
-            float dy=tap==3?-radius:tap==4?radius:0;
-            g.pose().pushPose();
-            try {
-                g.pose().translate(dx,dy,0);
-                drawPart(g,font,part,rowY,opacity(color,weight));
-            }finally {g.pose().popPose();}
-        }
     }
 
     private void drawTimedRow(GuiGraphics g,Font font,List<LyricGlyphRuns.Run> runs,LyricSweepLayout layout,

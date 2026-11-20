@@ -47,8 +47,8 @@ class OnlineMusicRouteMotionTest {
         var search = new OnlineMusicRouteMotion.Route(Page.SEARCH, null, null);
         var opening = motion.sample(search, 100, false);
         assertEquals(1f, opening.strength());
-        assertTrue(opening.opacity(false) >= 170 && opening.opacity(false) <= 200);
-        assertTrue(opening.opacity(true) <= 100);
+        assertTrue(opening.opacity(false) >= 75 && opening.opacity(false) <= 85);
+        assertTrue(opening.opacity(true) <= 45);
         assertTrue(motion.sample(search, 170, false).strength() > 0f);
         assertEquals(0f, motion.sample(search, 265, false).strength());
         var reduced = new OnlineMusicRouteMotion();
@@ -88,6 +88,18 @@ class OnlineMusicRouteMotionTest {
                 assertTrue(pane.y() <= stage.cover().y());
             }
         }
+    }
+
+    @Test void revealMovesDownwardWithoutPaintingOutsideDestination() {
+        var box = new Bounds(30, 60, 155, 190);
+        var opening = MusicRouteReveal.edge(box, 1f);
+        var middle = MusicRouteReveal.edge(box, .5f);
+        var late = MusicRouteReveal.edge(box, .05f);
+        assertEquals(new MusicRouteReveal.Edge(box.y(), box.y()), opening);
+        assertTrue(opening.top() < middle.top() && middle.top() < late.top());
+        assertTrue(middle.top() < middle.bottom() && middle.bottom() < box.bottom());
+        assertEquals(box.bottom(), late.bottom());
+        assertEquals(new MusicRouteReveal.Edge(box.bottom(), box.bottom()), MusicRouteReveal.edge(box, 0f));
     }
 
     private OnlineMusicRouteMotion.Frame sample(Page page, Object detail, Stage stage, long now) {

@@ -54,12 +54,64 @@ final class BackgroundMusicControlsTest {
                     () -> frames.select(null, System.nanoTime()), frames::acquire);
         }
         BackgroundTarget play() throws Exception {
-            service.backgroundView(); player.queue().replace(List.of(song("a"), song("b")), 0);
+            service.backgroundView(); return startQueue();
+        }
+        BackgroundTarget startQueue() throws Exception {
+            player.queue().replace(List.of(song("a"), song("b")), 0);
             await(() -> player.snapshot().state() == OnlineMusicPlayer.State.PLAYING && frames.select(null, System.nanoTime()) != null);
             var session = frames.select(null, System.nanoTime()).snapshot().session();
             return new BackgroundTarget(session.id(), session.track().key());
         }
         public void close() { service.close(); player.close(); }
+    }
+    @Test void redesignedWorkspaceCanClosePlayThroughHudAndReopenWithoutAnotherSession() throws Exception {
+        try (var f = new Fixture(false)) {
+            var preview = f.service.redesignedBackgroundView();
+            assertSame(f.player, preview.player());
+            var playing = f.startQueue();
+            preview.close();
+            assertEquals(OnlineMusicPlayer.State.PLAYING, f.player.snapshot().state());
+            assertTrue(f.service.controlBackground(playing, BackgroundCommand.PAUSE, -1));
+            assertTrue(f.service.controlBackground(playing, BackgroundCommand.NEXT, -1));
+            assertEquals("b", f.player.snapshot().track().id());
+            try (var reopened = f.service.redesignedBackgroundView(); var stock = f.service.backgroundView()) {
+                assertSame(f.player, reopened.player());
+                assertSame(f.player, stock.player());
+                assertEquals(1, f.creations.get());
+                assertEquals(1, reopened.player().queue().snapshot().index());
+                assertFalse(f.service.controlBackground(playing, BackgroundCommand.RESUME, -1));
+            }
+            assertNotEquals(OnlineMusicPlayer.State.CLOSED, f.player.snapshot().state());
+        }
+    }
+    @Test void noticeUsesOptInHistoryOverSameSessionWithoutStartingAnotherSearch() {
+        var flag = com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendWorkspace.PREVIEW_FLAG;
+        var previous = System.getProperty(flag);
+        try (var f = new Fixture(false)) {
+            f.service.backgroundView().close();
+            var task = f.player.operations().startSearch("test", "only this query", 1);
+            task.detach();
+            var target = f.service.operationTarget(task.id()).orElseThrow();
+
+            System.clearProperty(flag);
+            try (var stock = f.service.backgroundOperationView(target).orElseThrow()) {
+                assertInstanceOf(com.dishanhai.sh_better_ui.kernel.internal.music.view.OnlineMusicViewImpl.class, stock);
+                assertSame(f.player, stock.player());
+            }
+            System.setProperty(flag, "true");
+            try (var preview = f.service.backgroundOperationView(target).orElseThrow()) {
+                assertInstanceOf(com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendWorkspace.class, preview);
+                assertSame(f.player, preview.player());
+            }
+            assertEquals(1, f.creations.get());
+            assertEquals(1, f.player.operations().snapshots().size());
+            assertTrue(task.snapshot().background());
+            task.attach();
+            assertTrue(f.service.backgroundOperationView(target).isEmpty());
+        } finally {
+            if (previous == null) System.clearProperty(flag);
+            else System.setProperty(flag, previous);
+        }
     }
     @Test void queryingAbsentSessionNeverCreatesOrStartsAnything() {
         try (var f = new Fixture(false)) {

@@ -25,7 +25,7 @@ class OnlineMusicScrollRegionTest {
     }
     @Test void canvasWheelAndKeyboardScrollButNormalClicksPassThrough() {
         var offset = new AtomicInteger();
-        var region = new OnlineMusicScrollRegion(10,20,200,120,Component.literal("Tracks"),offset::set);
+        var region = new OnlineMusicScrollRegion(10,20,200,120,Component.literal("Tracks"),offset::set, () -> 0L, () -> true);
         region.configure(0,20,5);
         assertFalse(region.mouseClicked(50,50,0));
         assertTrue(region.mouseScrolled(50,50,-1)); assertEquals(1,offset.get());
@@ -35,6 +35,26 @@ class OnlineMusicScrollRegionTest {
         assertTrue(region.keyPressed(GLFW.GLFW_KEY_END,0,0)); assertEquals(15,offset.get());
         assertFalse(region.mouseScrolled(50,50,-1));
         assertTrue(region.keyPressed(GLFW.GLFW_KEY_HOME,0,0)); assertEquals(0,offset.get());
+    }
+    @Test void bottomLoadsOnceAndCannotLoadAfterAReverseOrRouteChange() {
+        var offset = new AtomicInteger();
+        var requests = new AtomicInteger();
+        var ms = new java.util.concurrent.atomic.AtomicLong(1000);
+        var region = new OnlineMusicScrollRegion(0,0,200,120,Component.literal("Tracks"),
+                offset::set, ms::get, () -> false);
+        region.onEnd(() -> requests.get() == 0, requests::incrementAndGet);
+        region.configure(0,20,5);
+        assertTrue(region.mouseScrolled(50,50,-40));
+        assertEquals(0, requests.get());
+        region.mouseScrolled(50,50,40);
+        for (int i=0;i<60;i++) { ms.addAndGet(8); region.tick(); }
+        assertEquals(0, requests.get());
+        region.mouseScrolled(50,50,-40);
+        for (int i=0;i<60;i++) { ms.addAndGet(8); region.tick(); }
+        assertEquals(15, offset.get());
+        assertEquals(1, requests.get());
+        assertFalse(region.mouseScrolled(50,50,-3));
+        assertEquals(1, requests.get());
     }
     @Test void hostCancellationContractOnlyConsumesAnActiveDrag() {
         var offset = new AtomicInteger();
