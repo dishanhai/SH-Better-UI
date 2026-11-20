@@ -39,6 +39,8 @@ import org.lwjgl.glfw.GLFW;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.function.BiFunction;
+import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 import java.util.function.ToIntFunction;
@@ -260,6 +262,16 @@ public final class ControlPanelScreen extends Screen {
                 refreshRows.add(() -> activities.active = ShBetterUiApi.settings().activitiesAvailable());
                 toolButton(Component.translatable("sh_better_ui.online_music.view.brand"), GraphicIcon.MUSIC,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().onlineMusicScreen(this)));
+                toolButton(Component.translatable("sh_better_ui.panel.muonium.player"), GraphicIcon.MUSIC,
+                        com.muoniumplayer.core.screens.onboarding.OnboardingManager::openPlayerEntry);
+                toolButton(Component.translatable("sh_better_ui.panel.muonium.open"), GraphicIcon.MUSIC,
+                        () -> com.muoniumplayer.MuoniumPlayerClient.getInstance().openHudEditor(minecraft));
+                playerAppearanceOption("host_theme",
+                        com.muoniumplayer.core.settings.PlayerAppearance::useShbuiTheme,
+                        com.muoniumplayer.core.settings.PlayerAppearance::setShbuiTheme);
+                playerAppearanceOption("host_controls",
+                        com.muoniumplayer.core.settings.PlayerAppearance::useShbuiControls,
+                        com.muoniumplayer.core.settings.PlayerAppearance::setShbuiControls);
                 var musicSettings = toolButton(Component.translatable("sh_better_ui.native.music_settings.title"), GraphicIcon.MUSIC,
                         () -> ControlPanelPlatform.show(minecraft, ShBetterUiApi.settings().musicSettingsScreen(this)));
                 musicSettings.active = ShBetterUiApi.settings().musicActivityAvailable();
@@ -386,6 +398,21 @@ public final class ControlPanelScreen extends Screen {
         control.button().setTooltip(Tooltip.create(label(hint)));
         rows.add(addRenderableWidget(control.button()));
         refreshRows.add(() -> control.setValue(value.test(draft)));
+    }
+
+    private void playerAppearanceOption(String key, BooleanSupplier read, Consumer<Boolean> write) {
+        String translation = "sh_better_ui.muonium.center." + key;
+        var control = ShBetterUiApi.controls().toggle(new Bounds(contentX, contentY, contentWidth, ROW_HEIGHT),
+                read.getAsBoolean(), preferences, UiStyle.DEFAULT,
+                enabled -> Component.translatable(translation).append(": ")
+                        .append(Component.translatable(enabled ? "options.on" : "options.off")),
+                enabled -> {
+                    write.accept(enabled);
+                    refresh();
+                });
+        control.button().setTooltip(Tooltip.create(Component.translatable(translation + ".desc")));
+        rows.add(addRenderableWidget(control.button()));
+        refreshRows.add(() -> control.setValue(read.getAsBoolean()));
     }
 
     void appearanceApplied(ThemeSettings applied) {

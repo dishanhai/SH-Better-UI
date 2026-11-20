@@ -30,7 +30,7 @@ class NativeFeedbackScreenTest {
     @Test void narrowScrollAndSliderCancelPreserveExactDraftAndNeverSave()throws Exception{
         try(var client=NativeTestClient.install()){
             var initial=new ControlFeedbackSettings(true,true,true,347);
-            var screen=new NativeFeedbackScreen(null,initial,value->{});client.client().screen=screen;screen.width=160;screen.height=180;screen.init();
+            var screen=new NativeFeedbackScreen(null,initial,value->{});client.screen(screen);screen.width=160;screen.height=180;screen.init();
             var body=(AbstractContainerWidget)field(screen,"body");assertTrue(body.getX()>=0&&body.getX()+body.getWidth()<=160);
             var slider=(UiSlider)field(screen,"delay");
             slider.onClick(new MouseButtonEvent(slider.getX()+slider.getWidth()-5,slider.getY()+8,new MouseButtonInfo(0,0)),false);
@@ -70,8 +70,8 @@ class NativeFeedbackScreenTest {
         try(var client=NativeTestClient.install()){
             var parent=new net.minecraft.client.gui.screens.Screen(net.minecraft.network.chat.Component.literal("Parent")){};
             java.util.function.Consumer<net.minecraft.client.gui.screens.Screen> navigate=next->{
-                if(client.client().screen!=null)client.client().screen.removed();
-                client.client().screen=next;
+                if(client.screen()!=null)client.screen().removed();
+                client.screen(next);
                 if(next instanceof NativeFeedbackScreen feedback){feedback.width=320;feedback.height=240;feedback.init();}
                 else if(next instanceof net.minecraft.client.gui.screens.ConfirmScreen){
                     try{var init=next.getClass().getDeclaredMethod("init");init.setAccessible(true);next.width=320;next.height=240;init.invoke(next);}
@@ -82,17 +82,17 @@ class NativeFeedbackScreenTest {
             navigate.accept(screen);press(screen,"hover");
             var cancel=screen.children().stream().filter(Button.class::isInstance).map(Button.class::cast)
                     .filter(b->b.getMessage().equals(NativeFeedbackScreen.label("cancel"))).findFirst().orElseThrow();
-            cancel.onPress(new KeyEvent(257,0,0));assertSame(parent,client.client().screen);
+            cancel.onPress(new KeyEvent(257,0,0));assertSame(parent,client.screen());
             assertEquals(ControlFeedbackSettings.DEFAULT,ControlPanelSettings.current().feedback());
             navigate.accept(screen);assertTrue(screen.keyPressed(new KeyEvent(256,0,0)));
-            var confirm=assertInstanceOf(net.minecraft.client.gui.screens.ConfirmScreen.class,client.client().screen);
+            var confirm=assertInstanceOf(net.minecraft.client.gui.screens.ConfirmScreen.class,client.screen());
             ((Button)field(confirm,"noButton")).onPress(new KeyEvent(257,0,0));
-            assertSame(screen,client.client().screen);assertTrue(screen.dirty());assertFalse(((ControlFeedbackSettings)field(screen,"draft")).hoverAnimation());
+            assertSame(screen,client.screen());assertTrue(screen.dirty());assertFalse(((ControlFeedbackSettings)field(screen,"draft")).hoverAnimation());
             screen.keyPressed(new KeyEvent(256,0,0));
-            var accepted=assertInstanceOf(net.minecraft.client.gui.screens.ConfirmScreen.class,client.client().screen);
-            ((Button)field(accepted,"yesButton")).onPress(new KeyEvent(257,0,0));assertSame(parent,client.client().screen);
+            var accepted=assertInstanceOf(net.minecraft.client.gui.screens.ConfirmScreen.class,client.screen());
+            ((Button)field(accepted,"yesButton")).onPress(new KeyEvent(257,0,0));assertSame(parent,client.screen());
             // A late callback from the previous dialog must not navigate away from the parent.
-            ((Button)field(confirm,"noButton")).onPress(new KeyEvent(257,0,0));assertSame(parent,client.client().screen);
+            ((Button)field(confirm,"noButton")).onPress(new KeyEvent(257,0,0));assertSame(parent,client.screen());
             ControlPanelSettings.load(directory);assertEquals(ControlFeedbackSettings.DEFAULT,ControlPanelSettings.current().feedback());
         }
     }
@@ -120,7 +120,7 @@ class NativeFeedbackScreenTest {
             }
         }
     }
-    private static NativeFeedbackScreen screen(NativeTestClient client){var screen=new NativeFeedbackScreen(null);client.client().screen=screen;screen.width=320;screen.height=240;screen.init();return screen;}
+    private static NativeFeedbackScreen screen(NativeTestClient client){var screen=new NativeFeedbackScreen(null);client.screen(screen);screen.width=320;screen.height=240;screen.init();return screen;}
     private static void press(Object screen,String name)throws Exception{((Button)field(screen,name)).onPress(new KeyEvent(257,0,0));}
     private static Object field(Object object,String name)throws Exception{var f=object.getClass().getDeclaredField(name);f.setAccessible(true);return f.get(object);}
     private static Object staticField(String name)throws Exception{var f=ControlPanelSettings.class.getDeclaredField(name);f.setAccessible(true);return f.get(null);}

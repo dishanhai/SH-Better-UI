@@ -59,6 +59,25 @@ class AppleMusicBrowserLoginTest {
             assertEquals(413,post(login,origin(login),"x".repeat(257)).statusCode());
         }
     }
+    @Test void selectedSongIsSessionScopedVersionedAndValidated() throws Exception {
+        try (var login = new AppleMusicBrowserLogin("header.payload.signature")) {
+            assertEquals("{}", get(login, "/status", true).body());
+            for (String invalid : new String[]{"", "0", "1/2", "123456789012345678901"})
+                assertThrows(IllegalArgumentException.class, () -> login.selectSong(invalid));
+            login.selectSong("123");
+            assertEquals(403, get(login, "/status", false).statusCode());
+            var config = com.google.gson.JsonParser.parseString(get(login, "/config", true).body()).getAsJsonObject();
+            assertEquals("123", config.get("catalogId").getAsString());
+            assertEquals(1, config.get("selectionRevision").getAsLong());
+            login.selectSong("456");
+            var status = com.google.gson.JsonParser.parseString(get(login, "/status", true).body()).getAsJsonObject();
+            assertEquals("456", status.get("catalogId").getAsString());
+            assertEquals(2, status.get("selectionRevision").getAsLong());
+            assertFalse(status.has("developerToken"));
+            login.close();
+            assertThrows(IllegalStateException.class, () -> login.selectSong("789"));
+        }
+    }
     @Test void closeAndExpiryAreTerminalAndDoNotClaimBrowserSignout() throws Exception {
         var login=new AppleMusicBrowserLogin("header.payload.signature");login.close();login.close();
         assertEquals(AppleMusicBrowserLogin.State.CLOSED,login.state());

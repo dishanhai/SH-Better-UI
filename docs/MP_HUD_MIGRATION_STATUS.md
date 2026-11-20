@@ -1,5 +1,7 @@
 # MP HUD / UI migration status
 
+The current embedded player is documented in [MuoniumPlayer 2.6.0](MUONIUM_PLAYER.md). This page records the earlier integration.
+
 Reference: MuoniumPlayer-multiversion revision `9b4cc7e7bd143315da716075a6d024a0d4c0c81b`, principally `muonium-common` rendering/UI code and 1.21.1 `HudConfig`.
 
 This work is an incremental **native SHBUI adaptation**, not a declaration that all MP features have been ported. It does not require loading MP or executing its companion downloads. Existing MP settings bridge is a separate integration.

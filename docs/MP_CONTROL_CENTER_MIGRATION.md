@@ -1,5 +1,7 @@
 # Muonium control-center migration inventory
 
+The current embedded player is documented in [MuoniumPlayer 2.6.0](MUONIUM_PLAYER.md). This page records the earlier integration.
+
 Reference inspected: local MuoniumPlayer-multiversion `9b4cc7e7bd143315da716075a6d024a0d4c0c81b`, version `1.21.1/.../screens/hud/HudSettingsModel.java`. This is **not a remote freshness claim**. Counts are static category/group entry slots, including repeated quick-setting references and conditionally hidden entries, not distinct persisted keys.
 
 | Category | Groups | Entries | Dependency and migration boundary |

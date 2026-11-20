@@ -1,6 +1,6 @@
 modLoader="javafml"
 loaderVersion="[47,)"
-license="MIT"
+license="MIT (SHBUI); Apache-2.0 (MuoniumPlayer); bundled components retain their individual licenses"
 
 [[mods]]
 modId="${mod_id}"

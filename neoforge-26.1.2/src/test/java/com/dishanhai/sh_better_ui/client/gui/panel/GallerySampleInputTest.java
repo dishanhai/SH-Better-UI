@@ -32,7 +32,7 @@ class GallerySampleInputTest {
     }
     @Test void canvasPassThroughCapturesButtonReleaseAndRetainsRepeatedFocus() throws Exception {
         try(var client=NativeTestClient.install()) {
-            var screen=new Sample();client.client().screen=screen;
+            var screen=new Sample();client.screen(screen);
             var hits=new AtomicInteger();var rail=new AtomicInteger();screen.add(canvas(rail));
             var button=screen.add(new MusicTextControl(new Bounds(10,10,70,24),Component.literal("Move down"),UiPreferences.DEFAULT,hits::incrementAndGet,()->{}));
             for(int i=0;i<2;i++) {
@@ -46,7 +46,7 @@ class GallerySampleInputTest {
     }
     @Test void releaseOutsideCancelsAndHiddenRowsDoNotStealTheClick() throws Exception {
         try(var client=NativeTestClient.install()) {
-            var screen=new Sample();client.client().screen=screen;screen.add(canvas(new AtomicInteger()));
+            var screen=new Sample();client.screen(screen);screen.add(canvas(new AtomicInteger()));
             var hits=new AtomicInteger();var button=screen.add(new MusicTextControl(new Bounds(10,10,70,24),Component.literal("Move"),UiPreferences.DEFAULT,hits::incrementAndGet,()->{}));
             assertTrue(screen.mouseClicked(mouse(20,20),false));assertTrue(screen.mouseReleased(mouse(120,120)));assertEquals(0,hits.get());
             button.setVisible(false);assertFalse(screen.mouseClicked(mouse(20,20),false));assertEquals(0,hits.get());

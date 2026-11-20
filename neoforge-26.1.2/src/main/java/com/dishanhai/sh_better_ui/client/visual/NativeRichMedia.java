@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
@@ -49,7 +50,7 @@ public final class NativeRichMedia implements AutoCloseable {
         public Object resources(){return Minecraft.getInstance().getResourceManager();}
         public RichMediaDecoder.Sheet decode(Identifier id,Object manager)throws IOException{return decodePack(id,(ResourceManager)manager);}
         public Identifier upload(RichMediaDecoder.Sheet sheet){
-            int maximum=RenderSystem.getDevice().getMaxTextureSize();
+            int maximum=NativePort.maxRgbaTextureSize();
             if(sheet.pixels().getWidth()>maximum||sheet.pixels().getHeight()>maximum)
                 throw new IllegalArgumentException("Inline image exceeds device texture limits");
             var image=new NativeImage(sheet.pixels().getWidth(),sheet.pixels().getHeight(),false);

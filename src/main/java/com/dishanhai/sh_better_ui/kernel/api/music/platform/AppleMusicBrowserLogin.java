@@ -28,6 +28,8 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     private volatile String developerToken;
     private volatile State state = State.WAITING;
     private volatile boolean stopped;
+    private String catalogId;
+    private long selectionRevision;
     private final AppleMusicRateControl rates = new AppleMusicRateControl();
 
     /** Starts no browser and does not contact Apple. Supply a short-lived signed developer JWT. */
@@ -69,6 +71,19 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     /** This one-session fragment is not a platform credential; do not publish or log it. */
     public URI browserUri() { return URI.create(origin + "/#" + session); }
     public State state() { return state; }
+    /** Selects an Apple catalog song without loading or playing it in the browser. */
+    public synchronized void selectSong(String id) {
+        if (id == null || !id.matches("[1-9][0-9]{0,19}")) throw new IllegalArgumentException("Invalid catalog song ID");
+        if (stopped) throw new IllegalStateException("Apple browser session is closed");
+        catalogId = id;
+        selectionRevision++;
+    }
+    private synchronized void addSelection(JsonObject json) {
+        if (catalogId != null) {
+            json.addProperty("catalogId", catalogId);
+            json.addProperty("selectionRevision", selectionRevision);
+        }
+    }
     /** Only a recent, ready, authorized browser SDK observation enables rate control. */
     public boolean supportsPlaybackRate() { return !stopped && state == State.AUTHORIZED && rates.supported(System.nanoTime()); }
     /** Last observed SDK rate, not an optimistic requested value. */
@@ -85,6 +100,8 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
         stopped = true;
         state = terminal;
         developerToken = "";
+        catalogId = null;
+        selectionRevision = 0;
         rates.clear();
         server.stop(0);
         worker.shutdownNow();
@@ -102,9 +119,12 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                 if (path.equals("/config") && exchange.getRequestMethod().equals("GET")) {
                     var config = new JsonObject();
                     config.addProperty("developerToken", developerToken);
+                    addSelection(config);
                     reply(exchange, 200, "application/json", config.toString());
                 } else if (path.equals("/status") && exchange.getRequestMethod().equals("GET")) {
-                    reply(exchange, 200, "application/json", "{}");
+                    var status = new JsonObject();
+                    addSelection(status);
+                    reply(exchange, 200, "application/json", status.toString());
                 } else if (path.equals("/state") && exchange.getRequestMethod().equals("POST")) {
                     if (!origin.equals(exchange.getRequestHeaders().getFirst("Origin"))) { reply(exchange, 403, "text/plain", "Forbidden"); return; }
                     String contentType = exchange.getRequestHeaders().getFirst("Content-Type");

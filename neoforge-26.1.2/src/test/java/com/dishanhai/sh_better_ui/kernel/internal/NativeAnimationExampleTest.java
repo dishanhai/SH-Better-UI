@@ -17,7 +17,7 @@ class NativeAnimationExampleTest {
             host.startNative(java.util.List.of(BuiltinService.candidate(platforms,UIApis.ANIMATION,animation,UIApis.SCOPED_ANIMATION),
                     BuiltinService.candidate(platforms,UIApis.COLLAPSE,collapse,new CapabilityKey(UIApis.COLLAPSE.id())),example.candidate()));
             assertTrue(example.available());
-            var screen=new NativeAnimationExampleScreen(null,example);client.client().screen=screen;screen.width=400;screen.height=300;screen.init();
+            var screen=new NativeAnimationExampleScreen(null,example);client.screen(screen);screen.width=400;screen.height=300;screen.init();
             var track=(AnimationService.Track)field(screen,"track");assertTrue(track.isActive());
             frame(host,animation,collapse);time.set(1_500_000_000L);frame(host,animation,collapse);
             assertEquals(.5f,track.value(),.0001f,"The initial demo track lasts 3 seconds instead of immediately settling");

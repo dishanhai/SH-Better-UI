@@ -1,0 +1,29 @@
+{
+  "required": true,
+  "minVersion": "0.8",
+  "package": "com.muoniumplayer.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": [
+    "MusicManagerAccessor",
+    "MusicManagerDuckMixin",
+    "ChatIslandMouseMixin",
+    "GlSurfaceMixin",
+    "GameRendererRenderLevelMixin",
+    "GameRendererAccessor",
+    "RenderTypeAccessors",
+    "ProjectionMatrixBufferMixin",
+    "TransparentEntityMixin",
+    "TransparentCameraMixin",
+    "CineCameraMixin",
+    "CineKeyboardMixin",
+    "CineMouseMixin",
+    "CineRollMixin",
+    "CineFovMixin",
+    "CineHudMixin",
+    "SpinEntityMixin",
+    "SpinPacketMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

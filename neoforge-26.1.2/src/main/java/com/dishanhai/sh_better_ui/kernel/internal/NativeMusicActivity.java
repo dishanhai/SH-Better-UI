@@ -86,7 +86,7 @@ public final class NativeMusicActivity implements UIModule {
     }
     @Override public ModuleDescriptor descriptor() {
         return ModuleDescriptor.builder().id(UiId.parse("sh_better_ui:music_activity")).version("1.0.0")
-                .platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2))
+                .platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2, ModuleDescriptor.Platform.NEOFORGE_26_2))
                 .initializationPhase(ModuleDescriptor.InitializationPhase.EXTENSION)
                 .requiredCapability(ActivityService.CAPABILITY, VersionRange.ANY)
                 .requiredCapability(NotificationService.CAPABILITY, VersionRange.ANY)

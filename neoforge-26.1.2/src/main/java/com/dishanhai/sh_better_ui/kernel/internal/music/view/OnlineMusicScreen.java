@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
+import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import com.dishanhai.sh_better_ui.kernel.internal.music.MusicOperationNavigation;
 import com.dishanhai.sh_better_ui.client.api.*;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
@@ -146,7 +147,7 @@ public final class OnlineMusicScreen {
         @Override public Bounds viewport() { return screen.viewport(); }
         @Override public Font font() { return Minecraft.getInstance().font; }
         @Override public UiPreferences preferences() { return screen.preferences(); }
-        @Override public boolean interactive() { return Minecraft.getInstance().screen == screen; }
+        @Override public boolean interactive() { return NativePort.screen(Minecraft.getInstance()) == screen; }
         @Override public <T extends AbstractWidget> T add(T widget) { return screen.add(widget); }
     }
 }

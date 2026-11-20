@@ -3,6 +3,8 @@ plugins {
     id 'java-library'
     id 'net.neoforged.moddev' version '2.0.148'
     id 'org.jetbrains.kotlin.jvm' version '2.2.21'
+    id 'org.jetbrains.kotlin.plugin.lombok' version '2.2.21'
+    id 'com.gradleup.shadow' version '8.3.11'
 }
 
 group = 'com.dishanhai'
@@ -106,6 +108,7 @@ tasks.withType(Test).configureEach {
 }
 ext.sourceRoot = projectDir.parentFile
 apply from: '../gradle/kernel.gradle'
+apply from: '../gradle/muonium-neoforge.gradle'
 
 // The worker is an opaque resource, never a mod dependency or part of the game classpath.
 tasks.register('buildAutomationWorker', GradleBuild) {
@@ -171,7 +174,11 @@ tasks.register('verifyLibraryJar') {
                 throw new GradleException('The Forge vignette mixin must stay out of the NeoForge client configuration')
             }
             def forbidden = zip.entries().findAll {
-                it.name.startsWith('META-INF/jarjar/') || it.name.startsWith('kotlin/') ||
+                (it.name.startsWith('META-INF/jarjar/') &&
+                        !(it.name in ['META-INF/jarjar/', 'META-INF/jarjar/metadata.json',
+                                     'META-INF/jarjar/types-0.2.0.jar',
+                                     'META-INF/jarjar/skija-shared-0.143.17.jar'])) ||
+                it.name.startsWith('kotlin/') ||
                 it.name.startsWith('thedarkcolour/') || it.name.startsWith('com/dishanhai/gt_shanhai/') ||
                 it.name.startsWith('com/dishanhai/sh_better_ui/compat/ldlib/') ||
                 it.name.startsWith('com/lowdragmc/') ||

@@ -1,0 +1,31 @@
+Surrey RealRoomBRIRs: measured binaural room impulse responses
+Copyright (c) 2016 Institute of Sound Recording, University of Surrey
+Source: https://github.com/IoSR-Surrey/RealRoomBRIRs
+Revision: b41d237c03d1fe535810954ac4a8496f4e88f8fc
+License: MIT; see LICENSE.txt. Each SOFA file also declares "MIT license".
+
+Source files and SHA-256:
+UniS_Room_A_BRIR_48k.sofa b956556239b79a47961ad0d2dac39147eaf2081abb530162b16eb186bae36547
+UniS_Room_B_BRIR_48k.sofa f42eea9f6043dd887e02596ff201879886d67f403f4946b7bf72bdb1fec079f4
+
+The recordings were captured using a Cortex Instruments Mk.2 head and torso
+simulator. The original SOFA responses are 48 kHz; source positions 30 and
+330 degrees at elevation 0 and distance 1.5 m are used for left and right
+virtual loudspeakers. Receiver 0 is the left ear and receiver 1 is the right;
+the SOFA Data.Delay entries are zero. The full 18776 / 48001 source samples
+are retained for rooms A / B. Each WAV is a four-channel matrix, interleaved
+LL, LR, RL, RR (input channel first, ear second), with signed 24-bit PCM.
+
+Changes: selected those two measured directions; applied one shared gain to
+both rooms and every path (maximum summed transfer magnitude approximately
+0.5 on a 131072-point frequency grid); and converted to PCM. The 44100 Hz
+versions were polyphase-resampled from the 48000 Hz matrices (ratio 147/160)
+and multiplied by 160/147 to retain the FIR filters' frequency-domain gain.
+All four paths undergo identical processing, preserving their relative timing
+and levels. The original room tails are not trimmed. This frequency-domain
+gain target is not a guarantee against clipping for every possible input.
+
+Reproduce with Python and numpy, scipy, h5py and soundfile installed:
+    python scripts/generate-room-responses.py
+The script downloads the pinned originals, checks their SHA-256 hashes and
+relevant SOFA metadata, and writes the four WAV resources.

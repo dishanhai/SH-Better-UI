@@ -2,6 +2,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
+import { runInNewContext } from 'node:vm';
 import { createPlaybackFlow } from '../../src/main/resources/assets/sh_better_ui/music/apple-login/playback-flow.mjs';
 import { createAuthorizationFlow } from '../../src/main/resources/assets/sh_better_ui/music/apple-login/auth-flow.mjs';
 const states = { PlaybackStates: { 0:'none', 1:'loading', 2:'playing', 3:'paused' } };
@@ -66,6 +67,24 @@ test('companion serves playback module, retains state-only auth callback and exp
   const server=await readFile(new URL('src/main/java/com/dishanhai/sh_better_ui/kernel/api/music/platform/AppleMusicBrowserLogin.java',base),'utf8');
   assert.match(login,/playSong\.addEventListener\('click'/);assert.match(login,/JSON.stringify\(\{ state \}\)/);
   assert.match(server,/case "\/playback-flow.mjs" -> "playback-flow.mjs"/);
+});
+
+test('new game selections prefill only once and never issue playback commands', async()=>{
+  const login=await readFile(new URL('../../src/main/resources/assets/sh_better_ui/music/apple-login/login.mjs',import.meta.url),'utf8');
+  const start=login.indexOf('let selectionRevision = 0;');
+  const end=login.indexOf('\nconst playbackLabels',start);
+  assert.ok(start>=0 && end>start);
+  const input={value:''};
+  const select=runInNewContext(`${login.slice(start,end)}\napplySelection`,
+    {document:{getElementById:id=>{assert.equal(id,'song-id');return input;}}});
+  select({catalogId:'123',selectionRevision:1});assert.equal(input.value,'123');
+  input.value='player typing';
+  select({catalogId:'123',selectionRevision:1});assert.equal(input.value,'player typing');
+  select({catalogId:'999',selectionRevision:0});assert.equal(input.value,'player typing');
+  select({catalogId:'bad',selectionRevision:2});assert.equal(input.value,'player typing');
+  select({catalogId:'456',selectionRevision:2});assert.equal(input.value,'456');
+  assert.match(login,/applySelection\(config\)/);
+  assert.match(login,/applySelection\(await response\.json\(\)\)/);
 });
 
 test('SDK media error is retained even when the command resolves successfully',async()=>{

@@ -1,6 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.kernel.api.controls.ControlPaint;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.components.Button;
@@ -16,8 +17,6 @@ import java.util.function.Consumer;
 public final class NetworkToggle extends Button {
     private static final int TRACK_WIDTH = 22;
     private static final int TRACK_HEIGHT = 12;
-    private static final int KNOB_SIZE = 8;
-    private static final int KNOB_INSET = (TRACK_HEIGHT - KNOB_SIZE) / 2;
     private static final int PADDING = 4;
 
     private final UiPreferences preferences;
@@ -81,13 +80,10 @@ public final class NetworkToggle extends Button {
         int trackY = y + (height - TRACK_HEIGHT) / 2;
         int edge = active ? DarkModeTheme.secondaryTextColor() : DarkModeTheme.mutedTextColor();
         int fill = value && active ? UiTheme.current().accent(0xFF265C83) : UiTheme.current().background(0xFF121A24);
-        float knobRadius = KNOB_SIZE * 0.5f;
-        float trackRadius = RoundedCorners.outsetRadius(KNOB_SIZE, KNOB_SIZE, knobRadius, KNOB_INSET);
-        DarkModeTheme.rounded(graphics, trackX, trackY, TRACK_WIDTH, TRACK_HEIGHT, trackRadius,
-                1, edge, fill);
-        int knobX = trackX + (value ? TRACK_WIDTH - KNOB_SIZE - KNOB_INSET : KNOB_INSET);
-        DarkModeTheme.rounded(graphics, knobX, trackY + KNOB_INSET, KNOB_SIZE, KNOB_SIZE, knobRadius,
-                0, 0, value && active ? 0xFFFFFFFF : edge);
+        ControlPaint.toggle((rx, ry, rw, rh, radius, stroke, border, color) ->
+                        DarkModeTheme.rounded(graphics, (int) rx, (int) ry, (int) rw, (int) rh,
+                                (float) radius, (int) stroke, border, color),
+                trackX, trackY, 1, value ? 1 : 0, edge, fill, value && active ? 0xFFFFFFFF : edge);
 
         var font = Minecraft.getInstance().font;
         graphics.enableScissor(x + PADDING, y + 2, trackX - PADDING, y + height - 2);
