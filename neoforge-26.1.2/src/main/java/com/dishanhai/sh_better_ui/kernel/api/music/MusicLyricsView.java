@@ -31,8 +31,9 @@ public final class MusicLyricsView extends AbstractWidget {
     private final LyricFollowMotion followMotion=new LyricFollowMotion();
     private double[] tops=new double[0],heights=new double[0];
     private float[] emphasis=new float[0];
-    private double offset,totalHeight;
-    private long lastFrame,observedPosition=-1;
+    private double offset,totalHeight,manualTarget;
+    private boolean manualTargetSet;
+    private long lastFrame;
     private boolean layoutDirty=true;
     private boolean completeRowsOnly;
     private boolean immersiveReading;
@@ -46,7 +47,6 @@ public final class MusicLyricsView extends AbstractWidget {
     public static void invalidateFontMetrics(){fontMetricsRevision++;}
     /** Explicit invalidation for an embedding host that changes font providers. */
     public void invalidateLayout(){layoutDirty=true;}
-    private int observedActive=-2;
     public MusicLyricsView(Bounds bounds,Component title,UiPreferences preferences,LongConsumer seek){
         super(bounds.x(),bounds.y(),bounds.width(),bounds.height(),title);
         this.preferences=Objects.requireNonNull(preferences);this.seek=Objects.requireNonNull(seek);
@@ -54,11 +54,25 @@ public final class MusicLyricsView extends AbstractWidget {
     /** Receives actual logical-pixel movement from explicit wheel/keyboard browsing only.
      * Programmatic playback, follow, content and seek changes never invoke this callback. */
     public void setOnManualScroll(DoubleConsumer listener) { onManualScroll = Objects.requireNonNull(listener); }
-    private void manualScrollTo(double next) {
-        double previous = offset;
-        offset = clamp(next);
-        if (offset != previous) onManualScroll.accept(offset - previous);
+    private boolean manualScrollTo(double next) {
+        double target=clamp(next);
+        if(target==manualOffset()){
+            if(model.browsing())browseViewport.input(net.minecraft.util.Util.getMillis());
+            return false;
+        }
+        model.browse();
+        browseViewport.input(net.minecraft.util.Util.getMillis());
+        if(!manualTargetSet)followMotion.reset(offset);
+        manualTarget=target;manualTargetSet=true;
+        if(preferences.reducedMotion()){
+            double delta=target-offset;
+            offset=target;
+            followMotion.reset(target);
+            if(delta!=0)onManualScroll.accept(delta);
+        }
+        return true;
     }
+    private double manualOffset(){return manualTargetSet?clamp(manualTarget):offset;}
     public MusicLyricsModel model(){return model;}
     public Object contentKey(){return model.contentKey();}
     public void setLines(List<MusicLyricsModel.Line> lines){setLines(lines,lines);}
@@ -66,16 +80,22 @@ public final class MusicLyricsView extends AbstractWidget {
         boolean changed=!Objects.equals(model.contentKey(),contentKey)||!model.lines().equals(lines);
         model.content(contentKey,lines);
         if(changed){
-            layoutDirty=true;offset=0;lastFrame=0;observedActive=-2;observedPosition=-1;emphasis=new float[0];
-            browseViewport.clear();seekingPreview=false;previewChanged=false;returnToCurrent=false;
+            layoutDirty=true;offset=0;lastFrame=0;emphasis=new float[0];
+            browseViewport.clear();manualTargetSet=false;seekingPreview=false;previewChanged=false;returnToCurrent=false;
         }
     }
     public void playback(long positionMillis,boolean seekable){playback(positionMillis,seekable,false);}
     /** A scrub position controls the lyric viewport but never makes a lyric line seekable. */
     public void playback(long positionMillis,boolean seekable,boolean preview){
+        if(seekingPreview!=preview){
+            manualTargetSet=false;
+            if(!preview && model.browsing())browseViewport.input(net.minecraft.util.Util.getMillis());
+        }
         previewChanged|=seekingPreview!=preview;
         seekingPreview=preview;
-        offset=clamp(browseViewport.playback(preview,model.browsing(),offset));
+        double restored=clamp(browseViewport.playback(preview,model.browsing(),offset));
+        if(restored!=offset)followMotion.reset(restored);
+        offset=restored;
         model.playback(positionMillis,seekable&&!preview);
     }
     public void preferences(UiPreferences value){preferences=Objects.requireNonNull(value);}
@@ -98,6 +118,7 @@ public final class MusicLyricsView extends AbstractWidget {
         // Unsynchronized/unavailable playback has no active line to pull an old
         // manual offset back into view on re-entry. Return to the beginning.
         if(!model.synchronizedLyrics()||model.positionMillis()<0)offset=0;
+        manualTargetSet=false;
         followMotion.reset(offset);
         returnToCurrent=true;
     }
@@ -139,18 +160,23 @@ public final class MusicLyricsView extends AbstractWidget {
                 tops[last]+heights[last]+Math.min(height*.24,MusicTypography.LINE_HEIGHT*scale));
         wrapped=List.copyOf(lines);timedRows=Map.copyOf(timed);layoutFont=font;layoutLanguage=language;
         measuredRevision=fontMetricsRevision;layoutDirty=false;offset=clamp(offset);
-        if(isFocused()&&model.focusedIndex()>=0)reveal(model.focusedIndex());
+        if(isFocused()&&model.focusedIndex()>=0){
+            manualTarget=clamp(tops[model.focusedIndex()]-height*.24);
+            manualTargetSet=true;
+        }
     }
-    private void reveal(int index){if(index>=0&&index<tops.length)offset=clamp(tops[index]-height*.24);}
     private int hit(double y){double local=y-getY()+offset;for(int i=0;i<tops.length;i++)if(local>=tops[i]&&local<tops[i]+heights[i])return i;return -1;}
-    private void activate(int index){model.focus(index);model.seekTarget(index).ifPresent(seek);}
+    private void activate(int index){
+        var target=model.seekTarget(index);
+        if(target.isPresent()){follow();seek.accept(target.getAsLong());}
+        else if(index>=0){model.focus(index);manualTargetSet=false;browseViewport.input(net.minecraft.util.Util.getMillis());}
+    }
     @Override public void onClick(net.minecraft.client.input.MouseButtonEvent event, boolean doubleClick){layout(Minecraft.getInstance().font);int hit=hit(event.y());if(!seekingPreview&&hit>=0)activate(hit);}
     public boolean mouseScrolled(double x,double y,double amount){
         if(!visible||!active||seekingPreview||!isMouseOver(x,y)||amount==0||!Double.isFinite(amount))return false;
         layout(Minecraft.getInstance().font);
-        double target=clamp(offset-amount*36*scale);
-        if(target==offset)return false;
-        model.browse();manualScrollTo(target);return true;
+        double input=Math.max(-4,Math.min(4,amount));
+        return manualScrollTo(manualOffset()-input*26*scale);
     }
     public boolean mouseScrolled(double x,double y,double horizontal,double vertical){return mouseScrolled(x,y,vertical);}
     @Override public boolean keyPressed(net.minecraft.client.input.KeyEvent event){
@@ -166,14 +192,13 @@ public final class MusicLyricsView extends AbstractWidget {
             case GLFW.GLFW_KEY_DOWN -> model.moveFocus(1);
             case GLFW.GLFW_KEY_HOME -> model.focus(0);
             case GLFW.GLFW_KEY_END -> model.focus(model.lines().size()-1);
-            case GLFW.GLFW_KEY_PAGE_UP -> {model.browse();manualScrollTo(offset-height*.75);return true;}
-            case GLFW.GLFW_KEY_PAGE_DOWN -> {model.browse();manualScrollTo(offset+height*.75);return true;}
+            case GLFW.GLFW_KEY_PAGE_UP -> {manualScrollTo(manualOffset()-height*.75);return true;}
+            case GLFW.GLFW_KEY_PAGE_DOWN -> {manualScrollTo(manualOffset()+height*.75);return true;}
             case GLFW.GLFW_KEY_ENTER,GLFW.GLFW_KEY_KP_ENTER,GLFW.GLFW_KEY_SPACE -> {activate(model.focusedIndex()<0?model.activeIndex():model.focusedIndex());return true;}
             default -> {return false;}
         }
-        double previous = offset;
-        reveal(model.focusedIndex());
-        if (offset != previous) onManualScroll.accept(offset - previous);
+        browseViewport.input(net.minecraft.util.Util.getMillis());
+        if(model.focusedIndex()>=0)manualScrollTo(tops[model.focusedIndex()]-height*.24);
         return true;
     }
     @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g,int mx,int my,float partial){
@@ -182,24 +207,28 @@ public final class MusicLyricsView extends AbstractWidget {
         int current=model.activeIndex();long now=net.minecraft.util.Util.getMillis();
         double frameSeconds=lastFrame==0?0:Math.max(0,(now-lastFrame)/1000d);
         long position=model.positionMillis();
-        boolean snap=seekingPreview||previewChanged||returnToCurrent||lastFrame==0||frameSeconds>.38||preferences.reducedMotion()
-                ||LyricFollowMotion.discontinuity(observedPosition,position,frameSeconds)
-                ||(current>=0&&observedActive>=0&&Math.abs(current-observedActive)>6);
+        if(browseViewport.shouldFollow(now,model.browsing(),model.synchronizedLyrics()&&position>=0))follow();
+        boolean snap=lastFrame==0||frameSeconds>.38||preferences.reducedMotion();
         boolean steer=browseViewport.steering(model.browsing());
         LyricInterlude gap=current<0&&model.synchronizedLyrics()&&steer&&!completeRowsOnly
                 ?LyricInterlude.at(model.lines(),position):null;
         double gapY=gap==null?0:tops[gap.next()]-MusicTypography.LINE_HEIGHT*scale;
-        int previewAnchor=seekingPreview||previewChanged||returnToCurrent?model.previewAnchor():-1;
+        int previewAnchor=steer?model.previewAnchor():-1;
         double previousOffset=offset;
         if(steer&&(current>=0||gap!=null||previewAnchor>=0)){
             double target=clamp((current>=0?tops[current]:gap!=null?gapY:tops[previewAnchor])-height*.24);
             if(snap)followMotion.reset(target);
-            offset=clamp(followMotion.step(target,frameSeconds));
+            offset=clamp(followMotion.step(target,frameSeconds,seekingPreview?29:16));
+        }else if(manualTargetSet){
+            double target=manualOffset();
+            if(snap)followMotion.reset(target);
+            offset=clamp(followMotion.step(target,frameSeconds,19));
+            if(!snap&&previousOffset!=offset)onManualScroll.accept(offset-previousOffset);
         }else followMotion.reset(offset);
         boolean stillRows=immersiveReading&&!seekingPreview
                 &&(preferences.reducedMotion()||(!previewChanged&&offset==previousOffset&&followMotion.settled()));
         double framebufferScale=stillRows?Minecraft.getInstance().getWindow().getGuiScale():1d;
-        previewChanged=false;returnToCurrent=false;observedPosition=position;observedActive=current;lastFrame=now;
+        previewChanged=false;returnToCurrent=false;lastFrame=now;
         int hovered=isMouseOver(mx,my)?hit(my):-1;
         int ink=ContrastPolicy.readable(primary,0,backdrop,4.5);
         int muted=preferences.highContrast()?ink:ContrastPolicy.readable(secondary,0,backdrop,3);

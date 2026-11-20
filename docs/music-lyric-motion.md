@@ -11,3 +11,24 @@ Design references, independently implemented for Minecraft's Java renderers (no 
 Long, explicitly timed gaps show a three-dot instrumental indicator; ordinary line-only LRC does not invent gaps.
 
 Immersive, compact and HUD lyrics stay sharp. The immersive rail uses color and edge opacity rather than drawing displaced copies as faux blur, which produced visible doubled strokes in dense fonts such as Chinese. Both the timed and untimed paths submit just one glyph image per character; popup and backdrop blur are unaffected. Verify Chinese and wrapped English at different GUI scales, seeking in both directions, pause/resume, quickly changing lyrics, scrolling, Follow, and accessibility modes.
+
+### Full-screen reading and return to playback
+
+Wheel input accumulates into a bounded destination. The same continuous, critically
+damped motion follows playback, transport scrubbing and keyboard browsing, with a
+faster response while the transport is held. Explicit browsing resumes playback
+following 3.6 s after the last input; an open scrub pauses this countdown until
+release. The return moves the viewport, never the playback clock. Reduced motion
+keeps the same interaction rules and uses immediate placement.
+
+Forge 1.20.1 and NeoForge 1.21.1 can soften peripheral glyphs on a separate
+transparent render target. The playing, hovered and keyboard-focused lines
+are not included in that target. The filter is a bounded nine-sample kernel with
+a radius that increases away from the visual reading anchor. Browsing keeps the
+text sharp to allow reading and seeking. High contrast and unsupported rendering
+paths (including the NeoForge 26.x extractor) retain legible unfiltered text.
+
+The full-screen credits use provider artist IDs when available. A play session
+started from a library or discovered playlist links to that exact collection.
+With no known playlist origin, the album credit opens a provider search rather
+than treating an album name as a playlist ID. Back returns to the playback stage.

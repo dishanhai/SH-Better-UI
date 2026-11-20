@@ -11,14 +11,18 @@ final class LyricFollowMotion {
     }
 
     double step(double target, double seconds) {
+        return step(target,seconds,FREQUENCY);
+    }
+
+    double step(double target,double seconds,double frequency) {
         if (!(seconds > 0)) return position;
         // Exact solution for a critically damped spring. Retargets keep their
         // velocity and a slow frame advances real time, not a fixed tick.
         double x = position - target;
-        double drift = velocity + FREQUENCY * x;
-        double decay = Math.exp(-FREQUENCY * seconds);
+        double drift = velocity + frequency * x;
+        double decay = Math.exp(-frequency * seconds);
         position = target + (x + drift * seconds) * decay;
-        velocity = (velocity - FREQUENCY * drift * seconds) * decay;
+        velocity = (velocity - frequency * drift * seconds) * decay;
         if (Math.abs(position - target) < .01 && Math.abs(velocity) < .1) reset(target);
         return position;
     }

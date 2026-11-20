@@ -99,6 +99,23 @@ vec4 radialColor() {
     return straightColor(mix(premultiply(InnerColor), premultiply(OuterColor), progress));
 }
 
+// The source contains premultiplied glyph coverage, never the player background.
+vec4 lyricGlyphMask() {
+    vec2 uv = vec2(localUv.x, 1.0 - localUv.y);
+    float distanceInLines = abs(localUv.y * Size.y - Reveal.y) / Reveal.z;
+    float radius = Reveal.x * smoothstep(0.65, 2.5, distanceInLines);
+    vec2 stepUv = vec2(radius) / Size;
+    vec4 sum = texture(TextureSampler, uv) * 0.25;
+    for (int i = -1; i <= 1; ++i) {
+        for (int j = -1; j <= 1; ++j) {
+            if (i == 0 && j == 0) continue;
+            float weight = (i == 0 || j == 0) ? 0.125 : 0.0625;
+            sum += texture(TextureSampler, uv + stepUv * vec2(i, j)) * weight;
+        }
+    }
+    return straightColor(sum);
+}
+
 void main() {
     if (EffectMode == 2) {
         fragColor = blurHorizontal();
@@ -107,6 +124,7 @@ void main() {
         vec4 color;
         if (EffectMode == 0) color = revealTexture();
         else if (EffectMode == 1) color = radialColor();
+        else if (EffectMode == 4) color = lyricGlyphMask();
         else color = texture(TextureSampler, localUv);
         fragColor = color * ColorModulator;
     }

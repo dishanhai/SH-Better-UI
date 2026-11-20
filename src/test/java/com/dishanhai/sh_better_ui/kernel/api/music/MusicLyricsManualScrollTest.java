@@ -36,7 +36,7 @@ class MusicLyricsManualScrollTest {
     }
 
     @Test void manualMovementReportsClampedDeltaButProgrammaticChangesStaySilent() throws Exception {
-        var view=new MusicLyricsView(new Bounds(0,0,200,100),Component.empty(),UiPreferences.DEFAULT,p->{});
+        var view=new MusicLyricsView(new Bounds(0,0,200,100),Component.empty(),new UiPreferences(false,true,true),p->{});
         var deltas=new ArrayList<Double>(); view.setOnManualScroll(deltas::add);
         var height=MusicLyricsView.class.getDeclaredField("totalHeight");height.setAccessible(true);height.setDouble(view,400);
         var move=MusicLyricsView.class.getDeclaredMethod("manualScrollTo",double.class);move.setAccessible(true);

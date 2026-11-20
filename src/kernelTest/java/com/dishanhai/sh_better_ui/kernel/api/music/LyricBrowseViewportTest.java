@@ -23,4 +23,21 @@ class LyricBrowseViewportTest {
         assertEquals(0, viewport.playback(true, false, 0));
         assertEquals(45, viewport.playback(false, false, 45));
     }
+    @Test void idleReturnUsesLastInteractionAndWaitsForTransportRelease() {
+        var viewport = new LyricBrowseViewport();
+        viewport.input(1000);
+        assertFalse(viewport.shouldFollow(4599,true,true));
+        viewport.input(4500);
+        assertFalse(viewport.shouldFollow(8099,true,true));
+        viewport.playback(true,true,80);
+        assertFalse(viewport.shouldFollow(9000,true,true));
+        viewport.playback(false,true,260);
+        viewport.input(9000);
+        assertFalse(viewport.shouldFollow(12599,true,true));
+        assertTrue(viewport.shouldFollow(12600,true,true));
+        assertFalse(viewport.shouldFollow(12600,true,false));
+        assertFalse(viewport.shouldFollow(12600,false,true));
+        viewport.clear();
+        assertFalse(viewport.shouldFollow(13000,true,true));
+    }
 }

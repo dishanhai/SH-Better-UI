@@ -237,6 +237,19 @@ public final class VisualRevealRenderer extends RenderType {
         vertices.vertex(pose, x, y, 0f).uv(u, v).color(argb >> 16 & 255, argb >> 8 & 255, argb & 255, argb >>> 24).endVertex();
     }
 
+    static boolean supportsGlyphMask() { return shader != null; }
+
+    static void drawGlyphMask(GuiGraphics graphics, TextureTarget target,
+                              com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds box,
+                              float anchor, float linePitch) {
+        shader.safeGetUniform("EffectMode").set(4);
+        shader.safeGetUniform("Size").set((float)box.width(),(float)box.height());
+        shader.safeGetUniform("Reveal").set(2.2f,anchor,Math.max(1,linePitch));
+        shader.setSampler("TextureSampler",target);
+        try { quad(graphics,TYPE,box.x(),box.y(),box.width(),box.height(),graphics.pose().last().pose()); }
+        finally { shader.setSampler("TextureSampler",null); }
+    }
+
     static ShaderInstance handoffShader() {
         return shader;
     }
