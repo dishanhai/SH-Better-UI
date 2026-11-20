@@ -649,7 +649,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         if (closed || layout == null || contentFade <= 0) return;
         var body = layout.body();
         int background = MusicGlass.active() ? MusicGlass.DARK : 0xff171719;
-        ui.graphics().fill(body.x(), body.y(), body.right(), body.bottom(), (contentFade << 24) | (background & 0xffffff));
+        MusicRouteReveal.paint(ui, body, background, contentFade, contentFade / 52f);
     }
 
     boolean permitsScreenClose() { return !backFromRoute(); }

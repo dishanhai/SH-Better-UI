@@ -2150,7 +2150,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
      * so their focus, clicks and operation callbacks cannot survive a route change.
      */
     void renderRouteHandoff(UiFrame ui) {
-        if(nowPlayingMenus!=null)nowPlayingMenus.render(ui);
         if (closed || layout == null || !layout.supported()) {
             routeMotion.reset(); scrollParallax.reset();
             return;
@@ -2164,21 +2163,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             default -> null;
         };
         var next = new OnlineMusicRouteMotion.Route(page, detail, immersive ? stagePage : null);
-        var motion = routeMotion.sample(next, ui.nowMs(), ui.preferences().reducedMotion());
-        if (motion.strength() <= 0f) return;
-        var box = OnlineMusicRouteMotion.bounds(motion.surface(), layout, stage);
-        int opacity = motion.opacity(ui.preferences().highContrast());
-        if (opacity == 0 || box.width() <= 0 || box.height() <= 0) return;
-        int rgb = UiTheme.current().background() & 0x00ffffff;
-        int tint = (opacity << 24) | rgb;
-        int feather = Math.min(8, box.height() / 3);
-        if (feather == 0) {
-            ui.graphics().fill(box.x(), box.y(), box.right(), box.bottom(), tint);
-        } else {
-            ui.graphics().fillGradient(box.x(), box.y(), box.right(), box.y() + feather, rgb, tint);
-            ui.graphics().fill(box.x(), box.y() + feather, box.right(), box.bottom() - feather, tint);
-            ui.graphics().fillGradient(box.x(), box.bottom() - feather, box.right(), box.bottom(), tint, rgb);
+        var motion = routeMotion.sample(next, ui.nowMs(), ui.preferences().reducedMotion() || ui.preferences().highContrast());
+        if (motion.strength() > 0f) {
+            var box = OnlineMusicRouteMotion.bounds(motion.surface(), layout, stage);
+            MusicRouteReveal.paint(ui, box, UiTheme.current().background(), motion.opacity(false), motion.strength());
         }
+        if (nowPlayingMenus != null) nowPlayingMenus.render(ui);
     }
     private Bounds continuationActionBounds() {
         var footer = layout.pager();

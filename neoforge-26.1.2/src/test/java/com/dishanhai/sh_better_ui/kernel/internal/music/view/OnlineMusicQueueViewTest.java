@@ -39,7 +39,7 @@ class OnlineMusicQueueViewTest {
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
             case "sources" -> providers;
-            case "authenticated" -> signedIn;
+            case "authenticated" -> this.signedIn;
             case "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
@@ -492,7 +492,7 @@ class OnlineMusicQueueViewTest {
         seek.cancelInteraction();
         call(f.view,"syncStageLyrics",types,f.snapshotOverride,true);
         assertEquals(500,lyrics.model().positionMillis());assertEquals(0,lyrics.model().activeIndex());
-        assertTrue(lyrics.model().seekTarget(1).isPresent());assertFalse(seek.mouseReleased(to,y,0));assertEquals(0,f.seeks);
+        assertTrue(lyrics.browsing());assertTrue(lyrics.model().seekTarget(1).isPresent());assertFalse(seek.mouseReleased(to,y,0));assertEquals(0,f.seeks);
         assertTrue(seek.mouseClicked(to,y,0));assertTrue(seek.mouseReleased(to,y,0));assertEquals(1,f.seeks);
         assertTrue(seek.mouseClicked(to,y,0));
         seek.sync("qq:2",100,2000,true);

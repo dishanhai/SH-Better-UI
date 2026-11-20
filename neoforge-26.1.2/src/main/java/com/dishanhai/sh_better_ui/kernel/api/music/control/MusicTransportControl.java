@@ -17,6 +17,7 @@ public final class MusicTransportControl extends AbstractWidget {
     public enum Glyph { PREVIOUS, PLAY, PAUSE, NEXT, BACK, LYRICS, QUEUE, STOP, CANCEL, SEARCH, FAVORITE, REMOVE, USER }
     private Glyph glyph;
     private final TransportGlyphMotion glyphMotion = new TransportGlyphMotion();
+    private final TransportPressMotion pressMotion = new TransportPressMotion();
     private UiPreferences preferences;
     private final Runnable action,feedback;
     private boolean pointerPressed;
@@ -36,7 +37,7 @@ public final class MusicTransportControl extends AbstractWidget {
     public void setInk(int argb){ink=argb;}
     public void cancelInteraction(){pointerPressed=false;pressedKey=-1;}
     /** Call when the owner hides, disables, loses its window, or detaches this control. */
-    public void setAvailable(boolean value){active=value;if(!value||!visible)cancelInteraction();}
+    public void setAvailable(boolean value){active=value;if(!value||!visible){cancelInteraction();pressMotion.reset();}}
     @Override public void setFocused(boolean value){super.setFocused(value);if(!value)cancelInteraction();}
     // Native 26.x event adapters; primitive overloads retain the shared input contract.
     @Override public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) { return mouseClicked(event.x(), event.y(), event.button()); }
@@ -45,20 +46,24 @@ public final class MusicTransportControl extends AbstractWidget {
     @Override public boolean keyReleased(KeyEvent event) { return keyReleased(event.key(), event.scancode(), event.modifiers()); }
     public boolean mouseClicked(double x,double y,int button){
         if(button!=0||!active||!visible||!isMouseOver(x,y))return false;
-        pointerPressed=true;pressedKey=-1;setFocused(true);return true;
+        pointerPressed=true;pressedKey=-1;setFocused(true);samplePress(true);return true;
     }
     public boolean mouseReleased(double x,double y,int button){
         if(button!=0||!pointerPressed)return false;
-        pointerPressed=false;if(active&&visible&&isMouseOver(x,y))activate();return true;
+        pointerPressed=false;samplePress(false);if(active&&visible&&isMouseOver(x,y))activate();return true;
     }
     public boolean keyPressed(int key,int scan,int mods){
         if(key==256&&(pointerPressed||pressedKey!=-1)){cancelInteraction();return true;}
         if(pointerPressed||!active||!visible||!isFocused()||(key!=32&&key!=257&&key!=335))return false;
-        if(pressedKey==-1)pressedKey=key;return true;
+        if(pressedKey==-1){pressedKey=key;samplePress(true);}return true;
     }
     public boolean keyReleased(int key,int scan,int mods){
-        if(key!=pressedKey)return false;pressedKey=-1;
+        if(key!=pressedKey)return false;pressedKey=-1;samplePress(false);
         if(active&&visible&&isFocused())activate();return true;
+    }
+    private boolean still() { return !active || preferences.reducedMotion() || preferences.highContrast(); }
+    private void samplePress(boolean pressed) {
+        pressMotion.sample(pressed, System.nanoTime() / 1_000_000L, still());
     }
     private void activate(){
         if(feedback!=null)feedback.run();else playDownSound(Minecraft.getInstance().getSoundManager());
@@ -66,10 +71,12 @@ public final class MusicTransportControl extends AbstractWidget {
     }
     @Override protected void extractWidgetRenderState(GuiGraphicsExtractor g,int x,int y,float partial){
         if(!active)cancelInteraction();
-        float glyphWeight = glyphMotion.sample(glyph, System.nanoTime() / 1_000_000L,
-                !active || preferences.reducedMotion() || preferences.highContrast());
+        long now = System.nanoTime() / 1_000_000L;
+        boolean pressed = pointerPressed || pressedKey != -1;
+        float glyphWeight = glyphMotion.sample(glyph, now, still());
+        float compression = pressMotion.sample(pressed, now, still());
         MusicControlRenderer.transport(g,new Bounds(getX(),getY(),width,height),glyph,glyphWeight,isHovered(),isFocused(),
-                pointerPressed||pressedKey!=-1,active,ink,preferences);
+                pressed, compression, active,ink,preferences);
     }
     @Override protected void updateWidgetNarration(NarrationElementOutput out){defaultButtonNarrationText(out);}
 }

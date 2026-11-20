@@ -91,7 +91,8 @@ public final class MusicLyricsView extends AbstractWidget {
     }
     /** Stronger visual hierarchy and stable resting baselines for a full-screen player. */
     public void immersiveReading(boolean value){immersiveReading=value;}
-    public boolean browsing(){return model.browsing();}
+    /** A transport drag temporarily takes over the viewport without discarding the manual bookmark. */
+    public boolean browsing(){return !seekingPreview && model.browsing();}
     public void follow(){
         model.follow();
         // Unsynchronized/unavailable playback has no active line to pull an old
