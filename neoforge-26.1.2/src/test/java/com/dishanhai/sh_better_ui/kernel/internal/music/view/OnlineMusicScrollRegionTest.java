@@ -1,6 +1,10 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.glfw.GLFW;
@@ -17,6 +21,50 @@ class OnlineMusicScrollRegionTest {
     private static net.minecraft.client.input.MouseButtonEvent mouse(double x, double y, int button) {
         return new net.minecraft.client.input.MouseButtonEvent(x, y, new net.minecraft.client.input.MouseButtonInfo(button, 0));
     }
+    @Test void coastingRowClickKeepsItsPaintedPositionUntilRelease() {
+        for (String gesture : new String[]{"inside", "outside", "rebound"}) {
+            var clock = new AtomicLong(1000);
+            var activations = new AtomicInteger();
+            var screen = com.dishanhai.sh_better_ui.client.api.ShBetterUiApi.screen(Component.empty()).build();
+            screen.width = 320;
+            screen.height = 240;
+            var clip = new Bounds(20, 20, 240, 120);
+            var region = new OnlineMusicScrollRegion(20, 20, 240, 120, Component.literal("Search"),
+                    ignored -> {}, clock::get, () -> false);
+            var row = new MusicTextControl(new Bounds(20, 68, 220, 24), Component.literal("Track"),
+                    UiPreferences.DEFAULT, activations::incrementAndGet, () -> {});
+            region.configure(4, 40, 5);
+            region.pixelRows(28, shift -> row.setY(68 - shift));
+            region.setOnBrowse(() -> screen.setFocused(region));
+            screen.add(region);
+            screen.addClipped(row, () -> clip, null);
+            assertTrue(region.mouseScrolled(50, 60, -1));
+            for (int i = 0; i < 20 && region.rowShift() == 0; i++) {
+                clock.addAndGet(8);
+                region.tick();
+            }
+            assertSame(region, screen.getFocused());
+            assertTrue(region.rowShift() > 0, "wheel motion must reach a partial row");
+            int paintedY = row.getY();
+            double sampled = region.viewportOffset();
+            double y = paintedY + 12;
+            // Mirror UiScreen's native mouse-down order without bringing up a full client window.
+            assertTrue(row.mouseClicked(mouse(50, y, 0), false));
+            screen.setFocused(row);
+            assertSame(row, screen.getFocused());
+            assertTrue(row.isArmed());
+            assertEquals(paintedY, row.getY());
+            clock.addAndGet(200);
+            region.tick();
+            assertEquals(sampled, region.viewportOffset());
+            assertEquals(0, activations.get(), "mouse-down must not play a track");
+            boolean outside = gesture.equals("outside");
+            if (gesture.equals("rebound")) row.rebind(Component.literal("Replacement track"));
+            row.mouseReleased(mouse(outside ? 280 : 50, y, 0));
+            assertEquals(gesture.equals("inside") ? 1 : 0, activations.get(), gesture);
+        }
+    }
+
     @Test void realFullscreenHostCommitsReleaseOutsideChildInsteadOfLaterRollingBack() {
         var offset = new AtomicInteger();
         var region = new OnlineMusicScrollRegion(0,0,200,120,Component.literal("Lyrics"),offset::set);
@@ -35,7 +83,7 @@ class OnlineMusicScrollRegionTest {
     }
     @Test void canvasWheelAndKeyboardScrollButNormalClicksPassThrough() {
         var offset = new AtomicInteger();
-        var region = new OnlineMusicScrollRegion(10,20,200,120,Component.literal("Tracks"),offset::set);
+        var region = new OnlineMusicScrollRegion(10,20,200,120,Component.literal("Tracks"),offset::set, () -> 0L, () -> true);
         region.configure(0,20,5);
         assertFalse(region.mouseClicked(mouse(50,50,0), false));
         assertTrue(region.mouseScrolled(50,50,-1)); assertEquals(1,offset.get());

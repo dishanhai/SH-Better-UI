@@ -42,14 +42,17 @@ final class ScrollRegionState {
         }
     }
 
-    boolean stopMotion() {
-        boolean wasMoving = coasting;
+    void stopMotion() {
+        if (coasting) scroll.scrollTo(offset());
+        freezeMotion();
+    }
+
+    /** Keep the last painted offset: this frame's row may already hold a pointer press. */
+    void freezeMotion() {
         coasting = false;
-        if (wasMoving) scroll.scrollTo(offset());
         target = scroll.offset();
         motion.synchronize();
         remainder = 0;
-        return wasMoving;
     }
 
     boolean atForwardLimit() { return !coasting && scroll.offset() >= maximum(); }

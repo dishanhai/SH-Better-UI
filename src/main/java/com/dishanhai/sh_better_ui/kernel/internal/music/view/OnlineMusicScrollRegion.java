@@ -133,7 +133,13 @@ final class OnlineMusicScrollRegion extends AbstractWidget implements com.dishan
     @Override public void setFocused(boolean focused) {
         super.setFocused(focused);
         if (focused) pointerFocusPending = false;
-        else if (!pointerFocusPending) cancelDrag();
+        else if (!pointerFocusPending) {
+            if (state.dragging()) cancelDrag();
+            else {
+                forwardIntent = false;
+                state.freezeMotion();
+            }
+        }
     }
     @Override public boolean keyPressed(int key, int scanCode, int modifiers) {
         if (!isFocused() || !usable()) return false;

@@ -1,11 +1,57 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import net.minecraft.network.chat.Component;
 import org.junit.jupiter.api.Test;
 import org.lwjgl.glfw.GLFW;
 import static org.junit.jupiter.api.Assertions.*;
 class OnlineMusicScrollRegionTest {
+    @Test void coastingRowClickKeepsItsPaintedPositionUntilRelease() {
+        for (String gesture : new String[]{"inside", "outside", "rebound"}) {
+            var clock = new AtomicLong(1000);
+            var activations = new AtomicInteger();
+            var screen = new com.dishanhai.sh_better_ui.client.api.UiScreenBuilder(Component.empty()).backButton(false).build();
+            screen.width = 320;
+            screen.height = 240;
+            var clip = new Bounds(20, 20, 240, 120);
+            var region = new OnlineMusicScrollRegion(20, 20, 240, 120, Component.literal("Search"),
+                    ignored -> {}, clock::get, () -> false);
+            var row = new MusicTextControl(new Bounds(20, 68, 220, 24), Component.literal("Track"),
+                    UiPreferences.DEFAULT, activations::incrementAndGet, () -> {});
+            region.configure(4, 40, 5);
+            region.pixelRows(28, shift -> row.setY(68 - shift));
+            region.setOnBrowse(() -> screen.setFocused(region));
+            screen.add(region);
+            screen.addClipped(row, () -> clip);
+            assertTrue(region.mouseScrolled(50, 60, -1));
+            for (int i = 0; i < 20 && region.rowShift() == 0; i++) {
+                clock.addAndGet(8);
+                region.tick();
+            }
+            assertSame(region, screen.getFocused());
+            assertTrue(region.rowShift() > 0, "wheel motion must reach a partial row");
+            int paintedY = row.getY();
+            double sampled = region.viewportOffset();
+            double y = paintedY + 12;
+            assertTrue(screen.mouseClicked(50, y, 0));
+            assertSame(row, screen.getFocused());
+            assertTrue(row.isArmed());
+            assertEquals(paintedY, row.getY());
+            clock.addAndGet(200);
+            region.tick();
+            assertEquals(sampled, region.viewportOffset());
+            assertEquals(0, activations.get(), "mouse-down must not play a track");
+            boolean outside = gesture.equals("outside");
+            if (gesture.equals("rebound")) row.rebind(Component.literal("Replacement track"));
+            screen.mouseReleased(outside ? 280 : 50, y, 0);
+            assertEquals(gesture.equals("inside") ? 1 : 0, activations.get(), gesture);
+        }
+    }
+
     @Test void realFullscreenHostCommitsReleaseOutsideChildInsteadOfLaterRollingBack() {
         var offset = new AtomicInteger();
         var region = new OnlineMusicScrollRegion(0,0,200,120,Component.literal("Lyrics"),offset::set);
