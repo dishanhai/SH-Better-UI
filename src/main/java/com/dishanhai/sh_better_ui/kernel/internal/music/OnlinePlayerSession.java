@@ -118,8 +118,13 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             throw (RuntimeException) error;
         }
         var obsolete = applyCredentials(sourceId, valid, failedRead);
-        stop();
+        if (failedRead == null) stop(); // Explicit credential changes keep their session-wide stop behavior.
+        else stopPlaybackForRejectedAccount(sourceId);
         return obsolete;
+    }
+    /** Called under the session lock; include pending audio using the rejected account snapshot. */
+    private void stopPlaybackForRejectedAccount(String sourceId) {
+        if (track != null && sourceId.equals(track.source())) stop();
     }
     private void saveCredentials(String sourceId, String cookie) throws java.io.IOException {
         long next = credentialStore.replaceIfCurrent(sourceId, cookie, persistenceVersions.getOrDefault(sourceId, -1L));
@@ -350,7 +355,9 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                     if (error instanceof OnlineMusicSource.LoginRequired) {
                         searches.remove(result);
                         try { obsolete = replaceCredentials(sourceId, "", false, result); } catch (java.io.UncheckedIOException ignored) {
-                            source(sourceId).credentials(""); obsolete = applyCredentials(sourceId, "", result); stop();
+                            source(sourceId).credentials("");
+                            obsolete = applyCredentials(sourceId, "", result);
+                            stopPlaybackForRejectedAccount(sourceId);
                         }
                     }
                 }
