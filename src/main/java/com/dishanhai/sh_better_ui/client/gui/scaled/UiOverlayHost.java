@@ -153,6 +153,12 @@ public final class UiOverlayHost {
                 List.of(new Action(CommonComponents.GUI_CANCEL, this::dismissModal, null, GraphicIcon.CLOSE)), null));
     }
 
+    /** A centered action dialog with an explicit safe dismissal button. */
+    public void showChoices(Component title, Component details, List<Action> actions, Component cancel) {
+        show(new Layer(title, Objects.requireNonNull(details), null, this::dismissModal, List.copyOf(actions),
+                List.of(new Action(cancel, this::dismissModal)), null));
+    }
+
     /** 锚点使用画面坐标。暂时不可见时可返回 null，气泡不接收焦点或输入。 */
     public void showBubble(Supplier<Rect2i> anchor, Component message) {
         showBubble(anchor, message, GraphicIcon.BUBBLE);

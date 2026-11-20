@@ -41,6 +41,18 @@ class SearchIndexTest {
     }
 
     @Test
+    void preparedMatcherPreservesPlainTextSearchForReorderedCandidates() {
+        var index = new SearchIndex<>(List.of(entry(1, "铁锭", "mod:iron"),
+                entry(1, "Alias", "mod:alias"), entry(2, "铁锭块", "mod:iron_block"),
+                entry(3, "Block @home", "mod:block")));
+        for (String query : List.of("td", "alias", "@home", "mod:iron", "missing", "")) {
+            var expected = index.searchPlainText(query).stream().map(SearchIndex.Entry::value).toList();
+            assertEquals(List.of(3, 2, 1, 99).stream().filter(expected::contains).toList(),
+                    List.of(3, 2, 1, 99).stream().filter(index.plainTextMatcher(query)).toList());
+        }
+    }
+
+    @Test
     void orderedCandidatesKeepHostOrderWithinEachRankAndIgnoreUnknownValues() {
         var index = new SearchIndex<>(List.of(entry(1, "Iron A", "mod:a"),
                 entry(2, "Iron B", "mod:b"), entry(3, "Iron", "mod:iron"),

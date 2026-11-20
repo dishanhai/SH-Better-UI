@@ -138,6 +138,19 @@ public final class SearchIndex<T> {
         return search(SearchQuery.plainText(query), scope);
     }
 
+    /** Prepares a plain-text query for a caller that already visits candidates in its own order. */
+    public Predicate<T> plainTextMatcher(String query) {
+        var tokens = SearchQuery.plainText(query).tokens();
+        return value -> {
+            var candidates = entriesByValue.get(value);
+            if (candidates == null) return false;
+            for (var candidate : candidates) {
+                if (candidate.matches(tokens, false)) return true;
+            }
+            return false;
+        };
+    }
+
     private List<Entry<T>> search(SearchQuery prepared, Predicate<? super T> scope) {
         return entries.stream().filter(entry -> scope.test(entry.entry().value()) && entry.matches(prepared.tokens(), false))
                 .map(Prepared::entry).toList();

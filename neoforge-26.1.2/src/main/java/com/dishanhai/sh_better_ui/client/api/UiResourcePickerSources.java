@@ -1,16 +1,31 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.kernel.api.controls.ResourcePickerState.Entry;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.world.item.ItemStack;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import net.neoforged.api.distmarker.Dist;
+import net.neoforged.bus.api.SubscribeEvent;
+import net.neoforged.fml.common.EventBusSubscriber;
+import net.neoforged.neoforge.event.TagsUpdatedEvent;
 
 /** 26.x data adapter. JEI bookmarks remain unavailable until a compatible JEI backend exists. */
+@EventBusSubscriber(modid = ShBetterUi.MOD_ID, value = Dist.CLIENT)
 public final class UiResourcePickerSources {
+    private static final AtomicLong TAG_REVISION = new AtomicLong();
+
     private UiResourcePickerSources() {}
+
+    public static long itemsRevision() { return TAG_REVISION.get(); }
+
+    @SubscribeEvent
+    public static void onTagsUpdated(TagsUpdatedEvent event) { TAG_REVISION.incrementAndGet(); }
+
     public static List<Entry<ItemStack>> items() {
         return UiWorkbench.itemIcons().entrySet().stream().map(entry -> entry(entry.getKey(), entry.getValue(), 1)).toList();
     }

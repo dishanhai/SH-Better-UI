@@ -51,7 +51,10 @@ public final class IngredientSlotsState {
     public Action release(int index) {
         Action result = NONE;
         if (pressed >= 0) {
-            if (dragging && target >= 0 && target == index) result = new Action(Kind.MOVE, pressed, target);
+            if (dragging && target >= 0 && target == index) {
+                selected = target;
+                result = new Action(Kind.MOVE, pressed, target);
+            }
             else if (!dragging && pressed == index) result = new Action(Kind.CHOOSE, pressed, pressed);
         }
         cancel();

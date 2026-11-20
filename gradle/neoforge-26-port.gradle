@@ -28,6 +28,7 @@ def sharedSources = [
         'client/gui/scaled/ConfirmationChoice.java',
         'client/gui/scaled/NavigationRailState.java',
         'client/gui/scaled/UiResourcePicker.java',
+        'client/gui/scaled/UiScrollingRows.java',
         'client/gui/scaled/UiPagination.java',
         'client/gui/panel/PaginationDemo.java',
         'client/gui/scaled/UiAnimatedList.java',

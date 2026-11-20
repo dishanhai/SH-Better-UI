@@ -60,6 +60,18 @@ public final class UiScreen extends Screen {
         this.foreground = foreground;
     }
 
+    public static Screen currentScreen() { return NativePort.screen(Minecraft.getInstance()); }
+
+    /** Unmounts a regular widget registered with add(). */
+    public void remove(AbstractWidget widget) {
+        if (widget instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots) slots.cancelInteraction();
+        if (getFocused() == widget) {
+            setFocused(null);
+            setDragging(false);
+        }
+        removeWidget(widget);
+    }
+
     public void open() {
         var client = Minecraft.getInstance();
         if (!parentSpecified && NativePort.screen(client) != this) parent = NativePort.screen(client);

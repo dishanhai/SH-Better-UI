@@ -6,8 +6,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.Optional;
-import java.util.function.Supplier;
 import java.util.function.BiPredicate;
+import java.util.function.Function;
+import java.util.function.Supplier;
 
 /** Resource browsing and a single replacement draft. Confirmation is the only commit point. */
 public final class ResourcePickerState<T> {
@@ -74,9 +75,20 @@ public final class ResourcePickerState<T> {
     /** Allows platform search indexes to supply additional matches for ordinary words. */
     public List<Entry<T>> search(String query, String module, Sort sort, boolean grouped,
                                  BiPredicate<Entry<T>, String> additionalMatch) {
-        String[] words = normalized(query).split("\\s+");
-        var stream = source.stream().filter(entry -> module.isEmpty() || entry.namespace().equals(module))
-                .filter(entry -> matches(entry, words, additionalMatch));
+        return search(query, module, sort, grouped, additionalMatch, entry -> entry.tooltip().get());
+    }
+
+    /** Allows a picker session to cache tooltip text independently of its shared catalog. */
+    public List<Entry<T>> search(String query, String module, Sort sort, boolean grouped,
+                                 BiPredicate<Entry<T>, String> additionalMatch, Function<Entry<T>, String> tooltip) {
+        String normalizedQuery = normalized(query);
+        if (normalizedQuery.isEmpty() && module.isEmpty() && sort == Sort.DEFAULT && !grouped) return source;
+        var stream = source.stream();
+        if (!module.isEmpty()) stream = stream.filter(entry -> entry.namespace().equals(module));
+        if (!normalizedQuery.isEmpty()) {
+            String[] words = normalizedQuery.split("\\s+");
+            stream = stream.filter(entry -> matches(entry, words, additionalMatch, tooltip));
+        }
         Comparator<Entry<T>> order = switch (sort) {
             case DEFAULT -> null;
             case NAME -> Comparator.comparing(entry -> normalized(entry.name()));
@@ -90,7 +102,8 @@ public final class ResourcePickerState<T> {
         }
         return (order == null ? stream : stream.sorted(order)).toList();
     }
-    private static <T> boolean matches(Entry<T> entry, String[] words, BiPredicate<Entry<T>, String> additionalMatch) {
+    private static <T> boolean matches(Entry<T> entry, String[] words, BiPredicate<Entry<T>, String> additionalMatch,
+                                       Function<Entry<T>, String> tooltip) {
         for (String word : words) {
             if (word.isEmpty()) continue;
             String value = word.substring(1);
@@ -98,7 +111,7 @@ public final class ResourcePickerState<T> {
                 case '@' -> normalized(entry.namespace() + " " + entry.mod()).contains(value);
                 case '#' -> entry.tags().stream().anyMatch(tag -> normalized(tag).contains(value));
                 case '*' -> normalized(entry.id()).contains(value);
-                case '$' -> normalized(entry.tooltip().get()).contains(value);
+                case '$' -> normalized(tooltip.apply(entry)).contains(value);
                 default -> normalized(entry.name() + " " + entry.id()).contains(word) || additionalMatch.test(entry, word);
             };
             if (!matches) return false;
@@ -112,8 +125,8 @@ public final class ResourcePickerState<T> {
 
     /** Same left/source, center/grid, right/draft structure as GTSH, scaled to the actual GUI. */
     public static Layout layout(int width, int height) {
-        int panelWidth = Math.max(0, Math.min(700, width - 16));
-        int panelHeight = Math.max(0, Math.min(420, height - 12));
+        int panelWidth = Math.max(0, Math.min(700, width - Math.max(16, Math.min(64, width / 12))));
+        int panelHeight = Math.max(0, Math.min(420, height - Math.max(12, Math.min(44, height / 12))));
         int x = (width - panelWidth) / 2, y = (height - panelHeight) / 2;
         int sidebar = Math.min(104, Math.max(62, panelWidth / 6));
         int selected = Math.min(214, Math.max(100, panelWidth / 3));

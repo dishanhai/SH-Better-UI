@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.DarkModeTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiDotBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiLocalModal;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
@@ -219,6 +220,27 @@ public final class UiScreen extends Screen {
         var api = context();
         return add(api.controls().button(new Bounds(x, y, width, height), Objects.requireNonNull(label),
                 button -> runCallback(onPress), api.preferences(), false, UiStyle.DEFAULT));
+    }
+
+    public static Screen currentScreen() { return Minecraft.getInstance().screen; }
+
+    /** Unmounts a regular widget registered with add(). */
+    public void remove(AbstractWidget widget) {
+        if (widget instanceof com.dishanhai.sh_better_ui.client.gui.scaled.UiIngredientSlots slots) slots.cancelInteraction();
+        if (getFocused() == widget) {
+            setFocused(null);
+            setDragging(false);
+        }
+        removeWidget(widget);
+    }
+
+    private UiOverlayHost workbenchOverlays;
+
+    UiOverlayHost workbenchOverlays() {
+        var active = UiOverlayHost.current(this);
+        if (active != null) return active;
+        if (workbenchOverlays == null) workbenchOverlays = new UiOverlayHost(this, UiWorkbench.preferences(this));
+        return workbenchOverlays;
     }
 
     /** 在客户端执行阶段取得默认父页，保持显式 parent(null) 的返回游戏含义。 */

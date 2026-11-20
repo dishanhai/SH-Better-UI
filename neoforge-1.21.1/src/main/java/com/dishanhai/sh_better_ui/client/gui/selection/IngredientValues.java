@@ -71,6 +71,11 @@ public final class IngredientValues {
                 ? TooltipFlag.Default.ADVANCED : TooltipFlag.Default.NORMAL;
     }
 
+    public static List<Component> itemTooltip(ItemStack stack) {
+        var client = Minecraft.getInstance();
+        return stack.getTooltipLines(Item.TooltipContext.of(client.level), client.player, tooltipFlag());
+    }
+
     private interface Value extends Ingredient {
         IngredientKey identity();
         @Override
@@ -108,8 +113,7 @@ public final class IngredientValues {
         }
         @Override
         public List<Component> tooltip() {
-            Minecraft client = Minecraft.getInstance();
-            return stack.getTooltipLines(Item.TooltipContext.of(client.level), client.player, tooltipFlag());
+            return itemTooltip(stack);
         }
         @Override
         public void renderTooltip(GuiGraphics graphics, int x, int y) {

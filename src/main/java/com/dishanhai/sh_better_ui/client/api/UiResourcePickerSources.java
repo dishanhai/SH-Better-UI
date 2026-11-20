@@ -6,7 +6,9 @@ import com.dishanhai.sh_better_ui.client.gui.selection.IngredientValues;
 import com.dishanhai.sh_better_ui.client.jei.JeiIntegration;
 import com.dishanhai.sh_better_ui.kernel.api.controls.ResourcePickerState.Entry;
 import net.minecraft.client.Minecraft;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.item.ItemStack;
 
 import java.util.ArrayList;
@@ -18,16 +20,27 @@ import java.util.stream.Collectors;
 public final class UiResourcePickerSources {
     private UiResourcePickerSources() {}
 
+    /** Changes when the active catalog, its language or registry tags change. */
+    public static long itemsRevision() { return IngredientCatalog.automatic().revision(); }
+
     public static List<Entry<ItemStack>> items() {
         var result = new LinkedHashMap<String, Entry<ItemStack>>();
-        for (var ingredient : IngredientCatalog.automatic().ingredients()) {
+        for (var ingredient : JeiIntegration.ingredients()) {
             if (!ingredient.visible() || ingredient.kind() != JeiIntegration.Kind.ITEM) continue;
+            var id = ingredient.id();
+            String key = id.toString();
+            if (result.containsKey(key)) continue;
             ingredient.copy(ItemStack.class).filter(stack -> !stack.isEmpty()).ifPresent(stack -> {
-                var value = entry(ingredient.id().toString(), stack, 1);
-                result.putIfAbsent(value.id(), value);
+                result.put(key, ownedEntry(key, id, stack, 1));
             });
         }
-        UiWorkbench.itemIcons().forEach((id, stack) -> result.computeIfAbsent(id, ignored -> entry(id, stack, 1)));
+        for (var item : BuiltInRegistries.ITEM) {
+            var id = BuiltInRegistries.ITEM.getKey(item);
+            String key = id.toString();
+            if (result.containsKey(key)) continue;
+            var stack = item.getDefaultInstance();
+            if (!stack.isEmpty()) result.put(key, ownedEntry(key, id, stack, 1));
+        }
         return List.copyOf(result.values());
     }
     public static List<Entry<ItemStack>> inventory() {
@@ -44,24 +57,28 @@ public final class UiResourcePickerSources {
     public static List<Entry<ItemStack>> bookmarks() {
         var result = new ArrayList<Entry<ItemStack>>();
         for (var stack : JeiIntegration.bookmarkedItems()) {
-            if (!stack.isEmpty()) result.add(entry("bookmark:" + result.size(), stack, stack.getCount()));
+            if (!stack.isEmpty()) result.add(ownedEntry("bookmark:" + result.size(),
+                    BuiltInRegistries.ITEM.getKey(stack.getItem()), stack, stack.getCount()));
         }
         return List.copyOf(result);
     }
     public static boolean bookmarksAvailable() { return JeiIntegration.isAvailable(); }
 
     public static Entry<ItemStack> entry(String key, ItemStack original, int amount) {
-        var stack = original.copy();
+        return ownedEntry(key, BuiltInRegistries.ITEM.getKey(original.getItem()), original.copy(), amount);
+    }
+
+    private static Entry<ItemStack> ownedEntry(String key, ResourceLocation id, ItemStack stack, int amount) {
         stack.setCount(1);
-        var ingredient = IngredientValues.item(stack);
-        final String[] tooltip = {null};
-        return new Entry<>(key.isEmpty() ? ingredient.id().toString() : key, ingredient.id().toString(), ingredient.name(), ingredient.modName(),
-                ingredient.tags().stream().map(Object::toString).toList(), () -> {
-                    if (tooltip[0] == null) {
-                        try { tooltip[0] = ingredient.tooltip().stream().map(Component::getString).collect(Collectors.joining(" ")); }
-                        catch (RuntimeException failure) { tooltip[0] = ingredient.name() + " " + ingredient.id(); }
+        String name = stack.getHoverName().getString();
+        return new Entry<>(key.isEmpty() ? id.toString() : key, id.toString(), name, id.getNamespace(),
+                stack.getTags().map(tag -> tag.location().toString()).sorted().toList(), () -> {
+                    try {
+                        return IngredientValues.itemTooltip(stack).stream().map(Component::getString)
+                                .collect(Collectors.joining(" "));
+                    } catch (RuntimeException failure) {
+                        return name + " " + id;
                     }
-                    return tooltip[0];
                 }, Math.max(1, amount), stack);
     }
 }

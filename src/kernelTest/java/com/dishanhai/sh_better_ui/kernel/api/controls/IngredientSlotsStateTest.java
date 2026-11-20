@@ -20,6 +20,7 @@ class IngredientSlotsStateTest {
         state.move(20, 10, 1);
         assertEquals(1, state.target());
         assertEquals(new IngredientSlotsState.Action(IngredientSlotsState.Kind.MOVE, 0, 1), state.release(1));
+        assertEquals(1, state.selected());
         assertEquals(-1, state.pressed());
     }
 
