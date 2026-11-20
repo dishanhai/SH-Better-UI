@@ -2,6 +2,8 @@
 import { createAuthorizationFlow } from './auth-flow.mjs';
 import { createPlaybackFlow } from './playback-flow.mjs';
 import { createRateBridge } from './rate-bridge.mjs';
+import { createCatalog } from './catalog-flow.mjs';
+import { createCatalogView } from './catalog-view.mjs';
 const status = document.getElementById('status');
 const connect = document.getElementById('connect');
 const cancel = document.getElementById('cancel');
@@ -24,6 +26,7 @@ async function request(url, options) {
 }
 let flow;
 let playback;
+let catalogView;
 const loadSong = document.getElementById('load-song');
 const playSong = document.getElementById('play-song');
 const pauseSong = document.getElementById('pause-song');
@@ -33,6 +36,7 @@ const rateApply = document.getElementById('apply-rate');
 const playbackStatus = document.getElementById('playback-status');
 const playbackLabels = { IDLE: '等待加载歌曲', LOGIN_REQUIRED: '请先授权', INVALID_ID: '请输入数字目录歌曲 ID',
   INVALID_RATE: '倍率范围为 0.5–2.0', RATE_UNAVAILABLE: '当前浏览器播放器不支持倍率或正在忙碌', RATE_CHANGING: '正在请求倍率',
+  ORDER_UNAVAILABLE: 'MusicKit 无法保留这份列表的顺序，未播放其他歌曲', CLICK_TO_START: '浏览器要求再次点击。请点「播放 / 继续」播放所选曲目',
   INVALID_TIME: '请输入当前歌曲时长以内的秒数', LOADING: '加载中', STARTING: '已请求播放',
   PAUSING: '已请求暂停', SEEKING: '已请求跳转', OBSERVED: '命令已返回，以 SDK 状态为准',
   FAILED: '操作失败。请检查订阅、地区、歌曲可用性及浏览器播放支持；不会显示敏感错误详情' };
@@ -47,7 +51,9 @@ function paintPlayback() {
   rateInput.disabled = rateApply.disabled = blocked || !state.supportsPlaybackRate;
   document.getElementById('rate-status').textContent = state.supportsPlaybackRate
     ? `SDK 实测倍率：${state.playbackRate}×` : '倍率不可用：需要已授权、已加载且支持此属性的 MusicKit 播放器';
-  playbackStatus.textContent = `${playbackLabels[state.message]} · MusicKit 状态：${state.state}${state.songId ? ` · 已加载歌曲 ${state.songId}` : ''}`;
+  const message = `${playbackLabels[state.message]} · MusicKit 状态：${state.state}${state.nowPlaying ? ` · ${state.nowPlaying}` : state.songId ? ` · 已加载歌曲 ${state.songId}` : ''}`;
+  if (playbackStatus.textContent !== message) playbackStatus.textContent = message;
+  catalogView?.update(blocked, state.authorized);
   document.getElementById('playback-time').textContent = `${state.seconds.toFixed(1)} / ${state.duration.toFixed(1)} 秒`;
 }
 function transport(action) {
@@ -98,8 +104,11 @@ try {
     document.head.append(script);
   });
   await MusicKit.configure({ developerToken: config.developerToken, app: { name: 'SH-Better-UI', build: '1' } });
-  flow = createAuthorizationFlow(MusicKit.getInstance(), report);
-  playback = createPlaybackFlow(MusicKit.getInstance(), MusicKit, () => paint());
+  const music = MusicKit.getInstance();
+  flow = createAuthorizationFlow(music, report);
+  playback = createPlaybackFlow(music, MusicKit, () => paint());
+  catalogView = createCatalogView(document.getElementById('catalog'), createCatalog(music), music,
+    (songs, index) => transport(() => playback.playOrdered(songs, index)));
   status.textContent = labels.WAITING;
   paint();
   const rateBridge = createRateBridge(playback, async (method, body) => {
@@ -120,7 +129,7 @@ try {
       clearInterval(heartbeat);
     }
   }, 5000);
-  addEventListener('pagehide', () => { clearInterval(heartbeat); clearInterval(ratePoll); rateBridge.close(); playback.close(); }, { once: true });
+  addEventListener('pagehide', () => { clearInterval(heartbeat); clearInterval(ratePoll); rateBridge.close(); catalogView.close(); playback.close(); }, { once: true });
 } catch {
   status.textContent = '无法初始化官方 MusicKit。需要有效的项目开发者 token，以及 Apple 接受的网页来源/浏览器。请重新从游戏发起；仅登录玩家账户不能替代开发者配置。';
   connect.disabled = true;
