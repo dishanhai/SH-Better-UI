@@ -21,6 +21,7 @@ final class NeteaseSource implements OnlineMusicSource {
     @Override public OnlineMusicSource requestSnapshot() {
         var snapshot = new NeteaseSource(http); snapshot.cookie = cookie; return snapshot;
     }
+    @Override public boolean supportsArtistTracks() { return true; }
     @Override public boolean supportsLikes() { return true; }
     @Override public String id() { return "netease"; }
     @Override public QrChallenge qrLogin() throws Exception { return new NeteaseQrLogin(); }
@@ -189,7 +190,7 @@ final class NeteaseSource implements OnlineMusicSource {
             for (var track : tracks) {
                 String cover = track.artworkUrl().isBlank() ? covers.get(track.id()) : null;
                 completed.add(cover == null ? track : new OnlineTrack(track.source(), track.id(), track.mediaId(),
-                        track.title(), track.artist(), track.album(), track.durationMs(), cover));
+                        track.title(), track.artist(), track.album(), track.durationMs(), cover, track.artists()));
             }
             return List.copyOf(completed);
         } catch (java.util.concurrent.CancellationException cancelled) {
@@ -221,7 +222,11 @@ final class NeteaseSource implements OnlineMusicSource {
             var album = song.has("al") ? object(song, "al") : object(song, "album");
             var singers = song.has("ar") ? array(song, "ar") : array(song, "artists");
             result.add(new OnlineTrack("netease", id, id, text(song, "name"), artists(singers), text(album, "name"),
-                    song.has("dt") ? number(song, "dt") : number(song, "duration"), artworkUrl(text(album, "picUrl"))));
+                    song.has("dt") ? number(song, "dt") : number(song, "duration"), artworkUrl(text(album, "picUrl")),
+                    artistIdentities(singers, "netease", artist -> {
+                        String artistId = text(artist, "id");
+                        return artistId.matches("[1-9][0-9]{0,23}") ? artistId : "";
+                    })));
         }
         return List.copyOf(result);
     }

@@ -183,6 +183,7 @@ final class QQMusicSource implements OnlineMusicSource {
         }
         return null;
     }
+    @Override public boolean supportsArtistTracks() { return true; }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
         try {
             var data = rpc("music.search.SearchCgiService", "DoSearchForQQMusicDesktop",
@@ -208,9 +209,15 @@ final class QQMusicSource implements OnlineMusicSource {
             if (!mid.matches("[A-Za-z0-9]{1,40}")) continue;
             String media = text(object(song, "file"), "media_mid");
             if (media.isBlank()) media = text(song, "strMediaMid");
+            var singers = array(song, "singer");
             out.add(new OnlineTrack("qq", mid, media.isBlank() ? mid : media,
-                    first(song, "title", "name", "songname"), artists(array(song, "singer")),
-                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"), number(song, "interval") * 1000, albumCover(song)));
+                    first(song, "title", "name", "songname"), artists(singers),
+                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"),
+                    number(song, "interval") * 1000, albumCover(song),
+                    artistIdentities(singers, "qq", artist -> {
+                        String artistMid = first(artist, "mid", "singermid");
+                        return artistMid.matches("[A-Za-z0-9]{1,40}") && !artistMid.equals("0") ? artistMid : "";
+                    })));
         }
         return List.copyOf(out);
     }

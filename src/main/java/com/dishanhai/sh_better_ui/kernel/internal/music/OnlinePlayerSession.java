@@ -244,6 +244,26 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             return combined.values().stream().limit(20).toList();
         });
     }
+    @Override public synchronized boolean supportsArtistTracks(String sourceId) {
+        requireOpen();
+        return source(sourceId).supportsArtistTracks();
+    }
+    @Override public synchronized CompletableFuture<OnlineArtistTracks> artistTracks(OnlineArtist artist, int page) {
+        requireOpen(); Objects.requireNonNull(artist); checkPage(page);
+        var provider = source(artist.source()).requestSnapshot();
+        if (!provider.supportsArtistTracks())
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("Artist songs unavailable"));
+        // Respect the existing search and authorization path, without local autocomplete mixing or a new endpoint.
+        return request(artist.source(), false, () -> {
+            int limit = 20;
+            var raw = List.copyOf(provider.search(artist.name(), page, limit));
+            var matches = raw.stream().limit(limit)
+                    .filter(song -> artist.source().equals(song.source()) && song.artists().stream()
+                            .anyMatch(contributor -> artist.id().equals(contributor.id())))
+                    .toList();
+            return new OnlineArtistTracks(matches, page < 1000 && raw.size() >= limit);
+        });
+    }
     @Override public synchronized CompletableFuture<OnlineMusicAccount> account(String sourceId) {
         var provider = source(sourceId).requestSnapshot(); return request(sourceId, true, provider::account);
     }
@@ -610,7 +630,12 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null, order.mode(),
                     order.canPrevious(), order.canNext()); }
         }
-        @Override public void replace(List<OnlineTrack> next, int selected) {
+        @Override public boolean supportsModeReplacement() { return true; }
+        @Override public void replace(List<OnlineTrack> next, int selected) { replaceContext(next, selected, null); }
+        @Override public void replace(List<OnlineTrack> next, int selected, Mode mode) {
+            replaceContext(next, selected, Objects.requireNonNull(mode));
+        }
+        private void replaceContext(List<OnlineTrack> next, int selected, Mode mode) {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= next.size()) return;
@@ -619,6 +644,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 // Start before committing the collection so a rejected selection preserves it.
                 play(copy.get(selected));
                 tracks = copy; index = selected; undoTracks = null;
+                if(mode != null) order.mode(mode);
                 order.reset(tracks.size(), index); attachedGeneration = generation;
                 watch();
             }

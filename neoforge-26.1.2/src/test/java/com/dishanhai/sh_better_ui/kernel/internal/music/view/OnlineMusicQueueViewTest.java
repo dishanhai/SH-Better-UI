@@ -21,12 +21,15 @@ class OnlineMusicQueueViewTest {
     private static final OnlineTrack B = new OnlineTrack("qq", "2", "2", "Second", "Artist", "", 1000);
     private static class Fixture {
         OnlineTrack playing;
+        final List<java.util.concurrent.CompletableFuture<OnlineArtistTracks>> artistRequests=new ArrayList<>();
         OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
         int paused,closed,seeks;
         long clipOffset, lastSeek;
         OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
+            case "supportsArtistTracks" -> true;
+            case "artistTracks" -> {var request=new java.util.concurrent.CompletableFuture<OnlineArtistTracks>();artistRequests.add(request);yield request;}
             case "queue" -> persistent;
             case "seek" -> {seeks++;lastSeek=(Long)args[0];yield null;}
             case "lyricOffsetMs" -> clipOffset;
@@ -932,4 +935,29 @@ class OnlineMusicQueueViewTest {
         assertEquals("edited draft", field(other,"query"));
         assertEquals(List.of(), field(other,"results"));
     }
+    @Test void artistEscCancelsAndReturnsToOriginalArtworkStage() throws Exception {
+        var f=new Fixture();var host=new Host();f.view.layout(host);
+        var stageField=f.view.getClass().getDeclaredField("stagePage");stageField.setAccessible(true);
+        Object artwork=Arrays.stream(stageField.getType().getEnumConstants()).filter(v->v.toString().equals("ARTWORK")).findFirst().orElseThrow();
+        call(f.view,"enterImmersive",new Class<?>[]{stageField.getType()},artwork);
+        call(f.view,"openArtist",new Class<?>[]{OnlineArtist.class},new OnlineArtist("qq","1","Artist"));
+        assertEquals("ARTIST",field(f.view,"page").toString());assertEquals(1,f.artistRequests.size());
+        assertFalse(f.view.permitsScreenClose());assertTrue(f.artistRequests.get(0).isCancelled());
+        assertEquals(true,field(f.view,"immersive"));assertEquals("ARTWORK",field(f.view,"stagePage").toString());
+        assertFalse(f.view.permitsScreenClose());
+        assertEquals(false,field(f.view,"immersive"));assertEquals("SEARCH",field(f.view,"page").toString());
+    }
+    @Test void artistLeavingForLyricsCancelsAndSmallPanelRetainsSongRow() throws Exception {
+        var f=new Fixture();var host=new Host();host.width=208;host.height=240;f.view.layout(host);
+        call(f.view,"openArtist",new Class<?>[]{OnlineArtist.class},new OnlineArtist("qq","1","Artist"));
+        Object panel=field(f.view,"artistDetail");assertFalse(((List<?>)field(panel,"rows")).isEmpty());
+        call(f.view,"enterImmersive",new Class<?>[]{});
+        assertTrue(f.artistRequests.get(0).isCancelled());
+        assertFalse((Boolean)field(panel,"visible"));
+        call(f.view,"openArtist",new Class<?>[]{OnlineArtist.class},new OnlineArtist("qq","2","Other"));
+        assertFalse(f.view.permitsScreenClose());
+        assertFalse(f.view.permitsScreenClose());
+        assertEquals("SEARCH",field(f.view,"page").toString());
+    }
+
 }

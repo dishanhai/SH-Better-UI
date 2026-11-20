@@ -41,6 +41,13 @@ public interface OnlineMusicQueue {
     default void deleteCheckpoint() throws java.io.IOException { throw new UnsupportedOperationException("Queue checkpoints unavailable"); }
     Snapshot snapshot();
     void replace(List<OnlineTrack> tracks, int selected);
+    /** Whether collection and playback mode can be committed under one session lock. */
+    default boolean supportsModeReplacement() { return false; }
+    /** Validates and starts the selected item before committing a new collection and mode.
+     * Rejected selection must not change the previous queue mode or order. */
+    default void replace(List<OnlineTrack> tracks, int selected, Mode mode) {
+        throw new UnsupportedOperationException("Atomic queue context replacement unavailable");
+    }
     void select(int selected);
     void next();
     void previous();

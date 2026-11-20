@@ -2921,5 +2921,22 @@
   "sh_better_ui.online_music.menu.qq_effect.clear_vocals": "清澈人声",
   "sh_better_ui.online_music.menu.qq_effect.live_rhythm": "现场律动",
   "sh_better_ui.online_music.menu.qq_effect.wide_stereo": "宽广立体声",
-  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "虚拟音乐厅"
+  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "虚拟音乐厅",
+  "sh_better_ui.online_music.artist.open": "查看艺人：%s",
+  "sh_better_ui.online_music.artist.play": "按顺序播放当前页",
+  "sh_better_ui.online_music.artist.play_selected": "从《%s》开始按本页顺序播放",
+  "sh_better_ui.online_music.artist.songs": "艺人匹配歌曲",
+  "sh_better_ui.online_music.artist.scope": "%s · 匹配歌曲 · 第 %s 页",
+  "sh_better_ui.online_music.artist.previous": "上一页",
+  "sh_better_ui.online_music.artist.next": "下一页",
+  "sh_better_ui.online_music.artist.retry": "重试",
+  "sh_better_ui.online_music.artist.loading": "正在加载艺人匹配歌曲…",
+  "sh_better_ui.online_music.artist.empty": "本页没有匹配歌曲。如有下一页，可继续查看。",
+  "sh_better_ui.online_music.artist.unavailable": "此来源暂不支持艺人歌曲。",
+  "sh_better_ui.online_music.artist.failed": "加载失败，可重试当前页。",
+  "sh_better_ui.online_music.artist.cancelled": "请求已取消，可重试加载。",
+  "sh_better_ui.online_music.artist.ready": "匹配歌曲",
+  "sh_better_ui.online_music.artist.play_failed": "无法开始顺序播放，请重试。",
+  "sh_better_ui.online_music.refresh.artist": "艺人",
+  "sh_better_ui.online_music.artist.short_scope": "%s · 第 %s 页"
 }

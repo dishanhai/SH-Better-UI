@@ -22,6 +22,8 @@ public interface OnlineMusicSource {
     default OnlineMusicSource requestSnapshot() { return this; }
     String id();
     List<OnlineTrack> search(String query, int page, int limit) throws Exception;
+    /** Whether search results carry reliable source-owned artist IDs. */
+    default boolean supportsArtistTracks() { return false; }
     /** Remote search completions for the supplied text, in provider order. */
     default List<String> suggest(String query, int limit) throws Exception { throw new UnsupportedOperationException("Search suggestions unavailable"); }
     /** Account operations require credentials and run on the caller's worker. */

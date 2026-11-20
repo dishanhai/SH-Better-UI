@@ -25,7 +25,23 @@ import java.util.concurrent.CompletableFuture;
 
 /** Complete UUK player page; all widgets remain native and all asynchronous work belongs to the session. */
 public final class OnlineMusicViewImpl implements OnlineMusicView {
-    private enum Page { SEARCH, LIBRARY, LYRICS, QUEUE, ACCOUNTS, HISTORY }
+    private enum Page { SEARCH, LIBRARY, LYRICS, QUEUE, ACCOUNTS, HISTORY, ARTIST }
+    private final ArtistDetailPanel artistDetail;
+    private Page artistReturnPage=Page.SEARCH;
+    private boolean artistReturnImmersive;
+    private Page artistStageReturnPage=Page.SEARCH;
+    private StagePage artistReturnStage=StagePage.LYRICS;
+    private void openArtist(OnlineArtist artist) {
+        if(!player.supportsArtistTracks(artist.source()))return;
+        artistReturnPage=page==Page.ARTIST?artistReturnPage:page;
+        artistReturnImmersive=immersive;artistReturnStage=stagePage;
+        artistStageReturnPage=stageReturnPage;
+        show(Page.ARTIST);artistDetail.open(artist);
+    }
+    private void leaveArtist() {
+        var target=artistReturnPage;boolean stage=artistReturnImmersive;
+        show(target);if(stage){enterImmersive(artistReturnStage);stageReturnPage=artistStageReturnPage;}
+    }
     private final OnlineMusicRouteMotion routeMotion = new OnlineMusicRouteMotion();
     private record SearchRoute(String source, long rowsRevision) {}
     private record LibraryRoute(String source, Library group, String playlist, long rowsRevision) {}
@@ -63,7 +79,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 }));
         actions.add(new NowPlayingMenu.Entry(label("menu.search_album"),MusicControlRenderer.Icon.SEARCH,
                 !track.album().isBlank()&&searchSourceIds.contains(track.source()),()->searchFromMenu(track,track.album())));
-        actions.add(new NowPlayingMenu.Entry(label("menu.search_artist"),MusicControlRenderer.Icon.USER,
+        var artist=track.artists().stream().filter(a->player.supportsArtistTracks(a.source())).findFirst();
+        if(artist.isPresent())actions.add(new NowPlayingMenu.Entry(label("artist.open",artist.get().name()),
+                MusicControlRenderer.Icon.USER,true,()->openArtist(artist.get())));
+        else actions.add(new NowPlayingMenu.Entry(label("menu.search_artist"),MusicControlRenderer.Icon.USER,
                 !track.artist().isBlank()&&searchSourceIds.contains(track.source()),()->searchFromMenu(track,track.artist())));
         if(player.supportsSoundEffects())actions.add(new NowPlayingMenu.Entry(label("menu.qq_effects"),
                 MusicControlRenderer.Icon.SETTINGS,true,()->openQqEffects(track)));
@@ -252,6 +271,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     public OnlineMusicViewImpl(OnlineMusicPlayer player, boolean ownsPlayer, Listen1Backup.Session listen1Session) {
         this.player = Objects.requireNonNull(player); this.queue = new PlayerQueue(player); this.ownsPlayer = ownsPlayer;
+        this.artistDetail = new ArtistDetailPanel(player);
         this.listen1Session = Objects.requireNonNull(listen1Session);
     }
     @Override public OnlineMusicPlayer player() { return player; }
@@ -278,12 +298,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stageFailure = player.snapshot().state()==OnlineMusicPlayer.State.FAILED;
         stage = FullscreenLyricLayout.of(context.viewport(),shellBack==null,stageFailure,stagePage!=StagePage.ARTWORK);
         nowPlayingMenus=new NowPlayingMenuHost(context);
-        buildNavigation(); buildScrollRegions(); buildSearch(); buildLyrics(); buildAccounts(); buildLibrary(); buildQueue(); buildTransport(); buildImmersive(); buildHistory();
+        buildNavigation(); buildScrollRegions(); buildSearch(); buildLyrics(); buildAccounts(); buildLibrary(); buildQueue(); buildTransport(); buildImmersive(); buildHistory(); artistDetail.build(context,layout);
         skeletonClip = listScrollArea();
         searchSkeleton = loadingBlocks(resultRows, true);
         librarySkeleton = loadingBlocks(libraryRows, false);
         var h = layout.searchBar();
         back = button(new Bounds(h.x(), h.y() + 2, Math.min(88, h.width() / 2), 22), label("view.back"), () -> {
+            if(page==Page.ARTIST){leaveArtist();return;}
             if(returnFromLibraryLogin()||returnFromHistoryDestination()) return;
             if(page==Page.HISTORY) { leaveHistory();
             } else if(page==Page.QUEUE&&queueEditing) { setQueueEditing(false);
@@ -314,7 +335,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                     :new Bounds(n.x()+offset+target.ordinal()*tabWidth,n.y(),tabWidth,26);
             var item=button(box,label("view."+target.name().toLowerCase(Locale.ROOT)),()->navigate(target),null);
             item.setVariant(MusicTextControl.Variant.NAVIGATION);item.setPreview(item.getMessage());
-            if(!layout.sidebar()&&tabWidth<60) item.setIcon(switch(target){case SEARCH->GraphicIcon.SEARCH;case LYRICS->GraphicIcon.MUSIC;case ACCOUNTS,HISTORY->GraphicIcon.USER;case QUEUE->GraphicIcon.QUEUE;case LIBRARY->GraphicIcon.FAVORITE;});
+            if(!layout.sidebar()&&tabWidth<60) item.setIcon(switch(target){case SEARCH->GraphicIcon.SEARCH;case LYRICS->GraphicIcon.MUSIC;case ACCOUNTS,HISTORY,ARTIST->GraphicIcon.USER;case QUEUE->GraphicIcon.QUEUE;case LIBRARY->GraphicIcon.FAVORITE;});
             if(target==Page.LIBRARY){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.LIBRARY);else item.setLeadingIcon(MusicControlRenderer.Icon.LIBRARY);}
             if(target==Page.ACCOUNTS){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.USER);else item.setLeadingIcon(MusicControlRenderer.Icon.USER);}
             navigation.add(item);
@@ -973,7 +994,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void enterImmersive() {
         cancelListen1(); enterImmersive(StagePage.LYRICS); }
     private void enterImmersive(StagePage mode) {
-        if (!immersive) {historyDestination=null;stageReturnPage=page;if(page==Page.SEARCH)detachSearch();if(page==Page.LIBRARY)detachLibrary();}
+        if(page==Page.ARTIST)artistDetail.cancel();
+        if (!immersive) {historyDestination=null;stageReturnPage=page==Page.ARTIST?(artistReturnImmersive?artistStageReturnPage:artistReturnPage):page;if(page==Page.SEARCH)detachSearch();if(page==Page.LIBRARY)detachLibrary();}
         immersive=true;page=Page.LYRICS;setStagePage(mode);cancelSuggestions();
         updateVisibility();host.screen().setFocused(stageReturnControl());
     }
@@ -983,6 +1005,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateStageGeometry();updateVisibility();
     }
     boolean permitsScreenClose() {
+        if(!immersive&&page==Page.ARTIST){leaveArtist();return false;}
         if(!immersive&&seek!=null&&seek.isEditing()){seek.cancelInteraction();return false;}
         if(returnFromLibraryLogin()||returnFromHistoryDestination())return false;
         if(dismissListen1Editor())return false;
@@ -1097,6 +1120,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void show(Page next) {
         closeNowPlayingMenu();
+        if(page==Page.ARTIST&&next!=page)artistDetail.cancel();
         if (immersive) { immersive = false; }
         if (next == Page.LYRICS && page != Page.LYRICS) lyricsReturnPage = page;
         for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag();
@@ -1120,6 +1144,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void updateVisibility() {
         if (queryField == null) return;
+        artistDetail.visible(!immersive&&page==Page.ARTIST);
         if (exitControl != null) { exitControl.visible = !immersive; if (immersive) exitControl.cancelInteraction(); }
         historyControls.forEach(w->w.visible=!immersive&&page==Page.HISTORY);
         if(page==Page.HISTORY)updateHistory();
@@ -1646,7 +1671,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             paintArtwork(ui, layout.cover(), current.track(), visual.activity());
         }
         renderTransport(ui, current);
-        if (page == Page.SEARCH) renderResults(ui, current);
+        if (page == Page.ARTIST) artistDetail.render(ui);
+        else if (page == Page.SEARCH) renderResults(ui, current);
         else if (page == Page.QUEUE) renderQueue(ui, current);
         else if (page == Page.HISTORY) {
             if(history.isEmpty())muted(ui,label("operations.empty"),layout.content().x()+8,layout.content().y()+8,layout.content().width()-16);
@@ -2046,6 +2072,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return MusicTypography.text(Component.translatable(TEXT + key, args)); }
-    @Override public void suspend() { cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
+    @Override public void suspend() { artistDetail.cancel(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
     @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); coverReveal.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
 }

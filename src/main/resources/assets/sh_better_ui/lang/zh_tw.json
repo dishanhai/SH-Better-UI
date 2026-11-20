@@ -2112,5 +2112,22 @@
   "sh_better_ui.online_music.menu.qq_effect.clear_vocals": "清澈人聲",
   "sh_better_ui.online_music.menu.qq_effect.live_rhythm": "現場律動",
   "sh_better_ui.online_music.menu.qq_effect.wide_stereo": "寬廣立體聲",
-  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "虛擬音樂廳"
+  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "虛擬音樂廳",
+  "sh_better_ui.online_music.artist.open": "查看藝人：%s",
+  "sh_better_ui.online_music.artist.play": "依順序播放目前頁面",
+  "sh_better_ui.online_music.artist.play_selected": "從《%s》開始依本頁順序播放",
+  "sh_better_ui.online_music.artist.songs": "藝人相符歌曲",
+  "sh_better_ui.online_music.artist.scope": "%s · 相符歌曲 · 第 %s 頁",
+  "sh_better_ui.online_music.artist.previous": "上一頁",
+  "sh_better_ui.online_music.artist.next": "下一頁",
+  "sh_better_ui.online_music.artist.retry": "重試",
+  "sh_better_ui.online_music.artist.loading": "正在載入藝人相符歌曲…",
+  "sh_better_ui.online_music.artist.empty": "本頁沒有相符歌曲。如有下一頁，可繼續查看。",
+  "sh_better_ui.online_music.artist.unavailable": "此來源暫不支援藝人歌曲。",
+  "sh_better_ui.online_music.artist.failed": "載入失敗，可重試目前頁面。",
+  "sh_better_ui.online_music.artist.cancelled": "請求已取消，可重試載入。",
+  "sh_better_ui.online_music.artist.ready": "相符歌曲",
+  "sh_better_ui.online_music.artist.play_failed": "無法開始順序播放，請重試。",
+  "sh_better_ui.online_music.refresh.artist": "藝人",
+  "sh_better_ui.online_music.artist.short_scope": "%s · 第 %s 頁"
 }

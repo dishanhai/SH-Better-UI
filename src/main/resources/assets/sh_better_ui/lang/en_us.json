@@ -2921,5 +2921,22 @@
   "sh_better_ui.online_music.menu.qq_effect.clear_vocals": "Clear Vocals",
   "sh_better_ui.online_music.menu.qq_effect.live_rhythm": "Live Rhythm",
   "sh_better_ui.online_music.menu.qq_effect.wide_stereo": "Wide Stereo",
-  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "Concert Hall"
+  "sh_better_ui.online_music.menu.qq_effect.virtual_concert_hall": "Concert Hall",
+  "sh_better_ui.online_music.artist.open": "View artist: %s",
+  "sh_better_ui.online_music.artist.play": "Play this page in order",
+  "sh_better_ui.online_music.artist.play_selected": "Play from %s in this page order",
+  "sh_better_ui.online_music.artist.songs": "Artist song matches",
+  "sh_better_ui.online_music.artist.scope": "%s · song matches · page %s",
+  "sh_better_ui.online_music.artist.previous": "Previous",
+  "sh_better_ui.online_music.artist.next": "Next",
+  "sh_better_ui.online_music.artist.retry": "Retry",
+  "sh_better_ui.online_music.artist.loading": "Loading artist song matches…",
+  "sh_better_ui.online_music.artist.empty": "No matching songs on this page. Try the next page if available.",
+  "sh_better_ui.online_music.artist.unavailable": "Artist songs are unavailable for this source.",
+  "sh_better_ui.online_music.artist.failed": "Could not load songs. Retry to request this page again.",
+  "sh_better_ui.online_music.artist.cancelled": "Request cancelled. Retry to reload.",
+  "sh_better_ui.online_music.artist.ready": "Song matches",
+  "sh_better_ui.online_music.artist.play_failed": "Could not start sequential playback. Try again.",
+  "sh_better_ui.online_music.refresh.artist": "Artist",
+  "sh_better_ui.online_music.artist.short_scope": "%s · page %s"
 }
