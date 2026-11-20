@@ -6,14 +6,12 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
-import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicPlayer;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicArtworkStage;
 import net.minecraft.network.chat.Component;
 import net.minecraft.client.Minecraft;
 import java.util.Objects;
-import java.util.function.LongConsumer;
 
 /** New persistent mini player: the track opens Now Playing; transport actions do not navigate. */
 final class MusicFrontendMiniPlayer implements AutoCloseable {
@@ -29,9 +27,9 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
     private MusicFrontendTransport.Primary renderedAction;
     private boolean closed;
 
-    MusicFrontendMiniPlayer(PreviewContext host, Placement boxes, OnlineMusicPlayer player,
-                            Runnable openNowPlaying, LongConsumer previewLyricPosition) {
-        transport = new MusicFrontendTransport(player);
+    MusicFrontendMiniPlayer(PreviewContext host, Placement boxes, MusicFrontendTransport transport,
+                            Runnable openNowPlaying) {
+        this.transport = transport;
         surface = boxes.surface();
         var meta = boxes.track();
         int artSize = Math.min(28, Math.max(0, Math.min(meta.height() - 4, meta.width() - 42)));
@@ -44,9 +42,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         playPause = transport(host, boxes.playPause(), "play", MusicTransportControl.Glyph.PLAY, transport::activate);
         next = transport(host, boxes.next(), "next", MusicTransportControl.Glyph.NEXT, () -> transport.skip(true));
         progress = host.add(new MusicSeekControl(boxes.progress(), label("redesign.seek"), host.preferences(),
-                edit -> previewLyricPosition.accept(edit.positionMs()),
-                edit -> { transport.commit(edit); previewLyricPosition.accept(-1); },
-                edit -> previewLyricPosition.accept(-1)));
+                transport::preview, transport::commit, edit -> transport.cancelPreview()));
         progress.setTimePreviewEnabled(true);
     }
 
@@ -92,7 +88,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
 
     void cancelInteraction() {
         track.cancelInteraction(); previous.cancelInteraction(); playPause.cancelInteraction();
-        next.cancelInteraction(); progress.cancelInteraction();
+        next.cancelInteraction(); progress.cancelInteraction(); transport.cancelPreview();
     }
     @Override public void close() {
         if (closed) return;

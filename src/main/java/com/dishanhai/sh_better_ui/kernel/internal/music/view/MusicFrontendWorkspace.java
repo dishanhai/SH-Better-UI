@@ -20,6 +20,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     public static final String PREVIEW_FLAG = "shbui.music.previewRedesign";
     private static final int INK = 0xfff5f5f7, MUTED = 0xffb4b4ba, ACCENT = 0xffff4866;
     private final OnlineMusicPlayer player;
+    private final MusicFrontendTransport transport;
     private final MusicFrontendRoutes routes = new MusicFrontendRoutes();
     private final AppleMusicAccount apple = new AppleMusicAccount();
     private final List<MusicTextControl> nav = new ArrayList<>(), rows = new ArrayList<>();
@@ -33,12 +34,13 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private MusicFrontendRoutes.Request request;
     private List<OnlineTrack> matches = List.of();
     private String status = "";
-    private Object lyricTimeline;
-    private OnlineTrack lyricTrack;
-    private long previewPosition = -1;
+    private MusicFrontendTransport.LyricContent lyricContent;
     private boolean closed;
 
-    public MusicFrontendWorkspace(OnlineMusicPlayer player) { this.player = Objects.requireNonNull(player); }
+    public MusicFrontendWorkspace(OnlineMusicPlayer player) {
+        this.player = Objects.requireNonNull(player);
+        transport = new MusicFrontendTransport(player);
+    }
     @Override public OnlineMusicPlayer player() { return player; }
 
     @Override public void layout(PreviewContext ctx) {
@@ -80,11 +82,11 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             rows.add(row);
         }
         lyric = ctx.add(new MusicLyricsView(area, heading(Page.LYRICS), ctx.preferences(), this::seekLyric));
-        lyricTimeline = null; lyricTrack = null;
-        var transport = layout.transportControls();
-        mini = new MusicFrontendMiniPlayer(ctx, new MusicFrontendMiniPlayer.Placement(layout.transport(), transport.track(),
-                transport.previous(),transport.playPause(),transport.next(),transport.progress()),player,
-                () -> navigate(Page.NOW_PLAYING), pos -> previewPosition = pos);
+        lyricContent = null;
+        var controls = layout.transportControls();
+        mini = new MusicFrontendMiniPlayer(ctx, new MusicFrontendMiniPlayer.Placement(layout.transport(), controls.track(),
+                controls.previous(),controls.playPause(),controls.next(),controls.progress()),transport,
+                () -> navigate(Page.NOW_PLAYING));
         refreshRows();
     }
 
@@ -97,7 +99,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private void navigate(Page page) { if (routes.open(MusicFrontendRoutes.Route.of(page))) changed(); }
     private void changed() {
         if(pending!=null) pending.cancel(true);
-        pending=null; request=null; status=""; previewPosition=-1;
+        pending=null; request=null; status=""; lyricContent=null;
         if (mini!=null) mini.cancelInteraction();
         refreshRows();
     }
@@ -146,8 +148,9 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         }
     }
     private void seekLyric(long songPosition) {
-        var snap=player.snapshot(); long offset=player.lyricOffsetMs(snap);
-        if (OnlineLyricPresentation.seekable(snap) && songPosition>=offset && songPosition-offset<=snap.durationMs()) player.seek(songPosition-offset);
+        var content = lyricContent;
+        if (!closed && routes.current().page() == Page.LYRICS && content != null && lyric.contentKey() == content
+                && Minecraft.getInstance().isWindowActive()) transport.seekLyric(content, songPosition);
     }
 
     private void refreshRows() {
@@ -223,14 +226,12 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                     new Bounds(body.x()+4,body.y()+54,body.width()-8,Math.max(0,body.height()-54)),MUTED);
         }
         if(page==Page.LYRICS) {
-            var snap=player.snapshot();
-            if(!Objects.equals(lyricTrack,snap.track())||lyricTimeline!=snap.lyrics()) {
-                lyricTrack=snap.track(); lyricTimeline=snap.lyrics();
-                lyric.setLines(snap.lyrics(),OnlineLyricPresentation.lines(snap.lyrics()));
+            var lyrics = transport.lyrics(Minecraft.getInstance().isWindowActive());
+            if (!Objects.equals(lyricContent, lyrics.content())) {
+                lyricContent = lyrics.content();
+                lyric.setLines(lyricContent, OnlineLyricPresentation.lines(lyricContent.timeline()));
             }
-            long position=previewPosition>=0?previewPosition:OnlineLyricPresentation.position(snap);
-            lyric.playback(OnlineLyricPresentation.songPosition(position,player.lyricOffsetMs(snap)),
-                    previewPosition<0&&OnlineLyricPresentation.seekable(snap),previewPosition>=0);
+            lyric.playback(lyrics.songPositionMs(), lyrics.seekable(), lyrics.preview());
         }
         mini.render(ui);
     }
