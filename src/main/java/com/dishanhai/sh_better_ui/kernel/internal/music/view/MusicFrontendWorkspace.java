@@ -393,8 +393,6 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         nowLyrics.visible = immersive; nowQueue.visible = immersive;
         boolean engaged = immersive && Minecraft.getInstance().isWindowActive();
         nowLyrics.setAvailable(engaged); nowQueue.setAvailable(engaged);
-        nowLyrics.setInk(page == Page.LYRICS ? 0xffffb9c7 : INK);
-        nowQueue.setInk(page == Page.QUEUE ? 0xffffb9c7 : INK);
         mini.immersive(playerLayout);
         queuePanel.updateVisible(page == Page.QUEUE);
         List<OnlineTrack> shown=searching?paintedMatches:List.of();
@@ -503,6 +501,12 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         var song = player.snapshot().track();
         mini.renderBackdrop(ui, layout.frame(), song);
         back.setInk(INK, MUTED);
+        if (page == Page.LYRICS || page == Page.QUEUE) {
+            var selected = page == Page.LYRICS ? placement.lyrics() : placement.queue();
+            boolean contrast = ui.preferences().highContrast();
+            RoundedCorners.draw(ui.graphics(), selected.x() + 1, selected.y() + 2, selected.width() - 2,
+                    selected.height() - 4, 10, contrast ? 1 : 0, INK, contrast ? 0 : 0x34ffffff);
+        }
         var art = placement.cover();
         mini.paintCover(ui, page == Page.NOW_PLAYING ? routeFrame.artwork(art, mini.coverBounds()) : art, song);
         var title = placement.title();
