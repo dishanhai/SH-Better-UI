@@ -383,13 +383,23 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         int offset=exitControl==null?0:30;
         int tabWidth=Math.max(1,(n.width()-offset)/5);
         for(var target:List.of(Page.SEARCH,Page.LIBRARY,Page.LYRICS,Page.QUEUE,Page.ACCOUNTS)) {
-            var box=layout.sidebar()?new Bounds(n.x(),n.y()+34+target.ordinal()*Math.min(30,(n.height()-34)/5),n.width(),Math.min(28,(n.height()-34)/5-2))
+            var box=layout.sidebar()?new Bounds(n.x()+6,n.y()+34+target.ordinal()*Math.min(30,(n.height()-40)/5),n.width()-12,Math.min(28,(n.height()-40)/5-2))
                     :new Bounds(n.x()+offset+target.ordinal()*tabWidth,n.y(),tabWidth,26);
             var item=button(box,label("view."+target.name().toLowerCase(Locale.ROOT)),()->navigate(target),null);
             item.setVariant(MusicTextControl.Variant.NAVIGATION);item.setPreview(item.getMessage());
-            if(!layout.sidebar()&&tabWidth<60) item.setIcon(switch(target){case SEARCH->GraphicIcon.SEARCH;case LYRICS->GraphicIcon.MUSIC;case ACCOUNTS,HISTORY,ARTIST->GraphicIcon.USER;case QUEUE->GraphicIcon.QUEUE;case LIBRARY->GraphicIcon.FAVORITE;});
-            if(target==Page.LIBRARY){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.LIBRARY);else item.setLeadingIcon(MusicControlRenderer.Icon.LIBRARY);}
-            if(target==Page.ACCOUNTS){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.USER);else item.setLeadingIcon(MusicControlRenderer.Icon.USER);}
+            var icon=switch(target){
+                case SEARCH -> MusicControlRenderer.Icon.SEARCH;
+                case LIBRARY -> MusicControlRenderer.Icon.LIBRARY;
+                case LYRICS -> null;
+                case QUEUE -> MusicControlRenderer.Icon.PLAYLIST;
+                default -> MusicControlRenderer.Icon.USER;
+            };
+            boolean iconOnly=!layout.sidebar()&&tabWidth<60;
+            if(icon==null){
+                if(iconOnly)item.setGlyphOnly(MusicTransportControl.Glyph.LYRICS);
+                else item.setLeadingGlyph(MusicTransportControl.Glyph.LYRICS);
+            } else if(iconOnly)item.setGlyphOnly(icon);
+            else item.setLeadingIcon(icon);
             navigation.add(item);
         }
     }
@@ -2282,8 +2292,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateMiniMetadata(current);
         stop.setGlyph(state==OnlineMusicPlayer.State.LOADING?MusicTransportControl.Glyph.CANCEL:MusicTransportControl.Glyph.STOP);
         var t = layout.transport();
-        muted(ui, MusicTypography.text(time(seek.previewPositionMs())), t.x(), seek.getY() + 4, 30);
-        muted(ui, MusicTypography.text("−" + time(Math.max(0, current.durationMs() - seek.previewPositionMs()))), t.right() - 32, seek.getY() + 4, 32);
+        var elapsed=MusicTypography.text(time(seek.previewPositionMs()));
+        var remaining=MusicTypography.text("−" + time(Math.max(0,current.durationMs()-seek.previewPositionMs())));
+        int leftWidth=seek.getX()-t.x()-12,rightLimit=t.right()-8;
+        int remainingWidth=Math.min(rightLimit-(seek.getX()+seek.getWidth())-4,host.font().width(remaining));
+        muted(ui,elapsed,t.x()+8,seek.getY()+4,leftWidth);
+        muted(ui,remaining,rightLimit-remainingWidth,seek.getY()+4,remainingWidth);
         var status = state == OnlineMusicPlayer.State.FAILED ? label("failure." + current.failure().name().toLowerCase(Locale.ROOT))
                 : label("state." + state.name().toLowerCase(Locale.ROOT));
         if (current.preview()) status = label("preview").append(" · ").append(status);
