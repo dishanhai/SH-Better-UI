@@ -67,6 +67,7 @@ public final class OnlineMusicScreen {
                 })
                 .onForeground((screen, frame) -> {
                     if (owner.view instanceof OnlineMusicViewImpl nativeView) nativeView.renderRouteHandoff(frame);
+                    else if (owner.view instanceof MusicFrontendWorkspace workspace) workspace.renderRouteHandoff(frame);
                     if (owner.overlays != null) owner.overlays.render(frame.graphics(), frame.mouse() == null ? -1 : (int)frame.mouse().x(), frame.mouse() == null ? -1 : (int)frame.mouse().y(), frame.partialTick());
                 })
                 .onRemoved(screen -> owner.close()).build();

@@ -80,6 +80,8 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         }
     }
 
+    Bounds coverBounds() { return cover; }
+
     void paintCover(UiFrame ui, Bounds bounds, OnlineTrack song) {
         if(bounds.width()<=0||bounds.height()<=0)return;
         RoundedCorners.draw(ui.graphics(),bounds.x(),bounds.y(),bounds.width(),bounds.height(),6,0,0,0xff38383d);
