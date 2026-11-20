@@ -66,7 +66,7 @@ final class MusicGlass {
     static void fallback(UiFrame ui, Bounds box, boolean lightSurface) {
         boolean contrast = ui.preferences().highContrast();
         RoundedCorners.draw(ui.graphics(), box.x(), box.y(), box.width(), box.height(), radius(box),
-                contrast ? 1.5f : .75f, contrast ? UiTheme.current().text() : lightSurface ? 0x66617491 : RIM,
-                contrast ? UiTheme.current().background() | 0xff000000 : lightSurface ? 0xffe4e8ee : 0xff262b36);
+                contrast ? 1.5f : .75f, MusicGlassFallback.edge(contrast, lightSurface),
+                MusicGlassFallback.fill(contrast, lightSurface));
     }
 }

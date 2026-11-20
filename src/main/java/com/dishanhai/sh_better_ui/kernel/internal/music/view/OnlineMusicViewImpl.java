@@ -285,7 +285,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private boolean searchAppend, searchMore, libraryAppend, libraryMore;
     private int failedLibraryExtension, failedSearchExtension;
     private record LibraryReturn(String source, long version, int page, double offset, boolean more,
-                                 List<OnlinePlaylist> playlists, SessionMusicOperations.Handle<?> operation) {}
+                                 boolean appended, int retryPage, List<OnlinePlaylist> playlists,
+                                 SessionMusicOperations.Handle<?> operation) {}
     private LibraryReturn playlistReturn;
     private MusicOperationNavigation.Target pendingHistory;
     private List<SessionMusicOperations.Snapshot> history = List.of();
@@ -584,7 +585,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     record ExternalSearchBookmark(OnlineMusicPlayer player, String source, String query, String submittedQuery,
                                   int remotePage, int first, List<OnlineTrack> results, String state,
-                                  long accountVersion, SessionMusicOperations.Handle<?> displayed) {}
+                                  long accountVersion, SessionMusicOperations.Handle<?> displayed,
+                                  boolean more, boolean appended, int retryPage) {
+        ExternalSearchBookmark(OnlineMusicPlayer player, String source, String query, String submittedQuery,
+                               int remotePage, int first, List<OnlineTrack> results, String state,
+                               long accountVersion, SessionMusicOperations.Handle<?> displayed) {
+            this(player, source, query, submittedQuery, remotePage, first, results, state, accountVersion,
+                    displayed, !results.isEmpty() && results.size() % 20 == 0, false, 0);
+        }
+    }
 
     private void openSpotify(boolean madeForYou) {
         if (closed || immersive || page != Page.SEARCH) return;
@@ -592,7 +601,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var bookmark = new ExternalSearchBookmark(player, source, queryField.getValue(), submittedQuery,
                 remotePage, first, List.copyOf(results),
                 pending == null ? searchState : searchOperation != null ? "operations.background" : "cancelled",
-                accountVersion(source), pending == null ? displayedSearchOperation : null);
+                accountVersion(source), displayedSearchOperation, searchMore, searchAppend,
+                searchAppend && pending != null ? remotePage : failedSearchExtension);
         var origin = host;
         if (!ShBetterUiApi.links().open(origin.screen(), url,
                 () -> OnlineMusicScreen.restoreExternalSearch(origin, this, bookmark, madeForYou))) {
@@ -623,7 +633,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 results = bookmark.results();
                 searchState = bookmark.state();
                 displayedSearchOperation = bookmark.displayed();
-                searchMore = !results.isEmpty() && results.size() % 20 == 0;
+                searchMore = bookmark.more();
+                searchAppend = bookmark.appended();
+                failedSearchExtension = bookmark.retryPage();
             }
         }
         if (queryField == null) return null; // Window may have been resized below the player minimum.
@@ -1471,6 +1483,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         feedback(label(searchState)); updateRows();
     }
     private void detachSearch() {
+        rememberInterruptedSearchPage();
         searchLoading.reset();
         if(searchOperation!=null){if(pending!=null){searchOperation.detach();searchState="operations.background";}searchOperation=null;pending=null;}
         else cancelSearch();
@@ -1488,7 +1501,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         playlistsOperation=null;trackOperation=null;pendingPlaylists=null;pendingLibrary=null;
         cancelLike();cancelAccountRequest();
     }
+    private void rememberInterruptedSearchPage() {
+        if (searchAppend && pending != null) failedSearchExtension = remotePage;
+    }
+
     private void cancelSearch() {
+        rememberInterruptedSearchPage();
         searchLoading.reset();
         if(searchOperation!=null){searchOperation.cancel();searchOperation=null;}
         if (pending != null) { pending.cancel(true); searchState = "cancelled"; pending = null; feedback(label("cancelled")); }
@@ -1572,10 +1590,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             libraryPage = saved.page();
             libraryFirst = (int) saved.offset();
             libraryMore = saved.more();
-            libraryAppend = false;
-            failedLibraryExtension = 0;
+            libraryAppend = saved.appended();
+            failedLibraryExtension = saved.retryPage();
             displayedLibraryOperation = saved.operation();
-            libraryState = playlists.isEmpty() ? "library.empty" : "library.results";
+            libraryState = failedLibraryExtension > 0 ? "library.failed"
+                    : playlists.isEmpty() ? "library.empty" : "library.results";
             updateVisibility();
             libraryScroll.restoreViewportOffset(saved.offset());
             if (returningPlaylist != null) {
@@ -1661,11 +1680,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         feedback(label(libraryState)); updateVisibility(); host.screen().setFocused(back);
     }
     private void loadPlaylist(OnlinePlaylist playlist, int number) {
-        libraryAppend = libraryMore = false; failedLibraryExtension = 0;
         if (library == Library.PLAYLISTS) {
+            // Capture the shelf before clearing the detail's independent continuation.
+            int retryPage = libraryAppend && pendingPlaylists != null ? libraryPage : failedLibraryExtension;
             playlistReturn = new LibraryReturn(librarySource, accountVersion(librarySource), libraryPage,
-                    libraryScroll.viewportOffset(), libraryMore, playlists, displayedLibraryOperation);
+                    libraryScroll.viewportOffset(), libraryMore, libraryAppend, retryPage, playlists, displayedLibraryOperation);
         }
+        libraryAppend = libraryMore = false; failedLibraryExtension = 0;
         detachLibrary(); library = Library.TRACKS; selectedPlaylist = playlist; libraryPage = number; libraryFirst = 0;
         likeState = "";
         libraryTracks = List.of(); libraryState = "library.loading";
@@ -2186,7 +2207,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean failedAppend = continuing && retryingSearchExtension();
         searchContinuationRetry.setVisible(failedAppend);
         searchContinuationRetry.setAvailable(failedAppend);
-        if (failedAppend) status = continuation("error");
+        if (failedAppend && searchState.equals("search_failed")) status = continuation("error");
         else if (continuing && searchAppend && pending != null) status = continuation("loading");
         else if (continuing && searchAppend && !searchMore && searchState.equals("results")) status = continuation("end");
         if (!results.isEmpty() || showSuggestions())

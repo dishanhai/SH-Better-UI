@@ -14,6 +14,7 @@ class OnlineMusicQueueViewTest {
     private static class Fixture {
         OnlineTrack playing;
         final List<java.util.concurrent.CompletableFuture<OnlineArtistTracks>> artistRequests=new ArrayList<>();
+        final List<Integer> searchPages = new ArrayList<>(), playlistPages = new ArrayList<>();
         OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
         int paused,closed,seeks;
@@ -22,13 +23,16 @@ class OnlineMusicQueueViewTest {
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
             case "supportsArtistTracks" -> true;
             case "artistTracks" -> {var request=new java.util.concurrent.CompletableFuture<OnlineArtistTracks>();artistRequests.add(request);yield request;}
+            case "search" -> { searchPages.add((Integer) args[2]); yield new java.util.concurrent.CompletableFuture<List<OnlineTrack>>(); }
+            case "playlists" -> { playlistPages.add((Integer) args[1]); yield new java.util.concurrent.CompletableFuture<List<OnlinePlaylist>>(); }
             case "queue" -> persistent;
             case "seek" -> {seeks++;lastSeek=(Long)args[0];yield null;}
             case "lyricOffsetMs" -> clipOffset;
             case "pause" -> { paused++;yield null; }
             case "close" -> { closed++;yield null; }
             case "sources" -> providers;
-            case "authenticated", "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
+            case "authenticated" -> signedIn;
+            case "supportsLikes", "remembersCredentials", "supportsVolume" -> false;
             case "play" -> { playing=(OnlineTrack)args[0]; yield null; }
             case "snapshot" -> snapshotOverride!=null?snapshotOverride:new OnlineMusicPlayer.Snapshot(playing, playing == null ? OnlineMusicPlayer.State.IDLE : OnlineMusicPlayer.State.PLAYING, 0, 1000, OnlineMusicPlayer.LyricsState.EMPTY, LyricTimeline.empty(), OnlineMusicPlayer.Failure.NONE, false);
             case "volume" -> 1.0f;
@@ -44,7 +48,7 @@ class OnlineMusicQueueViewTest {
             default -> null;
         });
         int crossfade,crossfadeCommits;
-        boolean nativeCrossfade;
+        boolean nativeCrossfade, signedIn;
         final OnlineMusicViewImpl view;
         Fixture() { this(null); }
         Fixture(OnlineMusicQueue queue) { persistent = queue; view = new OnlineMusicViewImpl(player); }
@@ -117,20 +121,17 @@ class OnlineMusicQueueViewTest {
             var geometry = (MusicFrontendLayout) field(preview, "layout");
             assertTrue(landingRows.stream().filter(row -> row.visible)
                     .allMatch(row -> row.getY() + row.getHeight() <= geometry.body().bottom()));
-            var previous = (MusicTextControl) field(preview, "previous");
+            var retry = (MusicTextControl) field(preview, "retry");
             var scroll = (net.minecraft.client.gui.components.AbstractWidget) field(preview, "searchScroll");
             assertTrue((int) field(preview, "searchRows") >= 1);
-            assertTrue(scroll.getY() + scroll.getHeight() <= previous.getY());
+            assertTrue(scroll.getY() + scroll.getHeight() <= retry.getY());
             ((MusicTextControl) field(preview, "utility")).onPress();
             var sound = (MusicFrontendSoundPanel) field(preview, "sound");
             @SuppressWarnings("unchecked")
             var settingRows = (List<MusicTextControl>) field(sound, "slots");
-            var settingsNext = (MusicTextControl) field(sound, "next");
             assertEquals(2, settingRows.stream().filter(row -> row.visible).count());
-            assertTrue(settingsNext.visible && settingsNext.active);
-            settingsNext.onPress();
-            assertTrue(settingRows.get(0).visible, "Audio settings remain accessible on the next page");
-            settingRows.get(0).onPress();
+            scrollToSetting(sound, "sh_better_ui.online_music.redesign.sound.sound").onPress();
+            assertNotNull(visibleSetting(sound, "sh_better_ui.online_music.redesign.sound.volume"));
             assertSame(fixture.player, preview.player());
             var wide = new Host();
             preview.layout(wide);
@@ -153,46 +154,30 @@ class OnlineMusicQueueViewTest {
             var panel = field(view, "sound");
             var back = (MusicTextControl) field(view, "back");
             var utility = (MusicTextControl) field(view, "utility");
-            var next = (MusicTextControl) field(panel, "next");
-
             utility.onPress();
-            next.onPress();
-            var sound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
-            sound.onPress();
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.volume");
-            next.onPress();
-            var qq = settingRow(panel, 0, "sh_better_ui.online_music.menu.qq_effects");
-            qq.onPress();
+            scrollToSetting(panel, "sh_better_ui.online_music.redesign.sound.sound").onPress();
+            assertNotNull(visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.volume"));
+            scrollToSetting(panel, "sh_better_ui.online_music.menu.qq_effects").onPress();
             assertSame(back, host.screen().getFocused(), "Unavailable detail must not focus a hidden reused slot");
             back.onPress();
-            assertSame(qq, host.screen().getFocused());
-            settingRow(panel, 0, "sh_better_ui.online_music.menu.qq_effects");
-
+            assertSame(visibleSetting(panel, "sh_better_ui.online_music.menu.qq_effects"), host.screen().getFocused());
             assertFalse(view.permitsScreenClose());
-            assertSame(sound, host.screen().getFocused());
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            assertSame(visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.sound"), host.screen().getFocused());
 
-            ((MusicTextControl) field(panel, "previous")).onPress();
-            var playback = settingRow(panel, 1, "sh_better_ui.online_music.redesign.sound.playback");
-            playback.onPress();
-            var fade = settingRow(panel, 1, "sh_better_ui.online_music.crossfade.title");
-            fade.onPress();
+            scrollToSetting(panel, "sh_better_ui.online_music.redesign.sound.playback").onPress();
+            scrollToSetting(panel, "sh_better_ui.online_music.crossfade.title").onPress();
             assertFalse(view.permitsScreenClose());
-            assertSame(fade, host.screen().getFocused());
-            settingRow(panel, 1, "sh_better_ui.online_music.crossfade.title");
+            assertSame(visibleSetting(panel, "sh_better_ui.online_music.crossfade.title"), host.screen().getFocused());
             back.onPress();
-            assertSame(playback, host.screen().getFocused());
-            settingRow(panel, 1, "sh_better_ui.online_music.redesign.sound.playback");
+            assertSame(visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.playback"), host.screen().getFocused());
 
-            next.onPress();
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound").onPress();
-            utility.onPress(); // A new Settings visit is not Back to the original visit.
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.page.accounts");
+            scrollToSetting(panel, "sh_better_ui.online_music.redesign.sound.sound").onPress();
+            utility.onPress();
+            assertNotNull(visibleSetting(panel, "sh_better_ui.online_music.redesign.page.accounts"));
             back.onPress();
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.volume");
+            assertNotNull(visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.volume"));
             back.onPress();
-            assertSame(sound, host.screen().getFocused());
-            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            assertSame(visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.sound"), host.screen().getFocused());
         } finally { thread.set(null, previousThread); }
     }
 
@@ -209,20 +194,21 @@ class OnlineMusicQueueViewTest {
             view.layout(host);
             var panel = field(view, "sound");
             ((MusicTextControl) field(view, "utility")).onPress();
-            ((MusicTextControl) field(panel, "next")).onPress();
-            var compactSound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            var compactSound = scrollToSetting(panel, "sh_better_ui.online_music.redesign.sound.sound");
             screen.setFocused(compactSound);
             screen.setFocused(null); // Both native resize paths clear focus before mounting new widgets.
             host.width = 800; host.height = 600;
             view.layout(host);
-            var wideSound = settingRow(panel, 2, "sh_better_ui.online_music.redesign.sound.sound");
+            var wideSound = visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.sound");
+            assertNotNull(wideSound);
             assertNotSame(compactSound, wideSound);
             assertSame(wideSound, screen.getFocused());
 
             screen.setFocused(null);
             host.width = 208; host.height = 240;
             view.layout(host);
-            var rebuiltSound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            var rebuiltSound = visibleSetting(panel, "sh_better_ui.online_music.redesign.sound.sound");
+            assertNotNull(rebuiltSound);
             assertNotSame(compactSound, rebuiltSound);
             assertSame(rebuiltSound, screen.getFocused());
         } finally { thread.set(null, previousThread); }
@@ -257,16 +243,32 @@ class OnlineMusicQueueViewTest {
         } finally { screen.removed(); }
     }
 
-    private static MusicTextControl settingRow(Object panel, int index, String titleKey) throws Exception {
-        var row = (MusicTextControl) ((List<?>) field(panel, "slots")).get(index);
-        assertTrue(row.visible && row.active);
-        var title = assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class, row.getMessage().getContents());
-        if (title.getKey().equals("sh_better_ui.online_music.redesign.sound.summary")) {
-            var component = assertInstanceOf(net.minecraft.network.chat.Component.class, title.getArgs()[0]);
-            title = assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class, component.getContents());
+    private static MusicTextControl visibleSetting(Object panel, String key) throws Exception {
+        for (var control : (List<?>) field(panel, "slots")) {
+            var row = (MusicTextControl) control;
+            if (!row.visible || !row.active) continue;
+            var label = row.getMessage().getContents();
+            if (label instanceof net.minecraft.network.chat.contents.TranslatableContents title) {
+                if (key.equals(title.getKey())) return row;
+                if (title.getKey().equals("sh_better_ui.online_music.redesign.sound.summary")
+                        && title.getArgs()[0] instanceof net.minecraft.network.chat.Component child
+                        && child.getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents nested
+                        && key.equals(nested.getKey())) return row;
+            }
         }
-        assertEquals(titleKey, title.getKey());
-        return row;
+        return null;
+    }
+
+    private static MusicTextControl scrollToSetting(Object panel, String key) throws Exception {
+        var scroll = (OnlineMusicScrollRegion) field(panel, "scroll");
+        scroll.setFocused(true);
+        scroll.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_HOME, 0, 0);
+        for (int i = 0; i < 12; i++) {
+            var visible = visibleSetting(panel, key);
+            if (visible != null) return visible;
+            if (!scroll.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0)) break;
+        }
+        return fail("Couldn't reach setting by scrolling: " + key);
     }
 
     @Test void nativeCrossfadeAllowsReversiblePreviewAndSecondsKeyboardWithoutSeeking() throws Exception {
@@ -996,14 +998,13 @@ class OnlineMusicQueueViewTest {
         } finally {neverRelease.countDown();}
     }
 
-    @Test void historyPagerAndCancelledReadCannotActivate() throws Exception {
+    @Test void historyScrollAndCancelledReadCannotActivate() throws Exception {
         var release=new java.util.concurrent.CountDownLatch(1);
         try(var player=session(release)) {
             var registry=com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations.forPlayer(player).orElseThrow();
             var handle=registry.startSearch("qq","cancelled query",1);handle.cancel();
             var view=new OnlineMusicViewImpl(player,false);view.layout(new Host());page(view,"HISTORY");
-            assertFalse(((MusicTextControl)field(view,"historyPrevious")).active);
-            assertFalse(((MusicTextControl)field(view,"historyNext")).active);
+            assertFalse(((OnlineMusicScrollRegion)field(view,"historyScroll")).active);
             var row=(MusicTextControl)((List<?>)field(view,"historyRows")).get(0);
             assertFalse(row.active);row.onPress();
             call(view,"restoreOperation",new Class<?>[]{long.class},handle.id());
@@ -1146,6 +1147,59 @@ class OnlineMusicQueueViewTest {
         assertEquals("browser-only search", query.getValue());
         call(f.view, "queryChanged", new Class<?>[]{String.class}, query.getValue());
         assertEquals(0L, field(f.view,"suggestAfter"));
+    }
+
+    @Test void stockPlaylistBackRetainsAvailableAndInterruptedShelfBatches() throws Exception {
+        for (boolean pending : new boolean[]{false, true}) {
+            var f = new Fixture();
+            f.signedIn = true;
+            f.view.layout(new Host());
+            page(f.view, "LIBRARY");
+            var shelf = new OnlinePlaylist("qq", "10", "A playlist", 0);
+            var kind = field(f.view, "library").getClass();
+            Object playlists = Arrays.stream(kind.getEnumConstants()).filter(k -> k.toString().equals("PLAYLISTS")).findFirst().orElseThrow();
+            setField(f.view, "library", playlists);
+            setField(f.view, "librarySource", "qq");
+            setField(f.view, "playlists", List.of(shelf));
+            setField(f.view, "libraryPage", pending ? 3 : 2);
+            setField(f.view, "libraryMore", !pending);
+            setField(f.view, "libraryAppend", true);
+            setField(f.view, "pendingPlaylists", pending ? new java.util.concurrent.CompletableFuture<>() : null);
+            call(f.view, "loadPlaylist", new Class<?>[]{OnlinePlaylist.class, int.class}, shelf, 1);
+            call(f.view, "returnToPlaylistList", new Class<?>[0]);
+            assertEquals(List.of(shelf), field(f.view, "playlists"));
+            assertEquals(!pending, field(f.view, "libraryMore"));
+            assertEquals(pending ? 3 : 0, field(f.view, "failedLibraryExtension"));
+            call(f.view, "extendLibrary", new Class<?>[0]);
+            assertEquals(List.of(3), f.playlistPages);
+            assertEquals(List.of(shelf), field(f.view, "playlists"));
+        }
+    }
+
+    @Test void stockSearchInterruptKeepsRowsAndOffersSameBatchRetry() throws Exception {
+        for (String interrupt : List.of("cancelSearch", "detachSearch")) {
+            var f = new Fixture();
+            f.view.layout(new Host());
+            setField(f.view, "query", "track");
+            setField(f.view, "submittedQuery", "track");
+            setField(f.view, "remotePage", 2);
+            setField(f.view, "searchAppend", true);
+            setField(f.view, "results", List.of(A));
+            setField(f.view, "pending", new java.util.concurrent.CompletableFuture<>());
+            call(f.view, interrupt, new Class<?>[0]);
+            assertEquals(2, field(f.view, "failedSearchExtension"));
+            assertEquals(List.of(A), field(f.view, "results"));
+            assertNull(field(f.view, "pending"));
+            call(f.view, "submitSearch", new Class<?>[0]);
+            assertEquals(List.of(2), f.searchPages);
+            assertEquals(List.of(A), field(f.view, "results"));
+        }
+    }
+
+    private static void setField(Object owner, String name, Object value) throws Exception {
+        var field = owner.getClass().getDeclaredField(name);
+        field.setAccessible(true);
+        field.set(owner, value);
     }
 
     @Test void remountRestoresSpotifySearchDraftAndMatchingCompletedResults() throws Exception {

@@ -88,7 +88,7 @@ final class MusicFrontendSoundPanel {
             item.setVariant(MusicTextControl.Variant.ROW);
             slots.add(item);
         }
-        slider = host.add(new MusicSeekControl(new Bounds(panel.x()+8, panel.y()+19, panel.width()-16, 22),
+        slider = host.add(new MusicSeekControl(MusicSoundLayout.slider(panel),
                 title(Screen.VOLUME), host.preferences(), edit -> {}, edit -> commitSlider(edit), edit -> {}));
     }
 
@@ -325,9 +325,7 @@ final class MusicFrontendSoundPanel {
     }
 
     private Bounds listBounds() {
-        int top = panel.y() + (screen == Screen.VOLUME ? 45 : 0);
-        return new Bounds(panel.x(), top, panel.width(), Math.min(capacity*(ROW_HEIGHT+SPACING),
-                Math.max(0, panel.bottom()-22-top)));
+        return MusicSoundLayout.rows(panel, capacity * (ROW_HEIGHT + SPACING), screen == Screen.VOLUME);
     }
 
     private void positionRows() {
@@ -372,7 +370,7 @@ final class MusicFrontendSoundPanel {
     void render(UiFrame ui, int muted) {
         if (screen == null) return;
         scroll.tick();
-        int top = panel.y() + (screen == Screen.VOLUME && !visibleRows.isEmpty() ? 45 : 0);
+        int top = listBounds().y();
         if (!visibleRows.isEmpty()) {
             int height = Math.min(listBounds().height(), visibleRows.size()*(ROW_HEIGHT+SPACING)-SPACING);
             if (screen == Screen.APPEARANCE && MusicGlass.active()) {
