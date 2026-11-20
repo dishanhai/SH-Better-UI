@@ -220,7 +220,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private PreviewContext host;
     private OnlineMusicLayout layout;
     private UiTextField queryField;
-    private MusicTextControl searchButton, spotifySearch, spotifyMadeForYou, nowPlaying, back;
+    private MusicTextControl searchButton, searchContinuationRetry, spotifySearch, spotifyMadeForYou, nowPlaying, back;
     private MusicTransportControl playback, stop, lyricsToggle, miniQueue, miniPrevious, miniNext;
     private MusicTextControl loginRefresh, loginImport, loginSignOut;
     private final Map<String, Boolean> confirmedLikes = new HashMap<>();
@@ -241,7 +241,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
 
     private OnlineTrack likeTrack;
     private boolean requestedLike;
-    private MusicTextControl remember, libraryRefresh;
+    private MusicTextControl remember, libraryRefresh, libraryContinuationRetry;
     private MusicSeekControl seek;
     private final OnlineMusicFeedback interactionFeedback = new OnlineMusicFeedback();
     private String observedLoginState = "";
@@ -284,7 +284,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private int historyFirst;
     private boolean searchAppend, searchMore, libraryAppend, libraryMore;
     private int failedLibraryExtension, failedSearchExtension;
-    private record LibraryReturn(String source, long version, int page, int first, boolean more,
+    private record LibraryReturn(String source, long version, int page, double offset, boolean more,
                                  List<OnlinePlaylist> playlists, SessionMusicOperations.Handle<?> operation) {}
     private LibraryReturn playlistReturn;
     private MusicOperationNavigation.Target pendingHistory;
@@ -424,9 +424,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         return MusicScrollRows.intersects(clip.y()+slot*musicRowPitch()-scroll.rowShift(), height, clip);
     }
     private void buildScrollRegions() {
-        var c = layout.content();
+        var content = layout.content();
         rowSlots = createMusicRows();
-        rowViewport = new Bounds(c.x(), c.y()+layout.listHeadingHeight(), c.width(), layout.rows().size()*musicRowPitch());
+        rowViewport = new Bounds(content.x(), content.y()+layout.listHeadingHeight(), content.width(), layout.rows().size()*musicRowPitch());
         var area = listScrollArea();
         historyScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(),
                 label("operations.title"), value -> { historyFirst = value; updateHistory(); }));
@@ -580,6 +580,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             searchLikes.add(trackAction(row, slot, false, true));
             searchUnlikes.add(trackAction(row, slot, false, false));
         }
+        searchContinuationRetry = button(continuationActionBounds(), label("library.retry"), this::submitSearch, searchControls);
     }
     record ExternalSearchBookmark(OnlineMusicPlayer player, String source, String query, String submittedQuery,
                                   int remotePage, int first, List<OnlineTrack> results, String state,
@@ -770,13 +771,24 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 label("view.follow_lyrics"),null,lyricViewport::follow,host.preferences(),false,false));
         lyricControls.add(followLyrics);
     }
+    private MusicTextControl musicAppearanceButton;
+
     private void buildAccounts() {
         accountPositions.clear();
         var c = accountBounds(0, 320); int width = c.width();
         int left = c.x();
+        var material = button(new Bounds(left, c.y() + 4, width, 24),
+                MusicAppearanceLabels.label("summary", MusicAppearanceLabels.current()),
+                () -> feedback(MusicAppearance.select(MusicAppearance.current().next())
+                        ? MusicAppearanceLabels.current() : MusicAppearanceLabels.label("save_failed")),
+                accountControls);
+        material.setVariant(MusicTextControl.Variant.ROW);
+        material.setAvailable(!MusicAppearance.locked());
+        material.setPreview(MusicAppearanceLabels.label(MusicAppearance.locked() ? "locked" : "cycle_hint"));
+        musicAppearanceButton = material;
         for (String id : List.of("netease", "qq")) {
             final String selected = id; int i = accounts.size();
-            var card = button(new Bounds(left, c.y() + 4 + i * 56, width, 44), label("source." + id), () -> {
+            var card = button(new Bounds(left, c.y() + 34 + i * 56, width, 44), label("source." + id), () -> {
                 openAccount(selected);
                 updateVisibility(); host.screen().setFocused(back);
             }, accountControls);
@@ -900,6 +912,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             libraryLikes.add(trackAction(row, slot, true, true));
             libraryUnlikes.add(trackAction(row, slot, true, false));
         }
+        libraryContinuationRetry = button(continuationActionBounds(), label("library.retry"), this::extendLibrary, libraryControls);
     }
     private void playCollection(List<OnlineTrack> tracks, int selected) {
         queue.replace(tracks, selected);
@@ -1385,6 +1398,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         boolean signedIn = player.authenticated(accountSource);
         remember.setMessage(label(player.remembersCredentials(accountSource) ? "login.remember_on" : "login.remember_off"));
         remember.setSelected(player.remembersCredentials(accountSource));
+        if (searchContinuationRetry != null) searchContinuationRetry.setVisible(false);
+        if (libraryContinuationRetry != null) libraryContinuationRetry.setVisible(false);
         updateRows(); updateLibraryRows(); updateQueueRows();
         updateScrollRegions();
         positionAccounts();
@@ -1543,6 +1558,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void returnToPlaylistList() {
         var saved = playlistReturn;
+        var returningPlaylist = selectedPlaylist;
         playlistReturn = null;
         if (saved != null && saved.source().equals(librarySource)
                 && saved.version() == accountVersion(librarySource)
@@ -1554,13 +1570,22 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             libraryTracks = List.of();
             playlists = saved.playlists();
             libraryPage = saved.page();
-            libraryFirst = saved.first();
+            libraryFirst = (int) saved.offset();
             libraryMore = saved.more();
             libraryAppend = false;
             failedLibraryExtension = 0;
             displayedLibraryOperation = saved.operation();
             libraryState = playlists.isEmpty() ? "library.empty" : "library.results";
             updateVisibility();
+            libraryScroll.restoreViewportOffset(saved.offset());
+            if (returningPlaylist != null) {
+                int ordinal = 0;
+                while (ordinal < playlists.size()
+                        && !playlists.get(ordinal).id().equals(returningPlaylist.id())) ordinal++;
+                int slot = ordinal - libraryFirst;
+                if (ordinal < playlists.size() && slot >= 0 && slot < libraryRows.size() && libraryRows.get(slot).visible)
+                    host.screen().setFocused(libraryRows.get(slot));
+            }
             return;
         }
         if (listen1Selected()) showListen1Library();
@@ -1639,7 +1664,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         libraryAppend = libraryMore = false; failedLibraryExtension = 0;
         if (library == Library.PLAYLISTS) {
             playlistReturn = new LibraryReturn(librarySource, accountVersion(librarySource), libraryPage,
-                    libraryFirst, libraryMore, playlists, displayedLibraryOperation);
+                    libraryScroll.viewportOffset(), libraryMore, playlists, displayedLibraryOperation);
         }
         detachLibrary(); library = Library.TRACKS; selectedPlaylist = playlist; libraryPage = number; libraryFirst = 0;
         likeState = "";
@@ -2020,21 +2045,23 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 ui.preferences().reducedMotion() || ui.preferences().highContrast()
                         || seek!=null && seek.isEditing() || stageSeek!=null && stageSeek.isEditing());
         boolean glass = MusicGlass.active();
+        boolean defaultGlassCanvas = glass && com.dishanhai.sh_better_ui.config.ClientUiSettings.current().theme().mode()
+                == com.dishanhai.sh_better_ui.config.ThemeSettings.Mode.DARK;
         if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
         else if (!immersive && (page==Page.SEARCH || page==Page.LIBRARY || page==Page.QUEUE || page==Page.LYRICS) && !ui.preferences().highContrast()) {
             var palette = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette(
                     com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.accent()|0xff000000,.045f),
-                    glass ? MusicGlass.DARK : theme.background()|0xff000000,
-                    glass ? MusicGlass.CANVAS_TOP : theme.background()|0xff000000,
+                    defaultGlassCanvas ? MusicGlass.DARK : theme.background()|0xff000000,
+                    defaultGlassCanvas ? MusicGlass.CANVAS_TOP : theme.background()|0xff000000,
                     com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.surface()|0xff000000,.16f));
             paintParallaxBackground(ui,layout.frame(),()->com.dishanhai.sh_better_ui.client.gui.scaled.MusicArtworkStageRender.background(
                     ui.graphics(),parallaxBounds(layout.frame()),palette,0,true));
         }
-        else if (glass && !immersive && !ui.preferences().highContrast()) MusicGlass.canvas(ui, layout.frame());
+        else if (defaultGlassCanvas && !immersive && !ui.preferences().highContrast()) MusicGlass.canvas(ui, layout.frame());
         else OnlineMusicViewPaint.panel(ui, layout.frame(), theme.background() | 0xff000000, false);
 
         if (glass && !immersive)
-            MusicGlass.chrome(ui, layout.navigation(), layout.transport());
+            MusicGlass.paletteChrome(ui, layout.navigation(), layout.transport());
         if (layout.sidebar() && !immersive) {
             if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
             text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
@@ -2132,6 +2159,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             ui.graphics().fillGradient(box.x(), box.bottom() - feather, box.right(), box.bottom(), tint, rgb);
         }
     }
+    private Bounds continuationActionBounds() {
+        var footer = layout.pager();
+        return new Bounds(footer.right()-60, footer.y(), 60, footer.height());
+    }
+    private static Component continuation(String state) {
+        return Component.translatable("sh_better_ui.online_music.continuation." + state);
+    }
+
     private void renderResults(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var c = layout.content();
         if(layout.listHeadingHeight()>=20)muted(ui, label(showSuggestions() ? "suggestions" : "view.song"), c.x() + 6, c.y() + 4, c.width() - 12);
@@ -2144,11 +2179,18 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
 
         }
         var pager = layout.pager();
-        var status = likeState.isEmpty() && !showSuggestions() && searchState.equals("results")
+        Component status = likeState.isEmpty() && !showSuggestions() && searchState.equals("results")
                 ? label("library.track_count", results.size())
                 : label(!likeState.isEmpty() ? likeState : showSuggestions() ? "suggestions" : searchState);
-        if(!results.isEmpty()||showSuggestions())
-            text(ui, status, pager.x() + 4, pager.y() + 6, pager.width() - 8);
+        boolean continuing = !showSuggestions() && !results.isEmpty();
+        boolean failedAppend = continuing && retryingSearchExtension();
+        searchContinuationRetry.setVisible(failedAppend);
+        searchContinuationRetry.setAvailable(failedAppend);
+        if (failedAppend) status = continuation("error");
+        else if (continuing && searchAppend && pending != null) status = continuation("loading");
+        else if (continuing && searchAppend && !searchMore && searchState.equals("results")) status = continuation("end");
+        if (!results.isEmpty() || showSuggestions())
+            text(ui, status, pager.x() + 4, pager.y() + 6, pager.width() - (failedAppend ? 68 : 8));
         boolean loading = pending != null && results.isEmpty() && !showSuggestions() && !searchSkeleton.isEmpty();
         paintLoading(ui, searchLoading, loading ? pending : null,
                 !showSuggestions() && !results.isEmpty() && searchState.equals("results"), searchSkeleton);
@@ -2162,6 +2204,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void renderLibrary(UiFrame ui) {
         var c = layout.content();
+        if (library==Library.DISCOVER || listen1EditorVisible()) libraryContinuationRetry.setVisible(false);
         if(library==Library.DISCOVER) {
             OnlineMusicViewPaint.paragraph(ui,host.font(),label(discovery.status),new Bounds(c.x()+4,c.y()+55,c.width()-8,
                     Math.max(0,c.height()-55)),UiTheme.current().text());
@@ -2174,11 +2217,18 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         if(!libraryLogin.visible&&layout.listHeadingHeight()>=20)muted(ui, label(library == Library.PLAYLISTS ? "library.playlists" : "view.song"), c.x() + 6, c.y() + 4, Math.max(0, c.width() - 116));
         var pager = layout.pager();
-        var status = likeState.isEmpty() && libraryState.equals("library.results")
+        Component status = likeState.isEmpty() && libraryState.equals("library.results")
                 ? label(library == Library.PLAYLISTS ? "view.library" : "library.track_count", librarySize())
                 : label(!likeState.isEmpty() ? likeState : libraryState);
-        if(!libraryLogin.visible && librarySize()>0)text(ui, status, pager.x() + 4, pager.y() + 6, pager.width() - 8);
         var request = library==Library.DISCOVERY_TRACKS?discovery.pending():pendingPlaylists != null ? pendingPlaylists : pendingLibrary;
+        boolean continuing = !libraryLogin.visible && librarySize() > 0;
+        boolean failedAppend = continuing && failedLibraryExtension > 0;
+        libraryContinuationRetry.setVisible(failedAppend);
+        libraryContinuationRetry.setAvailable(failedAppend);
+        if (failedAppend) status = continuation("error");
+        else if (continuing && libraryAppend && request != null) status = continuation("loading");
+        else if (continuing && libraryAppend && !libraryMore && libraryState.equals("library.results")) status = continuation("end");
+        if (continuing) text(ui, status, pager.x() + 4, pager.y() + 6, pager.width() - (failedAppend ? 68 : 8));
         boolean loading = request != null && librarySize() == 0 && !libraryLogin.visible && !librarySkeleton.isEmpty();
         paintLoading(ui, libraryLoading, loading ? request : null,
                 !libraryLogin.visible && librarySize() > 0 && libraryState.equals("library.results"), librarySkeleton);
@@ -2429,6 +2479,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             text(ui, label("lyrics." + current.lyricsState().name().toLowerCase(Locale.ROOT)), lines.x() + 12, lines.y() + lines.height() / 2, lines.width() - 24);
     }
     private void renderAccounts(UiFrame ui) {
+        if (!accountDetail && musicAppearanceButton != null)
+            musicAppearanceButton.setMessage(MusicAppearanceLabels.label("summary", MusicAppearanceLabels.current()));
+
         if (!accountDetail) {
             for (var entry : accounts.entrySet()) {
                 var card = entry.getValue(); boolean signedIn = player.authenticated(entry.getKey());

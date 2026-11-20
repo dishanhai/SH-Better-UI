@@ -14,6 +14,7 @@ import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
+import java.util.LinkedHashMap;
 import java.util.Objects;
 import java.util.function.Consumer;
 
@@ -40,8 +41,12 @@ final class MusicFrontendLibraryPanel {
     private MusicFrontendLibrary.View shownView;
     private String draft = "", message = "";
     private int first;
+    private final LinkedHashMap<Route, MusicListAnchor> anchors = new LinkedHashMap<>(8, .75f, true);
+    private MusicListAnchor pendingAnchor;
 
-    private record Entry(Component title, Component subtitle, Runnable action) {}
+    private static final int MAX_ANCHORS = 16;
+
+    private record Entry(String id, Component title, Component subtitle, Runnable action) {}
 
     MusicFrontendLibraryPanel(OnlineMusicPlayer player, MusicFrontendRoutes routes,
                                Consumer<Route> navigate, Consumer<String> browse) {
@@ -62,11 +67,14 @@ final class MusicFrontendLibraryPanel {
     }
 
     void mount(PreviewContext host, Bounds bounds) {
+        bookmarkAnchor();
+        if (shownRoute != null && shownRoute.equals(routes.current())) pendingAnchor = anchors.get(shownRoute);
         this.host = host; body = bounds; rows.clear();
         list = listBounds(body);
         capacity = visibleRows(body);
         scroll = host.add(new OnlineMusicScrollRegion(list.x(), list.y(), list.width(), list.height(),
                 stock("view.scroll_library"), offset -> {
+                    if (!Objects.equals(shownRoute, routes.current())) return;
                     rows.forEach(MusicTextControl::cancelInteraction);
                     first = offset;
                     routes.remember("", first);
@@ -105,16 +113,24 @@ final class MusicFrontendLibraryPanel {
     void routeChanged() {
         var route=routes.current();
         if (!Objects.equals(shownRoute,route)) {
+            bookmarkAnchor();
             if(shownRoute!=null&&!shownRoute.provider().equals(route.provider())) {
                 draft="";
                 if(link!=null)link.setValue("");
             }
             if (scroll != null) scroll.cancelInteraction();
             shownRoute=route; first=routes.memory().scroll(); message="";
+            pendingAnchor = anchors.get(route);
         }
         model.open(key(route));
         shownView=null;
         refresh();
+    }
+
+    private void bookmarkAnchor() {
+        if (shownRoute == null || !controls(shownRoute.page()) || scroll == null || entries.isEmpty()) return;
+        anchors.put(shownRoute, MusicListAnchor.capture(entries, Entry::id, scroll.viewportOffset(), model.accountEpoch()));
+        if (anchors.size() > MAX_ANCHORS) anchors.remove(anchors.keySet().iterator().next());
     }
 
     private static MusicFrontendLibrary.Key key(Route route) {
@@ -164,24 +180,24 @@ final class MusicFrontendLibraryPanel {
 
     private List<Entry> makeEntries(Route route, MusicFrontendLibrary.View view) {
         if (route.page()==Page.LIBRARY) return model.providers().stream().map(source->
-                new Entry(stock("source."+source),Component.empty(),()->open(Route.forProvider(Page.DISCOVERY,source)))).toList();
+                new Entry(source, stock("source."+source),Component.empty(),()->open(Route.forProvider(Page.DISCOVERY,source)))).toList();
         if (route.page()==Page.DISCOVERY && route.id().isEmpty()) return List.of(
                 group(route,"playlists",stock("library.playlists")), group(route,"liked",stock("library.liked")),
                 group(route,"official",stock("discovery.tab")));
         if (view.key()==null) return List.of();
         if (view.status()==MusicFrontendLibrary.Status.SIGN_IN || view.status()==MusicFrontendLibrary.Status.AUTHORIZATION)
-            return List.of(new Entry(stock("library.sign_in"),Component.empty(),
+            return List.of(new Entry("sign-in", stock("library.sign_in"),Component.empty(),
                     ()->open(Route.forProvider(Page.ACCOUNT,view.key().source()))));
         if (view.status()==MusicFrontendLibrary.Status.FAILED && !model.extensionFailed() || view.status()==MusicFrontendLibrary.Status.CHANGED)
-            return List.of(new Entry(stock("library.retry"),Component.empty(),model::retry));
-        if (!view.playlists().isEmpty()) return view.playlists().stream().map(item->new Entry(MusicTypography.text(item.name()),
+            return List.of(new Entry("retry", stock("library.retry"),Component.empty(),model::retry));
+        if (!view.playlists().isEmpty()) return view.playlists().stream().map(item->new Entry(item.id(), MusicTypography.text(item.name()),
                 stock("library.track_count",item.trackCount()),()->{
                     if(model.current(view))open(new Route(Page.PLAYLIST,item.source(),item.id()));
                 })).toList();
         var result=new ArrayList<Entry>(view.tracks().size());
         for(int i=0;i<view.tracks().size();i++){
             int index=i; var track=view.tracks().get(i);
-            result.add(new Entry(MusicTypography.text(track.title()),MusicTypography.text(track.artist()),()->{
+            result.add(new Entry(track.id(), MusicTypography.text(track.title()),MusicTypography.text(track.artist()),()->{
                 try { if(!model.play(view,index)) message="discovery.play_failed"; }
                 catch(OnlineMusicQueue.TransitionInProgress busy){message="library.transition";}
                 catch(RuntimeException unavailable){message="discovery.play_failed";}
@@ -191,7 +207,7 @@ final class MusicFrontendLibraryPanel {
     }
 
     private Entry group(Route route,String kind,Component title) {
-        return new Entry(title,Component.empty(),()->open(new Route(Page.DISCOVERY,route.provider(),kind)));
+        return new Entry(kind,title,Component.empty(),()->open(new Route(Page.DISCOVERY,route.provider(),kind)));
     }
 
     private void refresh() {
@@ -206,10 +222,27 @@ final class MusicFrontendLibraryPanel {
             shownView=view;
             for(var row:rows)row.cancelInteraction();
         }
-        // Keep the saved position while the reopened route is loading.
+        // Keep the saved anchor while the reopened route is loading. Resolve it only
+        // against a valid collection, never against the temporary sign-in/retry rows.
+        Double restore = null;
+        boolean hasActualRows = view.key() == null || view.status() == MusicFrontendLibrary.Status.READY
+                || model.loadingMore() || model.extensionFailed();
+        if (pendingAnchor != null && hasActualRows && !entries.isEmpty() && capacity > 0) {
+            restore = pendingAnchor.resolve(entries, Entry::id, capacity, model.accountEpoch());
+            first = restore.intValue();
+            pendingAnchor = null;
+        } else if (view.key() != null && (view.status() == MusicFrontendLibrary.Status.CHANGED
+                || view.status() == MusicFrontendLibrary.Status.SIGN_IN
+                || view.status() == MusicFrontendLibrary.Status.AUTHORIZATION)) {
+            pendingAnchor = null;
+            anchors.remove(route);
+            first = 0;
+            routes.remember("", 0);
+        }
         if (!entries.isEmpty() && !rows.isEmpty()) first = Math.min(first, Math.max(0, entries.size() - capacity));
         scroll.visible = visible && !input;
         scroll.configure(first, entries.size(), capacity);
+        if (restore != null) scroll.restoreViewportOffset(restore);
         retry.setVisible(scroll.visible && model.extensionFailed());
         for(int i=0;i<rows.size();i++){
             var row=rows.get(i);int at=first+i;
@@ -255,6 +288,15 @@ final class MusicFrontendLibraryPanel {
         scroll.tick();
         var route=routes.current();var view=model.view();
         Component status=Component.empty();
+        if (model.loadingMore() || model.extensionFailed()) {
+            Component continuation = stock(model.loadingMore() ? "continuation.loading" : "continuation.error");
+            int width = retry.visible ? retry.getX() - body.x() - 8 : body.width() - 8;
+            OnlineMusicViewPaint.line(ui, host.font(), continuation, body.x()+4, body.bottom()-16, width, muted);
+            if (message.isEmpty()) return;
+        } else if (view.status() == MusicFrontendLibrary.Status.READY && view.page() > 1 && !view.more()) {
+            OnlineMusicViewPaint.line(ui, host.font(), stock("continuation.end"),
+                    body.x()+4, body.bottom()-16, body.width()-8, muted);
+        }
         if(!message.isEmpty())status=message.startsWith("library.")?label(message):stock(message);
         else if(official(route))status=stock("discovery.hint");
         else if(view.key()==null&&entries.isEmpty())status=stock("view.unavailable");
@@ -277,7 +319,12 @@ final class MusicFrontendLibraryPanel {
         }else OnlineMusicViewPaint.line(ui,host.font(),status,body.x()+4,body.y(),body.width()-8,muted);
     }
 
-    void close() { if (scroll != null) scroll.cancelInteraction(); model.clear(); }
+    void close() {
+        if (scroll != null) scroll.cancelInteraction();
+        anchors.clear();
+        pendingAnchor = null;
+        model.clear();
+    }
 
     private static Component stock(String key,Object... args){
         return Component.translatable("sh_better_ui.online_music."+key,args);

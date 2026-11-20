@@ -26,6 +26,7 @@ final class MusicFrontendSearch {
     private List<OnlineTrack> tracks = List.of();
     private State state = State.IDLE;
     private int first;
+    private Object feedIdentity = new Object();
     private boolean more, append;
 
     MusicFrontendSearch(OnlineMusicPlayer player, MusicFrontendRoutes routes) {
@@ -75,9 +76,16 @@ final class MusicFrontendSearch {
         }
     }
 
+    /** Identity of the displayed search, stable across successful append/fail/retry. */
+    Object feedIdentity() {
+        return displayedOperation != null && !displayedOperation.displayValid() ? null : feedIdentity;
+    }
+
     int first() { return first; }
     int page() { return displayed == null ? 1 : displayed.page(); }
     State state() { return state; }
+    boolean loadingMore() { return pending != null && append; }
+    boolean extensionFailed() { return append && canRetry(); }
     boolean canRetry() { return failed != null && pending == null; }
     boolean hasPrevious() { return pending == null && (first > 0 || displayed != null && displayed.page() > 1); }
     boolean hasNext(int visible) {
@@ -129,7 +137,10 @@ final class MusicFrontendSearch {
 
     void poll() {
         updateSources();
-        if (displayedOperation != null && !displayedOperation.displayValid()) clear();
+        if (displayedOperation != null && !displayedOperation.displayValid()) {
+            cancel();
+            clear();
+        }
         if (pending == null || !pending.result().isDone()) return;
         var job = pending;
         pending = null;
@@ -151,6 +162,7 @@ final class MusicFrontendSearch {
                 } else {
                     tracks = result;
                     first = 0;
+                    feedIdentity = new Object();
                 }
                 more = result.size() >= RESULTS_PER_PAGE && displayed.page() < LAST_PAGE;
                 state = result.isEmpty() ? State.EMPTY : State.IDLE;
@@ -183,6 +195,7 @@ final class MusicFrontendSearch {
         displayedOperation = null;
         tracks = List.of();
         first = 0;
+        feedIdentity = new Object();
         more = false;
         state = State.IDLE;
     }

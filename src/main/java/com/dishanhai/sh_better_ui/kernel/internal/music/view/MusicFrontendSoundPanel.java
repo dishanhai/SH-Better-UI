@@ -22,7 +22,7 @@ import static com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFronten
 import static com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendRoutes.Route;
 
 final class MusicFrontendSoundPanel {
-    private enum Screen { SETTINGS, PLAYBACK, SOUND, VOLUME, FADE, SPEED, EQ, QQ }
+    private enum Screen { SETTINGS, APPEARANCE, PLAYBACK, SOUND, VOLUME, FADE, SPEED, EQ, QQ }
     record ViewState(int first, String focus) {}
     private record Row(String id, Component title, Component value, boolean available, boolean selected, boolean submenu,
                        Supplier<MusicFrontendSound.Result> action) {}
@@ -112,6 +112,7 @@ final class MusicFrontendSoundPanel {
     private static Component title(Screen screen) {
         return switch (screen) {
             case SETTINGS -> builtin("page.settings");
+            case APPEARANCE -> MusicAppearanceLabels.label("title");
             case SPEED -> music("menu.playback_rate");
             case EQ -> music("menu.equalizer");
             case QQ -> music("menu.qq_effects");
@@ -123,6 +124,7 @@ final class MusicFrontendSoundPanel {
     private static Screen screen(Route route) {
         if (route.page() != Page.SETTINGS) return null;
         return switch (route.id()) {
+            case "appearance" -> Screen.APPEARANCE;
             case "playback" -> Screen.PLAYBACK;
             case "sound" -> Screen.SOUND;
             case "volume" -> Screen.VOLUME;
@@ -158,8 +160,16 @@ final class MusicFrontendSoundPanel {
                 items.add(link(Screen.SOUND, blank));
                 if (historyAvailable.getAsBoolean()) items.add(new Row("screen:HISTORY", builtin("page.history"), blank, true, false, true,
                         () -> { navigate.accept(Route.of(Page.HISTORY)); return null; }));
+                items.add(link(Screen.APPEARANCE, MusicAppearanceLabels.current()));
                 yield items;
             }
+            case APPEARANCE -> java.util.Arrays.stream(MusicAppearanceStore.Preference.values()).map(value ->
+                    new Row("appearance:" + value.id(), MusicAppearanceLabels.option(value), blank,
+                            !MusicAppearance.locked(), MusicAppearance.current() == value, false, () -> {
+                        feedback = MusicAppearance.select(value) ? Component.empty() : MusicAppearanceLabels.label("save_failed");
+                        refresh();
+                        return null;
+                    })).toList();
             case PLAYBACK -> List.of(link(Screen.SPEED, s.speedAvailable() ? rate(s.speed()) : unavailable),
                     link(Screen.FADE, s.crossfadeAvailable() ? fade(s.crossfade()) : unavailable));
             case SOUND -> List.of(link(Screen.VOLUME, s.volumeAvailable() ? percent(s.volume()) : unavailable),
@@ -364,8 +374,13 @@ final class MusicFrontendSoundPanel {
         scroll.tick();
         int top = panel.y() + (screen == Screen.VOLUME && !visibleRows.isEmpty() ? 45 : 0);
         if (!visibleRows.isEmpty()) {
-            RoundedCorners.draw(ui.graphics(), panel.x(), top, panel.width(),
-                    Math.min(listBounds().height(), visibleRows.size()*(ROW_HEIGHT+SPACING)-SPACING), 8, 0, 0, SURFACE);
+            int height = Math.min(listBounds().height(), visibleRows.size()*(ROW_HEIGHT+SPACING)-SPACING);
+            if (screen == Screen.APPEARANCE && MusicGlass.active()) {
+                MusicGlass.chrome(ui, new Bounds(panel.x(), top, panel.width(), height), null);
+            } else {
+                RoundedCorners.draw(ui.graphics(), panel.x(), top, panel.width(), height, 8,
+                        ui.preferences().highContrast() ? 1 : 0, INK, SURFACE);
+            }
         }
         for (var slot : slots) {
             slot.setPreferences(ui.preferences());
@@ -378,6 +393,7 @@ final class MusicFrontendSoundPanel {
             OnlineMusicViewPaint.line(ui, host.font(), label, panel.x()+8, panel.y()+4, panel.width()-16, INK);
         }
         Component note = switch (screen) {
+            case APPEARANCE -> MusicAppearance.locked() ? MusicAppearanceLabels.label("locked") : Component.empty();
             case SPEED -> displayed.speedAvailable() ? music("menu.playback_rate_pitch") : sound("native_only");
             case EQ -> !displayed.eqAvailable() ? sound("native_only") : Component.empty();
             case QQ -> !displayed.qqAvailable() ? sound("qq_only") : Component.empty();

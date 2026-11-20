@@ -91,6 +91,40 @@ class MusicFrontendLibraryTest {
         assertFalse(rig.model.extensionFailed());
     }
 
+    @Test void restoresFirstPageAndDetailFromCacheButNeverAcrossAccountEpochs() {
+        var rig = new Rig();
+        var playlists = List.of(new OnlinePlaylist("qq", "44", "Playlist", 2));
+        rig.model.open(PLAYLISTS);
+        rig.complete(playlists);
+        rig.model.open(DETAIL);
+        rig.complete(detail("44", List.of(A, B)));
+        rig.model.open(PLAYLISTS);
+        assertEquals(playlists, rig.model.view().playlists());
+        assertEquals(2, rig.calls.size());
+        rig.model.open(DETAIL);
+        assertEquals(List.of(A, B), rig.model.view().tracks());
+        assertEquals(2, rig.calls.size());
+
+        ++rig.epoch;
+        rig.model.open(PLAYLISTS);
+        assertEquals(Status.LOADING, rig.model.view().status());
+        assertTrue(rig.model.view().playlists().isEmpty());
+        assertEquals(3, rig.calls.size());
+    }
+
+    @Test void repeatedPlaylistBatchDoesNotAppendDuplicateShelvesOrRequestForever() {
+        var rig = new Rig();
+        var batch = java.util.stream.IntStream.range(0, 20)
+                .mapToObj(i -> new OnlinePlaylist("qq", ""+i, "List "+i, 0)).toList();
+        rig.model.open(PLAYLISTS); rig.complete(batch);
+        rig.model.extend();
+        assertTrue(rig.model.loadingMore());
+        rig.complete(batch);
+        assertEquals(batch, rig.model.view().playlists());
+        assertFalse(rig.model.loadingMore());
+        assertFalse(rig.model.canExtend());
+    }
+
     @Test void playlistPlaybackKeepsDuplicateOccurrencesAndWholeListOrder() {
         var rig=new Rig();
         rig.model.open(DETAIL);

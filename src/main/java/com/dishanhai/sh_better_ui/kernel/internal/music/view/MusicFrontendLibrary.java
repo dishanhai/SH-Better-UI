@@ -58,6 +58,9 @@ final class MusicFrontendLibrary {
         return new View(key, page, List.of(), List.of(), null, false, status);
     }
     View view() { return view; }
+    long accountEpoch() { return view.key() == null ? 0 : seenVersion; }
+
+    boolean loadingMore() { return pending != null && pending.append(); }
 
     List<String> providers() {
         return player.sources().stream().filter(source -> NativePlaylistDiscovery.discoveryUrl(source) != null).distinct().toList();
@@ -84,7 +87,10 @@ final class MusicFrontendLibrary {
 
     private void rememberFeed() {
         if (view.key() == null || !current(view)) return;
-        if ((view.page() > 1 && view.page() != pages.getOrDefault(view.key(),1)) || failedExtension > 0
+        // A first page and a playlist detail also have scrollable rows. Preserve them for
+        // Back, without retaining in-flight requests or stale account data.
+        boolean legacyStandalonePage = view.page() > 1 && view.page() == pages.getOrDefault(view.key(), 1);
+        if ((!legacyStandalonePage && view.status() == Status.READY) || failedExtension > 0
                 || pending != null && pending.append()) {
             var saved = view.status() == Status.LOADING
                     ? new View(view.key(), view.page(), view.playlists(), view.tracks(), null, true, Status.READY)
@@ -161,10 +167,11 @@ final class MusicFrontendLibrary {
                     ? Status.AUTHORIZATION : Status.CHANGED);
             return obsolete;
         }
-        if ((view.status() == Status.READY || view.status() == Status.EMPTY || view.status() == Status.LOADING)
-                && !player.authenticated(key.source())) {
+        if ((view.status() == Status.READY || view.status() == Status.EMPTY || view.status() == Status.LOADING
+                || failedExtension > 0) && !player.authenticated(key.source())) {
             var obsolete = pending;
             pending = null;
+            failedExtension = 0;
             view = blank(key, view.page(), rejected ? Status.AUTHORIZATION : Status.SIGN_IN);
             return obsolete;
         }
@@ -177,13 +184,27 @@ final class MusicFrontendLibrary {
                 if (!current.append()) view = loaded;
                 else if (loaded.status() == Status.FAILED) fail(key, current.page(), true, Status.FAILED);
                 else view = new View(key, loaded.page(),
-                        MusicPageAppend.append(view.playlists(), loaded.playlists()),
-                        MusicPageAppend.append(view.tracks(), loaded.tracks()), null, loaded.more(), Status.READY);
+                        appendPlaylists(view.playlists(), loaded.playlists()),
+                        MusicPageAppend.append(view.tracks(), loaded.tracks()), null,
+                        loaded.more() && (key.kind() != Kind.PLAYLISTS || hasNewPlaylists(view.playlists(), loaded.playlists())),
+                        Status.READY);
             }
         } catch (RuntimeException failure) {
             fail(key, current.page(), current.append(), error(failure));
         }
         return null;
+    }
+
+    private static boolean hasNewPlaylists(List<OnlinePlaylist> before, List<OnlinePlaylist> batch) {
+        var ids = new java.util.HashSet<String>();
+        for (var item : before) ids.add(item.id());
+        return batch.stream().anyMatch(item -> !ids.contains(item.id()));
+    }
+
+    private static List<OnlinePlaylist> appendPlaylists(List<OnlinePlaylist> before, List<OnlinePlaylist> batch) {
+        var ids = new java.util.HashSet<String>();
+        for (var item : before) ids.add(item.id());
+        return MusicPageAppend.append(before, batch.stream().filter(item -> ids.add(item.id())).toList());
     }
 
     private void fail(Key key, int page, boolean append, Status status) {

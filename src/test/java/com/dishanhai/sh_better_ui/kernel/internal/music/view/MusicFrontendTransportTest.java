@@ -116,6 +116,49 @@ class MusicFrontendTransportTest {
         assertTrue(rig.actions.isEmpty());
     }
 
+    @Test void dragFramesAreReadOnlyAndOneReleaseKeepsItsTargetWhileAudioReopens() {
+        var rig = new Rig();
+        rig.seekStartsLoading = true;
+        var adapter = new MusicFrontendTransport(rig.player);
+        var content = adapter.lyrics(true).content();
+        var frame = adapter.frame();
+        var thumb = new MusicSeekModel();
+        thumb.sync(frame.seekKey(), 1_000, 12_000, frame.seekable());
+        thumb.begin(.25).ifPresent(adapter::preview);
+        assertEquals(3_000, adapter.lyrics(true).songPositionMs());
+        thumb.drag(.75).ifPresent(adapter::preview);
+        assertEquals(9_000, adapter.lyrics(true).songPositionMs());
+        assertTrue(rig.actions.isEmpty());
+        thumb.release().ifPresent(adapter::commit);
+        thumb.release().ifPresent(adapter::commit);
+        assertEquals(List.of("seek:9000"), rig.actions);
+
+        int before = rig.snapshots;
+        var pending = adapter.presentation(true);
+        assertEquals(before + 1, rig.snapshots);
+        assertEquals(content, pending.lyrics().content(), "a decoder restart must not reset browse mode");
+        assertEquals(9_000, pending.lyrics().songPositionMs());
+        assertEquals(9_000, pending.transport().displayedPositionMs());
+        assertFalse(pending.lyrics().preview());
+        assertFalse(pending.lyrics().seekable());
+
+        rig.state = State.PAUSED;
+        rig.position = 9_012;
+        assertEquals(9_012, adapter.lyrics(true).songPositionMs());
+        rig.state = State.LOADING;
+        assertEquals(-1, adapter.lyrics(true).songPositionMs(), "only a user seek pins the loading display");
+    }
+
+    @Test void pendingSeekPositionIsNotCarriedIntoARepeatedOccurrence() {
+        var rig = new Rig();
+        rig.seekStartsLoading = true;
+        var adapter = new MusicFrontendTransport(rig.player);
+        assertTrue(adapter.commit(new MusicSeekModel.Edit(adapter.frame().seekKey(), 5_000)));
+        assertEquals(5_000, adapter.lyrics(true).songPositionMs());
+        rig.index++;
+        assertEquals(-1, adapter.lyrics(true).songPositionMs());
+    }
+
     private static LyricTimeline timeline() { return new LyricTimeline(List.of()); }
 
     @Test void loadingDoesNotResumeAndFailedTrackOnlyTriggersExplicitRetry() {
@@ -145,8 +188,9 @@ class MusicFrontendTransportTest {
         LyricTimeline timeline=timeline();
         OnlineMusicPlayer.LyricsState lyricsState=OnlineMusicPlayer.LyricsState.READY;
         long generation, offset;
-        boolean previewStream;
-        int index;
+        boolean previewStream, seekStartsLoading;
+        int index, snapshots;
+        long position = 1_000;
         final List<String> actions=new ArrayList<>();
         final OnlineMusicQueue queue=(OnlineMusicQueue)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{OnlineMusicQueue.class},
                 (p,m,a)->switch(m.getName()){
@@ -156,11 +200,18 @@ class MusicFrontendTransportTest {
                 });
         final OnlineMusicPlayer player=(OnlineMusicPlayer)Proxy.newProxyInstance(getClass().getClassLoader(),new Class<?>[]{OnlineMusicPlayer.class},
                 (p,m,a)->switch(m.getName()){
-                    case "snapshot" -> new OnlineMusicPlayer.Snapshot(track,state,1_000,12_000,lyricsState,
-                            timeline,OnlineMusicPlayer.Failure.NONE,previewStream);
+                    case "snapshot" -> {
+                        snapshots++;
+                        yield new OnlineMusicPlayer.Snapshot(track,state,position,12_000,lyricsState,
+                                timeline,OnlineMusicPlayer.Failure.NONE,previewStream);
+                    }
                     case "lyricOffsetMs" -> offset;
                     case "queue" -> queue;
-                    case "seek" -> {actions.add("seek:"+a[0]); yield null;}
+                    case "seek" -> {
+                        actions.add("seek:"+a[0]);
+                        if (seekStartsLoading) { state = State.LOADING; position = 0; }
+                        yield null;
+                    }
                     case "canRetryCurrent" -> true;
                     case "retryCurrent" -> {actions.add(m.getName());yield true;}
                     case "pause", "resume" -> {actions.add(m.getName());yield null;}

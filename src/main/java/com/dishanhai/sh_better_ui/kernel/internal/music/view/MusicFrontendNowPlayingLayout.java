@@ -23,7 +23,7 @@ record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle
         int modeY = bottom - 24;
         int controlY = modeY - 29;
         int progressY = controlY - 26;
-        int artHeight = progressY - top - 38;
+        int artHeight = progressY - top - 42;
         int contentWidth = detailOpen ? availableWidth : Math.min(availableWidth, Math.max(146, artHeight));
         int left = frame.x() + (frame.width() - contentWidth) / 2;
         int leftWidth = split ? Math.min(Math.min(284, (contentWidth - 30) * 42 / 100), Math.max(146, artHeight)) : contentWidth;
@@ -43,7 +43,7 @@ record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle
         int textX = detailOpen && !split ? cover.right() + 10 : left;
         int textY = detailOpen && !split ? stageY + 2 : cover.bottom() + 6;
         var title = new Bounds(textX, textY, left + leftWidth - textX, 18);
-        var subtitle = new Bounds(textX, title.bottom() + 1, title.width(), 12);
+        var subtitle = new Bounds(textX, title.bottom() + 1, title.width(), 16);
 
         var detail = !detailOpen ? empty : split
                 ? new Bounds(left + leftWidth + 30, top, contentWidth - leftWidth - 30, bottom - top)

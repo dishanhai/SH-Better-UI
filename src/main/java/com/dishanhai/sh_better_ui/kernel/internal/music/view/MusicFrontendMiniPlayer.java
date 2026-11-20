@@ -47,8 +47,18 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
         playPause = transport(host, boxes.playPause(), "play", MusicTransportControl.Glyph.PLAY, transport::activate);
         next = transport(host, boxes.next(), "next", MusicTransportControl.Glyph.NEXT, () -> transport.skip(true));
         progress = host.add(new MusicSeekControl(boxes.progress(), label("redesign.seek"), host.preferences(),
-                transport::preview, transport::commit, edit -> transport.cancelPreview()));
+                edit -> {
+                    if (seekInputActive(host)) transport.preview(edit);
+                    else transport.cancelPreview();
+                }, edit -> {
+                    if (seekInputActive(host)) transport.commit(edit);
+                    else transport.cancelPreview();
+                }, edit -> transport.cancelPreview()));
         progress.setTimePreviewEnabled(true);
+    }
+
+    private boolean seekInputActive(PreviewContext host) {
+        return !closed && host.interactive() && Minecraft.getInstance().isWindowActive();
     }
 
     void immersive(MusicFrontendNowPlayingLayout nextLayout) {
@@ -86,15 +96,17 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
     }
 
     void render(UiFrame ui, boolean glass) {
+        render(ui, glass, transport.frame(), Minecraft.getInstance().isWindowActive());
+    }
+
+    void render(UiFrame ui, boolean glass, MusicFrontendTransport.Frame frame, boolean engaged) {
         if (closed) return;
-        var frame = transport.frame();
         var song = frame.playback().track();
         if (!Objects.equals(song, renderedTrack)) {
             track.rebind(song == null ? label("redesign.nothing_playing") : MusicTypography.text(song.title()));
             track.setSecondary(song == null ? Component.empty() : MusicTypography.text(song.artist()));
             renderedTrack = song;
         }
-        boolean engaged = Minecraft.getInstance().isWindowActive();
         track.setAvailable(track.visible && song != null && engaged);
         previous.setAvailable(frame.previous() && engaged);
         next.setAvailable(frame.next() && engaged);
@@ -109,9 +121,9 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
             renderedAction = primary;
         }
         playPause.setAvailable(engaged && primary != MusicFrontendTransport.Primary.NONE);
-        progress.sync(frame.seekKey(), frame.playback().positionMs(), frame.playback().durationMs(), frame.seekable() && engaged);
+        progress.sync(frame.seekKey(), frame.displayedPositionMs(), frame.playback().durationMs(), frame.seekable() && engaged);
         if (immersive != null) {
-            drawTimes(ui, progress.isEditing() ? progress.previewPositionMs() : frame.playback().positionMs(),
+            drawTimes(ui, progress.isEditing() ? progress.previewPositionMs() : frame.displayedPositionMs(),
                     frame.playback().durationMs());
             return;
         }

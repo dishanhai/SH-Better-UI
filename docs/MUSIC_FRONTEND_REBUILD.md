@@ -28,7 +28,7 @@ The new workspace is an opt-in implementation slice, not a redesign of the legac
 
 Liquid Glass is now the default **music chrome** under the default SHBUI palette, on both the ordinary player and the opt-in workspace above. The layout option is independent of the theme. The native material is limited to navigation and playback controls, using one backdrop snapshot per batch. Covers, lyrics, queue text, and focus indicators are painted after those surfaces and never fed back through them.
 
-Light, QQ and other non-glass custom themes continue to use their previous surfaces; registered glass themes keep glass. To keep the old dark music appearance without changing the global palette, add `-Dshbui.music.theme=classic` to the client JVM arguments. No existing options are rewritten. High contrast, disabling blur or disabling glass sampling, and unavailable backdrop capture fall back to solid chrome.
+Settings → Appearance offers Automatic, Liquid Glass and Classic. The stock player offers the same preference in Accounts. Choose a style to see it immediately and reopen the player without losing the choice. Automatic keeps the original behavior: standard dark SHBUI and registered glass themes use glass; light, QQ and other non-glass custom palettes retain their usual chrome. Explicit glass changes the music surface material without replacing the global palette. The legacy JVM argument `-Dshbui.music.theme=classic` locks Classic for that launch, without overwriting the saved preference. High contrast, disabling blur or disabling glass sampling, and unavailable backdrop capture fall back to solid chrome.
 
 
 ## List scrolling
@@ -36,3 +36,10 @@ Light, QQ and other non-glass custom themes continue to use their previous surfa
 The stock and rebuilt players use native scroll viewports rather than Previous/Next list buttons. Search, library collections, artist results, queue, activity and settings share the kernel's damped vertical spring. Virtualized rows move with the sampled pixel offset inside a shared paint and input clip. Dragging the scroll thumb follows the pointer directly; reduced motion snaps without coasting. Arrow, Page Up/Down, Home and End remain keyboard scroll actions. Playback and route navigation buttons are unaffected.
 
 Where the provider paginates, continued scrolling at the loaded end requests one additional batch. The next successful batch extends the list without jumping the current viewport or dropping duplicate occurrences. Empty terminal batches end the feed. Provider requests remain scoped to the active source, query and account.
+
+
+## Interaction polish
+
+- Continuing a search, library or artist list never replaces visible rows with a new page. On returning from a library detail, the authorized feed and visible row offset are restored, including the partial row where available. The list footer reports loading, retry and end states without restoring page buttons.
+- The lyric timeline shares the transport snapshot. Dragging previews matching lyrics without a seek; release commits once for the same occurrence. A manual lyric scroll position is preserved during that temporary preview, and Follow Lyrics jumps back to the live position.
+- When a track has a provider-owned artist ID, the artist credit in redesigned Now Playing opens that provider’s matching songs. A row plays sequentially from that occurrence, including duplicate songs; Back returns to its source page. The view never guesses an artist ID from a name.

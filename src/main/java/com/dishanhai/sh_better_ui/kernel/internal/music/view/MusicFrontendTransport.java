@@ -14,9 +14,10 @@ import java.util.function.LongSupplier;
 final class MusicFrontendTransport {
     enum Primary { NONE, PLAY, PAUSE, RETRY }
     record Frame(OnlineMusicPlayer.Snapshot playback, String seekKey, Primary primary,
-                 boolean seekable, boolean previous, boolean next, long lyricOffsetMs) {}
-    record LyricContent(OnlineTrack track, LyricTimeline timeline, long offsetMs, String seekKey) {}
+                 boolean seekable, boolean previous, boolean next, long lyricOffsetMs, long occurrenceId, long displayedPositionMs) {}
+    record LyricContent(OnlineTrack track, LyricTimeline timeline, long offsetMs, long occurrenceId) {}
     record LyricFrame(LyricContent content, long songPositionMs, boolean seekable, boolean preview) {}
+    record Presentation(Frame transport, LyricFrame lyrics) {}
     private record Occurrence(OnlineTrack track, int queueIndex, long durationMs, boolean preview,
                               long lyricOffsetMs, long nativeGeneration) {}
 
@@ -24,7 +25,8 @@ final class MusicFrontendTransport {
     private final LongSupplier nativeGeneration;
     private Occurrence occurrence;
     private MusicSeekModel.Edit previewEdit;
-    private long version;
+    private long version, occurrenceId;
+    private Long awaitingSeek;
     private boolean wasSeekable;
 
     MusicFrontendTransport(OnlineMusicPlayer player) {
@@ -47,12 +49,18 @@ final class MusicFrontendTransport {
         long offset = snapshot.preview() ? Math.max(0, player.lyricOffsetMs(snapshot)) : 0;
         var next = new Occurrence(snapshot.track(), order == null ? -1 : order.index(), snapshot.durationMs(),
                                   snapshot.preview(), offset, nativeGeneration.getAsLong());
-        if (seekable != wasSeekable || !Objects.equals(next, occurrence)) {
+        boolean changed = !Objects.equals(next, occurrence);
+        if (changed) {
             occurrence = next;
+            occurrenceId++;
+            awaitingSeek = null;
+        }
+        if (seekable != wasSeekable || changed) {
             wasSeekable = seekable;
             version++;
             previewEdit = null;
         }
+        if (state != OnlineMusicPlayer.State.LOADING) awaitingSeek = null;
         var primary = switch (state) {
             case PLAYING -> Primary.PAUSE;
             case PAUSED, ENDED -> Primary.PLAY;
@@ -60,7 +68,8 @@ final class MusicFrontendTransport {
             default -> Primary.NONE;
         };
         return new Frame(snapshot, seekable ? Long.toString(version) : "", primary, seekable,
-                         order != null && order.canPrevious(), order != null && order.canNext(), offset);
+                         order != null && order.canPrevious(), order != null && order.canNext(), offset, occurrenceId,
+                         awaitingSeek == null ? snapshot.positionMs() : awaitingSeek);
     }
 
     /** A scrub preview is only for the occurrence that supplied the thumb position. */
@@ -73,7 +82,10 @@ final class MusicFrontendTransport {
 
     void cancelPreview() { synchronized (player) { previewEdit = null; } }
 
-    LyricFrame lyrics(boolean windowActive) { synchronized (player) {
+    LyricFrame lyrics(boolean windowActive) { return presentation(windowActive).lyrics(); }
+
+    /** One observation supplies the artwork, seek thumb and lyric viewport for the same frame. */
+    Presentation presentation(boolean windowActive) { synchronized (player) {
         if (!windowActive) previewEdit = null;
         var fresh = sample();
         var playback = fresh.playback();
@@ -81,16 +93,17 @@ final class MusicFrontendTransport {
         boolean ready = playback.lyricsState() == OnlineMusicPlayer.LyricsState.READY && playback.track() != null;
         boolean preview = ready && previewEdit != null;
         long position = preview ? clamp(previewEdit.positionMs(), playback.durationMs())
-                : OnlineLyricPresentation.position(playback);
-        return new LyricFrame(content, OnlineLyricPresentation.songPosition(position, content.offsetMs()),
-                windowActive && !preview && OnlineLyricPresentation.seekable(playback), preview);
+                : ready && awaitingSeek != null ? awaitingSeek : OnlineLyricPresentation.position(playback);
+        return new Presentation(fresh, new LyricFrame(content,
+                OnlineLyricPresentation.songPosition(position, content.offsetMs()),
+                windowActive && !preview && OnlineLyricPresentation.seekable(playback), preview));
     } }
 
     private static LyricContent lyricContent(Frame frame) {
         var playback = frame.playback();
         var timeline = playback.track() != null && playback.lyricsState() == OnlineMusicPlayer.LyricsState.READY
                 ? playback.lyrics() : LyricTimeline.empty();
-        return new LyricContent(playback.track(), timeline, frame.lyricOffsetMs(), frame.seekKey());
+        return new LyricContent(playback.track(), timeline, frame.lyricOffsetMs(), frame.occurrenceId());
     }
 
     /** One action against the exact rendered timeline, not whichever song is audible at click time. */
@@ -101,8 +114,7 @@ final class MusicFrontendTransport {
         var target = new LyricSeekTarget(content.track(), content.timeline(), songPositionMs, content.offsetMs())
                 .position(fresh.playback());
         if (target.isEmpty() || target.getAsLong() > fresh.playback().durationMs()) return false;
-        player.seek(target.getAsLong());
-        return true;
+        return seek(target.getAsLong());
     } }
 
     boolean activate() {
@@ -130,9 +142,15 @@ final class MusicFrontendTransport {
         var fresh = sample();
         if (!fresh.seekable() || !fresh.seekKey().equals(edit.trackKey())) return false;
         previewEdit = null;
-        player.seek(clamp(edit.positionMs(), fresh.playback().durationMs()));
-        return true;
+        return seek(clamp(edit.positionMs(), fresh.playback().durationMs()));
     } }
+
+    /** Native decoders reopen asynchronously; retain the chosen lyric position while they load. */
+    private boolean seek(long position) {
+        player.seek(position);
+        awaitingSeek = position;
+        return true;
+    }
 
     private static long clamp(long position, long duration) {
         return Math.max(0L, Math.min(position, duration));

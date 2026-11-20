@@ -13,10 +13,10 @@ import java.util.List;
 final class MusicGlassPlatform {
     private MusicGlassPlatform() {}
 
-    static boolean draw(UiFrame ui, List<Bounds> areas) {
+    static boolean draw(UiFrame ui, List<Bounds> areas, boolean lightSurface) {
         return UiTheme.current().backdrop() && ClientUiSettings.current().backdrop().enabled()
                 && ClientUiKernel.paintHudGlassBatch(ui.graphics(), areas.stream().map(box ->
                 new GlassDraw(GlassRegion.rounded(box.x(), box.y(), box.width(), box.height(),
-                        MusicGlass.radius(box)), MusicGlass.MATERIAL, GlassDraw.Profile.SNELL, null)).toList());
+                        MusicGlass.radius(box)), lightSurface ? MusicGlass.LIGHT_SURFACE : MusicGlass.MATERIAL, GlassDraw.Profile.SNELL, null)).toList());
     }
 }

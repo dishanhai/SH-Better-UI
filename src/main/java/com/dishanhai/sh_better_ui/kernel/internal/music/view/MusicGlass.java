@@ -20,6 +20,8 @@ final class MusicGlass {
     static final GlassMaterial MATERIAL = new GlassMaterial(GlassVariant.CLEAR,
             GlassMaterial.preset(GlassVariant.CLEAR).optics(), GlassQuality.PERFORMANCE,
             GlassMaterial.Foreground.LIGHT);
+    static final GlassMaterial LIGHT_SURFACE = new GlassMaterial(MATERIAL.variant(), MATERIAL.optics(),
+            MATERIAL.quality(), GlassMaterial.Foreground.DARK);
     static final GlassOptics EXTRACTOR_OPTICS = new GlassOptics(.93f, 4.6f, .42f, .12f, .78f, 4f, 0f);
 
     private MusicGlass() {}
@@ -34,13 +36,23 @@ final class MusicGlass {
     }
 
     static void chrome(UiFrame ui, Bounds first, Bounds second) {
+        chrome(ui, first, second, false);
+    }
+
+    static void paletteChrome(UiFrame ui, Bounds first, Bounds second) {
+        int ink = UiTheme.current().text();
+        boolean darkInk = ((ink >> 16 & 255) * 54 + (ink >> 8 & 255) * 183 + (ink & 255) * 19) < 128 * 256;
+        chrome(ui, first, second, darkInk);
+    }
+
+    private static void chrome(UiFrame ui, Bounds first, Bounds second, boolean lightSurface) {
         // Always submit related plates together, before artwork or widgets can enter the snapshot.
         var areas = new ArrayList<Bounds>(2);
         if (nonEmpty(first)) areas.add(first);
         if (nonEmpty(second)) areas.add(second);
         if (areas.isEmpty()) return;
-        boolean optical = ui.preferences().useBackdropBlur() && MusicGlassPlatform.draw(ui, areas);
-        if (!optical) for (var area : areas) fallback(ui, area);
+        boolean optical = ui.preferences().useBackdropBlur() && MusicGlassPlatform.draw(ui, areas, lightSurface);
+        if (!optical) for (var area : areas) fallback(ui, area, lightSurface);
     }
 
     static float radius(Bounds box) {
@@ -51,10 +63,10 @@ final class MusicGlass {
         return box != null && box.width() > 0 && box.height() > 0;
     }
 
-    static void fallback(UiFrame ui, Bounds box) {
+    static void fallback(UiFrame ui, Bounds box, boolean lightSurface) {
         boolean contrast = ui.preferences().highContrast();
         RoundedCorners.draw(ui.graphics(), box.x(), box.y(), box.width(), box.height(), radius(box),
-                contrast ? 1.5f : .75f, contrast ? UiTheme.current().text() : RIM,
-                contrast ? UiTheme.current().background() | 0xff000000 : 0xff262b36);
+                contrast ? 1.5f : .75f, contrast ? UiTheme.current().text() : lightSurface ? 0x66617491 : RIM,
+                contrast ? UiTheme.current().background() | 0xff000000 : lightSurface ? 0xffe4e8ee : 0xff262b36);
     }
 }

@@ -57,8 +57,12 @@ final class ScrollRegionState {
     void configure(int offset, int total, int visible) {
         total = Math.max(0, total); visible = Math.max(0, visible);
         if (this.total != total || this.visible != visible) {
+            double sampled = scroll.offset();
             this.total = total; this.visible = visible; stopMotion();
             scroll.resize(visible, total);
+            // Appending rows may finish during a wheel reversal. Preserve the
+            // sampled pixel instead of snapping to its containing row.
+            if (pixelRows) restoreViewportOffset(sampled);
         }
         int wanted = Math.max(0, Math.min(maximum(), offset));
         if (wanted != offset()) {
@@ -67,6 +71,14 @@ final class ScrollRegionState {
             motion.synchronize();
         }
     }
+    double viewportOffset() { return scroll.offset(); }
+
+    void restoreViewportOffset(double value) {
+        stopMotion();
+        if (visible > 0) scroll.scrollTo(Math.max(0, Math.min(maximum(), value)));
+        motion.synchronize();
+    }
+
     int offset() { return pixelRows ? (int) scroll.offset() : (int) Math.round(scroll.offset()); }
     int maximum() { return visible == 0 ? 0 : Math.max(0, total - visible); }
     int page() { return Math.max(1, visible); }

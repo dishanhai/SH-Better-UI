@@ -111,6 +111,29 @@ class MusicFrontendSearchTest {
         assertEquals(15,search.first());
     }
 
+    @Test void feedIdentityRetainsAnchorThroughAppendRetryAndInvalidatesOnReplacement() {
+        search.submit(); calls.get(0).finish(20); search.poll();
+        Object identity = search.feedIdentity();
+        search.extend();
+        assertTrue(search.loadingMore());
+        calls.get(1).result().completeExceptionally(new IllegalStateException("offline"));
+        search.poll();
+        assertTrue(search.extensionFailed());
+        assertSame(identity, search.feedIdentity());
+        search.retry();
+        assertTrue(search.loadingMore());
+        calls.get(2).finish(20); search.poll();
+        assertSame(identity, search.feedIdentity());
+        assertFalse(search.loadingMore());
+        routes.searchDraft("different");
+        search.submit();
+        assertNotSame(identity, search.feedIdentity());
+        calls.get(3).finish(5); search.poll();
+        Object replacement = search.feedIdentity();
+        search.cycleSource();
+        assertNotSame(replacement, search.feedIdentity());
+    }
+
     @Test void backRestoresSuccessfulSearchButInvalidatesUnfinishedPagination() {
         search.submit();
         calls.get(0).finish(20);

@@ -39,6 +39,13 @@ final class OnlineMusicScrollRegion extends AbstractWidget implements com.dishan
         if (shift != lastShift) { lastShift = shift; shifted.accept(shift); }
     }
     int rowShift() { return lastShift; }
+    double viewportOffset() { return state.viewportOffset(); }
+    /** Restore after configuring the row count. Callers own the matching logical row index. */
+    void restoreViewportOffset(double offset) {
+        forwardIntent = false;
+        state.restoreViewportOffset(offset);
+        shiftRows();
+    }
     private boolean requestMore() {
         if (!more.getAsBoolean()) return false;
         loadMore.run();
