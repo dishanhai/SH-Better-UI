@@ -2936,6 +2936,8 @@
   "sh_better_ui.music_overlay.task.operation_login_succeeded": "QR sign-in · Signed in",
   "sh_better_ui.music_overlay.task.operation_login_failed": "QR sign-in · Failed",
   "sh_better_ui.music_overlay.task.operation_login_expired": "QR sign-in · Expired",
+  "sh_better_ui.online_music.sidebar_signed_in": "Provider connected",
+  "sh_better_ui.online_music.sidebar_signed_out": "Not signed in",
   "sh_better_ui.online_music.search_enter": "Press Enter to search",
   "sh_better_ui.online_music.search_recent": "Recent searches",
   "sh_better_ui.online_music.search_discover": "Official playlist discovery",

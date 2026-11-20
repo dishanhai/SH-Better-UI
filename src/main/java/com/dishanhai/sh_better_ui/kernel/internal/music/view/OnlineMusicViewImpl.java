@@ -353,6 +353,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         stage = FullscreenLyricLayout.of(context.viewport(),shellBack==null,stageFailure,stagePage!=StagePage.ARTWORK);
         nowPlayingMenus=new NowPlayingMenuHost(context);
         buildNavigation(); buildScrollRegions(); buildSearch(); buildLyrics(); buildAccounts(); buildLibrary(); buildQueue(); buildTransport(); buildImmersive(); buildHistory(); artistDetail.build(context,layout);
+        groupDefaultFocus();
         skeletonClip = listScrollArea();
         searchSkeleton = loadingBlocks(resultRows, true);
         librarySkeleton = loadingBlocks(libraryRows, false);
@@ -382,6 +383,18 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             }
         }
     }
+    private void groupDefaultFocus() {
+        if(sourceSegments!=null)sourceSegments.setTabOrderGroup(1);
+        if(searchHistory!=null&&!layout.sidebar())searchHistory.setTabOrderGroup(1);
+        for(var widget:List.of(queryField,searchButton,clearSearch,spotifySearch))widget.setTabOrderGroup(2);
+        searchScroll.setTabOrderGroup(3);
+        for(var list:List.of(resultRows,searchLikes,searchUnlikes,recentSearchButtons))
+            for(var widget:list)widget.setTabOrderGroup(3);
+        searchDiscover.setTabOrderGroup(3);searchContinuationRetry.setTabOrderGroup(3);
+        for(var widget:List.of(nowPlaying,miniPrevious,playback,miniNext,lyricsToggle,miniQueue,miniMore,seek,coverEntry))
+            widget.setTabOrderGroup(4);
+    }
+
     private void buildNavigation() {
         var n = layout.navigation();
         if (exitControl != null) { exitControl.setX(n.x()); exitControl.setY(n.y()); }
@@ -1225,6 +1238,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         miniMore=host.add(new UiButton(extra.x(),extra.y(),extra.width(),extra.height(),Component.literal("…"),
                 ignored->openMiniMenu(),host.preferences(),false));
         miniMore.setPreview(label("menu.title"));
+        miniMore.setNarrationLabel(label("menu.title"));
         miniMore.setCornerRadius(12);
         seek=host.add(new MusicSeekControl(layout.seekBar(),label("seek",0),host.preferences(),ignored->{},edit->{
             var current=player.snapshot();if(current.track()!=null&&trackKey(current.track()).equals(edit.trackKey()))perform(label("feedback.seek",time(edit.positionMs())),()->player.seek(edit.positionMs()));
@@ -2174,7 +2188,15 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
         if (layout.sidebar() && !immersive) {
             if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
-            text(ui, MusicTypography.bold(label("view.brand")), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
+            var rail=layout.navigation();
+            text(ui, MusicTypography.bold(label("view.brand")), rail.x()+(exitControl==null?6:30),rail.y()+7,
+                    rail.width()-(exitControl==null?12:36));
+            var state=label(libraryProviders.stream().anyMatch(player::authenticated)?"sidebar_signed_in":"sidebar_signed_out");
+            var account=navigation.get(Page.ACCOUNTS.ordinal());
+            account.setPreview(label("view.accounts").append("\n").append(state));
+            var bottomSection=DefaultMusicChromeLayout.sidebarRow(rail,searchHistory==null?5:4);
+            if(bottomSection.y()-DefaultMusicChromeLayout.sidebarRow(rail,3).bottom()>=20)
+                muted(ui,state,rail.x()+12,bottomSection.y()-16,rail.width()-24);
 
         }
         if (pending != null && pending.isDone()) {
@@ -2389,7 +2411,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(!windowActive)seek.cancelInteraction();
         updateMiniMetadata(current);
         miniMore.active=windowActive&&canStop(state);
-        if(!nowPlayingMenus.supported())miniMore.setMessage(label(state==OnlineMusicPlayer.State.LOADING?"cancel":"stop"));
+        if(!nowPlayingMenus.supported()){
+            var action=label(state==OnlineMusicPlayer.State.LOADING?"cancel":"stop");
+            miniMore.setMessage(action);miniMore.setNarrationLabel(action);
+        }
         var playBounds=MusicMiniPlayerLayout.of(layout.transport(),layout.expanded()).play();
         int side=Math.min(playBounds.width(),playBounds.height());
         var theme=UiTheme.current();

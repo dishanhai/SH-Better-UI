@@ -151,6 +151,15 @@ public final class UiButton extends Button {
                 : UiTheme.current().materialBlurRadius(backgroundBlurRadius);
     }
 
+    private Component narrationLabel;
+    /** Allows a compact glyph caption to retain a descriptive accessible name. */
+    public void setNarrationLabel(Component label) { narrationLabel = label; }
+
+    @Override
+    protected net.minecraft.network.chat.MutableComponent createNarrationMessage() {
+        return narrationLabel == null ? super.createNarrationMessage() : wrapDefaultNarrationMessage(narrationLabel);
+    }
+
     /** 本地化功能提示；null 时显示完整按钮名称，键盘焦点沿用原生 tooltip。 */
     public void setPreview(Component preview) {
         this.preview = preview;

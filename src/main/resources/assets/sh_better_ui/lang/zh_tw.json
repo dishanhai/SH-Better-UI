@@ -2127,6 +2127,8 @@
   "sh_better_ui.music_overlay.task.operation_login_succeeded": "掃碼登入 · 登入成功",
   "sh_better_ui.music_overlay.task.operation_login_failed": "掃碼登入 · 失敗",
   "sh_better_ui.music_overlay.task.operation_login_expired": "掃碼登入 · 已過期",
+  "sh_better_ui.online_music.sidebar_signed_in": "已登入音源",
+  "sh_better_ui.online_music.sidebar_signed_out": "未登入音源",
   "sh_better_ui.online_music.search_enter": "按 Enter 搜尋",
   "sh_better_ui.online_music.search_recent": "最近搜尋",
   "sh_better_ui.online_music.search_discover": "開啟官方歌單入口",
