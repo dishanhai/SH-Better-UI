@@ -2,7 +2,31 @@
 <html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SHBUI · Apple Music 授权</title>
 <style>
-:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{margin:0;background:#16161a;color:#f5f5f7}main{max-width:620px;margin:10vh auto;padding:32px}h1{font-size:32px;letter-spacing:-.04em}p{line-height:1.7;color:#b9b9c2}button{font:inherit;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:#fc3c5b;color:white;margin:8px 8px 8px 0}button.secondary{background:#303039}button:disabled{opacity:.45;cursor:default}input:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:4px}#status{min-height:3em;color:#fff}a{color:#ff8195}.note{font-size:14px}#cancel{display:none}
+:root{color-scheme:light dark;font:16px system-ui,sans-serif}body{margin:0;background:#16161a;color:#f5f5f7}main{max-width:850px;margin:4vh auto;padding:clamp(16px,4vw,32px)}h1{font-size:32px;letter-spacing:-.04em}p{line-height:1.7;color:#b9b9c2}button{font:inherit;border:0;border-radius:10px;padding:12px 20px;cursor:pointer;background:#fc3c5b;color:white;margin:8px 8px 8px 0}button.secondary{background:#303039}button:disabled{opacity:.45;cursor:default}input:focus-visible,select:focus-visible,button:focus-visible,a:focus-visible{outline:3px solid #fff;outline-offset:4px}#status{min-height:3em;color:#fff}a{color:#ff8195}.note{font-size:14px}#cancel{display:none}
+
+input,select{font:inherit;min-height:2.3rem;padding:0 .65rem;border:1px solid #4d4d58;border-radius:8px;background:#202025;color:inherit;max-width:88%}
+section{border-top:1px solid #383841;padding:1.1rem 0;margin-top:1.2rem}
+summary{cursor:pointer;color:#c5c5cc}
+.catalog-controls{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.catalog-recommendation-section{border:0;margin:.75rem 0 1.5rem;padding:0}
+.catalog-recommendation-section h3{margin:.65rem 0 .4rem}
+.catalog-controls form{display:flex;flex-wrap:wrap;gap:.5rem;align-items:center}
+.catalog-hero{display:flex;gap:clamp(1rem,4vw,2rem);align-items:center;margin:1rem 0}
+.catalog-hero h3{font-size:clamp(1.45rem,5vw,2.55rem);margin:.25rem 0;overflow-wrap:anywhere}
+.catalog-art{display:inline-grid;place-items:center;background:#36323b;object-fit:cover;width:40px;height:40px;border-radius:8px;color:#fbb1c1}
+.catalog-cover{width:clamp(74px,25vw,180px);height:auto;aspect-ratio:1;flex-shrink:0;border-radius:14px}
+.catalog-cards{list-style:none;display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,145px),1fr));gap:.7rem;padding:0}
+button.catalog-card{display:grid;gap:.5rem;text-align:left;align-content:start;width:100%;height:100%;margin:0;padding:.75rem;overflow-wrap:anywhere}
+.catalog-card .catalog-art{width:100%;height:auto;aspect-ratio:1}
+.catalog-track{display:grid;grid-template-columns:40px minmax(0,1fr);grid-template-rows:auto auto;text-align:left;column-gap:.7rem;align-items:center;overflow-wrap:anywhere;min-width:0}
+.catalog-track .catalog-art{grid-row:1/4}
+.catalog-track strong,.catalog-track small{grid-column:2}
+.catalog-tracks{padding-left:1.4rem}
+.catalog-tracks li{padding:.18rem 0}
+button.catalog-row-play{margin:0;width:100%;display:flex;align-items:center;justify-content:space-between;gap:.45rem;padding:.4rem .65rem;background:#242429}
+.catalog-track small,.catalog-card small,.catalog-track-end small{color:#c0bcc6}
+.catalog-track-end{display:flex;align-items:center;gap:.75rem;font-variant-numeric:tabular-nums;flex-shrink:0}
+button.catalog-row-play:not(:disabled):hover,button.catalog-card:hover{background:#41404a}
 </style></head><body><main>
 <h1>连接你的 Apple Music</h1>
 <p>点击后将在 Apple 官方授权窗口登录你自己的账户。SHBUI 不收集 Apple 密码或验证码。</p>
@@ -11,10 +35,8 @@
 <p class="note">这一步只授权 MusicKit 浏览器会话，不代表游戏内完整播放已可用。Apple Music 订阅、地区和播放宿主仍需单独验证。</p>
 <p class="note">模组不会收到或保存 Music User Token；Apple 的 MusicKit 和浏览器管理登录状态。若不希望保留授权，请先点“断开 Apple Music”，再关闭此页。关闭游戏连接不会自动撤销 Apple 授权。</p>
 <section aria-labelledby="playback-heading">
-<h2 id="playback-heading">浏览器播放验证</h2>
-<p class="note">使用 Apple Music 目录歌曲 ID（不是歌曲网址）。先加载，再点击播放。声音由本浏览器播放，不进入 Java 音频管线；订阅、地区、DRM 和浏览器支持由 Apple 验证。请保持此页打开。</p>
-<label for="song-id">目录歌曲 ID</label> <input id="song-id" inputmode="numeric" maxlength="30" autocomplete="off">
-<button id="load-song" disabled>加载歌曲</button>
+<h2 id="playback-heading">浏览器播放器</h2>
+<p class="note">声音由本浏览器播放，不进入 Java 音频管线。订阅、地区、DRM 和浏览器支持由 Apple 验证。</p>
 <button id="play-song" disabled>播放 / 继续</button><button id="pause-song" class="secondary" disabled>暂停</button>
 <p id="playback-status" role="status" aria-live="polite">请先完成 Apple Music 授权；不会自动播放。</p>
 <p id="playback-time">0 / 0 秒</p>
@@ -24,6 +46,27 @@
 <button id="apply-rate" disabled>应用倍率</button></p>
 <p id="rate-status" role="status" aria-live="polite">倍率不可用：请先授权并加载歌曲。</p>
 <p class="note">倍率通过官方 MusicKit API 设置。浏览器可能拒绝或限制倍率；以实测回读值为准，不保证所有浏览器保留音高。</p>
+<details>
+<summary>按目录歌曲 ID 加载单曲</summary>
+<label for="song-id">目录歌曲 ID</label> <input id="song-id" inputmode="numeric" maxlength="30" autocomplete="off">
+<button id="load-song" disabled>加载歌曲</button>
+</details>
+</section>
+<section id="catalog" aria-labelledby="catalog-heading">
+<h2 id="catalog-heading">探索 Apple Music</h2>
+<p class="note">查看艺人、代表专辑和热门歌单。地区/曲风榜单和艺人精选来自公开目录。登录后，点击「为你推荐」才会向 Apple Music 请求个人推荐。浏览不会改变当前播放。</p>
+<p id="catalog-status" role="status" aria-live="polite"></p>
+<div id="catalog-browse">
+<div class="catalog-controls">
+<form><label for="catalog-term">艺人或歌单</label> <input id="catalog-term" type="search" maxlength="100" required disabled>
+<button type="submit" disabled>搜索</button></form>
+<button type="button" id="catalog-charts" class="secondary" disabled>浏览热门歌单</button>
+<button type="button" id="catalog-recommendations" class="secondary" disabled>为你推荐</button>
+</div>
+<div id="catalog-genre-filter" hidden><label for="catalog-genre">曲风</label>
+<select id="catalog-genre"><option value="">全部曲风</option></select></div>
+<div id="catalog-results"></div>
+</div><div id="catalog-detail" hidden></div>
 </section>
 <a href="https://support.apple.com/apple-music" target="_blank" rel="noopener noreferrer">Apple Music 帮助</a>
 </main><script type="module" src="/login.mjs"></script></body></html>

@@ -113,6 +113,6 @@ Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, co
 ### 后续浏览器播放契约切片
 
 现已在同一 companion 增加 catalog 歌曲 ID 加载、显式点击播放、暂停和秒级 seek，
-详见 [Apple Music 浏览器播放契约切片](APPLE_MUSICKIT_BROWSER_PLAYBACK.md)。
+详见 [Apple Music 浏览器播放契约切片](APPLE_MUSICKIT_BROWSER_PLAYBACK.md)及[浏览器目录详情与顺序播放](APPLE_MUSICKIT_CATALOG_DETAILS.md)。
 这推进了浏览器控制层，但未改变以上真实凭证/origin/订阅/DRM 验收门禁；
 不代表 Java MP3 音源、游戏账户入口或真实 Apple 播放已经完成。

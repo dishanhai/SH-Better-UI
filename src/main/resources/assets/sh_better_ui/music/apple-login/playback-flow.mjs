@@ -6,8 +6,9 @@ export function createPlaybackFlow(music, sdk, report) {
   let message = 'IDLE';
   let songId = '';
   let errors = 0;
+  let selectedIndex = null;
   const events = ['playbackStateDidChange', 'playbackTimeDidChange',
-    'playbackDurationDidChange', 'playbackRateDidChange', 'authorizationStatusDidChange', 'mediaPlaybackError'];
+    'playbackDurationDidChange', 'playbackRateDidChange', 'authorizationStatusDidChange', 'mediaPlaybackError', 'nowPlayingItemDidChange', 'queuePositionDidChange'];
   function rateSupported() {
     if (closed || !ready || !music.isAuthorized || !Number.isFinite(music.playbackRate)) return false;
     for (let object = music; object; object = Object.getPrototypeOf(object)) {
@@ -18,13 +19,13 @@ export function createPlaybackFlow(music, sdk, report) {
   }
   function snapshot() {
     return { authorized: music.isAuthorized === true, busy: pending, ready,
-      message, songId, supportsPlaybackRate: rateSupported(), playbackRate: Number.isFinite(music.playbackRate) ? music.playbackRate : 1, state: sdk.PlaybackStates[music.playbackState] ?? 'unknown',
+      message, songId, nowPlaying: music.isAuthorized === true ? music.nowPlayingItem?.title ?? '' : '', supportsPlaybackRate: rateSupported(), playbackRate: Number.isFinite(music.playbackRate) ? music.playbackRate : 1, state: sdk.PlaybackStates[music.playbackState] ?? 'unknown',
       seconds: Number.isFinite(music.currentPlaybackTime) ? music.currentPlaybackTime : 0,
       duration: Number.isFinite(music.currentPlaybackDuration) ? music.currentPlaybackDuration : 0 };
   }
   function update() {
     if (closed) return;
-    if (!music.isAuthorized) { ready = false; songId = ''; message = 'LOGIN_REQUIRED'; }
+    if (!music.isAuthorized) { ready = false; songId = ''; selectedIndex = null; message = 'LOGIN_REQUIRED'; }
     report(snapshot());
   }
   const error = () => { errors++; message = 'FAILED'; update(); };
@@ -38,15 +39,29 @@ export function createPlaybackFlow(music, sdk, report) {
       // Call SDK before the first await, preserving the Play button's user gesture.
       await operation();
       message = errors === previousErrors ? 'OBSERVED' : 'FAILED'; // Only SDK state, not Promise resolution, can say "playing".
-    } catch { message = 'FAILED'; }
+    } catch { if (message !== 'ORDER_UNAVAILABLE' && message !== 'CLICK_TO_START') message = 'FAILED'; }
     finally { pending = false; update(); }
+  }
+  async function startSelected() {
+    try {
+      await music.changeToMediaAtIndex(selectedIndex);
+      if (music.nowPlayingItemIndex === selectedIndex && music.nowPlayingItem?.id === songId) {
+        selectedIndex = null;
+      } else if (!closed && music.isAuthorized && message !== 'FAILED') {
+        message = 'CLICK_TO_START';
+        throw new Error('SDK has not observed the selected item');
+      }
+    } catch (error) {
+      if (error?.name === 'NotAllowedError' && message !== 'FAILED') message = 'CLICK_TO_START';
+      throw error;
+    }
   }
   return {
     snapshot,
     prepare(id) {
       if (closed || pending) return Promise.resolve();
       if (!/^[0-9]{1,30}$/.test(id)) { message = 'INVALID_ID'; update(); return Promise.resolve(); }
-      ready = false; songId = '';
+      ready = false; songId = ''; selectedIndex = null;
       return run('LOADING', async () => {
         const queue = await music.setQueue({ song: id, startPlaying: false });
         // v3 returns undefined when playback is unsupported. Do not enable Play then.
@@ -55,7 +70,35 @@ export function createPlaybackFlow(music, sdk, report) {
         songId = id;
       });
     },
-    play() { return ready ? run('STARTING', () => music.play()) : Promise.resolve(); },
+    playOrdered(songs, index) {
+      if (closed || pending) return Promise.resolve();
+      const off = sdk.PlayerShuffleMode?.off, noRepeat = sdk.PlayerRepeatMode?.none;
+      if (!Array.isArray(songs) || songs.length < 1 || songs.length > 1000 ||
+          !songs.every(id => typeof id === 'string' && /^[0-9]{1,30}$/.test(id)) ||
+          !Number.isInteger(index) || index < 0 || index >= songs.length || off === undefined) {
+        message = 'ORDER_UNAVAILABLE'; update(); return Promise.resolve();
+      }
+      ready = false; songId = ''; selectedIndex = null;
+      const ids = [...songs];
+      return run('LOADING', async () => {
+        music.shuffleMode = off;
+        const queue = await music.setQueue({ songs: ids, startPlaying: false, repeatMode: noRepeat });
+        if (closed || !music.isAuthorized) return;
+        // v3 may filter unplayable resources. Never let an index silently start a different song.
+        if (music.shuffleMode !== off || (noRepeat !== undefined && music.repeatMode !== undefined && music.repeatMode !== noRepeat) ||
+            !Array.isArray(queue?.items) || queue.items.length !== ids.length ||
+            queue.items.some((item, position) => item.id !== ids[position])) {
+          message = 'ORDER_UNAVAILABLE'; throw new Error('SDK queue differs');
+        }
+        if (message === 'FAILED') throw new Error('SDK playback error');
+        ready = true; songId = ids[index]; selectedIndex = index;
+        await startSelected();
+      });
+    },
+    play() {
+      if (!ready) return Promise.resolve();
+      return run('STARTING', () => selectedIndex === null ? music.play() : startSelected());
+    },
     pause() { return run('PAUSING', () => music.pause()); },
     seek(seconds) {
       const duration = music.currentPlaybackDuration;

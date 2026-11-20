@@ -37,6 +37,13 @@ class AppleMusicBrowserLoginTest {
             assertTrue(playback.headers().firstValue("Content-Type").orElseThrow().startsWith("text/javascript"));
             assertTrue(playback.body().contains("createPlaybackFlow"));
             assertFalse(playback.body().contains("header.payload.signature"));
+            for (String name : new String[]{ "catalog-flow", "catalog-view" }) {
+                var asset=get(login,"/" + name + ".mjs",false);
+                assertEquals(200,asset.statusCode());
+                assertTrue(asset.headers().firstValue("Content-Type").orElseThrow().startsWith("text/javascript"));
+                assertFalse(asset.body().contains("header.payload.signature"));
+            }
+            assertTrue(page.body().contains("catalog-browse"));
             assertEquals(400,get(login,"/config?token=bad",true).statusCode());
         }
     }
