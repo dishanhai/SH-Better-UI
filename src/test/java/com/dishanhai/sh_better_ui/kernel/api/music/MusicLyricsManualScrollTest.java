@@ -16,9 +16,11 @@ class MusicLyricsManualScrollTest {
         offset.setAccessible(true);
         offset.setDouble(view, 85);
         view.model().focus(0);
+        assertTrue(view.browsing());
 
         view.playback(6_000, true, true);
-        assertTrue(view.browsing());
+        assertFalse(view.browsing());
+        assertTrue(view.model().browsing());
         assertEquals(0, view.model().focusedIndex());
         assertEquals(1, view.model().activeIndex());
         assertTrue(view.model().seekTarget(1).isEmpty());
@@ -26,6 +28,8 @@ class MusicLyricsManualScrollTest {
         view.playback(2_000, true, false);
         assertEquals(85, offset.getDouble(view));
         assertTrue(view.browsing());
+        assertEquals(0, view.model().focusedIndex());
+        assertEquals(4_000, view.model().seekTarget(1).orElseThrow());
         view.follow();
         assertFalse(view.browsing());
         assertEquals(-1, view.model().focusedIndex());

@@ -215,19 +215,31 @@ class OnlineMusicAccountViewTest {
         view.suspend();
     }
 
-    @Test void libraryAuthRoundTripPreservesCompletedListAndGuestControlsNeverOverlapPager() throws Exception {
+    @Test void libraryAuthRoundTripPreservesCompletedListAndGuestControlsStayClearOfFooter() throws Exception {
         var f=new Fixture();f.view.layout(new Host());call(f.view,"enterLibrary");
-        var list=new OnlinePlaylist("netease","saved","Saved",1);f.playlists.get("netease").complete(List.of(list));call(f.view,"pollOperations");write(f.view,"libraryPage",3);
+        var playlists = new ArrayList<OnlinePlaylist>();
+        for (int index = 0; index < 40; index++) {
+            playlists.add(new OnlinePlaylist("netease", "saved_" + index, "Saved " + index, 1));
+        }
+        f.playlists.get("netease").complete(playlists);call(f.view,"pollOperations");write(f.view,"libraryPage",3);
+        var scroll = (OnlineMusicScrollRegion) read(f.view, "libraryScroll");
+        scroll.setFocused(true);
+        assertTrue(scroll.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_DOWN, 0, 0));
+        double savedOffset = scroll.viewportOffset();
+        assertTrue(savedOffset > 0);
         var pageField=f.view.getClass().getDeclaredField("page");pageField.setAccessible(true);
         Object accounts=Arrays.stream(pageField.getType().getEnumConstants()).filter(v->v.toString().equals("ACCOUNTS")).findFirst().orElseThrow();
         call(f.view,"show",new Class<?>[]{pageField.getType()},accounts);open(f,"qq");call(f.view,"enterLibrary");
-        assertEquals(3,read(f.view,"libraryPage"));assertEquals(List.of(list),read(f.view,"playlists"));
+        assertEquals(3,read(f.view,"libraryPage"));assertEquals(playlists,read(f.view,"playlists"));
+        assertEquals(savedOffset, scroll.viewportOffset());
         for(int[] size:new int[][]{{208,240},{392,269},{560,264}}){
             var guest=new Fixture();guest.signedIn.clear();var host=new Host();host.width=size[0];host.height=size[1];guest.view.layout(host);call(guest.view,"enterLibrary");
             var login=(com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl)read(guest.view,"libraryLogin");
             var layout=(com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicLayout)read(guest.view,"layout");
             assertTrue(login.visible);assertTrue(login.getY()+login.getHeight()<=layout.pager().y());
-            assertFalse(((net.minecraft.client.gui.components.AbstractWidget)read(guest.view,"libraryPrevious")).visible);
+            var guestScroll = (OnlineMusicScrollRegion) read(guest.view, "libraryScroll");
+            assertFalse(guestScroll.active);
+            assertFalse(((net.minecraft.client.gui.components.AbstractWidget)read(guest.view,"libraryContinuationRetry")).visible);
             for(Object item:(List<?>)read(guest.view,"navigation")){var w=(net.minecraft.client.gui.components.AbstractWidget)item;assertTrue(w.getY()+w.getHeight()<=layout.navigation().bottom());}
         }
     }
