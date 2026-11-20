@@ -91,11 +91,17 @@ public final class OnlineMusicScreen {
         ServiceUnavailable(RuntimeException cause) { super(cause); }
     }
 
+    static GuiEventListener restorePlaylistDiscovery(PreviewContext context, OnlineMusicViewImpl origin,
+                                                      String source, String link) {
+        if (!(context instanceof Context nativeContext)) return origin.restorePlaylistDiscovery(source, link);
+        return nativeContext.owner.view instanceof OnlineMusicViewImpl next ? next.restorePlaylistDiscovery(source, link) : null;
+    }
+
     static GuiEventListener restoreExternalSearch(PreviewContext context, OnlineMusicViewImpl origin,
-                                                   OnlineMusicViewImpl.ExternalSearchBookmark bookmark) {
+                                                   OnlineMusicViewImpl.ExternalSearchBookmark bookmark, boolean madeForYou) {
         if (context instanceof Context nativeContext && nativeContext.owner.view instanceof OnlineMusicViewImpl next
-                && next != origin) return next.restoreExternalSearch(bookmark);
-        return origin.spotifySearchControl();
+                && next != origin) return next.restoreExternalSearch(bookmark, madeForYou);
+        return origin.spotifyExternalControl(madeForYou);
     }
 
     /** The dedicated player owns its chrome; there is no native header over the artwork stage. */

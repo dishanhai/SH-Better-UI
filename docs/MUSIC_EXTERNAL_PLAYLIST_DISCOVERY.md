@@ -1,0 +1,12 @@
+# External playlist discovery
+
+**Spotify**: On the music Search page, **Spotify Mixes ↗** opens [Made For You](https://open.spotify.com/genre/0JQ5DAt0tbjZptfcdMSKl3) in the default browser. It does not send the current search, Minecraft account details, or music credentials. The separate **Spotify ↗** action still sends the entered search term only when selected. Both use Minecraft's Web Links setting and the existing link confirmation; backing out allows the in-game search draft and completed matching results to be restored. Open a mix, select a song, and turn off Shuffle/Smart Shuffle on Spotify for sequential playback there. SHBUI does not read the list, control its queue, or claim it is playable in-game. Spotify's [API access changes](https://developer.spotify.com/blog/2024-11-27-changes-to-the-web-api) exclude new use cases from recommendations, featured playlists, and algorithmic/Spotify-owned editorial playlists. [Development Mode playlist items](https://developer.spotify.com/documentation/web-api/tutorials/february-2026-migration-guide) also require the user to own or collaborate on the playlist.
+
+**Listen 1**: SHBUI can open a player-selected local Listen 1 backup and display supported saved tracks. Listen 1 is an aggregator; upstream recommendations belong to the selected service. The import is not a discovery API or a live synchronization with the Listen 1 UI. For any playlist saved to a backup, only supported source IDs can be played in-game, in the order retained by the importer. No cross-provider recommendation feed, credential transfer, or playback URL extraction is used by this handoff.
+
+## Manual check
+
+- On a 208 × 240 logical viewport and an expanded viewport, confirm Spotify Mixes stays reachable beside the native providers and does not intrude on the search or history actions. Test both keyboard and pointer.
+- Play an in-game track, enter a draft search, then open Mixes with link confirmations enabled. Cancel once and confirm that focus returns to Mixes without resubmitting the search. Repeat with Web Links disabled and confirm no browser opens.
+- With Web Links enabled, open Mixes. Verify the official Spotify page contains the signed-in account's mixes and the selected mix plays in Spotify. In-game playback and queue are not linked to Spotify.
+- Import a Listen 1 backup separately; check it is displayed as an import, not personalized recommendations, and that the index of the chosen supported track is preserved.

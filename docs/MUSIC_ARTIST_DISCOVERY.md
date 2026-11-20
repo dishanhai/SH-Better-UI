@@ -1,0 +1,17 @@
+# Provider artist discovery
+
+NetEase and QQ Music song metadata keeps a provider artist identifier when the response contains one. A matching name is not enough: legacy tracks, guest credits and old queue checkpoints without a usable identifier remain display-only. Co-artists with IDs stay in provider order. Existing queue checkpoints are unchanged.
+
+Call `OnlineMusicPlayer.supportsArtistTracks(source)` and, for a contributor from `OnlineTrack.artists()`, call `artistTracks(artist, page)`. It uses the existing provider song search and filters by ID, preserving the response order. Render this as **songs found**, not a popularity ranking, Top Songs, or a complete artist catalogue. A filtered page can show few or no songs despite `mayHaveMore`; that flag indicates a full upstream page, not a guarantee. Requests do not resolve audio, and changing source credentials invalidates pending results. For sequential playback, pass only the displayed tracks in list order with the selected zero-based index to the queue. Honor an explicit sequential-play action independently of the user’s previous shuffle or repeat-one mode. Do not claim unloaded pages are queued.
+
+There is no built-in provider recommendation or album-curation feed here. The documented [QQ Music discovery integration](https://github.com/tencentmusic/qqmusic-skills) and [NetEase discovery integration](https://github.com/NetEase/skills) require separate developer authorization. This implementation adds no endpoint, account permission, credentials or bypass.
+
+## Native detail page
+
+For a Now Playing track with a supported provider artist identity, the More menu replaces the name-only **Search artist** action with **View artist: name** for the first identified contributor. Legacy/unidentified tracks retain the search fallback. This bounded entry does not claim that text credits are verified artists. The page shows that artist, source, current page, a large play action, ordered song rows, explicit previous/next page and retry. No artist photograph, representative album collection or popularity rank is invented.
+
+Play starts at the selected zero-based row in the **entire loaded page**, including rows currently scrolled out of view, preserving duplicate entries. It does not fetch subsequent pages. Native `OnlineMusicQueue.replace(tracks, index, mode)` commits the collection and sequential mode under the session lock after validation/start acceptance; `supportsModeReplacement()` keeps older third-party queues disabled rather than pretending to apply sequential mode. Existing two-argument replace retains its original mode behavior. A rejected selection leaves the old queue mode/order unchanged.
+
+Back/Escape cancels the pending page observation and restores its source page or exact immersive mode. Entering another route, closing/suspending, or requesting another artist/page cancels the prior future; late results are not observed. A failure does not auto-retry or skip tracks. Playback errors temporarily replace rows with feedback while keeping loaded data and the hero play action available to retry. The compact layout keeps a song row, pagination and a short source/page label at 208×240.
+
+Focused offline verification: native provider/model/queue and view route tests, 91 on NeoForge 1.21.1 and 90 on 26.1.2. These are targeted compilation/JUnit checks, not a full Gradle build, live provider acceptance or game visual validation.

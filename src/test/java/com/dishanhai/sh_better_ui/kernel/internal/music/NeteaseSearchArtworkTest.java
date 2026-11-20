@@ -17,7 +17,7 @@ class NeteaseSearchArtworkTest {
     private static JsonObject json(String s) { return JsonParser.parseString(s).getAsJsonObject(); }
     private static final String SEARCH = """
             {"code":200,"result":{"songs":[
-              {"id":2,"name":"First","duration":1234,"album":{"name":"Original","picId":20},"artists":[{"name":"Singer"}]},
+              {"id":2,"name":"First","duration":1234,"album":{"name":"Original","picId":20},"artists":[{"id":41,"name":"Singer"}]},
               {"id":1,"name":"Second","album":{"picUrl":"https://p1.music.126.net/existing.jpg"}},
               {"id":3,"name":"Third","album":{"picId":30}},
               {"id":2,"name":"Duplicate search occurrence","album":{"picId":20}}
@@ -45,6 +45,7 @@ class NeteaseSearchArtworkTest {
         assertEquals(List.of("2", "1", "3", "2"), tracks.stream().map(t -> t.id()).toList());
         assertEquals("First", tracks.get(0).title()); assertEquals("Original", tracks.get(0).album());
         assertEquals("Singer", tracks.get(0).artist()); assertEquals(1234, tracks.get(0).durationMs());
+        assertEquals("41", tracks.get(0).artists().get(0).id());
         assertEquals("2", tracks.get(0).mediaId()); assertEquals("netease", tracks.get(0).source());
         assertEquals("https://p1.music.126.net/first.jpg?param=512y512", tracks.get(0).artworkUrl());
         assertEquals("https://p1.music.126.net/existing.jpg?param=512y512", tracks.get(1).artworkUrl());

@@ -17,6 +17,11 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     List<String> sources();
     /** One-based page, twenty results per page. Cancelling the future interrupts the request. */
     CompletableFuture<List<OnlineTrack>> search(String source, String query, int page);
+    /** Whether this source can find songs by provider artist identity. */
+    default boolean supportsArtistTracks(String source) { return false; }
+    /** One-based page of provider search results, filtered by artist identity without reranking.
+     * This is neither a best-of list nor a complete catalogue. No audio is resolved by this request. */
+    default CompletableFuture<OnlineArtistTracks> artistTracks(OnlineArtist artist, int page) { return unsupported(); }
     /** Replaces credentials and stops playback. Saved only when explicitly enabled for this source. */
     void credentials(String source, String cookie);
     /** Opt in before or after login/import; current credentials are saved immediately.
@@ -30,6 +35,9 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     default CompletableFuture<OnlineMusicAccount> account(String source) { return unsupported(); }
     default CompletableFuture<List<OnlinePlaylist>> playlists(String source, int page) { return unsupported(); }
     default CompletableFuture<List<OnlineTrack>> playlist(OnlinePlaylist playlist, int page) { return unsupported(); }
+    default boolean supportsPlaylistDetail(String source) { return false; }
+    /** Read an ordered snapshot under the source's current account. No audio is resolved. */
+    default CompletableFuture<OnlinePlaylistDetail> playlistDetail(String source, String playlistId) { return unsupported(); }
     default CompletableFuture<List<OnlineTrack>> liked(String source, int page) { return unsupported(); }
     default CompletableFuture<Void> like(OnlineTrack track, boolean liked) { return unsupported(); }
     /** Whether this provider implements verified write requests for the liked collection. */

@@ -118,8 +118,13 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             throw (RuntimeException) error;
         }
         var obsolete = applyCredentials(sourceId, valid, failedRead);
-        stop();
+        if (failedRead == null) stop(); // Explicit credential changes keep their session-wide stop behavior.
+        else stopPlaybackForRejectedAccount(sourceId);
         return obsolete;
+    }
+    /** Called under the session lock; include pending audio using the rejected account snapshot. */
+    private void stopPlaybackForRejectedAccount(String sourceId) {
+        if (track != null && sourceId.equals(track.source())) stop();
     }
     private void saveCredentials(String sourceId, String cookie) throws java.io.IOException {
         long next = credentialStore.replaceIfCurrent(sourceId, cookie, persistenceVersions.getOrDefault(sourceId, -1L));
@@ -244,6 +249,26 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             return combined.values().stream().limit(20).toList();
         });
     }
+    @Override public synchronized boolean supportsArtistTracks(String sourceId) {
+        requireOpen();
+        return source(sourceId).supportsArtistTracks();
+    }
+    @Override public synchronized CompletableFuture<OnlineArtistTracks> artistTracks(OnlineArtist artist, int page) {
+        requireOpen(); Objects.requireNonNull(artist); checkPage(page);
+        var provider = source(artist.source()).requestSnapshot();
+        if (!provider.supportsArtistTracks())
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("Artist songs unavailable"));
+        // Respect the existing search and authorization path, without local autocomplete mixing or a new endpoint.
+        return request(artist.source(), false, () -> {
+            int limit = 20;
+            var raw = List.copyOf(provider.search(artist.name(), page, limit));
+            var matches = raw.stream().limit(limit)
+                    .filter(song -> artist.source().equals(song.source()) && song.artists().stream()
+                            .anyMatch(contributor -> artist.id().equals(contributor.id())))
+                    .toList();
+            return new OnlineArtistTracks(matches, page < 1000 && raw.size() >= limit);
+        });
+    }
     @Override public synchronized CompletableFuture<OnlineMusicAccount> account(String sourceId) {
         var provider = source(sourceId).requestSnapshot(); return request(sourceId, true, provider::account);
     }
@@ -254,6 +279,20 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     @Override public synchronized CompletableFuture<List<OnlineTrack>> playlist(OnlinePlaylist playlist, int page) {
         Objects.requireNonNull(playlist); checkPage(page); var provider = source(playlist.source()).requestSnapshot();
         return request(playlist.source(), true, () -> List.copyOf(provider.playlist(playlist, page, 20)));
+    }
+    @Override public synchronized boolean supportsPlaylistDetail(String sourceId) {
+        requireOpen(); return source(sourceId).supportsPlaylistDetail();
+    }
+    @Override public synchronized CompletableFuture<OnlinePlaylistDetail> playlistDetail(String sourceId, String playlistId) {
+        Objects.requireNonNull(playlistId);
+        var provider = source(sourceId).requestSnapshot();
+        return request(sourceId, true, () -> {
+            var detail = provider.playlistDetail(playlistId);
+            if (!sourceId.equals(detail.playlist().source()) || !playlistId.equals(detail.playlist().id())) {
+                throw new java.io.IOException("Playlist identity changed");
+            }
+            return detail;
+        });
     }
     @Override public synchronized CompletableFuture<List<OnlineTrack>> liked(String sourceId, int page) {
         checkPage(page); var provider = source(sourceId).requestSnapshot();
@@ -316,7 +355,9 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                     if (error instanceof OnlineMusicSource.LoginRequired) {
                         searches.remove(result);
                         try { obsolete = replaceCredentials(sourceId, "", false, result); } catch (java.io.UncheckedIOException ignored) {
-                            source(sourceId).credentials(""); obsolete = applyCredentials(sourceId, "", result); stop();
+                            source(sourceId).credentials("");
+                            obsolete = applyCredentials(sourceId, "", result);
+                            stopPlaybackForRejectedAccount(sourceId);
                         }
                     }
                 }
@@ -610,7 +651,12 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             synchronized (OnlinePlayerSession.this) { return new Snapshot(tracks, index, undoTracks != null, order.mode(),
                     order.canPrevious(), order.canNext()); }
         }
-        @Override public void replace(List<OnlineTrack> next, int selected) {
+        @Override public boolean supportsModeReplacement() { return true; }
+        @Override public void replace(List<OnlineTrack> next, int selected) { replaceContext(next, selected, null); }
+        @Override public void replace(List<OnlineTrack> next, int selected, Mode mode) {
+            replaceContext(next, selected, Objects.requireNonNull(mode));
+        }
+        private void replaceContext(List<OnlineTrack> next, int selected, Mode mode) {
             synchronized (OnlinePlayerSession.this) {
                 requireOpen();
                 if (selected < 0 || selected >= next.size()) return;
@@ -619,6 +665,7 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
                 // Start before committing the collection so a rejected selection preserves it.
                 play(copy.get(selected));
                 tracks = copy; index = selected; undoTracks = null;
+                if(mode != null) order.mode(mode);
                 order.reset(tracks.size(), index); attachedGeneration = generation;
                 watch();
             }

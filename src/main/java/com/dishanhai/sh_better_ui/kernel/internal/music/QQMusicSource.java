@@ -128,6 +128,44 @@ final class QQMusicSource implements OnlineMusicSource {
                 "onlysong", 0, "song_begin", (page - 1) * limit, "song_num", limit), Map.of("ct", "24", "cv", "0"), current);
         return parseSongList(data, limit);
     }
+    @Override public boolean supportsPlaylistDetail() { return true; }
+    @Override public OnlinePlaylistDetail playlistDetail(String playlistId) throws Exception {
+        if (!playlistId.matches("[1-9][0-9]{0,17}")) throw new IllegalArgumentException("Invalid playlist");
+        var current = credentialsSnapshot();
+        var tracks = new ArrayList<OnlineTrack>();
+        var fullPageIds = new HashSet<List<String>>();
+        int total = -1;
+        String name = "";
+        do {
+            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException("Playlist request cancelled");
+            var page = rpc("music.srfDissInfo.DissInfo", "CgiGetDiss", Map.of("disstid", Long.parseLong(playlistId),
+                    "onlysong", 0, "song_begin", tracks.size(), "song_num", 100), Map.of("ct", "24", "cv", "0"), current);
+            var info = object(page, "dirinfo");
+            String count = text(page, "total_song_num");
+            String echoedId = text(info, "id"), alternateId = text(info, "tid");
+            if (!playlistId.equals(echoedId.isEmpty() ? alternateId : echoedId)
+                    || !alternateId.isEmpty() && !playlistId.equals(alternateId) || !count.matches("[0-9]{1,4}")) {
+                throw new IOException("QQ playlist order could not be verified");
+            }
+            int reported = Integer.parseInt(count);
+            if (reported > OnlinePlaylistDetail.MAX_TRACKS || total >= 0 && total != reported) {
+                throw new IOException("QQ playlist size changed or is too large");
+            }
+            total = reported;
+            if (tracks.isEmpty()) name = first(info, "title", "dissname", "name");
+            if (!page.has("songlist") || !page.get("songlist").isJsonArray()) throw new IOException("QQ song list missing");
+            int expected = Math.min(100, total - tracks.size());
+            var songs = parseSongList(page, 100);
+            if (array(page, "songlist").size() != expected || songs.size() != expected) {
+                throw new IOException("QQ playlist song details are incomplete");
+            }
+            if (expected == 100 && !fullPageIds.add(songs.stream().map(OnlineTrack::id).toList())) {
+                throw new IOException("QQ repeated an entire playlist page");
+            }
+            tracks.addAll(songs);
+        } while (tracks.size() < total);
+        return new OnlinePlaylistDetail(new OnlinePlaylist(id(), playlistId, name, total), tracks);
+    }
     @Override public List<OnlineTrack> liked(int page, int limit) throws Exception {
         checkPage(page, limit);
         var current = credentialsSnapshot();
@@ -183,6 +221,7 @@ final class QQMusicSource implements OnlineMusicSource {
         }
         return null;
     }
+    @Override public boolean supportsArtistTracks() { return true; }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
         try {
             var data = rpc("music.search.SearchCgiService", "DoSearchForQQMusicDesktop",
@@ -208,9 +247,15 @@ final class QQMusicSource implements OnlineMusicSource {
             if (!mid.matches("[A-Za-z0-9]{1,40}")) continue;
             String media = text(object(song, "file"), "media_mid");
             if (media.isBlank()) media = text(song, "strMediaMid");
+            var singers = array(song, "singer");
             out.add(new OnlineTrack("qq", mid, media.isBlank() ? mid : media,
-                    first(song, "title", "name", "songname"), artists(array(song, "singer")),
-                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"), number(song, "interval") * 1000, albumCover(song)));
+                    first(song, "title", "name", "songname"), artists(singers),
+                    song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"),
+                    number(song, "interval") * 1000, albumCover(song),
+                    artistIdentities(singers, "qq", artist -> {
+                        String artistMid = first(artist, "mid", "singermid");
+                        return artistMid.matches("[A-Za-z0-9]{1,40}") && !artistMid.equals("0") ? artistMid : "";
+                    })));
         }
         return List.copyOf(out);
     }
