@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
+import com.dishanhai.sh_better_ui.client.api.UiScreen;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
@@ -13,6 +14,7 @@ import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Objects;
 import static com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFrontendRoutes.Page;
@@ -33,6 +35,9 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private final MusicFrontendLibraryPanel library;
     private final MusicFrontendHistoryPanel history;
     private final MusicFrontendSoundPanel sound;
+    // Route instances correspond to distinct history entries even when their destinations are equal.
+    private final IdentityHashMap<MusicFrontendRoutes.Route, MusicFrontendSoundPanel.ViewState> settingsReturns = new IdentityHashMap<>();
+    private MusicFrontendSoundPanel.ViewState settingsResize;
     private MusicTextControl historyShortcut;
     private final List<MusicTextControl> nav = new ArrayList<>(), rows = new ArrayList<>();
     private PreviewContext host;
@@ -80,6 +85,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     @Override public void layout(PreviewContext ctx) {
         if (closed) return;
         if (routes.current().page() == Page.SEARCH) rememberSearchFocus();
+        if (layout != null && layout.supported()) settingsResize = sound.resizeBookmark();
         host = ctx;
         if (mini != null) { mini.close(); mini = null; }
         layout = MusicFrontendLayout.compute(ctx.viewport(), MusicFrontendLayout.Route.valueOf(routes.current().page().name()), false);
@@ -91,7 +97,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             fallbackExit.setInk(INK);
         }
         if (!layout.supported()) return;
-        back = control(layout.back(), Component.translatable("gui.back"), () -> { if (routes.back()) changed(); else ctx.screen().onClose(); });
+        back = control(layout.back(), Component.translatable("gui.back"), () -> { if (!backFromRoute()) ctx.screen().onClose(); });
         back.setGlyphOnly(MusicTransportControl.Glyph.BACK);
         utility = control(layout.utility(), heading(Page.SETTINGS), () -> navigate(Page.SETTINGS));
         utility.setGlyphOnly(MusicControlRenderer.Icon.SETTINGS);
@@ -99,7 +105,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             var page = Page.valueOf(place.name());
             var tab = control(layout.tab(place), heading(page), () -> {
                 if (routes.current().page() == Page.SEARCH) rememberSearchFocus();
-                if (routes.select(page)) changed();
+                selectPrimary(page);
             });
             tab.setVariant(layout.mode() == MusicFrontendLayout.Mode.COMPACT
                     ? MusicTextControl.Variant.STACKED_NAVIGATION : MusicTextControl.Variant.NAVIGATION);
@@ -119,7 +125,8 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                 Component.translatable("sh_better_ui.online_music.operations.short_title"), () -> navigate(Page.HISTORY));
         historyShortcut.setInk(INK, MUTED);
         accounts.layout(ctx, area);
-        sound.mount(ctx, area);
+        sound.mount(ctx, area, back, utility);
+        if (ctx.screen() instanceof UiScreen screen) screen.onFocusChanged(sound::rememberFocus);
         library.mount(ctx,area);
         nowPlaying = MusicFrontendNowPlayingLayout.fit(area);
         nowLyrics = nowPlaying.usable() ? ctx.add(new MusicTransportControl(nowPlaying.lyrics(), heading(Page.LYRICS),
@@ -172,6 +179,8 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
                 () -> navigate(Page.NOW_PLAYING));
         refreshRows();
         restoreSearchFocus();
+        sound.restore(settingsResize);
+        settingsResize = null;
     }
 
     private MusicTextControl control(Bounds b, Component label, Runnable action) {
@@ -184,7 +193,27 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
     private void navigate(Page page) { navigate(MusicFrontendRoutes.Route.of(page)); }
     private void navigate(MusicFrontendRoutes.Route route) {
         if (routes.current().page() == Page.SEARCH) rememberSearchFocus();
-        if (routes.open(route)) changed();
+        if (route.page().primary()) { selectPrimary(route.page()); return; }
+        var origin = routes.current();
+        var state = origin.page() != Page.SETTINGS ? null
+                : (layout != null && layout.supported() ? sound.bookmark() : settingsResize);
+        if (!routes.open(route)) return;
+        if (state != null) settingsReturns.put(origin, state);
+        changed();
+        if (layout != null && layout.supported()) sound.focusEntry();
+    }
+    private void selectPrimary(Page page) {
+        if (!routes.select(page)) return;
+        settingsReturns.clear();
+        changed();
+    }
+    private boolean backFromRoute() {
+        if (!routes.back()) return false;
+        changed();
+        var state = settingsReturns.remove(routes.current());
+        if (layout != null && layout.supported()) sound.restore(state);
+        else settingsResize = state;
+        return true;
     }
     private void browseLibrary(String url) {
         var context = host;
@@ -207,6 +236,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         return player.sources().stream().filter(source -> source.equals("qq") || source.equals("netease")).distinct().toList();
     }
     private void changed() {
+        settingsResize = null;
         catalog.detach();
         library.routeChanged();
         history.routeChanged();
@@ -266,17 +296,11 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
             case DISCOVER -> {
                 var providers = discoveryProviders();
                 if (index < providers.size()) navigate(new MusicFrontendRoutes.Route(Page.DISCOVERY, providers.get(index), "official"));
-                else if (index == providers.size() && routes.select(Page.SEARCH)) changed();
+                else if (index == providers.size()) selectPrimary(Page.SEARCH);
             }
             case SEARCH -> {
-                if (paintedMatches != catalog.tracks() || paintedFirst != catalog.first()) return;
-                var matches = paintedMatches;
-                int match = paintedFirst + index;
-                if (index >= searchRows || match >= matches.size()) return;
                 try {
-                    var queue=player.queue();
-                    if(queue==null) player.play(matches.get(match)); else queue.replace(matches,match);
-                    status="";
+                    if (catalog.play(paintedMatches, paintedFirst, index, searchRows)) status="";
                 } catch (OnlineMusicQueue.TransitionInProgress busy) { status="busy"; }
             }
             default -> { }
@@ -419,7 +443,7 @@ public final class MusicFrontendWorkspace implements OnlineMusicView {
         queuePanel.render(ui, MUTED);
         mini.render(ui);
     }
-    boolean permitsScreenClose() { if (!routes.back()) return true; changed(); return false; }
+    boolean permitsScreenClose() { return !backFromRoute(); }
     @Override public void suspend() { if (routes.current().page() == Page.SEARCH) rememberSearchFocus(); if (ownsPlayer) catalog.cancel(); else catalog.detach(); routes.invalidateRequests();library.close();accounts.suspend();sound.cancel();history.cancelInteraction();if(mini!=null)mini.cancelInteraction();if(queuePanel!=null)queuePanel.cancelInteraction(); }
     @Override public void close() { if(!closed){suspend();closed=true;if(mini!=null)mini.close(); if(ownsPlayer)player.close();} }
 }

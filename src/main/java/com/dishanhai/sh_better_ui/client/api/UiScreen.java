@@ -61,6 +61,8 @@ public final class UiScreen extends Screen {
     private WidgetScroll widgetScroll;
     private WidgetScroll scrollHandler;
     private UiFrame drawingFrame;
+    private boolean rebuildingWidgets;
+    private GuiEventListener rebuiltFocus;
     private Consumer<GuiEventListener> focusChanged = ignored -> {};
     private BooleanSupplier closeRequested = () -> true;
     private final Map<GuiEventListener, Supplier<Bounds>> widgetClips = new IdentityHashMap<>();
@@ -157,6 +159,23 @@ public final class UiScreen extends Screen {
         if (getFocused() == listener) return;
         super.setFocused(listener);
         if (focusChanged != null) focusChanged.accept(listener);
+    }
+
+    /** Restore a resolved logical target after layout, including the native rebuild's focus pass. */
+    public void restoreLayoutFocus(GuiEventListener target) {
+        if (rebuildingWidgets) rebuiltFocus = target;
+        setFocused(target);
+    }
+
+    @Override protected void rebuildWidgets() {
+        rebuildingWidgets = true;
+        try {
+            super.rebuildWidgets();
+            if (rebuiltFocus != null && children().contains(rebuiltFocus)) setFocused(rebuiltFocus);
+        } finally {
+            rebuildingWidgets = false;
+            rebuiltFocus = null;
+        }
     }
 
     /** Return false to keep this page open (for example while a discard dialog is active). */

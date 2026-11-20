@@ -48,7 +48,12 @@ final class AppleMusicAccount implements AutoCloseable {
                 && login.state() != AppleMusicBrowserLogin.State.CLOSED;
     }
 
+    boolean configured() { return !token().isEmpty() && !port().isEmpty(); }
+
+    boolean primaryAvailable(boolean linksAllowed) { return running() || linksAllowed && configured(); }
+
     String stateKey() {
+        if (!running() && !configured()) return "configuration_missing";
         if (failure != null) return failure;
         if (login != null) return switch (login.state()) {
             case WAITING -> "browser_open";
@@ -60,7 +65,7 @@ final class AppleMusicAccount implements AutoCloseable {
             case EXPIRED -> "expired";
             case CLOSED -> "closed";
         };
-        return token().isEmpty() || port().isEmpty() ? "configuration_missing" : "ready";
+        return "ready";
     }
 
     void open() {

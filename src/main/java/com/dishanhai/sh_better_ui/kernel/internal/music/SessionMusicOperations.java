@@ -67,6 +67,10 @@ public final class SessionMusicOperations implements AutoCloseable {
         return start(new Request(liked ? Kind.LIKE : Kind.UNLIKE, track.source(), track.id(), 0, null),
                 () -> player.like(track, liked));
     }
+    /** Revoke only the account context the foreground logout action was bound to. */
+    public boolean signOutIfCurrent(String source, long version, OnlineMusicLogin expectedAttempt) {
+        return player instanceof OnlinePlayerSession session && session.signOutIfCurrent(source, version, expectedAttempt);
+    }
     public synchronized long accountVersion(String source) { return accountEpochs.getOrDefault(source,0L); }
     public long likeLaneRevision() {
         return player instanceof OnlinePlayerSession session ? session.likeLaneRevision() : 0;

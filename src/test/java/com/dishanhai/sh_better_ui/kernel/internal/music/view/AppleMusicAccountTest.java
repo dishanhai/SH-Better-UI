@@ -62,6 +62,28 @@ class AppleMusicAccountTest {
         }
     }
 
+    @Test void onlyCompleteProjectConfigurationEnablesOpenButRunningSessionCanCloseRegardless() throws Exception {
+        var config = new java.util.HashMap<String,String>();
+        try (var account = new AppleMusicAccount(k -> null, config::get, uri -> {})) {
+            assertFalse(account.primaryAvailable(true));
+            config.put(AppleMusicAccount.TOKEN_ENV, FIXTURE_TOKEN);
+            assertFalse(account.primaryAvailable(true), "the token alone is not project configuration");
+            config.clear();
+            config.put(AppleMusicAccount.PORT_ENV, "0");
+            assertFalse(account.primaryAvailable(true), "the port alone is not project configuration");
+            config.put(AppleMusicAccount.TOKEN_ENV, FIXTURE_TOKEN);
+            assertTrue(account.primaryAvailable(true));
+            assertFalse(account.primaryAvailable(false));
+            account.open();
+            assertTrue(account.running());
+            config.clear();
+            assertTrue(account.primaryAvailable(false), "Close stays available even if configuration or link access was removed");
+            account.close();
+            assertFalse(account.primaryAvailable(true));
+            assertEquals("configuration_missing", account.stateKey());
+        }
+    }
+
     @Test void fixedOccupiedPortDoesNotFallBackToAnUnconfiguredOrigin() throws Exception {
         try (var other = new AppleMusicBrowserLogin(FIXTURE_TOKEN)) {
             try (var account = new AppleMusicAccount(Map.of(AppleMusicAccount.PORT_PROPERTY, String.valueOf(other.browserUri().getPort()))::get,
@@ -69,6 +91,7 @@ class AppleMusicAccountTest {
                 account.open();
                 assertFalse(account.running());
                 assertEquals("bridge_failed", account.stateKey());
+                assertTrue(account.primaryAvailable(true), "fixing a port conflict does not require rebuilding the screen");
             }
         }
     }
@@ -81,6 +104,7 @@ class AppleMusicAccountTest {
         })) {
             account.open();
             assertEquals("browser_failed", account.stateKey());
+            assertTrue(account.primaryAvailable(true));
             assertFalse(account.running());
             try (var replacement = new AppleMusicBrowserLogin(FIXTURE_TOKEN, uri.get().getPort())) {
                 assertEquals(uri.get().getPort(), replacement.browserUri().getPort());

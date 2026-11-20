@@ -105,6 +105,17 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         synchronized (this) { obsolete = replaceCredentials(sourceId, cookie, true); }
         cancelRequests(obsolete);
     }
+    boolean signOutIfCurrent(String sourceId, long accountVersion, OnlineMusicLogin expectedAttempt) {
+        List<CompletableFuture<?>> obsolete;
+        synchronized (this) {
+            if (state == State.CLOSED || !authenticated.contains(sourceId)
+                    || operations.accountVersion(sourceId) != accountVersion
+                    || currentLogin(sourceId).orElse(null) != expectedAttempt) return false;
+            obsolete = replaceCredentials(sourceId, "", true);
+        }
+        cancelRequests(obsolete);
+        return true;
+    }
     private List<CompletableFuture<?>> replaceCredentials(String sourceId, String cookie, boolean cancelLogin) {
         return replaceCredentials(sourceId,cookie,cancelLogin,null);
     }

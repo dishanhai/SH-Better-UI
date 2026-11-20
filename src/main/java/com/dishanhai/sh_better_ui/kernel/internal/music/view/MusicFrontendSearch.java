@@ -61,6 +61,20 @@ final class MusicFrontendSearch {
     List<OnlineTrack> tracks() {
         return displayedOperation != null && !displayedOperation.displayValid() ? List.of() : tracks;
     }
+    /** An account change and selection must serialize on the same player monitor. */
+    boolean play(List<OnlineTrack> shown, int shownFirst, int row, int visible) {
+        synchronized (player) {
+            if (routes.current().page() != MusicFrontendRoutes.Page.SEARCH || shown != tracks()
+                    || shownFirst != first || row < 0 || row >= visible || row >= shown.size() - first)
+                return false;
+            int index = first + row;
+            var queue = player.queue();
+            if (queue == null) player.play(shown.get(index));
+            else queue.replace(shown, index);
+            return true;
+        }
+    }
+
     int first() { return first; }
     int page() { return displayed == null ? 1 : displayed.page(); }
     State state() { return state; }

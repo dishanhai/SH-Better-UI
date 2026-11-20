@@ -75,7 +75,9 @@ class OnlineMusicQueueViewTest {
     }
     private static class Host implements com.dishanhai.sh_better_ui.client.api.preview.PreviewContext {
         int width = 800, height = 600;
-        final net.minecraft.client.gui.screens.Screen screen = new net.minecraft.client.gui.screens.Screen(net.minecraft.network.chat.Component.empty()) {};
+        final net.minecraft.client.gui.screens.Screen screen;
+        Host() { this(new net.minecraft.client.gui.screens.Screen(net.minecraft.network.chat.Component.empty()) {}); }
+        Host(net.minecraft.client.gui.screens.Screen screen) { this.screen = screen; }
         final List<net.minecraft.client.gui.components.AbstractWidget> widgets = new ArrayList<>();
         final net.minecraft.client.StringSplitter splitter = new net.minecraft.client.StringSplitter((codePoint, style) -> 5f);
         final net.minecraft.client.gui.Font font = new net.minecraft.client.gui.Font(null) {
@@ -149,6 +151,105 @@ class OnlineMusicQueueViewTest {
                             && element.getHeight() >= 12));
         } finally { thread.set(null, previousThread); }
         assertEquals(0, fixture.closed);
+    }
+
+    @Test void rebuiltSettingsBackKeepsSourceRowAndBothNestedPages() throws Exception {
+        var fixture = new Fixture();
+        var thread = com.mojang.blaze3d.systems.RenderSystem.class.getDeclaredField("renderThread");
+        thread.setAccessible(true);
+        var previousThread = thread.get(null);
+        thread.set(null, Thread.currentThread());
+        try (var view = MusicFrontendWorkspace.borrowed(fixture.player)) {
+            var host = new Host(); host.width = 208; host.height = 240;
+            view.layout(host);
+            var panel = field(view, "sound");
+            var back = (MusicTextControl) field(view, "back");
+            var utility = (MusicTextControl) field(view, "utility");
+            var next = (MusicTextControl) field(panel, "next");
+
+            utility.onPress();
+            next.onPress();
+            var sound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            sound.onPress();
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.volume");
+            next.onPress();
+            var qq = settingRow(panel, 0, "sh_better_ui.online_music.menu.qq_effects");
+            qq.onPress();
+            assertSame(back, host.screen().getFocused(), "Unavailable detail must not focus a hidden reused slot");
+            back.onPress();
+            assertSame(qq, host.screen().getFocused());
+            settingRow(panel, 0, "sh_better_ui.online_music.menu.qq_effects");
+
+            assertFalse(view.permitsScreenClose());
+            assertSame(sound, host.screen().getFocused());
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+
+            ((MusicTextControl) field(panel, "previous")).onPress();
+            var playback = settingRow(panel, 1, "sh_better_ui.online_music.redesign.sound.playback");
+            playback.onPress();
+            var fade = settingRow(panel, 1, "sh_better_ui.online_music.crossfade.title");
+            fade.onPress();
+            assertFalse(view.permitsScreenClose());
+            assertSame(fade, host.screen().getFocused());
+            settingRow(panel, 1, "sh_better_ui.online_music.crossfade.title");
+            back.onPress();
+            assertSame(playback, host.screen().getFocused());
+            settingRow(panel, 1, "sh_better_ui.online_music.redesign.sound.playback");
+
+            next.onPress();
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound").onPress();
+            utility.onPress(); // A new Settings visit is not Back to the original visit.
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.page.accounts");
+            back.onPress();
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.volume");
+            back.onPress();
+            assertSame(sound, host.screen().getFocused());
+            settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+        } finally { thread.set(null, previousThread); }
+    }
+
+    @Test void rebuiltSettingsResizeRestoresLogicalFocusAfterNativeScreenClearsIt() throws Exception {
+        var fixture = new Fixture();
+        var thread = com.mojang.blaze3d.systems.RenderSystem.class.getDeclaredField("renderThread");
+        thread.setAccessible(true);
+        var previousThread = thread.get(null);
+        thread.set(null, Thread.currentThread());
+        var screen = new com.dishanhai.sh_better_ui.client.api.UiScreenBuilder(
+                net.minecraft.network.chat.Component.empty()).build();
+        try (var view = MusicFrontendWorkspace.borrowed(fixture.player)) {
+            var host = new Host(screen); host.width = 208; host.height = 240;
+            view.layout(host);
+            var panel = field(view, "sound");
+            ((MusicTextControl) field(view, "utility")).onPress();
+            ((MusicTextControl) field(panel, "next")).onPress();
+            var compactSound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            screen.setFocused(compactSound);
+            screen.setFocused(null); // Both native resize paths clear focus before mounting new widgets.
+            host.width = 800; host.height = 600;
+            view.layout(host);
+            var wideSound = settingRow(panel, 2, "sh_better_ui.online_music.redesign.sound.sound");
+            assertNotSame(compactSound, wideSound);
+            assertSame(wideSound, screen.getFocused());
+
+            screen.setFocused(null);
+            host.width = 208; host.height = 240;
+            view.layout(host);
+            var rebuiltSound = settingRow(panel, 0, "sh_better_ui.online_music.redesign.sound.sound");
+            assertNotSame(compactSound, rebuiltSound);
+            assertSame(rebuiltSound, screen.getFocused());
+        } finally { thread.set(null, previousThread); }
+    }
+
+    private static MusicTextControl settingRow(Object panel, int index, String titleKey) throws Exception {
+        var row = (MusicTextControl) ((List<?>) field(panel, "slots")).get(index);
+        assertTrue(row.visible && row.active);
+        var title = assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class, row.getMessage().getContents());
+        if (title.getKey().equals("sh_better_ui.online_music.redesign.sound.summary")) {
+            var component = assertInstanceOf(net.minecraft.network.chat.Component.class, title.getArgs()[0]);
+            title = assertInstanceOf(net.minecraft.network.chat.contents.TranslatableContents.class, component.getContents());
+        }
+        assertEquals(titleKey, title.getKey());
+        return row;
     }
 
     @Test void nativeCrossfadeAllowsReversiblePreviewAndSecondsKeyboardWithoutSeeking() throws Exception {

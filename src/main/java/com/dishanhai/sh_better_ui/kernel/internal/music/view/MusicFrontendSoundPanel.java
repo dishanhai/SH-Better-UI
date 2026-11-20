@@ -2,11 +2,13 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
+import com.dishanhai.sh_better_ui.client.api.UiScreen;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
+import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
@@ -21,7 +23,8 @@ import static com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicFronten
 
 final class MusicFrontendSoundPanel {
     private enum Screen { SETTINGS, PLAYBACK, SOUND, VOLUME, FADE, SPEED, EQ, QQ }
-    private record Row(Component title, Component value, boolean available, boolean selected, boolean submenu,
+    record ViewState(int first, String focus) {}
+    private record Row(String id, Component title, Component value, boolean available, boolean selected, boolean submenu,
                        Supplier<MusicFrontendSound.Result> action) {}
     private static final int ROW_HEIGHT = 21, SPACING = 2, SURFACE = 0xff252528, INK = 0xfff5f5f7;
     private final MusicFrontendSound sound;
@@ -30,12 +33,13 @@ final class MusicFrontendSoundPanel {
     private final List<MusicTextControl> slots = new ArrayList<>();
     private PreviewContext host;
     private Bounds panel;
-    private MusicTextControl previous, next;
+    private MusicTextControl previous, next, back, utility;
     private MusicSeekControl slider;
     private List<Row> visibleRows = List.of();
     private MusicFrontendSound.State displayed;
     private Screen screen;
     private int offset;
+    private String activatingRow, lastFocus;
     private Component feedback = Component.empty();
 
     MusicFrontendSoundPanel(OnlineMusicPlayer player, Consumer<Route> navigate) {
@@ -55,11 +59,15 @@ final class MusicFrontendSoundPanel {
 
     static int rowCapacity(int height) { return Math.min(7, (height - 23) / (ROW_HEIGHT + SPACING)); }
 
-    void mount(PreviewContext host, Bounds area) {
+    void mount(PreviewContext host, Bounds area, MusicTextControl back, MusicTextControl utility) {
         cancel();
         this.host = host;
+        this.back = back;
+        this.utility = utility;
+        lastFocus = null;
         panel = fit(area);
         slots.clear();
+        visibleRows = List.of();
         int capacity = rowCapacity(panel.height());
         for (int i = 0; i < capacity; i++) {
             int index = i;
@@ -121,7 +129,7 @@ final class MusicFrontendSoundPanel {
     }
 
     private Row link(Screen detail, Component value) {
-        return new Row(title(detail), value, true, false, true, () -> {
+        return new Row("screen:" + detail.name(), title(detail), value, true, false, true, () -> {
             navigate.accept(new Route(Page.SETTINGS, "", detail.name().toLowerCase(Locale.ROOT)));
             return null;
         });
@@ -138,11 +146,11 @@ final class MusicFrontendSoundPanel {
         return switch (screen) {
             case SETTINGS -> {
                 var items = new ArrayList<Row>();
-                items.add(new Row(builtin("page.accounts"), blank, true, false, true,
+                items.add(new Row("screen:ACCOUNTS", builtin("page.accounts"), blank, true, false, true,
                         () -> { navigate.accept(Route.of(Page.ACCOUNTS)); return null; }));
                 items.add(link(Screen.PLAYBACK, blank));
                 items.add(link(Screen.SOUND, blank));
-                if (historyAvailable.getAsBoolean()) items.add(new Row(builtin("page.history"), blank, true, false, true,
+                if (historyAvailable.getAsBoolean()) items.add(new Row("screen:HISTORY", builtin("page.history"), blank, true, false, true,
                         () -> { navigate.accept(Route.of(Page.HISTORY)); return null; }));
                 yield items;
             }
@@ -152,29 +160,105 @@ final class MusicFrontendSoundPanel {
                     link(Screen.EQ, s.eqAvailable() ? eq(s.eq()) : unavailable),
                     link(Screen.QQ, s.qqAvailable() ? qq(s.qq()) : unavailable));
             case SPEED -> s.speedAvailable() ? PlaybackRateChoices.VALUES.stream().map(value ->
-                    new Row(rate(value), blank, true, Double.compare(value, s.speed()) == 0, false, () -> sound.speed(s, value))).toList() : List.of();
+                    new Row("rate:" + value, rate(value), blank, true, Double.compare(value, s.speed()) == 0, false, () -> sound.speed(s, value))).toList() : List.of();
             case EQ -> s.eqAvailable() ? List.of(OnlineMusicEqualizerPreset.values()).stream().map(value ->
-                    new Row(eq(value), blank, true, value == s.eq(), false, () -> sound.eq(s, value))).toList() : List.of();
+                    new Row("eq:" + value.name(), eq(value), blank, true, value == s.eq(), false, () -> sound.eq(s, value))).toList() : List.of();
             case QQ -> s.qqAvailable() ? List.of(OnlineMusicSoundEffect.values()).stream().map(value ->
-                    new Row(qq(value), blank, true, value == s.qq(), false, () -> sound.qq(s, value))).toList() : List.of();
+                    new Row("qq:" + value.name(), qq(value), blank, true, value == s.qq(), false, () -> sound.qq(s, value))).toList() : List.of();
             default -> List.of();
         };
     }
 
     Component heading() { return screen == null ? null : title(screen); }
 
+    ViewState bookmark() {
+        if (screen == null || host == null) return null;
+        return new ViewState(offset, activatingRow == null ? focusedId(host.screen().getFocused()) : activatingRow);
+    }
+
+    ViewState resizeBookmark() {
+        if (screen == null || host == null) return null;
+        var focused = host.screen().getFocused();
+        return new ViewState(offset, focused == null ? lastFocus : focusedId(focused));
+    }
+
+    void rememberFocus(GuiEventListener focused) {
+        // Native resize clears focus before layout is called. Keep the last logical target,
+        // but don't replace unrelated focus (e.g. the mini player) during a remount.
+        if (screen != null && focused != null) lastFocus = focusedId(focused);
+    }
+
+    private String focusedId(GuiEventListener focused) {
+        if (focused == null) return null;
+        if (focused == back) return "@back";
+        if (focused == utility) return "@utility";
+        if (focused == slider && slider.visible && slider.active) return "@slider";
+        if (focused == previous && previous.visible && previous.active) return "@previous";
+        if (focused == next && next.visible && next.active) return "@next";
+        for (int i = 0; i < visibleRows.size(); i++) {
+            if (focused == slots.get(i) && slots.get(i).active) return visibleRows.get(i).id();
+        }
+        return null;
+    }
+
+    private void focusControl(GuiEventListener target) {
+        rememberFocus(target);
+        if (host.screen() instanceof UiScreen nativeScreen) nativeScreen.restoreLayoutFocus(target);
+        else host.screen().setFocused(target);
+    }
+
+    void restore(ViewState state) {
+        if (screen == null || state == null) return;
+        refresh(state);
+        if (state.focus() != null) focus(state.focus());
+    }
+
+    void focusEntry() { if (screen != null) focus(null); }
+
+    private void focus(String id) {
+        if (id != null) {
+            switch (id) {
+                case "@back" -> { focusControl(back); return; }
+                case "@utility" -> { focusControl(utility); return; }
+                case "@slider" -> { if (slider.visible && slider.active) { focusControl(slider); return; } }
+                case "@previous" -> { if (previous.visible && previous.active) { focusControl(previous); return; } }
+                case "@next" -> { if (next.visible && next.active) { focusControl(next); return; } }
+                default -> {
+                    for (int i = 0; i < visibleRows.size(); i++) {
+                        if (id.equals(visibleRows.get(i).id()) && slots.get(i).active) {
+                            focusControl(slots.get(i));
+                            return;
+                        }
+                    }
+                }
+            }
+        }
+        if (slider.visible && slider.active) { focusControl(slider); return; }
+        for (var slot : slots) {
+            if (slot.visible && slot.active) { focusControl(slot); return; }
+        }
+        focusControl(back);
+    }
+
     void update(Route route) {
         var nextScreen = screen(route);
+        var before = screen != null && screen == nextScreen ? focusedId(host.screen().getFocused()) : null;
         if (screen != nextScreen) {
             cancel();
             screen = nextScreen;
+            lastFocus = null;
             offset = 0;
             feedback = Component.empty();
         }
         refresh();
+        if (before != null && !before.equals(focusedId(host.screen().getFocused()))) {
+            focus(before);
+        }
     }
 
-    private void refresh() {
+    private void refresh() { refresh(null); }
+
+    private void refresh(ViewState restored) {
         var now = screen == null ? null : sound.read();
         if (now != null && displayed != null &&
                 (!now.sameOccurrence(displayed) || now.speedAvailable() != displayed.speedAvailable()
@@ -193,11 +277,19 @@ final class MusicFrontendSoundPanel {
                 volume ? 100 : 12, enabled);
 
         var rows = screen == null ? List.<Row>of() : volume && now.volumeAvailable()
-                ? List.of(new Row(sound(now.volume() == 0 ? "unmute" : "mute"), Component.empty(), true, false, false,
+                ? List.of(new Row("mute", sound(now.volume() == 0 ? "unmute" : "mute"), Component.empty(), true, false, false,
                         () -> sound.toggleMute(now)))
                 : rows(now);
-        offset = Math.max(0, Math.min(offset, rows.size() - 1));
         int capacity = slots.size();
+        if (capacity == 0) return;
+        if (restored != null) {
+            offset = restored.first();
+            for (int i = 0; i < rows.size(); i++) {
+                var row = rows.get(i);
+                if (row.available() && row.id().equals(restored.focus())) { offset = i; break; }
+            }
+        }
+        offset = (Math.max(0, Math.min(offset, rows.size() - 1)) / capacity) * capacity;
         boolean paged = rows.size() > capacity;
         visibleRows = rows.subList(offset, Math.min(rows.size(), offset + capacity));
         for (int i = 0; i < capacity; i++) {
@@ -223,18 +315,21 @@ final class MusicFrontendSoundPanel {
         cancel();
         offset = Math.max(0, offset + direction * slots.size());
         refresh();
-        if (direction > 0 && !next.active && previous.active) host.screen().setFocused(previous);
-        if (direction < 0 && !previous.active && next.active) host.screen().setFocused(next);
+        if (direction > 0 && !next.active && previous.active) focusControl(previous);
+        if (direction < 0 && !previous.active && next.active) focusControl(next);
     }
 
     private void apply(int index) {
         if (screen == null || index >= visibleRows.size()) return;
         var row = visibleRows.get(index);
         if (row.selected()) return;
-        var result = row.action().get();
-        if (result != null) finish(result);
-        else if (slider.visible && slider.active) host.screen().setFocused(slider);
-        else if (!visibleRows.isEmpty()) host.screen().setFocused(slots.get(0));
+        if (row.submenu()) activatingRow = row.id();
+        try {
+            var result = row.action().get();
+            if (result != null) finish(result);
+        } finally {
+            activatingRow = null;
+        }
     }
 
     private void commitSlider(MusicSeekModel.Edit edit) {

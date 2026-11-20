@@ -31,6 +31,7 @@ final class MusicFrontendAccountPanel {
     private Route route;
     private String lastProvider = "";
     private OnlineMusicLogin.Snapshot qr;
+    private MusicFrontendAccount.Primary displayedNativeAction;
 
     MusicFrontendAccountPanel(MusicFrontendAccount nativeAccount, AppleMusicAccount apple,
                               BooleanSupplier webLinks, Consumer<Route> navigate) {
@@ -44,6 +45,7 @@ final class MusicFrontendAccountPanel {
         this.host = host;
         this.body = body;
         accounts.clear();
+        displayedNativeAction = null;
         int offset = 0;
         for (String source : List.of("netease", "qq", APPLE)) {
             if (!source.equals(APPLE) && !nativeAccount.available(source)) continue;
@@ -86,8 +88,8 @@ final class MusicFrontendAccountPanel {
     private void primary() {
         if (isAppleDetail()) {
             if (apple.running()) apple.close();
-            else if (webLinks.getAsBoolean()) apple.open();
-        } else if (isNativeDetail()) nativeAccount.primary();
+            else if (apple.primaryAvailable(webLinks.getAsBoolean())) apple.open();
+        } else if (isNativeDetail()) nativeAccount.primary(displayedNativeAction);
         refresh();
     }
 
@@ -99,13 +101,21 @@ final class MusicFrontendAccountPanel {
                     : label(nativeAccount.authenticated(source) ? "view.signed_in" : "view.guest"));
         });
         boolean browser = isAppleDetail(), detail = isNativeDetail();
-        qr = detail ? nativeAccount.snapshot() : null;
+        var display = detail ? nativeAccount.display() : null;
+        qr = display == null ? null : display.snapshot();
+        var nextAction = display == null ? null : display.primary();
+        if (displayedNativeAction != null && !displayedNativeAction.matches(nextAction)) primary.cancelInteraction();
+        displayedNativeAction = nextAction;
         int width = browser ? body.width() : nativeActionWidth();
         primary.setWidth(width);
         primary.setVisible((browser || detail) && body.height() >= 24);
-        primary.active = browser ? apple.running() || webLinks.getAsBoolean() : detail && nativeAccount.available(route.provider());
+        primary.setAvailable(browser ? apple.primaryAvailable(webLinks.getAsBoolean()) : nextAction != null);
         var caption = browser ? apple(apple.running() ? "close" : "open") : label(
-                MusicFrontendAccount.busy(qr) ? "cancel" : detail && nativeAccount.authenticated(route.provider()) ? "login.sign_out" : "login.refresh");
+                nextAction == null ? "login.refresh" : switch (nextAction.action()) {
+                    case START -> "login.refresh";
+                    case CANCEL -> "cancel";
+                    case SIGN_OUT -> "login.sign_out";
+                });
         if (!caption.equals(primary.getMessage())) primary.rebind(caption);
         remember.setWidth(width);
         remember.setVisible(detail && nativeAccount.available(route.provider()) && body.height() >= 52);
@@ -172,6 +182,7 @@ final class MusicFrontendAccountPanel {
         apple.close();
         route = null;
         qr = null;
+        displayedNativeAction = null;
     }
 
     private static Component title(String provider) {
