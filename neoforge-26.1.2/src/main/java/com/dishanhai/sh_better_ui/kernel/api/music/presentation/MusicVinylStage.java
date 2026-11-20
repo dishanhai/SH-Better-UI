@@ -15,6 +15,13 @@ public final class MusicVinylStage {
         render(frame,area,artwork,width,height,playing,1f);
     }
     public void render(UiFrame frame, Bounds area, Identifier artwork, int width, int height, boolean playing, float artworkOpacity) {
+        renderLabel(frame, area, playing, bounds -> {
+            if (artwork != null && width > 0 && height > 0)
+                cover.renderCover(frame, bounds, artwork, width, height, artworkOpacity);
+        });
+    }
+    /** Paints custom album artwork within the rotating center label. */
+    public void renderLabel(UiFrame frame, Bounds area, boolean playing, java.util.function.Consumer<Bounds> artwork) {
         float angle=motion.sample(frame.nowMs(),playing,frame.preferences().reducedMotion());
         int size=Math.min(area.width(),area.height()); if(size<24)return;
         int x=area.x()+(area.width()-size)/2,y=area.y()+(area.height()-size)/2;
@@ -31,10 +38,8 @@ public final class MusicVinylStage {
         try {
             g.pose().translate(cx,cy);g.pose().rotate((float)Math.toRadians(angle));
             RoundedCorners.draw(g,-label/2,-label/2,label,label,label/2f,0,0,0xffb38b50);
-            if(artwork!=null&&width>0&&height>0) {
-                int a=Math.max(4,label*2/3);
-                cover.renderCover(frame,new Bounds(-a/2,-a/2,a,a),artwork,width,height,artworkOpacity);
-            }
+            int a = Math.max(4, label * 2 / 3);
+            artwork.accept(new Bounds(-a / 2, -a / 2, a, a));
             RoundedCorners.draw(g,-1,-1,2,2,1,0,0,0xffded8c6);
         } finally { g.pose().popMatrix(); }
         // Stylus rests clear of the playable artwork; it is decoration, not a fake button.

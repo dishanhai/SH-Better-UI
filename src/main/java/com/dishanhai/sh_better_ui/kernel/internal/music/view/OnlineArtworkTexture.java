@@ -15,7 +15,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicLong;
 
 /** One view owns one cover. Downloads/decoding never block rendering; no persistent disk cache. */
-public final class OnlineArtworkTexture implements AutoCloseable {
+public final class OnlineArtworkTexture implements AutoCloseable, MusicCoverHandoff.Slot<OnlineArtworkTexture.Texture> {
     public record Texture(ResourceLocation id, int width, int height, ArtworkPalette palette) {
         public Texture(ResourceLocation id, int width, int height) { this(id, width, height, null); }
     }
@@ -36,9 +36,12 @@ public final class OnlineArtworkTexture implements AutoCloseable {
     public OnlineArtworkTexture() { worker.setRemoveOnCancelPolicy(true); }
 
     public synchronized Optional<Texture> texture(OnlineTrack track) {
+        return Optional.ofNullable(poll(track == null ? "" : track.artworkUrl()).image());
+    }
+
+    @Override public synchronized MusicCoverHandoff.Result<Texture> poll(String key) {
         RenderSystem.assertOnRenderThread();
-        if (closed) return Optional.empty();
-        String key = track == null ? "" : track.artworkUrl();
+        if (closed) return new MusicCoverHandoff.Result<>(null, false);
         if (!java.util.Objects.equals(key, requested)) {
             invalidate(); requested = key;
             if (!key.isBlank()) {
@@ -55,11 +58,14 @@ public final class OnlineArtworkTexture implements AutoCloseable {
                 lease = com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel.ownNativeGpu(
                     com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor.ResourceKind.TEXTURE_RESOURCE,
                     com.dishanhai.sh_better_ui.kernel.api.UiId.parse("sh_better_ui:native/music/online_cover_" + instance), this::release);
-            } catch (RuntimeException error) { image.close(); release(); }
+            } catch (RuntimeException error) { image.close(); release(); requested = key; }
         }
-        return Optional.ofNullable(current);
+        return new MusicCoverHandoff.Result<>(current, current == null && task != null
+                && !task.isDone() && java.util.Objects.equals(key, requested));
     }
-    synchronized long revision() { return generation; }
+
+    @Override public synchronized boolean owns(Texture image) { return current == image; }
+    @Override public void clear() { invalidate(); }
     private void load(long ticket, String url) {
         NativeImage image = null;
         try {

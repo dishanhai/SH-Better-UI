@@ -54,7 +54,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private enum StagePage { ARTWORK, LYRICS, QUEUE }
     private StagePage stagePage=StagePage.LYRICS;
     private final MusicArtworkStage artworkStage=new MusicArtworkStage();
-    private final OnlineCoverReveal coverReveal=new OnlineCoverReveal();
     private final MusicMetadataReveal metadataReveal = new MusicMetadataReveal();
     private MusicMetadataReveal.Frame metadataFrame = new MusicMetadataReveal.Frame(1f, 1f);
     private final Map<MusicTextControl,Object> resultIdentities=new IdentityHashMap<>();
@@ -206,7 +205,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private boolean crossfadeOpen;
     private static final int MAX_CROSSFADE_SECONDS = 12;
     private final LyricViewport lyricViewport = new LyricViewport();
-    private final OnlineArtworkTexture artwork = new OnlineArtworkTexture();
+    private final OnlineCoverPresentation artwork = new OnlineCoverPresentation();
     private OnlineTrack lyricTrack;
     private int activeLyric;
     private MusicStageButton followLyrics;
@@ -2330,21 +2329,19 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void renderImmersive(UiFrame ui, OnlineMusicPlayer.Snapshot current, boolean glass) {
         boolean failed=current.state()==OnlineMusicPlayer.State.FAILED;
         if(failed!=stageFailure){stageFailure=failed;stage=FullscreenLyricLayout.of(layout.frame(),shellBack==null,failed,stagePage!=StagePage.ARTWORK);updateStageGeometry();}
-        var loaded=artwork.texture(current.track());
+        var cover = artwork.sample(ui, current.track());
         paintParallaxBackground(ui,stage.frame(),()-> {
             if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,parallaxBounds(stage.frame()));
-            else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),loaded.map(OnlineArtworkTexture.Texture::palette).orElse(null),ui.nowMs(),ui.preferences().reducedMotion(),
+            else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),cover.background(),ui.nowMs(),ui.preferences().reducedMotion(),
                     current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
         });
         if (glass) MusicGlass.chrome(ui, stage.transport(), null);
         int ink=ui.preferences().highContrast()?UiTheme.current().text():MusicArtworkStage.FOREGROUND;
         int secondary=ui.preferences().highContrast()?ink:MusicArtworkStage.SECONDARY;
-        var cover=loaded.orElse(null);
-        float opacity=coverOpacity(ui,cover);
         if(vinylStyle()&&!ui.preferences().highContrast()) {
-            vinylStage.render(ui,stage.cover(),cover==null?null:cover.id(),cover==null?0:cover.width(),
-                    cover==null?0:cover.height(),current.state()==OnlineMusicPlayer.State.PLAYING,opacity);
-        } else paintArtwork(ui,stage.cover(),cover,0f,opacity);
+            vinylStage.renderLabel(ui,stage.cover(),current.state()==OnlineMusicPlayer.State.PLAYING,
+                    labelBounds -> OnlineCoverPresentation.paint(ui, artworkStage, labelBounds, 0f, cover));
+        } else OnlineCoverPresentation.paint(ui, artworkStage, stage.cover(), 0f, cover);
         var title=current.track()==null?label("stage.empty_title"):MusicTypography.bold(current.track().title());
         var subtitle=current.track()==null?label("stage.empty_detail"):MusicTypography.text(current.track().artist()
                 +(current.track().album().isBlank()?"":" · "+current.track().album()));
@@ -2428,16 +2425,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 : new Bounds(c.x(), top, c.width(), Math.max(0, c.bottom() - top - 38));
     }
     private void paintArtwork(UiFrame ui, Bounds bounds, OnlineTrack track, float activity) {
-        var texture=artwork.texture(track).orElse(null);
-        paintArtwork(ui,bounds,texture,activity,coverOpacity(ui,texture));
-    }
-    private float coverOpacity(UiFrame ui, OnlineArtworkTexture.Texture texture) {
-        return coverReveal.sample(artwork.revision(),texture!=null,ui.nowMs(),
-                ui.preferences().reducedMotion()||ui.preferences().highContrast());
-    }
-    private void paintArtwork(UiFrame ui, Bounds bounds, OnlineArtworkTexture.Texture texture, float activity, float opacity) {
-        if(opacity<1f)OnlineMusicViewPaint.artwork(ui,bounds,activity,1f-opacity);
-        if(texture!=null&&opacity>0f)artworkStage.renderCover(ui,bounds,texture.id(),texture.width(),texture.height(),opacity);
+        OnlineCoverPresentation.paint(ui, artworkStage, bounds, activity, artwork.sample(ui, track));
     }
     private void renderLyrics(UiFrame ui, OnlineMusicPlayer.Snapshot current) {
         var c = lyricContent(); var lines = lyricArea();
@@ -2554,5 +2542,5 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return MusicTypography.text(Component.translatable(TEXT + key, args)); }
     @Override public void suspend() { artistDetail.cancel(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
-    @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); coverReveal.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
+    @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
 }
