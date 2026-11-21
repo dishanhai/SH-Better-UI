@@ -13,6 +13,7 @@ sourceSets.main.java {
     include 'com/dishanhai/sh_better_ui/kernel/api/UiId.java'
     include 'com/dishanhai/sh_better_ui/kernel/api/UiVersion.java'
     include 'com/dishanhai/sh_better_ui/kernel/api/page/**'
+    include 'com/dishanhai/sh_better_ui/kernel/api/text/TextReadabilityPolicy.java'
     include 'com/dishanhai/sh_better_ui/kernel/api/protocol/**'
     exclude 'com/dishanhai/sh_better_ui/kernel/api/page/PageService.java'
     exclude 'com/dishanhai/sh_better_ui/kernel/api/page/UiComponentRegistry.java'
