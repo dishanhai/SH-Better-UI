@@ -46,6 +46,12 @@ if [[ $project_dir == . ]]; then
   cp -- "$staging/$kff" "$staging/$ldlib" libs/
 fi
 
+dependency_args=()
+if [[ $project_dir == neoforge-1.21.1 ]]; then
+  bash scripts/ci-fetch-neoforge-ldlib.sh "$staging/ldlib-1.21.1.jar"
+  dependency_args+=("-PshbuiCiLdlibJar=$staging/ldlib-1.21.1.jar")
+fi
+
 toolchains=()
 if [[ -n ${JAVA_HOME_17_X64:-} && -n ${JAVA_HOME_21_X64:-} ]]; then
   toolchains+=("-Porg.gradle.java.installations.paths=$JAVA_HOME_17_X64,$JAVA_HOME_21_X64")
@@ -56,5 +62,5 @@ case "$mode:$project_dir" in
   test:*) tasks=(--continue test kernelTest) ;;
 esac
 "$staging/gradle-$gradle_version/bin/gradle" -p "$project_dir" \
-  --no-daemon --console=plain --max-workers 3 "${toolchains[@]}" \
+  --no-daemon --console=plain --max-workers 3 "${toolchains[@]}" "${dependency_args[@]}" \
   "${tasks[@]}"

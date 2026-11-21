@@ -21,6 +21,45 @@ class SessionMusicOperationsTest {
         next.set(new CompletableFuture<>());var cancelled=operations.startSearch("qq","other",1);cancelled.cancel();
         assertTrue(next.get().isCancelled());assertEquals(SessionMusicOperations.State.CANCELLED,cancelled.snapshot().state());
     }
+    @Test void observerCannotFinishBeforeRegistryRecordsTerminalState() throws Exception {
+        var owner = new CompletableFuture<List<OnlineTrack>>();
+        var insideCompletion = new CountDownLatch(1);
+        var allowCompletion = new CountDownLatch(1);
+        var blockClock = new AtomicBoolean();
+        var operations = new SessionMusicOperations(player(new AtomicReference<>(owner)), () -> {
+            if (blockClock.get()) {
+                insideCompletion.countDown();
+                try {
+                    if (!allowCompletion.await(10, TimeUnit.SECONDS)) {
+                        throw new AssertionError("Timed out waiting to release completion");
+                    }
+                } catch (InterruptedException error) {
+                    Thread.currentThread().interrupt();
+                    throw new AssertionError(error);
+                }
+            }
+            return 1L;
+        });
+        var handle = operations.startSearch("qq", "q", 1);
+        var observer = handle.observe();
+        blockClock.set(true);
+        var executor = Executors.newSingleThreadExecutor();
+        try {
+            var producer = executor.submit(() -> owner.complete(List.of()));
+            try {
+                assertTrue(insideCompletion.await(5, TimeUnit.SECONDS));
+                assertFalse(observer.isDone(), "result is visible before terminal history state");
+            } finally {
+                allowCompletion.countDown();
+            }
+            assertTrue(producer.get(5, TimeUnit.SECONDS));
+        } finally {
+            executor.shutdownNow();
+        }
+        assertEquals(List.of(), observer.get(5, TimeUnit.SECONDS));
+        assertEquals(SessionMusicOperations.State.SUCCEEDED, handle.snapshot().state());
+    }
+
     @Test void unconsumedTerminalResultCanDetachButCancelledOrInvalidResultCannot() {
         var owner=new CompletableFuture<List<OnlineTrack>>();var next=new AtomicReference<>(owner);
         var operations=new SessionMusicOperations(player(next));var ready=operations.startSearch("qq","q",1);

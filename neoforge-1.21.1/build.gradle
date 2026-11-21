@@ -17,7 +17,10 @@ kotlin {
 }
 repositories {
     mavenCentral()
-    maven { url = 'https://thedarkcolour.github.io/KotlinForForge/' }
+    maven {
+        url = 'https://thedarkcolour.github.io/KotlinForForge/'
+        content { includeGroup 'thedarkcolour' }
+    }
     maven { url = 'https://maven.blamejared.com/'; content { includeGroup 'mezz.jei' } }
     maven { url = 'https://maven.latvian.dev/releases/'; content { includeGroup 'dev.latvian.mods' } }
     maven {
@@ -92,7 +95,15 @@ dependencies {
     compileOnly 'mezz.jei:jei-1.21.1-common-api:19.69.0.456'
     compileOnly('dev.latvian.mods:kubejs-neoforge:2101.7.2-build.381') { transitive = false }
     compileOnly('dev.latvian.mods:rhino:2101.2.7-build.81') { transitive = false }
-    compileOnly('maven.modrinth:ldlib:mc1.21.1-2.2.44-neoforge') { transitive = false }
+    def ciLdlibJar = providers.gradleProperty('shbuiCiLdlibJar')
+    if (ciLdlibJar.isPresent()) {
+        // The CI script verifies the exact same artifact from either publisher endpoint.
+        def ldlibFile = file(ciLdlibJar.get())
+        if (!ldlibFile.isFile()) throw new GradleException("Missing staged LDLib: ${ldlibFile}")
+        compileOnly files(ldlibFile)
+    } else {
+        compileOnly('maven.modrinth:ldlib:mc1.21.1-2.2.44-neoforge') { transitive = false }
+    }
     // javac resolves LDLib2 LayoutStyle overloads that expose its bundled Yoga API.
     compileOnly('org.appliedenergistics.yoga:yoga:1.0.0') { transitive = false }
     testImplementation platform('org.junit:junit-bom:5.10.2')

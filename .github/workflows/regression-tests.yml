@@ -8,10 +8,13 @@ on:
     paths:
       - .github/workflows/regression-tests.yml
       - scripts/ci-build.sh
+      - scripts/ci-fetch-neoforge-ldlib.sh
       - scripts/ci-test-report.py
       - scripts/test-custom-font-pack.py
       - bridge/**
       - web/tests/**
+      - src/test/**
+      - neoforge-1.21.1/build.gradle
 
 permissions:
   contents: read

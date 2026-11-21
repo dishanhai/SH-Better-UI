@@ -20,3 +20,5 @@
 - 四个游戏版本执行完整 `test` 和 `kernelTest`；另跑服务端桥接、Web 单元／fixture、四套无头 Chrome 测试，以及 Python 字体工具回归。依赖独立 GTSH 工作树的迁移契约与游戏内手动验收不包含在这个独立工作流。
 - 不调用模组或桥接的 `build`、`verifyLibraryJar`，不输出或上传发行 JAR。NeoForge 1.21.1 的脚本沙箱回归仍会临时创建供测试启动的独立 worker JAR。
 - Actions 日志列出 JVM 失败的类名、方法名、错误与堆叠；运行摘要列出通过、失败和跳过数。JUnit XML 和 HTML 报告保留 14 天，测试失败也会上传已有报告。
+
+NeoForge 1.21.1 的云端构建优先从 Modrinth Maven 下载固定版本的 LDLib；失败或校验不符时改用同一发布文件的 Modrinth CDN 地址。两条路径都必须匹配固定的 SHA-512，失败即停止；本地 Gradle 默认仍走 Maven 坐标。
