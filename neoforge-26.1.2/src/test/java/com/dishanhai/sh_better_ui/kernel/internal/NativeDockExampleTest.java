@@ -18,7 +18,7 @@ class NativeDockExampleTest {
             host.startNative(java.util.List.of(example.candidate()));
             assertTrue(example.available(),"The SDK example must start as an actual native module");
             var screen=new NativeDockExampleScreen(null,example);
-            client.client().screen=screen;screen.width=600;screen.height=400;screen.init();
+            client.screen(screen);screen.width=600;screen.height=400;screen.init();
             assertEquals(1,dock.windows(example.context).size());
             var window=dock.windows(example.context).getFirst();
             screen.width=400;screen.init();assertSame(window,dock.windows(example.context).getFirst());
@@ -37,14 +37,14 @@ class NativeDockExampleTest {
             var screens=new ClientScreens(host,ModuleDescriptor.Platform.NEOFORGE_26_1_2);
             var dock=new ClientDockWindows(host,screens);var example=new NativeDockExample(screens,dock);
             host.startNative(java.util.List.of(example.candidate()));
-            var screen=new NativeDockExampleScreen(null,example);client.client().screen=screen;
+            var screen=new NativeDockExampleScreen(null,example);client.screen(screen);
             screen.width=600;screen.height=400;screen.init();
             press(screen,"close");assertTrue(dock.windows(example.context).isEmpty());
             screen.tick();screen.width=420;screen.init();assertTrue(dock.windows(example.context).isEmpty());
             press(screen,"expand");assertEquals(1,dock.windows(example.context).size());
             dock.prepare(screen);assertTrue(dock.windows(example.context).getFirst().snapshot().orElseThrow().targetExpanded());
             press(screen,"collapse");dock.prepare(screen);assertFalse(dock.windows(example.context).getFirst().snapshot().orElseThrow().targetExpanded());
-            client.client().screen=null;press(screen,"expand");
+            client.screen(null);press(screen,"expand");
             assertFalse(dock.windows(example.context).getFirst().snapshot().orElseThrow().targetExpanded());
             screen.removed();dock.closeAll();
         }

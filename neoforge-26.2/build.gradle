@@ -1,12 +1,14 @@
 // Author: dishanhai
 plugins {
     id 'java-library'
+    id 'com.gradleup.shadow' version '8.3.11'
     id 'net.neoforged.moddev' version '2.0.148'
     id 'org.jetbrains.kotlin.jvm' version '2.4.0'
 }
 
-ext.portMixinConfigs = ['sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json']
+ext.portMixinConfigs = ['muonium.mixins.json', 'sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json']
 apply from: '../gradle/neoforge-26-port.gradle'
+apply from: '../gradle/muonium-neoforge.gradle'
 
 def previousPort = file('../neoforge-26.1.2/src/main/java')
 def overrides = [
@@ -29,7 +31,7 @@ sourceSets.main.java {
 sourceSets.test.java.srcDir('../neoforge-26.1.2/src/test/java')
 processResources {
     from('../neoforge-26.1.2/src/main/resources') {
-        include('sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
+        include('assets/sh_better_ui/textures/gui/rich/native-motion.gif', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',
                 'assets/sh_better_ui/shaders/core/gallery_material.*', 'assets/sh_better_ui/shaders/core/gallery_spatial*',
                 'assets/sh_better_ui/items/dishanhai_fumo.json', 'data/sh_better_ui/recipe/dishanhai_fumo.json',
                 'data/sh_better_ui/loot_table/blocks/dishanhai_fumo.json',

@@ -86,7 +86,7 @@ class GtshTextFramesTest {
         assertEquals(List.of(palette[1], palette[0]), colors(frames.customRGB("ab", palette, 100, -1)));
         now.set(256);
         var result = frames.custom("🌊a", new ChatFormatting[]{ChatFormatting.RED, ChatFormatting.BLUE}, 100, 255);
-        assertEquals(List.of(ChatFormatting.RED.getColor(), ChatFormatting.BLUE.getColor()), colors(result));
+        assertEquals(List.of(0xff5555, 0x5555ff), colors(result));
         assertEquals(2, glyphs(result).size());
         assertTrue(glyphs(frames.custom("x", new ChatFormatting[]{ChatFormatting.BOLD}, 1, 255)).get(0).style().isBold());
         assertThrows(IllegalArgumentException.class, () -> frames.customRGB("x", new int[0], 1, 1));

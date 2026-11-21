@@ -45,12 +45,12 @@ final class NativeMusicActivityTest {
     private LiveSurfaceRuntime live;
     private NativeMusicActivity music;
     @BeforeEach void start() {
-        host = new KernelHost(ModuleDescriptor.Platform.NEOFORGE_26_1_2, new EnginePublication(), now::get, Runnable::run, SchedulerBudget.DEFAULT);
+        host = new KernelHost(NativePort.PLATFORM, new EnginePublication(), now::get, Runnable::run, SchedulerBudget.DEFAULT);
         live = new LiveSurfaceRuntime(host);
         music = new NativeMusicActivity(false, frame::get, now::get, () -> live.policy().notifications(),
                 () -> live.diagnostics().activities() < live.policy().maxActivities(),
                 () -> live.diagnostics().notifications() < live.policy().maxNotifications(), opened::incrementAndGet, openedOperation::set);
-        var platforms = Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2);
+        var platforms = Set.of(NativePort.PLATFORM);
         host.start(List.of(BuiltinService.candidate(platforms, OnlineMusicService.KEY, online), BuiltinService.candidate(platforms, ActivityService.KEY, live, ActivityService.CAPABILITY),
                 BuiltinService.candidate(platforms, NotificationService.KEY, live, NotificationService.CAPABILITY), music.candidate(),
                 new ModuleDiscovery.Candidate("other", "test", new UIModule() {

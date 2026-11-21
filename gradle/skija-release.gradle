@@ -1,0 +1,40 @@
+// Author: dishanhai
+def releaseArchive = project.ext.skijaReleaseArchive
+def nativePath = 'io/github/humbleui/skija/'
+def natives = configurations.create('muoniumNatives') {
+    canBeConsumed = false
+    transitive = false
+}
+['windows-x64', 'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64',
+ 'android-arm64', 'android-x64'].each { platform ->
+    dependencies.add(natives.name, "io.github.humbleui:skija-${platform}:0.143.17")
+}
+
+tasks.register('buildWithSkija', Zip) {
+    group = 'build'
+    description = 'Builds an additional release JAR with bundled Skija native libraries.'
+    dependsOn 'build'
+    destinationDirectory.set(layout.buildDirectory.dir('libs'))
+    archiveFileName.set(releaseArchive.map { it.asFile.name.replaceFirst(/\.jar$/, '-with-skija.jar') })
+    includeEmptyDirs = false
+    duplicatesStrategy = DuplicatesStrategy.FAIL
+
+    // Keep the release manifest first and preserve the remapped classes and nested JARs.
+    def manifestPath = 'META-INF/MANIFEST.MF'
+    from({ zipTree(releaseArchive.get().asFile) }) { include manifestPath }
+    from({ zipTree(releaseArchive.get().asFile) }) { exclude manifestPath }
+    from({ natives.collect { zipTree(it) } }) {
+        include "${nativePath}**"
+        exclude '**/*.class'
+    }
+}
+
+tasks.matching { it.name == 'verifyLibraryJar' }.configureEach {
+    doLast {
+        new java.util.zip.ZipFile(releaseArchive.get().asFile).withCloseable { zip ->
+            if (zip.entries().any { !it.directory && it.name.startsWith(nativePath) }) {
+                throw new GradleException('Skija native libraries belong only in the -with-skija release JAR')
+            }
+        }
+    }
+}

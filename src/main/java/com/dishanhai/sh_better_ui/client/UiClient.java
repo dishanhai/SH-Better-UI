@@ -149,7 +149,7 @@ public final class UiClient {
         }
     }
 
-    private static Screen createControlPanel(Screen parent) {
+    public static Screen createControlPanel(Screen parent) {
         return new ControlPanelScreen(parent, controlPanelKey, ShBetterUi::saveClientUiSettings);
     }
 

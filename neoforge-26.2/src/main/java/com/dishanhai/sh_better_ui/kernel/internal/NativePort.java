@@ -18,6 +18,12 @@ public final class NativePort {
 
     public static Screen screen(Minecraft client) { return client.gui.screen(); }
     public static void show(Minecraft client, Screen screen) { client.gui.setScreen(screen); }
+    static boolean hudHidden(Minecraft client) { return client.gui.hud.isHidden(); }
+
+    public static int maxRgbaTextureSize() {
+        return com.mojang.blaze3d.systems.RenderSystem.getDevice().getDeviceInfo().limits().maxTextureSizeForFormat(GpuFormat.RGBA8_UNORM);
+    }
+
     static boolean hasOverlay(Minecraft client) { return client.gui.overlay() != null; }
 
     static GpuTexture colorTarget(Minecraft client) {

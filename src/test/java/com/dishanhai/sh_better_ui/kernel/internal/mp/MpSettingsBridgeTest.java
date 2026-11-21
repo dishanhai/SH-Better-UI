@@ -5,6 +5,7 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 public class MpSettingsBridgeTest {
+    static int saves;
     public static class Model {
         public static Entry[] entries;
         public static Category[] categories() {return new Category[]{new Category()};}
@@ -30,7 +31,7 @@ public class MpSettingsBridgeTest {
     }
     private MpSettingsBridge bridge() {
         Model.entries=java.util.Arrays.stream(MpSettingsBridge.Kind.values()).map(Entry::new).toArray(Entry[]::new);
-        return new MpSettingsBridge(getClass().getClassLoader(),Model.class.getName());
+        return new MpSettingsBridge(getClass().getClassLoader(),Model.class.getName(), () -> MpSettingsBridgeTest.saves++);
     }
     @Test void absentAndIncompatibleAreReported() {
         assertThrows(MpSettingsBridge.Failure.class,()->new MpSettingsBridge(getClass().getClassLoader(),"absent.mp.Model"));
@@ -42,7 +43,7 @@ public class MpSettingsBridgeTest {
         entries.get(1).activate();assertTrue(entries.get(1).on());
         entries.get(2).color(0xff123456);assertEquals(0xff123456,entries.get(2).color());
         entries.get(3).choice("B");assertEquals("B",entries.get(3).valueText());
-        assertTrue(com.muoniumplayer.core.settings.HudConfig.saves>=4);
+        assertTrue(MpSettingsBridgeTest.saves>=4);
     }
     @Test void lockedOrHiddenEntriesCannotWriteAndInvalidValuesAreRejected() {
         var entries=bridge().categories().get(0).groups().get(0).entries();

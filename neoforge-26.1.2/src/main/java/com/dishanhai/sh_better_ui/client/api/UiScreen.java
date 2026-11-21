@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.client.api;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSloshGauge;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -23,6 +24,7 @@ import net.minecraft.client.gui.components.AbstractWidget;
 
 /** Native Screen with content and foreground extraction callbacks. */
 public final class UiScreen extends Screen {
+    UiTheme workbenchPalette;
     private Screen parent;
     private final boolean parentSpecified;
     private final boolean pausesGame;
@@ -240,6 +242,11 @@ public final class UiScreen extends Screen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
+        if (workbenchPalette == null) drawContents(graphics, mouseX, mouseY, partialTick);
+        else UiTheme.preview(workbenchPalette, () -> drawContents(graphics, mouseX, mouseY, partialTick));
+    }
+
+    private void drawContents(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
         clearClippedFocus();
         hovered = getChildAt(mouseX, mouseY).orElse(null);
         var frame = new UiFrame(graphics, viewport(), mouseX, mouseY, UiPreferences.configured(),

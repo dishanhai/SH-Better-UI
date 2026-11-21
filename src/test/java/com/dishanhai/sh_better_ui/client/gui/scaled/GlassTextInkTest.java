@@ -44,7 +44,7 @@ class GlassTextInkTest {
         var original = Language.getInstance().getVisualOrder(Component.literal("Custom").withStyle(ChatFormatting.RED));
         assertSame(original, GlassTextInk.apply(original, -1, false));
         original.accept((index, style, point) -> {
-            assertEquals(ChatFormatting.RED.getColor(), Integer.valueOf(style.getColor().getValue()));
+            assertEquals(0xff5555, Integer.valueOf(style.getColor().getValue()));
             return true;
         });
     }

@@ -239,10 +239,9 @@ public final class UiSlider extends AbstractSliderButton {
         int trackX = x + TRACK_INSET;
         int trackWidth = width - 2 * TRACK_INSET;
         int trackY = y + height - 5;
-        int thumbX = trackX + (int) Math.round(value * trackWidth);
-        graphics.fill(trackX, trackY, trackX + trackWidth, trackY + 1, muted);
-        if (thumbX > trackX) graphics.fill(trackX, trackY, thumbX, trackY + 1, accent);
-        graphics.fill(thumbX - 2, trackY - 1, thumbX + 2, trackY + 2, accent);
+        com.dishanhai.sh_better_ui.kernel.api.controls.ControlPaint.slider(
+                (rx, ry, rw, rh, color) -> graphics.fill((int) rx, (int) ry, (int) (rx + rw), (int) (ry + rh), color),
+                trackX, trackY, trackWidth, value, 1, muted, accent);
 
         var font = Minecraft.getInstance().font;
         var message = getMessage();

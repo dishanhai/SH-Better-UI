@@ -8,7 +8,7 @@ import java.net.URI;
 import java.util.function.Function;
 
 /** Owns one browser companion for the lifetime of the visible music screen. No user credentials enter Java. */
-final class AppleMusicAccount implements AutoCloseable {
+public final class AppleMusicAccount implements AutoCloseable {
     static final String TOKEN_PROPERTY = "shbui.appleMusic.developerToken", PORT_PROPERTY = "shbui.appleMusic.loopbackPort";
     static final String TOKEN_ENV = "SHBUI_APPLE_MUSIC_DEVELOPER_TOKEN", PORT_ENV = "SHBUI_APPLE_MUSIC_LOOPBACK_PORT";
 
@@ -18,7 +18,7 @@ final class AppleMusicAccount implements AutoCloseable {
     private AppleMusicBrowserLogin login;
     private String failure;
 
-    AppleMusicAccount() {
+    public AppleMusicAccount() {
         this(System::getProperty, System::getenv, uri -> {
             // Avoid logging the session URL/fragment when the OS cannot open the browser.
             if (!Desktop.isDesktopSupported() || !Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
@@ -48,7 +48,19 @@ final class AppleMusicAccount implements AutoCloseable {
                 && login.state() != AppleMusicBrowserLogin.State.CLOSED;
     }
 
-    boolean configured() { return !token().isEmpty() && !port().isEmpty(); }
+    public boolean configured() { return !token().isEmpty() && !port().isEmpty(); }
+    public boolean available() { return running() || configured(); }
+
+    /** Opens a companion when needed and sends a selection to the existing session. */
+    public boolean openSong(String catalogId) {
+        if (catalogId == null || !catalogId.matches("[1-9][0-9]{0,19}")) return false;
+        if (running()) {
+            try { login.selectSong(catalogId); return true; }
+            catch (IllegalStateException expired) { /* Reopen an expired companion below. */ }
+        }
+        open(catalogId);
+        return running();
+    }
 
     boolean primaryAvailable(boolean linksAllowed) { return running() || linksAllowed && configured(); }
 
@@ -68,13 +80,16 @@ final class AppleMusicAccount implements AutoCloseable {
         return "ready";
     }
 
-    void open() {
+    void open() { open(null); }
+
+    private void open(String catalogId) {
         if (running()) return;
         close();
         String developerToken = token(), loopbackPort = port();
         if (developerToken.isEmpty() || loopbackPort.isEmpty()) return;
         try {
             login = new AppleMusicBrowserLogin(developerToken, Integer.parseInt(loopbackPort));
+            if (catalogId != null) login.selectSong(catalogId);
         } catch (IllegalArgumentException invalid) {
             failure = "configuration_invalid";
             return;

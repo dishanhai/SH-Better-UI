@@ -72,7 +72,7 @@ public final class ClientLiveActivities implements AutoCloseable {
         var client = Minecraft.getInstance();
         boolean dashboard = NativePort.screen(client) == details && details != null;
         runtime.advance(dashboard && details.interacting(), dashboard && !NativePort.hasOverlay(client));
-        if (!dashboard && (NativePort.screen(client) != null || client.options.hideGui || NativePort.hasOverlay(client))) {
+        if (!dashboard && (NativePort.screen(client) != null || NativePort.hudHidden(client) || NativePort.hasOverlay(client))) {
             suspend();
         }
     }
@@ -124,7 +124,7 @@ public final class ClientLiveActivities implements AutoCloseable {
     /** Draws only on the in-game HUD, never over menus or blocking native overlays. */
     public void drawHud(GuiGraphicsExtractor graphics) {
         var client = Minecraft.getInstance();
-        if (closed || client.level == null || NativePort.screen(client) != null || client.options.hideGui
+        if (closed || client.level == null || NativePort.screen(client) != null || NativePort.hudHidden(client)
                 || NativePort.hasOverlay(client) || !client.isWindowActive()) { suspend(); return; }
         var plan = runtime.plan();
         var snapshot = plan.primary();

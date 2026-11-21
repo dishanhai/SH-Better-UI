@@ -1,5 +1,7 @@
 # MP native UI migration: verified incremental scope
 
+The current embedded player is documented in [MuoniumPlayer 2.6.0](MUONIUM_PLAYER.md). This page records the earlier integration.
+
 Base: SHBUI main `be59814` (PRs 19, 21 and the island/About successor PR 22), plus the two local Markdown/rich-tooltip commits. Reference: MuoniumPlayer-multiversion `9b4cc7e7`.
 
 This is a native SHBUI adaptation, **not a complete distribution of MP's UI or backend**. The existing MP reflection settings bridge remains optional and is not counted as native implementation.

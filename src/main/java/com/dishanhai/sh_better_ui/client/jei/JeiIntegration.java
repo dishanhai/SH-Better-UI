@@ -89,6 +89,7 @@ public final class JeiIntegration {
         List<Recipe> recipes(Ingredient ingredient, Direction direction, int limit);
         boolean open(Ingredient ingredient, Direction direction);
         default List<ItemStack> bookmarkedItems() { return List.of(); }
+        default List<ResourceLocation> orderedItemIds() { return List.of(); }
     }
 
     private static final Map<Screen, IntFunction<? extends Collection<Rect2i>>> EXTRA_AREAS = new WeakHashMap<>();
@@ -122,6 +123,11 @@ public final class JeiIntegration {
     /** Snapshot of item bookmarks with NBT/components intact; unavailable integrations return an empty list. */
     public static List<ItemStack> bookmarkedItems() {
         return backend == null ? List.of() : backend.bookmarkedItems().stream().map(ItemStack::copy).toList();
+    }
+
+    /** Visible item IDs in JEI's native order, independent of its search text. */
+    public static List<ResourceLocation> orderedItemIds() {
+        return backend == null ? List.of() : backend.orderedItemIds();
     }
 
     public static List<Recipe> recipes(Ingredient ingredient, Direction direction, int limit) {

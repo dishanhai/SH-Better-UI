@@ -34,14 +34,21 @@ public final class UiResourcePickerSources {
                 result.put(key, ownedEntry(key, id, stack, 1));
             });
         }
+        var nativeOrder = new LinkedHashMap<String, Entry<ItemStack>>();
+        for (var id : JeiIntegration.orderedItemIds()) {
+            String key = id.toString();
+            var entry = result.remove(key);
+            if (entry != null) nativeOrder.put(key, entry);
+        }
+        nativeOrder.putAll(result);
         for (var item : BuiltInRegistries.ITEM) {
             var id = BuiltInRegistries.ITEM.getKey(item);
             String key = id.toString();
-            if (result.containsKey(key)) continue;
+            if (nativeOrder.containsKey(key)) continue;
             var stack = item.getDefaultInstance();
-            if (!stack.isEmpty()) result.put(key, ownedEntry(key, id, stack, 1));
+            if (!stack.isEmpty()) nativeOrder.put(key, ownedEntry(key, id, stack, 1));
         }
-        return List.copyOf(result.values());
+        return List.copyOf(nativeOrder.values());
     }
     public static List<Entry<ItemStack>> inventory() {
         var player = Minecraft.getInstance().player;
@@ -63,6 +70,7 @@ public final class UiResourcePickerSources {
         return List.copyOf(result);
     }
     public static boolean bookmarksAvailable() { return JeiIntegration.isAvailable(); }
+    public static boolean jeiOrderAvailable() { return JeiIntegration.isAvailable(); }
 
     public static Entry<ItemStack> entry(String key, ItemStack original, int amount) {
         return ownedEntry(key, BuiltInRegistries.ITEM.getKey(original.getItem()), original.copy(), amount);

@@ -1,6 +1,8 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 
@@ -9,6 +11,7 @@ import java.util.function.Consumer;
 
 /** Creates an opt-in native Screen for a module-owned UUK tree. */
 public final class UiScreenBuilder {
+    UiTheme workbenchPalette;
     private final Component title;
     private Screen parent;
     private boolean parentSpecified;
@@ -29,7 +32,9 @@ public final class UiScreenBuilder {
     public UiScreenBuilder onForeground(UiScreen.Draw draw) { foreground = Objects.requireNonNull(draw); return this; }
 
     public UiScreen build() {
-        return new UiScreen(title.copy(), parent, parentSpecified, pausesGame, init, tick, removed, content, foreground);
+        var screen = new UiScreen(title.copy(), parent, parentSpecified, pausesGame, init, tick, removed, content, foreground);
+        screen.workbenchPalette = workbenchPalette;
+        return screen;
     }
 
     public UiScreen open() {

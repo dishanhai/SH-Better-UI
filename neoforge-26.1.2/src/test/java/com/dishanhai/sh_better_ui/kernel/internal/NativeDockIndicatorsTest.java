@@ -28,7 +28,7 @@ final class NativeDockIndicatorsTest {
                 public void register(ModuleContext value){} public void start(ModuleContext value){module=value;}public void stop(ModuleContext value){}
             };
             host.startNative(List.of(new ModuleDiscovery.Candidate("example","test",plugin,grants,false)));
-            assertNotNull(module);client.client().screen=screen;screen.width=800;screen.height=500;screens.show(screen);
+            assertNotNull(module);client.screen(screen);screen.width=800;screen.height=500;screens.show(screen);
             tree=screens.mountTrusted(module,screen,UiId.parse("example:tree"));
         }
         MiniWindowSpec.Builder spec(String name){return MiniWindowSpec.builder("example:"+name).autoHide(true).openDelayMs(100).closeDelayMs(200)

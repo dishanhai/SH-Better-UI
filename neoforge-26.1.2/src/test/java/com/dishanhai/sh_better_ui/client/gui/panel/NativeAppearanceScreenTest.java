@@ -26,7 +26,7 @@ class NativeAppearanceScreenTest {
     @Test void nativeApplyPersistsThemeAndMergesLatestOtherSettings() throws Exception {
         ControlPanelSettings.load(directory);
         try(var client=NativeTestClient.install()){
-            var screen=new NativeAppearanceScreen(null);client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            var screen=new NativeAppearanceScreen(null);client.screen(screen);screen.width=300;screen.height=220;screen.init();
             screen.draft.mode(ThemeSettings.Mode.CUSTOM);screen.draft.color(4,"#45ABCD");screen.draft.background("nativeGradient");screen.init();
             var other=ControlPanelSettings.current().withDisplay(true,true,false).withGlass(false,true,70,90,110);
             assertTrue(ControlPanelSettings.save(other));
@@ -41,7 +41,7 @@ class NativeAppearanceScreenTest {
     @Test void rawFieldsAndScrollSurviveResizeWithoutSaving() throws Exception {
         ControlPanelSettings.load(directory);
         try(var client=NativeTestClient.install()){
-            var screen=new NativeAppearanceScreen(null);client.client().screen=screen;screen.draft.mode(ThemeSettings.Mode.CUSTOM);
+            var screen=new NativeAppearanceScreen(null);client.screen(screen);screen.draft.mode(ThemeSettings.Mode.CUSTOM);
             screen.width=120;screen.height=150;screen.init();
             var input=(EditBox)controls(screen).get("color:0");input.setValue("bad!");
             var body=(AbstractContainerWidget)field(screen,"body");body.setScrollAmount(30);
@@ -58,7 +58,7 @@ class NativeAppearanceScreenTest {
         try(var client=NativeTestClient.install()){
             var calls=new java.util.concurrent.atomic.AtomicInteger();
             var screen=new NativeAppearanceScreen(null,ControlPanelSettings.current().theme(),theme->calls.incrementAndGet());
-            client.client().screen=screen;screen.width=300;screen.height=220;screen.draft.background("nativeSolid");screen.init();
+            client.screen(screen);screen.width=300;screen.height=220;screen.draft.background("nativeSolid");screen.init();
             press(screen,"apply");assertTrue(screen.draft.dirty());assertEquals(0,calls.get());
             assertEquals(ControlPanelSettings.DEFAULT,ControlPanelSettings.current());
         }
@@ -80,7 +80,7 @@ class NativeAppearanceScreenTest {
         ControlPanelSettings.load(directory);
         try (var client = NativeTestClient.install()) {
             var screen = new ControlPanelScreen(null);
-            client.client().screen = screen;
+            client.screen(screen);
             screen.width = 500;
             screen.height = 300;
             screen.init();
@@ -112,7 +112,7 @@ class NativeAppearanceScreenTest {
         ControlPanelSettings.load(directory);
         var suites=com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS;
         try(var client=NativeTestClient.install()) {
-            var screen=new NativeAppearanceScreen(null);client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            var screen=new NativeAppearanceScreen(null);client.screen(screen);screen.width=300;screen.height=220;screen.init();
             press(screen,"suite:"+suites.get(0));
             assertEquals(suites.get(0),screen.draft.value().registeredThemeId());
             screen.draft.color(4,"#123456");
@@ -162,7 +162,7 @@ class NativeAppearanceScreenTest {
         var initial=new ThemeSettings(ThemeSettings.Mode.CUSTOM,ThemeSettings.Base.DARK,"","","","","#ABCDEF",
                 ThemeSettings.DEFAULT.effects(),ThemeSettings.DEFAULT.backgroundEffect(),"",4,"",archive);
         try(var client=NativeTestClient.install()) {
-            var screen=new NativeAppearanceScreen(null,initial,ignored->{});client.client().screen=screen;screen.width=300;screen.height=220;screen.init();
+            var screen=new NativeAppearanceScreen(null,initial,ignored->{});client.screen(screen);screen.width=300;screen.height=220;screen.init();
             assertDoesNotThrow(()->press(screen,"suite:"+com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.PORCELAIN));
             assertEquals(initial,screen.draft.value());
             assertTrue(field(screen,"status").toString().contains("palette_capacity"));
@@ -174,7 +174,7 @@ class NativeAppearanceScreenTest {
         try(var client=NativeTestClient.install()) {
             for(String id:com.dishanhai.sh_better_ui.theme.DisplayStyleSuites.IDS) {
                 var preview=new NativeAppearanceScreen.Preview(null,saved.theme().withRegisteredTheme(id));
-                client.client().screen=preview;preview.width=300;preview.height=200;
+                client.screen(preview);preview.width=300;preview.height=200;
                 assertDoesNotThrow(()->{preview.init();});
                 var samples=(java.util.List<?>)field(preview,"samples");assertEquals(4,samples.size());
                 assertTrue(preview.children().stream().anyMatch(Button.class::isInstance));

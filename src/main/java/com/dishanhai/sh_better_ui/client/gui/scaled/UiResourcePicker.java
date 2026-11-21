@@ -18,6 +18,7 @@ import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.components.Tooltip;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.multiplayer.ClientPacketListener;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
@@ -31,7 +32,9 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.TreeMap;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -41,6 +44,16 @@ import static com.dishanhai.sh_better_ui.client.api.UiWorkbench.button;
 
 /** GTSH resource-picker interaction, composed entirely from public SHBUI/UUK controls. */
 public final class UiResourcePicker {
+    /** A slot can retain its identifier, including a tag or a manually entered ID, through a move. */
+    public record InputSlot(String id, ItemStack icon) {
+        public static final InputSlot EMPTY = new InputSlot("", ItemStack.EMPTY);
+
+        public InputSlot {
+            Objects.requireNonNull(id);
+            Objects.requireNonNull(icon);
+        }
+    }
+
     private enum Source { ITEMS, INVENTORY, BOOKMARKS }
     private static Catalog cachedItems;
     private static long cachedItemsRevision;
@@ -95,9 +108,14 @@ public final class UiResourcePicker {
     private final Component title;
     private final Supplier<? extends GuiEventListener> returnFocus;
     private final Consumer<ItemStack> onConfirm;
-    private Consumer<List<ItemStack>> onSequence;
-    private int sequenceLimit;
-    private final List<Entry<ItemStack>> sequence = new ArrayList<>();
+    private BiConsumer<List<InputSlot>, Optional<ItemStack>> onSequence;
+    private final List<InputSlot> sequence = new ArrayList<>();
+    private List<InputSlot> initialInputs = List.of();
+    private boolean batchOutput, outputTarget, outputChanged;
+    private int inputTarget = -1;
+    private int helpY;
+    private UiIngredientSlots outputPreview;
+    private UiButton minus, plus;
     private final Runnable manualEntry;
     private final boolean quantities;
     private final ResourcePickerState<ItemStack> state;
@@ -135,9 +153,26 @@ public final class UiResourcePicker {
 
     public static boolean openSequence(Screen parent, Component title, Supplier<? extends GuiEventListener> returnFocus,
                                        int limit, Consumer<List<ItemStack>> onConfirm) {
-        if (parent == null || UiScreen.currentScreen() != parent || limit < 1) return false;
-        var picker = new UiResourcePicker(parent, title, returnFocus, ItemStack.EMPTY, false, null, ignored -> {});
-        picker.sequenceLimit = limit;
+        Objects.requireNonNull(onConfirm);
+        if (limit < 1) return false;
+        return openSequence(parent, title, returnFocus, Collections.nCopies(limit, InputSlot.EMPTY), ItemStack.EMPTY, false,
+                (items, output) -> onConfirm.accept(items.stream().map(InputSlot::icon).toList()));
+    }
+
+    public static boolean openSequence(Screen parent, Component title, Supplier<? extends GuiEventListener> returnFocus,
+                                       List<InputSlot> initialInputs, ItemStack initialOutput,
+                                       BiConsumer<List<InputSlot>, Optional<ItemStack>> onConfirm) {
+        return openSequence(parent, title, returnFocus, initialInputs, initialOutput, true, onConfirm);
+    }
+
+    private static boolean openSequence(Screen parent, Component title, Supplier<? extends GuiEventListener> returnFocus,
+                                        List<InputSlot> initialInputs, ItemStack initialOutput, boolean batchOutput,
+                                        BiConsumer<List<InputSlot>, Optional<ItemStack>> onConfirm) {
+        if (parent == null || UiScreen.currentScreen() != parent || initialInputs.isEmpty()) return false;
+        var picker = new UiResourcePicker(parent, title, returnFocus, initialOutput, batchOutput, null, ignored -> {});
+        picker.initialInputs = initialInputs.stream().map(slot -> new InputSlot(slot.id(), slot.icon().copy())).toList();
+        picker.sequence.addAll(picker.initialInputs);
+        picker.batchOutput = batchOutput;
         picker.onSequence = Objects.requireNonNull(onConfirm);
         picker.open();
         return UiScreen.currentScreen() != parent;
@@ -171,6 +206,7 @@ public final class UiResourcePicker {
         var font = Minecraft.getInstance().font;
         var prefs = UiWorkbench.preferences(owner);
         int x = layout.x(), top = layout.y(), sx = layout.selectionX(), sw = layout.selectionWidth();
+        boolean square = UiWorkbench.editorStyle(owner);
         search = owner.add(new UiTextField(font, new Bounds(layout.gridX(), top + 24, layout.gridWidth(), 20), text("search"), 256, prefs));
         search.setHint(text("search")); search.setValue(query);
         search.setRightClickClears(true);
@@ -190,11 +226,12 @@ public final class UiResourcePicker {
             sourceButton.setLeadingIcon(sourceIcon(source));
             leftY += 21;
         }
-        sortButton = button(owner, x, leftY, layout.sidebar(), 18, text("sort", sortLabel()), () -> {
+        sortButton = button(owner, x, leftY, layout.sidebar(), 18, Component.empty(), () -> {
             sort = ResourcePickerState.Sort.values()[(sort.ordinal() + 1) % ResourcePickerState.Sort.values().length];
-            sortButton.setMessage(text("sort", sortLabel())); updateOrder();
+            updateSortButton();
+            updateOrder();
         });
-        sortButton.setLeadingIcon(GraphicIcon.SORT);
+        if (layout.sidebar() >= 90) sortButton.setLeadingIcon(GraphicIcon.SORT);
         leftY += 21;
         groupButton = button(owner, x, leftY, layout.sidebar(), 18, text("group"), () -> {
             grouped = !grouped; groupButton.setSelected(grouped); updateOrder();
@@ -223,7 +260,7 @@ public final class UiResourcePicker {
                     text("resources"), fit.columns(), Collections.nCopies(fit.capacity(), ItemStack.EMPTY), prefs,
                     index -> choose(index, false), index -> choose(index, true), (a,b) -> {}));
             grid.setAllowDrag(false);
-            grid.setRounded(true);
+            grid.setRounded(!square);
             gridBar = owner.add(new UiVerticalScrollBar(new Bounds(gridArea.right() - SCROLL_WIDTH, gridArea.y(),
                     SCROLL_WIDTH, gridHeight), text("resources"), gridScroll, ROW_STEP, this::updateGrid));
         }
@@ -231,29 +268,51 @@ public final class UiResourcePicker {
             if (moduleArea.contains(mouseX, mouseY)) return moduleBar.scrollByWheel(vertical);
             return gridBar != null && gridArea.contains(mouseX, mouseY) && gridBar.scrollByWheel(vertical);
         });
-        int previewColumns = onSequence == null ? 1 : Math.min(3, sequenceLimit);
-        int previewRows = onSequence == null ? 1 : (sequenceLimit + previewColumns - 1) / previewColumns;
+        int previewColumns = onSequence == null ? 1 : Math.min(3, sequence.size());
+        int previewRows = onSequence == null ? 1 : (sequence.size() + previewColumns - 1) / previewColumns;
         preview = owner.add(new UiIngredientSlots(font, new Bounds(sx, layout.contentY() + 2,
                 onSequence == null ? 22 : previewColumns * 20 - 2, onSequence == null ? 22 : previewRows * 20 - 2), text("selected"),
-                previewColumns, java.util.Collections.nCopies(onSequence == null ? 1 : sequenceLimit, ItemStack.EMPTY), prefs,
-                ignored -> {}, this::removeSelection, this::moveSelection));
+                previewColumns, Collections.nCopies(onSequence == null ? 1 : sequence.size(), ItemStack.EMPTY), prefs,
+                this::targetInput, this::removeSelection, this::moveSelection));
         preview.setAllowDrag(onSequence != null);
-        preview.setDropTarget((from, to) -> from < sequence.size() ? Math.min(to, sequence.size() - 1) : -1);
-        preview.setRounded(true);
+        preview.setDropTarget((from, to) -> from < sequence.size() && !sequence.get(from).id().isEmpty() ? to : -1);
+        preview.setRounded(!square);
         int ay = layout.contentY() + 39;
-        amount = owner.add(new UiTextField(font, new Bounds(sx + 22, ay, Math.max(24, sw - 44), 18), text("quantity"), 10, prefs));
+        if (batchOutput) {
+            ay = layout.contentY() + previewRows * ROW_STEP + 13;
+            outputPreview = owner.add(new UiIngredientSlots(font, new Bounds(sx, ay, 18, 18), text("output"), 1,
+                    List.of(ItemStack.EMPTY), prefs, ignored -> {
+                        outputTarget = !outputTarget;
+                        inputTarget = -1;
+                        updateControls();
+                    }, ignored -> clearOutput(), (from, to) -> {}));
+            outputPreview.setAllowDrag(false);
+            outputPreview.setRounded(!square);
+        }
+        int amountX = sx + (batchOutput ? 22 : 0);
+        amount = owner.add(new UiTextField(font, new Bounds(amountX + 22, ay, Math.max(24, sw - (amountX - sx) - 44), 18),
+                text("quantity"), 10, prefs));
         amount.setValue(amountText);
-        amount.setOnChange(value -> { amountText = value; validAmount = state.amount(value); updateControls(); });
-        var minus = button(owner, sx, ay, 18, 18, Component.literal("−"), () -> step(-1)); minus.active = quantities;
-        var plus = button(owner, sx + sw - 18, ay, 18, 18, Component.literal("+"), () -> step(1)); plus.active = quantities;
-        if (onSequence != null) { amount.visible = false; minus.visible = false; plus.visible = false; }
-        int clearY = onSequence == null ? ay + 23 : layout.contentY() + 6 + previewRows * 20;
-        clear = button(owner, sx, clearY, sw, 18, text("clear"), this::clear);
-        clear.setLeadingIcon(GraphicIcon.DELETE);
-        int suggestionRows = Math.min(3, Math.max(0, (layout.contentHeight() - 126) / 20));
+        amount.setOnChange(value -> {
+            amountText = value;
+            validAmount = state.amount(value);
+            outputChanged |= batchOutput && state.selected() != null;
+            updateControls();
+        });
+        minus = button(owner, amountX, ay, 18, 18, Component.literal("−"), () -> step(-1));
+        plus = button(owner, sx + sw - 18, ay, 18, 18, Component.literal("+"), () -> step(1));
+        amount.visible = minus.visible = plus.visible = onSequence == null || batchOutput;
+        int clearY = onSequence == null || batchOutput ? ay + 22 : layout.contentY() + 6 + previewRows * ROW_STEP;
+        boolean compactClear = batchOutput && clearY + 18 > layout.footerY();
+        clear = button(owner, compactClear ? sx + sw - 18 : sx, compactClear ? ay - 22 : clearY,
+                compactClear ? 18 : sw, 18, text(batchOutput ? "clear_inputs" : "clear"), this::clear);
+        if (compactClear) clear.setIcon(GraphicIcon.DELETE); else clear.setLeadingIcon(GraphicIcon.DELETE);
+        helpY = clearY + 22;
+        int suggestionsY = helpY + 25;
+        int suggestionRows = Math.min(3, Math.max(0, (layout.footerY() - suggestionsY) / 20));
         for (int i = 0; i < suggestionRows; i++) {
             int row = i;
-            var suggestion = button(owner, sx, layout.contentY() + 122 + i * 20, sw, 18, Component.empty(), () -> {
+            var suggestion = button(owner, sx, suggestionsY + i * 20, sw, 18, Component.empty(), () -> {
                 if (row >= options.size()) return;
                 query = options.get(row).completion();
                 search.setValue(query);
@@ -269,7 +328,7 @@ public final class UiResourcePicker {
         if (manualEntry != null) button(owner, x, footer, layout.sidebar(), 20, text("manual"), () -> {
             finish(false); manualEntry.run();
         }).setLeadingIcon(GraphicIcon.EDIT);
-        for (var child : owner.children()) if (child instanceof UiButton button) button.setCornerRadius(4);
+        for (var child : owner.children()) if (child instanceof UiButton button) button.setCornerRadius(square ? 0 : 4);
         updateSources(); resizeModules(); filter(); updateControls();
         owner.setFocused(search);
     }
@@ -288,6 +347,7 @@ public final class UiResourcePicker {
         updateOrder();
     }
     private void updateSources() {
+        updateSortButton();
         if (sourceButton != null) {
             sourceButton.setMessage(text("source_cycle", sourceLabel(source)));
             sourceButton.setLeadingIcon(sourceIcon(source));
@@ -369,26 +429,74 @@ public final class UiResourcePicker {
     private void choose(int index, boolean toggle) {
         int at = firstVisible + index;
         if (at >= matches.size()) return;
-        if (onSequence != null) {
-            if (toggle) { if (!sequence.isEmpty()) sequence.remove(sequence.size() - 1); }
-            else if (sequence.size() < sequenceLimit) sequence.add(matches.get(at));
-            updateControls(); return;
+        if (onSequence != null && !outputTarget) {
+            if (toggle) {
+                if (batchOutput) return;
+                int last = lastInput();
+                if (last >= 0) removeSelection(last);
+            } else {
+                int slot = inputTarget;
+                if (slot < 0) {
+                    for (int i = 0; i < sequence.size(); i++) {
+                        if (sequence.get(i).id().isEmpty()) { slot = i; break; }
+                    }
+                }
+                if (slot >= 0) {
+                    var item = matches.get(at).value();
+                    sequence.set(slot, new InputSlot(BuiltInRegistries.ITEM.getKey(item.getItem()).toString(), item));
+                    inputTarget = -1;
+                    updateControls();
+                }
+            }
+            return;
         }
+        if (outputTarget && toggle) return;
         state.choose(matches.get(at), toggle);
+        outputChanged |= outputTarget;
         amountText = Integer.toString(quantities ? state.amount() : 1);
         amount.setValue(amountText); validAmount = true;
         updateControls();
     }
-    private void clear() { if (onSequence == null) state.clear(); else sequence.clear(); updateControls(); }
+    private int lastInput() {
+        for (int i = sequence.size() - 1; i >= 0; i--) {
+            if (!sequence.get(i).id().isEmpty()) return i;
+        }
+        return -1;
+    }
+    private void targetInput(int index) {
+        if (onSequence == null) return;
+        outputTarget = false;
+        inputTarget = index;
+        updateControls();
+    }
+    private void clearOutput() {
+        if (state.selected() == null) return;
+        outputChanged = true;
+        state.clear();
+        amountText = "1";
+        amount.setValue(amountText);
+        validAmount = true;
+        updateControls();
+    }
+    private void clear() {
+        if (onSequence == null) state.clear();
+        else {
+            Collections.fill(sequence, InputSlot.EMPTY);
+            inputTarget = -1;
+        }
+        updateControls();
+    }
     private void removeSelection(int index) {
         if (onSequence == null) clear();
-        else if (index < sequence.size()) {
-            sequence.remove(index);
+        else if (!sequence.get(index).id().isEmpty()) {
+            sequence.set(index, InputSlot.EMPTY);
             updateControls();
         }
     }
     private void moveSelection(int from, int to) {
-        sequence.add(to, sequence.remove(from));
+        Collections.swap(sequence, from, to);
+        inputTarget = -1;
+        outputTarget = false;
         updateControls();
     }
     private void step(int direction) {
@@ -397,29 +505,55 @@ public final class UiResourcePicker {
     }
     private void updateControls() {
         var entry = state.selected();
+        var stack = selectedStack();
         if (onSequence != null) {
-            var stacks = new ArrayList<ItemStack>(); var labels = new ArrayList<Component>();
-            for (int i = 0; i < sequenceLimit; i++) {
-                var item = i < sequence.size() ? sequence.get(i) : null;
-                stacks.add(item == null ? ItemStack.EMPTY : item.value().copy());
-                labels.add(item == null ? text("empty") : entryLabel(item));
+            int filled = 0;
+            var labels = new ArrayList<Component>(sequence.size());
+            for (var input : sequence) {
+                var label = input.id().isEmpty() ? text("empty") : Component.literal(input.id());
+                if (!input.icon().isEmpty()
+                        && input.id().equals(BuiltInRegistries.ITEM.getKey(input.icon().getItem()).toString()))
+                    label = input.icon().getHoverName().copy().append("\n").append(label);
+                labels.add(label);
+                if (!input.id().isEmpty()) filled++;
             }
-            preview.setItems(stacks); preview.setSlotNames(labels);
-            confirm.active = !sequence.isEmpty(); clear.active = !sequence.isEmpty();
-            chosenLabel = text("sequence_count", sequence.size(), sequenceLimit);
-            return;
+            preview.setItems(sequence.stream().map(InputSlot::icon).toList());
+            preview.setSlotNames(labels);
+            preview.setMarkedSlot(inputTarget);
+            clear.active = filled > 0;
+            chosenLabel = text("sequence_count", filled, sequence.size());
+            if (outputPreview != null) {
+                outputPreview.setItems(List.of(stack));
+                outputPreview.setSlotNames(List.of(text("output_help", stack.isEmpty() ? text("empty") : stack.getHoverName())));
+                outputPreview.setMarkedSlot(outputTarget ? 0 : -1);
+            }
+            confirm.active = (inputsChanged() || outputChanged) && validAmount;
+        } else {
+            preview.setItems(List.of(stack));
+            chosenLabel = entry == null ? text("empty") : entryLabel(entry);
+            chosenId = entry == null ? text("single") : Component.literal(entry.id());
+            preview.setSlotNames(List.of(entry == null ? chosenLabel : chosenLabel.copy().append("\n")
+                    .append(Component.literal(entry.id()).withStyle(style -> style.withColor(UiWorkbench.secondaryTextColor() & 0xFFFFFF)))));
+            confirm.active = entry != null && validAmount;
+            clear.active = entry != null;
         }
-        var stack = entry == null ? ItemStack.EMPTY : entry.value().copy();
-        if (!stack.isEmpty()) stack.setCount(quantities ? state.amount() : 1);
-        preview.setItems(List.of(stack));
-        chosenLabel = entry == null ? text("empty") : entryLabel(entry);
-        chosenId = entry == null ? text("single") : Component.literal(entry.id());
-        preview.setSlotNames(List.of(entry == null ? chosenLabel : chosenLabel.copy().append("\n")
-                .append(Component.literal(entry.id()).withStyle(style -> style.withColor(UiWorkbench.secondaryTextColor() & 0xFFFFFF)))));
-        confirm.active = entry != null && validAmount;
-        clear.active = entry != null;
         amount.active = quantities && entry != null;
-        amount.setError(validAmount ? null : text("invalid_quantity"));
+        minus.active = amount.active && (!validAmount || state.amount() > 1);
+        plus.active = amount.active && state.amount() < Integer.MAX_VALUE;
+        amount.setError(!amount.active || validAmount ? null : text("invalid_quantity"));
+    }
+    private ItemStack selectedStack() {
+        var entry = state.selected();
+        if (entry == null) return ItemStack.EMPTY;
+        var stack = entry.value().copy();
+        stack.setCount(quantities ? state.amount() : 1);
+        return stack;
+    }
+    private boolean inputsChanged() {
+        for (int i = 0; i < sequence.size(); i++) {
+            if (!sequence.get(i).id().equals(initialInputs.get(i).id())) return true;
+        }
+        return false;
     }
     private void finish(boolean confirmed) {
         if (UiScreen.currentScreen() != screen || state.finished() || confirmed && !validAmount) return;
@@ -428,8 +562,10 @@ public final class UiResourcePicker {
         if (UiScreen.currentScreen() != parent) return;
         var focus = returnFocus.get();
         if (focus != null && parent.children().contains(focus)) parent.setFocused(focus);
-        if (onSequence != null && confirmed && !sequence.isEmpty()) {
-            onSequence.accept(sequence.stream().map(entry -> entry.value().copy()).toList());
+        if (onSequence != null && confirmed && (inputsChanged() || outputChanged)) {
+            var inputs = (batchOutput ? sequence : sequence.subList(0, lastInput() + 1)).stream()
+                    .map(slot -> new InputSlot(slot.id(), slot.icon().copy())).toList();
+            onSequence.accept(inputs, outputChanged ? Optional.of(selectedStack()) : Optional.empty());
             return;
         }
         selected.ifPresent(entry -> {
@@ -437,7 +573,17 @@ public final class UiResourcePicker {
         });
     }
     private Component sourceLabel(Source value) { return text("source", text("source." + value.name().toLowerCase(Locale.ROOT)), sources.get(value.ordinal()).entries.size()); }
-    private Component sortLabel() { return text("sort." + sort.name().toLowerCase(java.util.Locale.ROOT)); }
+    private Component sortLabel() {
+        if (sort == ResourcePickerState.Sort.DEFAULT && source == Source.ITEMS && UiResourcePickerSources.jeiOrderAvailable())
+            return text("sort.jei");
+        return text("sort." + sort.name().toLowerCase(Locale.ROOT));
+    }
+    private void updateSortButton() {
+        var label = sortLabel();
+        var full = text("sort", label);
+        sortButton.setMessage(layout.sidebar() < 90 ? label : full);
+        sortButton.setTooltip(Tooltip.create(full));
+    }
     private static GraphicIcon sourceIcon(Source source) {
         return switch (source) { case ITEMS -> GraphicIcon.ITEM; case INVENTORY -> GraphicIcon.INPUT; case BOOKMARKS -> GraphicIcon.BOOKMARK; };
     }
@@ -451,15 +597,19 @@ public final class UiResourcePicker {
         line(frame, text("help"), layout.x(), layout.y() + 25, layout.sidebar(), UiWorkbench.secondaryTextColor());
         line(frame, text("selected").copy().withStyle(style -> style.withBold(true)), sx, layout.y() + 25, sw, UiWorkbench.accentColor());
         if (onSequence != null) {
-            line(frame, chosenLabel, sx + Math.min(3, sequenceLimit) * 20 + 4, sy + 4,
-                    sw - Math.min(3, sequenceLimit) * 20 - 4, UiWorkbench.textColor());
+            int textX = Math.min(3, sequence.size()) * ROW_STEP + 4;
+            line(frame, chosenLabel, sx + textX, sy + 4, sw - textX, UiWorkbench.textColor());
         } else {
             line(frame, chosenLabel, sx + 26, sy + 4, sw - 26, UiWorkbench.textColor());
             line(frame, chosenId, sx, sy + 27, sw, UiWorkbench.secondaryTextColor());
         }
-        if (layout.contentHeight() > 110) {
-            line(frame, resultCount, sx, sy + 90, sw, UiWorkbench.secondaryTextColor());
-            line(frame, text(onSequence != null ? "sequence_help" : quantities ? "quantity_help" : "single"), sx, sy + 105, sw, UiWorkbench.secondaryTextColor());
+        if (outputPreview != null)
+            line(frame, text(outputTarget ? "output_target" : "output"), sx, outputPreview.getY() - 10, sw,
+                    outputTarget ? UiWorkbench.accentColor() : UiWorkbench.textColor());
+        if (helpY + 10 <= layout.footerY()) line(frame, resultCount, sx, helpY, sw, UiWorkbench.secondaryTextColor());
+        if (helpY + 22 <= layout.footerY()) {
+            var help = text(outputTarget ? "output_pick" : onSequence != null ? "sequence_help" : quantities ? "quantity_help" : "single");
+            line(frame, help, sx, helpY + 12, sw, UiWorkbench.secondaryTextColor());
         }
         if (matches.isEmpty()) line(frame, text(source == Source.BOOKMARKS && !UiResourcePickerSources.bookmarksAvailable() ? "no_jei" : "no_matches"),
                 layout.gridX(), sy + 6, layout.gridWidth(), UiWorkbench.secondaryTextColor());

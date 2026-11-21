@@ -41,7 +41,7 @@ final class NativeDockWindowsTest {
             };
             host.startNative(List.of(new ModuleDiscovery.Candidate("example","fixture",plugin,grants,false)));
             assertNotNull(module, "The fixture module must start on the target platform before mounting a tree");
-            client.client().screen=screen; screen.width=800;screen.height=500;
+            client.screen(screen); screen.width=800;screen.height=500;
             screens.show(screen); tree=screens.mountTrusted(module,screen,UiId.parse("example:tree"));
         }
         MiniWindowHandle window() { return window((draw,view) -> {}); }
@@ -249,7 +249,7 @@ final class NativeDockWindowsTest {
             f.dock.input(f.screen,pointer(NativeInput.PointerAction.DRAG,418,348));
             f.dock.suspend();assertTrue(window.snapshot().isEmpty());f.prepare();
             assertEquals(260,window.snapshot().orElseThrow().geometry().bounds().width());
-            f.client.client().screen=null;
+            f.client.screen(null);
             assertFalse(f.dock.input(f.screen,pointer(NativeInput.PointerAction.PRESS,80,80)));
         }
     }
