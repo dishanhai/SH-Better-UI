@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -251,47 +253,97 @@ class NetworkIconTest {
                 GraphicIcon.AE2_ORDERABLE, GraphicIcon.AE2_STOCK));
     }
 
+    @Test
+    void vectorMastersHaveIndependentlyRenderedTintableTextures() throws IOException {
+        try (var sources = Files.list(vectorMasterDirectory())) {
+            var masters = sources.filter(source -> source.getFileName().toString().endsWith(".svg")).toList();
+            assertFalse(masters.isEmpty());
+            for (var source : masters) {
+                String name = source.getFileName().toString().replaceFirst("\\.svg$", ".png");
+                String path = "/assets/sh_better_ui/textures/gui/display/" + name;
+                var original = readTintMask(path, 16);
+                assertVectorCompanion(path.replace("/display/", "/display_64/"), original);
+            }
+        }
+        try (var inline = GraphicIcon.class.getResourceAsStream(
+                     "/assets/sh_better_ui/textures/gui/rich/material-shop.png");
+             var display = GraphicIcon.class.getResourceAsStream(
+                     "/assets/sh_better_ui/textures/gui/display_64/shop.png")) {
+            assertNotNull(inline);
+            assertNotNull(display);
+            assertArrayEquals(display.readAllBytes(), inline.readAllBytes());
+        }
+    }
+
+    private static Path vectorMasterDirectory() {
+        for (Path root = Path.of("").toAbsolutePath(); root != null; root = root.getParent()) {
+            Path masters = root.resolve("artwork/visual-icons");
+            if (Files.isDirectory(masters)) return masters;
+        }
+        throw new AssertionError("Cannot locate the built-in SVG icon masters");
+    }
+
     private static void assertIconTextures(List<GraphicIcon> icons) throws IOException {
+        var masters = vectorMasterDirectory();
         for (var icon : icons) {
             var id = icon.texture();
             String path = "/assets/" + id.getNamespace() + "/" + id.getPath();
-            try (var stream = GraphicIcon.class.getResourceAsStream(path)) {
-                assertNotNull(stream, path);
-                var image = ImageIO.read(stream);
-                assertNotNull(image, path);
-                assertEquals(16, image.getWidth(), path);
-                assertEquals(16, image.getHeight(), path);
-                boolean transparent = false;
-                boolean painted = false;
-                for (int y = 0; y < image.getHeight(); y++) {
-                    for (int x = 0; x < image.getWidth(); x++) {
-                        int pixel = image.getRGB(x, y);
-                        if ((pixel >>> 24) == 0) {
-                            transparent = true;
-                        } else {
-                            assertEquals(0xFFFFFF, pixel & 0xFFFFFF, path);
-                            painted = true;
-                        }
-                    }
-                }
-                assertTrue(transparent && painted, path);
-                assertEnlargedCopy(path.replace("/display/", "/display_64/"), image);
+            var image = readTintMask(path, 16);
+            String companion = path.replace("/display/", "/display_64/");
+            String file = path.substring(path.lastIndexOf('/') + 1);
+            if (Files.isRegularFile(masters.resolve(file.replaceFirst("\\.png$", ".svg")))) {
+                assertVectorCompanion(companion, image);
+            } else {
+                assertTrue(isNearestNeighborCopy(readTintMask(companion, 64), image), companion);
             }
         }
     }
 
-    private static void assertEnlargedCopy(String path, BufferedImage original) throws IOException {
+    private static BufferedImage readTintMask(String path, int size) throws IOException {
         try (var stream = GraphicIcon.class.getResourceAsStream(path)) {
             assertNotNull(stream, path);
-            var copy = ImageIO.read(stream);
-            assertNotNull(copy, path);
-            assertEquals(64, copy.getWidth(), path);
-            assertEquals(64, copy.getHeight(), path);
-            for (int y = 0; y < copy.getHeight(); y++) {
-                for (int x = 0; x < copy.getWidth(); x++) {
-                    assertEquals(original.getRGB(x / 4, y / 4), copy.getRGB(x, y), path);
+            var image = ImageIO.read(stream);
+            assertNotNull(image, path);
+            assertEquals(size, image.getWidth(), path);
+            assertEquals(size, image.getHeight(), path);
+            boolean transparent = false;
+            boolean painted = false;
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    int pixel = image.getRGB(x, y);
+                    if ((pixel >>> 24) == 0) {
+                        transparent = true;
+                    } else {
+                        assertEquals(0xFFFFFF, pixel & 0xFFFFFF, path);
+                        painted = true;
+                    }
+                }
+            }
+            assertTrue(transparent && painted, path);
+            return image;
+        }
+    }
+
+    private static void assertVectorCompanion(String path, BufferedImage original) throws IOException {
+        var detail = readTintMask(path, 64);
+        boolean hasSubpixelDetail = false;
+        for (int y = 0; y < 64; y++) {
+            for (int x = 0; x < 64; x++) {
+                int alpha = detail.getRGB(x, y) >>> 24;
+                if (alpha > 0 && alpha < 255 && alpha != (original.getRGB(x / 4, y / 4) >>> 24)) {
+                    hasSubpixelDetail = true;
                 }
             }
         }
+        assertTrue(hasSubpixelDetail, path + " must contain independently rendered edge coverage");
+    }
+
+    private static boolean isNearestNeighborCopy(BufferedImage copy, BufferedImage original) {
+        for (int y = 0; y < copy.getHeight(); y++) {
+            for (int x = 0; x < copy.getWidth(); x++) {
+                if (original.getRGB(x / 4, y / 4) != copy.getRGB(x, y)) return false;
+            }
+        }
+        return true;
     }
 }

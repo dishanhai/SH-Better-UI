@@ -437,7 +437,7 @@ var buttons = UiLayout.row(area, List.of(new UiLayout.Size(28, 18), new UiLayout
 
 Forge 与 NeoForge 的原生 `Screen` 可使用 `client.gui.display` 下的图标与状态面板。状态和翻页图标有 `INFO`、`SUCCESS`、`WARNING`、`ERROR`、`PREVIOUS`、`NEXT`。通用操作图标有 `ADD`、`REMOVE`、`SEARCH`、`SETTINGS`、`REFRESH`、`CLOSE`。可用 `new GraphicIcon(textureId)` 引用自己的 16×16 透明 PNG，白色图形可按 ARGB 着色。给 `UiButton` 设置图标时仍应传入本地化按钮名称，供悬停提示和旁白使用。
 
-内置图标的 64×64 透明副本位于 `sh_better_ui:textures/gui/display_64/<图标名>.png`，与 16×16 原图同名。副本按最近邻放大 4 倍，适用于按 64×64 读取完整纹理的调用方。内置 `GraphicIcon` 常数引用 16×16 原图。
+内置图标的 64×64 透明纹理位于 `sh_better_ui:textures/gui/display_64/<图标名>.png`，与 16×16 版本同名。有 SVG 原稿的图标直接按两种尺寸分别渲染；尚未迁移的 PNG 图标仍按最近邻放大 4 倍。内置 `GraphicIcon` 常数仍引用 16×16 PNG。
 
 AE2 界面可用 `AE2_ORDER`（下单）、`AE2_PATTERN_UPLOAD`（样板上传）、`AE2_ORDERABLE`（可下单）和 `AE2_STOCK`（AE 库存）。对应纹理名为 `ae2_order.png`、`ae2_pattern_upload.png`、`ae2_orderable.png`、`ae2_stock.png`。
 
