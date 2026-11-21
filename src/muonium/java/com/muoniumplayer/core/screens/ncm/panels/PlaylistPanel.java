@@ -42,6 +42,7 @@ public class PlaylistPanel extends NCMPanel {
 
     public PlayList playList;
     private final boolean showBackButton;
+    private final boolean orderedPlayback;
 
     public PlaylistPanel(PlayList playlist) {
         this(playlist, true);
@@ -49,8 +50,13 @@ public class PlaylistPanel extends NCMPanel {
 
     /** 供最近播放列表使用，其父级发现页面已负责导航。 */
     public PlaylistPanel(PlayList playlist, boolean showBackButton) {
+        this(playlist, showBackButton, false);
+    }
+
+    public PlaylistPanel(PlayList playlist, boolean showBackButton, boolean orderedPlayback) {
         this.playList = playlist;
         this.showBackButton = showBackButton;
+        this.orderedPlayback = orderedPlayback;
     }
 
     /**
@@ -251,8 +257,9 @@ public class PlaylistPanel extends NCMPanel {
 
                 if (mouseButton == 0) {
                     playList.loadMusicsWithCallback(musics -> {
-                        CloudMusic.currentPlaylistContext = playList.isSearchMode() ? null : playList;
-                        CloudMusic.play(musics, 0);
+                        PlayList origin = playList.isSearchMode() ? null : playList;
+                        if (orderedPlayback) CloudMusic.playOrdered(musics, 0, origin);
+                        else CloudMusic.play(musics, 0, origin);
                     });
                 }
 
@@ -770,7 +777,7 @@ public class PlaylistPanel extends NCMPanel {
             List<AbstractWidget<?>> batch = new ArrayList<>(end - this.pendingMusicIndex);
             while (this.pendingMusicIndex < end) {
                 int index = this.pendingMusicIndex++;
-                MusicWidget musicWidget = new MusicWidget(this.pendingMusicBuild.get(index), this.playList, index);
+                MusicWidget musicWidget = new MusicWidget(this.pendingMusicBuild.get(index), this.playList, index, orderedPlayback);
                 musicWidget.setShouldOverrideMouseCursor(true);
                 musicWidget.setEntranceAnimation(this.revealQueue);
                 if (!this.musicFilterText.isEmpty()) {

@@ -33,6 +33,17 @@ final class PlayerQueue {
     void replace(List<OnlineTrack> tracks, int selected) {
         if (persistent == null) local.replace(tracks, selected).ifPresent(player::play); else persistent.replace(tracks, selected);
     }
+    void replaceSequential(List<OnlineTrack> tracks, int selected) {
+        if (persistent == null) {
+            local.replace(tracks, selected).ifPresent(player::play);
+        } else if (persistent.supportsModeReplacement()) {
+            persistent.replace(tracks, selected, OnlineMusicQueue.Mode.SEQUENTIAL);
+        } else if (mode() == OnlineMusicQueue.Mode.SEQUENTIAL) {
+            persistent.replace(tracks, selected);
+        } else {
+            throw new UnsupportedOperationException("Ordered playback unavailable");
+        }
+    }
     void select(int selected) { if (persistent == null) local.select(selected).ifPresent(player::play); else persistent.select(selected); }
     void next() { if (persistent == null) local.next().ifPresent(player::play); else persistent.next(); }
     void previous() { if (persistent == null) local.previous().ifPresent(player::play); else persistent.previous(); }

@@ -1518,9 +1518,6 @@ public class CloudMusic implements SharedConstants {
     public static void playFromSearchSelection(Music selected, List<Music> searchResults, int selectedIndex) {
         List<Music> results = searchResults == null
                 ? Collections.<Music>emptyList() : new ArrayList<>(searchResults);
-        // 搜索结果不是歌单，播放时长上报没有来源歌单可归属，与旧行为一致。
-        currentPlaylistContext = null;
-
         if (selected == null || results.isEmpty()) {
             if (selected != null) play(Collections.singletonList(selected), 0);
             else play(results, selectedIndex);
@@ -1618,8 +1615,19 @@ public class CloudMusic implements SharedConstants {
      */
     @SneakyThrows
     public static void play(List<Music> songs, int startIdx) {
+        play(songs, startIdx, null);
+    }
+
+    /** Start a list with its real origin; generic queue starts carry no playlist. */
+    public static void play(List<Music> songs, int startIdx, PlayList origin) {
         exitPersonalFmSession();
-        startPlaybackList(songs, startIdx);
+        startPlaybackList(songs, startIdx, false, origin, false);
+    }
+
+    /** Explicitly start a provider collection at its displayed position, without shuffle or single repeat. */
+    public static void playOrdered(List<Music> songs, int startIdx, PlayList origin) {
+        exitPersonalFmSession();
+        startPlaybackList(songs, startIdx, false, origin, true);
     }
 
     /**
@@ -1632,15 +1640,20 @@ public class CloudMusic implements SharedConstants {
             return;
         }
         enterPersonalFmSession();
-        startPlaybackList(songs, startIdx);
+        startPlaybackList(songs, startIdx, false, null, false);
     }
 
     private static void startPlaybackList(List<Music> songs, int startIdx) {
         startPlaybackList(songs, startIdx, false);
     }
 
-    @SneakyThrows
     private static void startPlaybackList(List<Music> songs, int startIdx, boolean resumeLastSession) {
+        startPlaybackList(songs, startIdx, resumeLastSession, currentPlaylistContext, false);
+    }
+
+    @SneakyThrows
+    private static void startPlaybackList(List<Music> songs, int startIdx, boolean resumeLastSession,
+                                          PlayList origin, boolean ordered) {
         if (songs == null || songs.isEmpty()) {
             System.err.println("[NCM] Ignoring empty playlist.");
             return;
@@ -1667,7 +1680,7 @@ public class CloudMusic implements SharedConstants {
 
         // 深拷贝一份以避免打乱时影响来源列表；FM 会话始终保持接口返回顺序。
         List<Music> safeSongList = new ArrayList<>(songs);
-        if (!personalFmActive && playMode == PlayMode.Random) {
+        if (!ordered && !personalFmActive && playMode == PlayMode.Random) {
             startIdx = handleRandomPlayMode(safeSongList, startIdx);
         }
 
@@ -1675,9 +1688,11 @@ public class CloudMusic implements SharedConstants {
         long resumeOffset = takeResumeOffset(safeSongList.get(startIdx), resumeLastSession);
         Thread active = playThread;
         if (active instanceof PlayThread
-                && ((PlayThread) active).requestManualSelection(safeSongList, startIdx, true)) return;
+                && ((PlayThread) active).requestManualSelection(safeSongList, startIdx, true, origin, ordered)) return;
 
         stopExistingPlayThread();
+        currentPlaylistContext = origin;
+        if (ordered) playMode = PlayMode.Sequential;
         loadMusicCover(safeSongList.get(Math.min(startIdx, safeSongList.size() - 1)));
         playList = safeSongList;
         clearQueuedNext();
@@ -4224,16 +4239,21 @@ public class CloudMusic implements SharedConstants {
             final Music selectedSong;
             final long requestNanos = System.nanoTime();
             final boolean replaceQueue;
+            final PlayList origin;
+            final boolean ordered;
             final PlaybackSession session;
             volatile Thread worker;
             volatile ArmedTrack ready;
             volatile Throwable failure;
 
-            ManualSelection(List<Music> songs, int index, boolean replaceQueue, PlaybackSession session) {
+            ManualSelection(List<Music> songs, int index, boolean replaceQueue, PlayList origin,
+                            boolean ordered, PlaybackSession session) {
                 this.songs = songs;
                 this.index = index;
                 this.selectedSong = songs.get(index);
                 this.replaceQueue = replaceQueue;
+                this.origin = origin;
+                this.ordered = ordered;
                 this.session = session;
             }
         }
@@ -4245,14 +4265,16 @@ public class CloudMusic implements SharedConstants {
                 int index = (pending == null ? curIdx : pending.index) + direction;
                 if (queue.isEmpty()) return false;
                 if (index < 0 || index >= queue.size()) {
-                    if (playMode == PlayMode.Sequential) return pending != null;
+                    if (playMode == PlayMode.Sequential || pending != null && pending.ordered) return pending != null;
                     index = Math.floorMod(index, queue.size());
                 }
-                return requestManualSelection(queue, index, pending != null && pending.replaceQueue);
+                return requestManualSelection(queue, index, pending != null && pending.replaceQueue,
+                        pending == null ? currentPlaylistContext : pending.origin, pending != null && pending.ordered);
             }
         }
 
-        private boolean requestManualSelection(List<Music> queue, int index, boolean replaceQueue) {
+        private boolean requestManualSelection(List<Music> queue, int index, boolean replaceQueue,
+                                               PlayList origin, boolean ordered) {
             synchronized (PLAYER_STATE_LOCK) {
                 // 私人 FM 不再排除：这条路径本来就是「原曲不停、新歌取流解码就绪才短渐变交接」，
                 // 交接尾部走 performAutomixHandover（noteFmTrackStarted 在那里照常同步面板）。
@@ -4268,7 +4290,7 @@ public class CloudMusic implements SharedConstants {
                 if (index < 0 || index >= queue.size() || queue.get(index) == null) return false;
 
                 cancelManualSelection();
-                ManualSelection selection = new ManualSelection(queue, index, replaceQueue, session);
+                ManualSelection selection = new ManualSelection(queue, index, replaceQueue, origin, ordered, session);
                 // 点击的正好是已解码的下一首时直接复用备用轨，不能因「视觉上先选中」而退化成重新下载。
                 ArmedTrack ready = armed;
                 if (ready != null && ready.index == index && !ready.preRolled
@@ -4799,6 +4821,8 @@ public class CloudMusic implements SharedConstants {
                     if (selection.replaceQueue) {
                         songs = selection.songs;
                         playList = songs;
+                        currentPlaylistContext = selection.origin;
+                        if (selection.ordered) playMode = PlayMode.Sequential;
                         clearQueuedNext();
                     }
                     if (!selection.replaceQueue) {

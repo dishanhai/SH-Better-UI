@@ -47,6 +47,26 @@ class PlayerQueueTest {
         queue.observe(frame(OnlineMusicPlayer.State.ENDED)); assertEquals(List.of(A),plays);
         queue.next(); assertEquals(List.of(A,B),plays);
     }
+    @Test void explicitSequentialStartKeepsDuplicatePositionAndReplacesShuffleAtomically() {
+        var calls = new ArrayList<List<Object>>();
+        var items = List.of(A, B, A);
+        var persistent = (OnlineMusicQueue) Proxy.newProxyInstance(getClass().getClassLoader(),
+                new Class<?>[]{OnlineMusicQueue.class}, (proxy, method, args) -> {
+                    return switch (method.getName()) {
+                        case "supportsModeReplacement" -> true;
+                        case "snapshot" -> new OnlineMusicQueue.Snapshot(items, 0, false,
+                                OnlineMusicQueue.Mode.SHUFFLE, false, true);
+                        case "replace" -> { calls.add(List.of(args)); yield null; }
+                        default -> throw new AssertionError("Unexpected queue call: " + method.getName());
+                    };
+                });
+        var plays = new ArrayList<OnlineTrack>();
+        new PlayerQueue(player(persistent, plays)).replaceSequential(items, 2);
+        assertEquals(List.of(List.of(items, 2, OnlineMusicQueue.Mode.SEQUENTIAL)), calls);
+        assertTrue(plays.isEmpty());
+        new PlayerQueue(player(null, plays)).replaceSequential(items, 1);
+        assertEquals(List.of(B), plays);
+    }
     @Test void persistentQueueReentryUsesSameSnapshotAndViewNeverDoublePlaysOrAdvances() {
         var calls = new ArrayList<String>();
         OnlineMusicQueue persistent = (OnlineMusicQueue) Proxy.newProxyInstance(getClass().getClassLoader(),

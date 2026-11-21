@@ -903,19 +903,23 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         FullscreenLyricRenderer styleRenderer = currentStyleRenderer();
         if (styleRenderer != null) {
             classicLyricPointer.invalidate();
+            double footer = singFader.isVisible() ? 48 : lyricLanguagePicker.isVisible() ? 34 : 0;
+            double lyricHeight = lyricViewport.height - footer;
             if (styleRenderer instanceof AppleLyricRenderer apple) {
                 apple.setLyricLanguage(lyricLanguagePicker.selected());
             }
             if (styleRenderer instanceof AppleLyricRenderer apple && allowAppleLyricPointer()
+                    && lyricViewport.width > 4 && lyricHeight > 4
                     && lyricPointerTrack(snapshot, lyricRevision) != null) {
-                if (dWheel != 0) cancelLyricPointerPress();
+                if (dWheel != 0 && lyricHeight > .5 && isHovered(mouseX, mouseY,
+                        lyricViewport.left, lyricViewport.top, lyricViewport.width, lyricHeight)) {
+                    apple.scrollLyrics(dWheel);
+                }
                 apple.lyricPointer(mouseX, mouseY, snapshot, lyricRevision);
             } else {
                 appleRenderer().invalidateLyricPointer();
                 applePressTrack = null;
             }
-            double footer = singFader.isVisible() ? 48 : lyricLanguagePicker.isVisible() ? 34 : 0;
-            double lyricHeight = lyricViewport.height - footer;
             styleRenderer.render(lyricViewport.left, lyricViewport.top,
                     lyricViewport.width, lyricHeight, alpha, songProgress, displayedCurrentLyric);
             return;
@@ -2284,6 +2288,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             case EFFECTS -> host.openViperEffects();
             case ARTIST -> PlayingTrackPages.open(host, track, false);
             case ALBUM -> PlayingTrackPages.open(host, track, true);
+            case PLAYLIST -> PlayingTrackPages.openPlaylist(host, track);
         }
     }
 

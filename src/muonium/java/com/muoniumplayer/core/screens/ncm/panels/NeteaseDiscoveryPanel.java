@@ -670,7 +670,7 @@ public final class NeteaseDiscoveryPanel extends NCMPanel {
     public static NCMPanel loadKuGouDailyPanel() {
         List<Music> songs = KuGouMusicService.dailyRecommend();
         if (songs.isEmpty()) return null;
-        return buildSongsPanel(songs, false);
+        return buildSongsPanel(songs, false, true);
     }
 
     private String pageTitle() {
@@ -839,13 +839,16 @@ public final class NeteaseDiscoveryPanel extends NCMPanel {
      * {@code setCurrentPanel} 在主线程触发），所以导航栏那条"先取数据再一次切页"的路径能复用它。
      */
     private static PlaylistPanel buildSongsPanel(List<Music> songs, boolean showBackButton) {
-        CloudMusic.currentPlaylistContext = null;
+        return buildSongsPanel(songs, showBackButton, false);
+    }
+
+    private static PlaylistPanel buildSongsPanel(List<Music> songs, boolean showBackButton, boolean orderedPlayback) {
         PlayList playlist = JsonUtils.parse("{}", PlayList.class);
         playlist.setSearchMode(true);
         playlist.setMusics(new CopyOnWriteArrayList<>(songs == null ? Collections.<Music>emptyList() : songs));
         playlist.setMusicsQueried(true);
         playlist.setMusicsLoaded(true);
-        return new PlaylistPanel(playlist, showBackButton);
+        return new PlaylistPanel(playlist, showBackButton, orderedPlayback);
     }
 
     /**

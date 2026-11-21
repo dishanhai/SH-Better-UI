@@ -1266,7 +1266,7 @@ public class HomePanel extends NCMPanel {
                 if (playList == null) continue;
                 PlaylistWidget card = new PlaylistWidget(playList,
                         this.pendingCardActions.get(playList.getId()), this.grid, this.reshape,
-                        this.cardsPanel);
+                        this.cardsPanel, isDefaultHomePage());
                 card.setShouldOverrideMouseCursor(true);
                 card.setEntranceAnimation(this.revealQueue);
                 batch.add(card);
@@ -1591,7 +1591,7 @@ public class HomePanel extends NCMPanel {
         }
 
         public PlaylistWidget(PlayList playList, Runnable customAction, GridMetrics grid,
-                              GridReshape reshape, ScrollPanel container) {
+                              GridReshape reshape, ScrollPanel container, boolean orderedPlayback) {
             this.playList = playList;
             this.customAction = customAction;
             this.grid = grid;
@@ -1686,7 +1686,7 @@ public class HomePanel extends NCMPanel {
                         // 视口交给接力自己判：卡片被网格滚出视口一半时，这张封面的绝对矩形已经在
                         // 列表上方那条页眉带里了，照它起飞就是一条盖住页眉的巨型封面。
                         // 起点矩形一律读封面控件当帧的 bounds（悬停时它已经胀大过），不能拿常量。
-                        PlaylistPanel panel = new PlaylistPanel(playList);
+                        PlaylistPanel panel = new PlaylistPanel(playList, true, orderedPlayback);
                         PlaylistCoverHero.begin(this, panel, playList, this.getCoverLocation(),
                                 cover.getX(), cover.getY(), cover.getWidth(), cover.getRadius(),
                                 getParent());

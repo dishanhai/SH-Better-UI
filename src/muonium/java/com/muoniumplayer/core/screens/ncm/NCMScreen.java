@@ -46,6 +46,7 @@ import com.muoniumplayer.party.ui.MpPartyOverlay;
 import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.BooleanSupplier;
 import java.util.function.Supplier;
 import com.muoniumplayer.render.skija.SkijaGfx;
 
@@ -1382,16 +1383,17 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
      *               所以 loader 里只该取数据、不要碰 GL
      */
     public void navigateAsync(String label, Supplier<NCMPanel> loader) {
-        navigateAsync(label, loader, false);
+        navigateAsync(label, loader, false, () -> true);
     }
 
-    public void openPlayingTrackPage(String label, Supplier<NCMPanel> loader) {
-        if (this.musicLyricsPanel == null) return;
+    public void openPlayingTrackPage(String label, Supplier<NCMPanel> loader, BooleanSupplier stillCurrent) {
+        if (this.musicLyricsPanel == null || !stillCurrent.getAsBoolean()) return;
         this.musicLyricsPanel.close();
-        navigateAsync(label, loader, true);
+        navigateAsync(label, loader, true, stillCurrent);
     }
 
-    private void navigateAsync(String label, Supplier<NCMPanel> loader, boolean fromLyrics) {
+    private void navigateAsync(String label, Supplier<NCMPanel> loader, boolean fromLyrics,
+                               BooleanSupplier stillCurrent) {
         if (loader == null) return;
         final String targetName = label == null ? "" : label;
         // 同一入口去重；点击别的栏目则以新请求为准，不能被慢音源锁住。
@@ -1412,6 +1414,11 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             final String error = failure;
             MultiThreadingUtil.runOnMainThread(() -> {
                 if (!this.navigationRequests.isCurrent(ticket)) return;
+                if (!stillCurrent.getAsBoolean()) {
+                    this.pendingPanelNavigationKey = null;
+                    this.navigationLoading.clear();
+                    return;
+                }
                 if (panel != null) {
                     this.navigationLoading.clear();
                     this.setCurrentPanel(panel);

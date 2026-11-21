@@ -917,7 +917,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 else if (library == Library.DISCOVERY_TRACKS && i < libraryTracks.size()) {
                     try { discovery.play(i); }
                     catch (RuntimeException rejected) { feedback(label("discovery.play_failed")); }
-                } else if (i < libraryTracks.size()) playCollection(libraryTracks, i);
+                } else if (i < libraryTracks.size()) {
+                    if (library == Library.TRACKS && listen1Selected()) {
+                        try { playImportedCollection(i); }
+                        catch (RuntimeException rejected) { feedback(label(operationFailure(rejected))); }
+                    } else {
+                        playCollection(libraryTracks, i);
+                    }
+                }
             }, libraryControls));
             libraryRows.get(slot).setVariant(MusicTextControl.Variant.ROW);
             libraryLikes.add(trackAction(row, slot, true, true));
@@ -927,6 +934,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     }
     private void playCollection(List<OnlineTrack> tracks, int selected) {
         queue.replace(tracks, selected);
+        queueFirst = Math.max(0, selected - visibleRows / 2);
+        updateQueueRows();
+    }
+    private void playImportedCollection(int selected) {
+        queue.replaceSequential(libraryTracks, selected);
         queueFirst = Math.max(0, selected - visibleRows / 2);
         updateQueueRows();
     }
@@ -1817,7 +1829,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         catch(RuntimeException failure) {imported=null;}
         pendingListen1=null;
         if(imported==null){listen1Status=label("listen1.failed");feedback(listen1Status);updateListen1Editor();return;}
-        listen1Session.replace(imported);
+        if (!listen1Session.replace(imported)) {
+            listen1Status = label("listen1.empty_backup");
+            feedback(listen1Status);
+            updateListen1Editor();
+            return;
+        }
         listen1File="";
         listen1Path.setValue("");
         listen1Status=label("listen1.hint");

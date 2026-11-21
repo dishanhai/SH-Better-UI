@@ -61,6 +61,10 @@ public class MusicWidget extends RoundedRectWidget {
     private PanelItemEntrance.RevealQueue entranceQueue;
 
     public MusicWidget(Music music, PlayList playList, int index) {
+        this(music, playList, index, false);
+    }
+
+    public MusicWidget(Music music, PlayList playList, int index, boolean orderedPlayback) {
         super(0, 0, 0, 30);
         this.music = music;
         this.playList = playList;
@@ -160,14 +164,15 @@ public class MusicWidget extends RoundedRectWidget {
         this.setOnClickCallback((x, y, i) -> {
 
             if (i == 0) {
-                CloudMusic.currentPlaylistContext = playList.isSearchMode() ? null : playList;
                 if (playList.isPersonalFm()) {
                     CloudMusic.playFm(playList.getMusics(), index);
                 } else if (playList.isSearchResultList()) {
                     // 搜索结果不顺着搜索排序往下播，改为接用户的"最近播放"。
                     CloudMusic.playFromSearchSelection(this.music, playList.getMusics(), index);
                 } else {
-                    CloudMusic.play(playList.getMusics(), index);
+                    PlayList origin = playList.isSearchMode() ? null : playList;
+                    if (orderedPlayback) CloudMusic.playOrdered(playList.getMusics(), index, origin);
+                    else CloudMusic.play(playList.getMusics(), index, origin);
                 }
             } else if (i == 1) {
                 // 右键 = 手动换源。流水线全在后台线程跑，结果回投主线程替换列表里的这一格；

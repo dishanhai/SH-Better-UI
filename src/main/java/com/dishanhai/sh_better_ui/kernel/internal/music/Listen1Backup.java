@@ -30,7 +30,12 @@ public final class Listen1Backup {
     public static final class Session {
         private Imported imported;
         public Imported imported() { return imported; }
-        public void replace(Imported value) { imported = Objects.requireNonNull(value); }
+        /** An empty or incompatible export must not erase a library already available in this session. */
+        public boolean replace(Imported value) {
+            if (Objects.requireNonNull(value).supportedTracks() == 0) return false;
+            imported = value;
+            return true;
+        }
     }
 
     public record Imported(List<OnlinePlaylist> playlists, Map<String, List<OnlineTrack>> tracksById,
