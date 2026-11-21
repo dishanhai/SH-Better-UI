@@ -54,6 +54,10 @@ public final class VocalMaterialSample extends FloatSample {
     }
 
     private volatile Material material;
+    private volatile Material singMaterial;
+    private volatile double singLevel = 1.0;
+    // Only the audio read path uses this value. A live fader move ramps instead of stepping.
+    private double smoothedSingLevel = 1.0;
     private volatile double level = 1.0;
 
     public VocalMaterialSample(FloatSample inner) {
@@ -103,6 +107,24 @@ public final class VocalMaterialSample extends FloatSample {
         return this.material != null;
     }
 
+    public boolean attachSing(float[] voice, double rate) {
+        if (voice == null || voice.length != getNumFrames() || voice.length == 0
+                || !Double.isFinite(rate) || Math.round(rate) != Math.round(getFrameRate()))
+            return false;
+        singLevel = 1.0;
+        singMaterial = new Material(voice, 0L, 1.0);
+        return true;
+    }
+
+    public boolean hasSing() { return singMaterial != null; }
+
+    public void setSingLevel(double level) {
+        if (singMaterial != null)
+            singLevel = Double.isFinite(level) ? Math.max(0.0, Math.min(1.0, level)) : 1.0;
+    }
+
+    public double getSingLevel() { return singLevel; }
+
     /**
      * 人声在这一刻占几份：{@code 1} 为原样（也是直通分支），{@code 0} 为完全减掉。
      *
@@ -119,14 +141,34 @@ public final class VocalMaterialSample extends FloatSample {
     @Override
     public double readDouble(int index) {
         double raw = inner.readDouble(index);
-        Material held = this.material;
-        double voice = this.level;
-        if (held == null || voice >= 1.0 - IDLE_EPSILON) return raw;
+        Material mix = this.material;
+        Material full = this.singMaterial;
+        double mixLevel = this.level;
+        if (full != null) {
+            double delta = this.singLevel - smoothedSingLevel;
+            double step = 1.0 / Math.max(1.0, getFrameRate() * getChannelsPerFrame() * .010);
+            smoothedSingLevel += Math.abs(delta) <= step ? delta : Math.copySign(step, delta);
+        }
+        boolean adjustMix = mix != null && mixLevel < 1.0 - IDLE_EPSILON;
+        boolean adjustSing = full != null && smoothedSingLevel < 1.0 - IDLE_EPSILON;
+        if (!adjustMix && !adjustSing) return raw;
+
         int channels = getChannelsPerFrame();
         int frame = channels > 1 ? index / channels : index;
-        long position = (long) frame - held.firstFrame;
-        if (position < 0L || position >= held.samples.length) return raw;
-        return raw + held.samples[(int) position] * held.ratio * (voice - 1.0);
+        double remaining = 1.0;
+        if (adjustMix) {
+            long pos = (long) frame - mix.firstFrame;
+            if (pos >= 0 && pos < mix.samples.length) {
+                raw += mix.samples[(int) pos] * mix.ratio * (mixLevel - 1.0);
+                remaining = mixLevel;
+            }
+        }
+        // Preserve the existing AutoMix path at a neutral fader, even in unreliable Sing windows.
+        // Only scale the remaining share where AutoMix's own material has already been applied.
+        if (adjustSing && frame >= 0 && frame < full.samples.length) {
+            raw += full.samples[frame] * remaining * (smoothedSingLevel - 1.0);
+        }
+        return raw;
     }
 
     @Override
@@ -167,6 +209,8 @@ public final class VocalMaterialSample extends FloatSample {
 
     @Override
     public void cleanUp() {
+        singMaterial = null;
+        singLevel = 1.0;
         detach();
         try {
             inner.cleanUp();

@@ -2047,7 +2047,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             return;
         }
 
-        if (this.musicLyricsPanel != null && this.musicLyricsPanel.metadataKeyPressed(keyCode)) {
+        if (this.musicLyricsPanel != null && (this.musicLyricsPanel.singKeyPressed(keyCode)
+                || this.musicLyricsPanel.metadataKeyPressed(keyCode))) {
             return;
         }
 
@@ -2179,7 +2180,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
         if (mouseButton == 0 && this.musicLyricsPanel != null) {
             this.musicLyricsPanel.cancelLyricPointerPress();
-            if (this.musicLyricsPanel.pressLyricPointer(mouseX, mouseY)) {
+            if (this.musicLyricsPanel.pressSingFader(mouseX, mouseY)
+                    || this.musicLyricsPanel.pressLyricPointer(mouseX, mouseY)) {
                 this.pendingClickActive = false;
                 this.pendingClickSponsorOwner = null;
                 return;
@@ -2372,6 +2374,14 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     @Override
     public void mouseReleased(int mX, int mY, int state) {
         super.mouseReleased(mX, mY, state);
+        if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasSingFaderPress()) {
+            RenderSystem.refreshResolution();
+            WindowAdaptiveScale.begin();
+            double mouseX = mX / WindowAdaptiveScale.correctionX();
+            double mouseY = mY / WindowAdaptiveScale.correctionY();
+            WindowAdaptiveScale.end();
+            if (this.musicLyricsPanel.releaseSingFader(mouseX, mouseY)) return;
+        }
         if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasLyricPointerPress()) {
             if (TouchSettings.ENABLED && !TouchGestures.get().consumeTap()) {
                 this.musicLyricsPanel.cancelLyricPointerPress();

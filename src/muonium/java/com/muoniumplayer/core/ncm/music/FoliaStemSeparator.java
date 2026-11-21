@@ -3,7 +3,6 @@ package com.muoniumplayer.core.ncm.music;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
-import java.io.BufferedInputStream;
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.InputStream;
@@ -26,6 +25,17 @@ final class FoliaStemSeparator {
 
     static FoliaStemProfile analyse(File source, long startMillis, long lengthMillis,
                                     AnalysisAudio audio, boolean outgoing, File material) {
+        return analyse(source, startMillis, lengthMillis, audio, outgoing, material, false, Long.MAX_VALUE);
+    }
+
+    static FoliaStemProfile analyseForSing(File source, long startMillis, long lengthMillis,
+                                           AnalysisAudio audio, File material, long deadlineNanos) {
+        return analyse(source, startMillis, lengthMillis, audio, false, material, true, deadlineNanos);
+    }
+
+    private static FoliaStemProfile analyse(File source, long startMillis, long lengthMillis,
+                                             AnalysisAudio audio, boolean outgoing, File material, boolean sing,
+                                             long deadlineNanos) {
         if (source == null || audio == null || lengthMillis <= 0L
                 || !FoliaModelManager.isInstalled(FoliaModelManager.Kind.HTDEMUCS)) return null;
         File materialPart = material == null ? null : new File(material.getAbsolutePath() + ".part");
@@ -46,14 +56,14 @@ final class FoliaStemSeparator {
                 if (mono.length < MODEL_RATE / 2) return null;
                 float[] samples = resample(mono, audio.sampleRate(), MODEL_RATE);
                 FoliaStemProfile profile = FoliaStemOnnx.analyse(samples, startMillis, lengthMillis,
-                        outgoing ? false : true, materialPart);
-                if (profile == null || !profile.isUsable()) {
+                        !outgoing, materialPart, deadlineNanos);
+                if (profile == null || (!sing && !profile.isUsable())) {
                     delete(materialPart);
                     return null;
                 }
                 if (materialPart == null) {
                     profile.materialFrames = 0L;          // 出场侧只要时间戳，没有素材可发布
-                } else if (!publishMaterial(materialPart, material, profile)) {
+                } else if (!publishMaterial(materialPart, material, profile, sing)) {
                     delete(materialPart);
                     profile.materialFrames = 0L;
                 }
@@ -65,7 +75,8 @@ final class FoliaStemSeparator {
             }
         }
         if (!FoliaModelManager.isInstalled(FoliaModelManager.Kind.RUNTIME)) return null;
-        File input = null, output = null, script = null;
+        File input = null, output = null, script = null, processLog = null;
+        Process process = null;
         try {
             float[] mono = audio.readMono(startMillis, lengthMillis);
             if (mono.length < MODEL_RATE / 2) return null;
@@ -79,23 +90,24 @@ final class FoliaStemSeparator {
             for (float value : samples) bytes.putFloat(value);
             Files.write(input.toPath(), bytes.array());
             script = materialiseScript();
-            Process process = new ProcessBuilder(FoliaModelManager.pythonExecutable().getAbsolutePath(),
+            processLog = File.createTempFile("folia-stems-", ".log");
+            process = new ProcessBuilder(FoliaModelManager.pythonExecutable().getAbsolutePath(),
                     script.getAbsolutePath(), input.getAbsolutePath(), output.getAbsolutePath(),
                     FoliaModelManager.path(FoliaModelManager.Kind.HTDEMUCS).getAbsolutePath(),
                     materialPart == null ? "-" : materialPart.getAbsolutePath())
-                    .redirectErrorStream(true).start();
-            boolean exited = process.waitFor(TIMEOUT_SECONDS, TimeUnit.SECONDS);
+                    .redirectErrorStream(true).redirectOutput(processLog).start();
+            long timeout = TimeUnit.SECONDS.toNanos(TIMEOUT_SECONDS);
+            if (sing) timeout = Math.min(timeout, Math.max(0L, deadlineNanos - System.nanoTime()));
+            boolean exited = process.waitFor(timeout, TimeUnit.NANOSECONDS);
             if (!exited) {
                 process.destroyForcibly();
                 process.waitFor(5L, TimeUnit.SECONDS);
-                readAll(process.getInputStream());
-                System.err.println("[Automix/Folia] HTDemucs timed out after " + TIMEOUT_SECONDS + "s");
+                System.err.println("[Automix/Folia] HTDemucs separation timed out");
                 return null;
             }
-            byte[] log = readAll(process.getInputStream());
             if (process.exitValue() != 0) {
                 System.err.println("[Automix/Folia] HTDemucs failed: "
-                        + new String(log, StandardCharsets.UTF_8));
+                        + process.exitValue());
                 return null;
             }
             JsonObject root = JsonParser.parseString(new String(Files.readAllBytes(output.toPath()),
@@ -113,22 +125,28 @@ final class FoliaStemSeparator {
             // 时间戳证据照旧。不必为此作废整份缓存、把每首歌重新推理一遍。
             profile.vocalProjection = number(root, "vocal_projection");
             profile.materialFrames = longOr(root, "samples", -1L);
-            if (!profile.isUsable()) {
+            if (!sing && !profile.isUsable()) {
                 delete(materialPart);
                 return null;
             }
             if (materialPart == null) {
                 profile.materialFrames = 0L;              // 出场侧只要时间戳，没有素材可发布
-            } else if (!publishMaterial(materialPart, material, profile)) {
+            } else if (!publishMaterial(materialPart, material, profile, sing)) {
                 delete(materialPart);
                 profile.materialFrames = 0L;
             }
             return profile;
+        } catch (InterruptedException cancelled) {
+            Thread.currentThread().interrupt();
+            return null;
         } catch (Throwable failure) {
             System.err.println("[Automix/Folia] HTDemucs unavailable: " + failure.getMessage());
             delete(materialPart);
             return null;
         } finally {
+            if (process != null && process.isAlive()) process.destroyForcibly();
+            delete(processLog);
+            delete(materialPart);
             delete(input);
             delete(output);
             delete(script);
@@ -142,9 +160,9 @@ final class FoliaStemSeparator {
      * 半截文件（进程被超时杀在写的中途、磁盘满）一旦当成好的用下去，交接期减掉的就是错位的人声，
      * 听起来是伴奏被啃掉一块，比没有素材严重得多。缓存头里记的是帧数，按 float32 折成字节校验。</p>
      */
-    private static boolean publishMaterial(File part, File target, FoliaStemProfile profile) {
+    private static boolean publishMaterial(File part, File target, FoliaStemProfile profile, boolean sing) {
         try {
-            if (!profile.hasVocalMaterial()) return false;
+            if ((!sing && !profile.hasVocalMaterial()) || profile.materialFrames <= 0L) return false;
             if (!part.isFile() || part.length() != profile.materialFrames * FLOAT_BYTES) return false;
             File parent = target.getParentFile();
             if (parent != null && !parent.isDirectory() && !parent.mkdirs()) return false;
@@ -194,14 +212,6 @@ final class FoliaStemSeparator {
             while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
         }
         return file;
-    }
-
-    private static byte[] readAll(InputStream input) throws Exception {
-        java.io.ByteArrayOutputStream output = new java.io.ByteArrayOutputStream();
-        byte[] buffer = new byte[4096];
-        int read;
-        while ((read = input.read(buffer)) >= 0) output.write(buffer, 0, read);
-        return output.toByteArray();
     }
 
     private static void delete(File file) {

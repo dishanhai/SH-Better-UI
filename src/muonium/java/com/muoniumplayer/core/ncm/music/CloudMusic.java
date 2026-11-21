@@ -5592,7 +5592,7 @@ public class CloudMusic implements SharedConstants {
         }
     }
 
-    private static boolean isExpectedPlayback(PlaybackSnapshot expected) {
+    static boolean isExpectedPlayback(PlaybackSnapshot expected) {
         PlaybackSession session = currentSession;
         Music music = currentlyPlaying;
         return expected != null && !expected.preparing && expected.music != null && music != null

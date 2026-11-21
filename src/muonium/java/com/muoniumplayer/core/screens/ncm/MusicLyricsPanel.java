@@ -47,6 +47,7 @@ import java.util.List;
  */
 public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstants {
     static double scrollOffset, scrollTarget;
+    private final SingVocalFader singFader = new SingVocalFader();
 
     static ITextureObject prevCover;
     static Music prevMusic = null;
@@ -717,6 +718,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     /** Release the native fluid compositor when the panel is removed from the screen. */
     public void dispose() {
+        singFader.dispose();
         fluidLyricBackground.dispose();
         foliaBackground.dispose();
         appleCoverBackdrop.reset();
@@ -730,6 +732,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     public void close() {
         invalidateLyricPointers();
+        singFader.dispose();
         closing = true;
         CoverHeroTransition.beginClose();
     }
@@ -759,10 +762,12 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         // 进场前 16% 与退场末段本层都是全透明的。此前只有退场会跳过，进场仍会完整画一遍
         // 背景、控制栏与歌词；低配机上这就是开头连续掉帧的来源之一。
         if (alpha <= CLOSE_ALPHA_EPSILON) {
+            singFader.dismiss();
+            lyricLanguagePicker.hide();
             invalidateLyricPointers();
             return;
         }
-        if (lmbDownNow) {
+        if (lmbDownNow && !singFader.capturesDrag()) {
             classicLyricPointer.pointerMoved(mouseX, mouseY, Math.max(1, TouchSettings.DRAG_THRESHOLD_PX));
             appleRenderer().dragLyric(mouseX, mouseY);
         }
@@ -811,12 +816,19 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         } else {
             lyricLanguagePicker.hide();
         }
+        boolean showSing = lyricsFade > .002 && !presentation.preparing
+                && currentStyleRenderer() instanceof AppleLyricRenderer;
+        singFader.layout(snapshot, showSing, !CoverHeroTransition.isRunning() && !closing
+                && !lyricLanguagePicker.isOpen() && !styleQuickPanel.isExpanded()
+                && !NCMScreen.getInstance().isModalOverlayActive(),
+                lyricViewport.left, lyricViewport.top, lyricViewport.right(), lyricViewport.bottom());
         if (lyricsFade > .002) {
             double lyricRise = (1.0 - lyricsFade) * height * .014;
             // 快捷面板的触摸滚动先于歌词列认领（面板浮在歌词之上，同一点按下时上面那层赢）。
             this.styleQuickPanel.advanceTouchDrag();
             int lyricWheel = this.styleQuickPanel.handleScroll(dWheel, mouseX, mouseY)
-                    || lyricLanguagePicker.blocksLyrics(mouseX, mouseY) ? 0 : dWheel;
+                    || lyricLanguagePicker.blocksLyrics(mouseX, mouseY)
+                    || singFader.scroll(dWheel, mouseX, mouseY) ? 0 : dWheel;
             api.getGLStateManager().pushMatrix();
             api.getGLStateManager().translate(0, lyricRise, 0);
             if (presentation.preparing) {
@@ -830,6 +842,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             invalidateLyricPointers();
         }
         // 快捷面板画在最后：它是浮层，必须盖在封面与歌词之上。
+        singFader.render(mouseX, mouseY, lmbDownNow, alpha * (float) lyricsFade);
         lyricLanguagePicker.render(mouseX, mouseY, alpha * (float) lyricsFade);
         this.styleQuickPanel.render(mouseX, mouseY, posX, posY, width, height, alpha);
         api.getGLStateManager().popMatrix();
@@ -901,7 +914,8 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
                 appleRenderer().invalidateLyricPointer();
                 applePressTrack = null;
             }
-            double lyricHeight = lyricViewport.height - (lyricLanguagePicker.isVisible() ? 34 : 0);
+            double footer = singFader.isVisible() ? 48 : lyricLanguagePicker.isVisible() ? 34 : 0;
+            double lyricHeight = lyricViewport.height - footer;
             styleRenderer.render(lyricViewport.left, lyricViewport.top,
                     lyricViewport.width, lyricHeight, alpha, songProgress, displayedCurrentLyric);
             return;
@@ -2194,6 +2208,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             if (lyricLanguagePicker.matches(CloudMusic.lyricsRevision)
                     && CloudMusic.lyricsMatchCurrentTrack()) {
                 lyricLanguagePicker.click(mouseX, mouseY, mouseButton);
+                if (lyricLanguagePicker.isOpen()) singFader.yieldFocus();
             } else {
                 lyricLanguagePicker.hide();
             }
@@ -2212,11 +2227,32 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         next.onMouseClickReceived(mouseX, mouseY, mouseButton);
     }
 
+    boolean pressSingFader(double x, double y) {
+        if (closing || styleQuickPanel.isExpanded() || lyricLanguagePicker.blocksLyrics(x, y)
+                || NCMScreen.getInstance().isModalOverlayActive() || !singFader.press(x, y)) return false;
+        lyricLanguagePicker.setFocused(false);
+        nowPlaying.clearFocus();
+        return true;
+    }
+
+    boolean hasSingFaderPress() { return singFader.hasPress(); }
+
+    boolean releaseSingFader(double x, double y) { return singFader.release(x, y); }
+
+    boolean singKeyPressed(int keyCode) {
+        if (lyricLanguagePicker.isOpen() || closing || styleQuickPanel.isExpanded()
+                || NCMScreen.getInstance().isModalOverlayActive() || !singFader.key(keyCode)) return false;
+        lyricLanguagePicker.setFocused(false);
+        nowPlaying.clearFocus();
+        return true;
+    }
+
     boolean metadataKeyPressed(int keyCode) {
         if (closing || this.styleQuickPanel.isExpanded()) return false;
         if (!lyricLanguagePicker.matches(CloudMusic.lyricsRevision)
                 || !CloudMusic.lyricsMatchCurrentTrack()) lyricLanguagePicker.hide();
         if (lyricLanguagePicker.key(keyCode)) {
+            if (lyricLanguagePicker.isOpen()) singFader.yieldFocus();
             invalidateLyricPointers();
             return true;
         }

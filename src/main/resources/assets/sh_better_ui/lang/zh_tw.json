@@ -1,4 +1,11 @@
 {
+  "sh_better_ui.muonium.sing.label": "人聲調整",
+  "sh_better_ui.muonium.sing.idle": "準備分離人聲（Alt+V）",
+  "sh_better_ui.muonium.sing.preparing": "正在分離人聲 · %s%% · 點擊取消",
+  "sh_better_ui.muonium.sing.ready": "人聲 · %s%%",
+  "sh_better_ui.muonium.sing.model_missing": "請在 AutoMix 設定中安裝 Folia 人聲模型和執行環境",
+  "sh_better_ui.muonium.sing.unsupported": "僅支援最長六分鐘的本機 44.1 kHz 音訊",
+  "sh_better_ui.muonium.sing.failed": "未能分離出可用人聲，點擊重試。",
   "sh_better_ui.playing_metadata.artist": "歌手 · %s",
   "sh_better_ui.playing_metadata.album": "專輯 · %s",
   "sh_better_ui.project_news.title": "SHBUI 公告中心",

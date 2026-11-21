@@ -79,6 +79,14 @@ public class SoundFile extends AudioSample {
 		return this.vocalMaterial.getLevel();
 	}
 
+	public boolean attachSingMaterial(float[] voice, double rate) { return vocalMaterial.attachSing(voice, rate); }
+
+	public boolean hasSingMaterial() { return vocalMaterial.hasSing(); }
+
+	public void setSingVocalLevel(float level) { vocalMaterial.setSingLevel(level); }
+
+	public float getSingVocalLevel() { return (float) vocalMaterial.getSingLevel(); }
+
 	/**
 	 * 变速但不变音高。
 	 *

@@ -445,6 +445,26 @@ public class AudioPlayer {
         if (chain != null) chain.duckDepth(this.vocalDuckDepth);
     }
 
+    synchronized boolean attachSingMaterial(float[] voice) {
+        SoundFile deck = this.player;
+        return deck != null && isUsable() && deck.attachSingMaterial(voice, FoliaStemProfile.MATERIAL_RATE);
+    }
+
+    boolean hasSingMaterial() {
+        SoundFile deck = this.player;
+        return deck != null && deck.hasSingMaterial();
+    }
+
+    void setSingVocalLevel(float level) {
+        SoundFile deck = this.player;
+        if (deck != null) deck.setSingVocalLevel(level);
+    }
+
+    float getSingVocalLevel() {
+        SoundFile deck = this.player;
+        return deck == null ? 1f : deck.getSingVocalLevel();
+    }
+
     /** 这条接缝的人声让路是否已经由素材接管。 */
     public boolean hasVocalMaterial() {
         SoundFile deck = this.player;

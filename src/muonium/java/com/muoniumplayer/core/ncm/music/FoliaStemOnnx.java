@@ -42,7 +42,7 @@ final class FoliaStemOnnx {
      * @param mono 44100Hz 单声道窗口（调用方已重采样）
      */
     static FoliaStemProfile analyse(float[] mono, long startMillis, long lengthMillis,
-                                    boolean writeMaterial, File materialPart) {
+                                    boolean writeMaterial, File materialPart, long deadlineNanos) {
         if (mono == null || mono.length < 2) return null;
         long startedAt = System.nanoTime();
         File materialPartCopy = materialPart;
@@ -79,6 +79,9 @@ final class FoliaStemOnnx {
             float[] batch = new float[channels * segment];
             int[] indices = {DRUMS, BASS, VOCALS};
             for (int chunk = 0; chunk < chunks; chunk++) {
+                if (Thread.currentThread().isInterrupted()
+                        || (deadlineNanos != Long.MAX_VALUE && System.nanoTime() - deadlineNanos >= 0))
+                    return null;
                 int start = chunk * stride;
                 int end = Math.min(start + segment, total);
                 if (end <= start) break;
