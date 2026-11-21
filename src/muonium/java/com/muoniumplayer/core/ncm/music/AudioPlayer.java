@@ -413,7 +413,7 @@ public class AudioPlayer {
      */
     private float routeVocalDepth(float depth) {
         SoundFile deck = this.player;
-        if (deck == null || (!deck.hasVocalMaterial() && !deck.hasSingMaterial())) return depth;
+        if (deck == null || !deck.hasVocalMaterial()) return depth;
         deck.setVocalMaterialLevel(1.0 - depth);
         return 0f;
     }
@@ -442,17 +442,12 @@ public class AudioPlayer {
         if (deck == null || !deck.hasVocalMaterial()) return;
         deck.detachVocalMaterial();
         AutomixDeckChain chain = this.automixChain;
-        if (chain != null) chain.duckDepth(routeVocalDepth(this.vocalDuckDepth));
+        if (chain != null) chain.duckDepth(this.vocalDuckDepth);
     }
 
     synchronized boolean attachSingMaterial(float[] voice) {
         SoundFile deck = this.player;
-        if (deck == null || !isUsable() || !deck.attachSingMaterial(voice, FoliaStemProfile.MATERIAL_RATE))
-            return false;
-        AutomixDeckChain chain = this.automixChain;
-        float depth = routeVocalDepth(this.vocalDuckDepth);
-        if (chain != null) chain.duckDepth(depth);
-        return true;
+        return deck != null && isUsable() && deck.attachSingMaterial(voice, FoliaStemProfile.MATERIAL_RATE);
     }
 
     boolean hasSingMaterial() {

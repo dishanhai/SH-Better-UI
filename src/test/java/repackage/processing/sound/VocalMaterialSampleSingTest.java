@@ -19,7 +19,7 @@ class VocalMaterialSampleSingTest {
 
     @Test void independentlyScalesVocalsInBothChannelsAndDoesNotDoubleSubtractAutoMix() {
         VocalMaterialSample sample = stereo();
-        assertTrue(sample.attach(new float[]{1f, 1f}, 0, 44100, 1));
+        assertTrue(sample.attach(new float[]{.25f, -.25f}, 0, 44100, 1));
         assertTrue(sample.attachSing(new float[]{.25f, -.25f}, 44100));
         sample.setSingLevel(.5);
         sample.setLevel(.5);
@@ -39,6 +39,21 @@ class VocalMaterialSampleSingTest {
         assertEquals(.75, sample.readDouble(0));
         sample.cleanUp();
         assertFalse(sample.hasSing());
+    }
+
+    @Test void preparingSingDoesNotReplaceTrustedAutoMixMaterial() {
+        VocalMaterialSample sample = stereo();
+        assertTrue(sample.attach(new float[]{.25f}, 0, 44100, 1));
+        sample.setLevel(0);
+        assertEquals(.5, sample.readDouble(0));
+        assertTrue(sample.attachSing(new float[]{0f, -.25f}, 44100));
+        assertEquals(.5, sample.readDouble(0), "A low-confidence Sing frame must not un-duck AutoMix");
+        assertEquals(-.5, sample.readDouble(3), "Neutral Sing must not extend the AutoMix window");
+
+        sample.setSingLevel(0);
+        settle(sample);
+        assertEquals(.5, sample.readDouble(0));
+        assertEquals(-.25, sample.readDouble(3), "Outside the AutoMix window the fader keeps its full range");
     }
 
     private static VocalMaterialSample stereo() {

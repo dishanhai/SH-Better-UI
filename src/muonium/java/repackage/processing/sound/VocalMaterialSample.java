@@ -141,23 +141,34 @@ public final class VocalMaterialSample extends FloatSample {
     @Override
     public double readDouble(int index) {
         double raw = inner.readDouble(index);
+        Material mix = this.material;
         Material full = this.singMaterial;
-        Material held = full == null ? this.material : full;
-        double voice = this.level;
+        double mixLevel = this.level;
         if (full != null) {
-            double target = this.singLevel;
-            double delta = target - smoothedSingLevel;
+            double delta = this.singLevel - smoothedSingLevel;
             double step = 1.0 / Math.max(1.0, getFrameRate() * getChannelsPerFrame() * .010);
             smoothedSingLevel += Math.abs(delta) <= step ? delta : Math.copySign(step, delta);
-            // User attenuation and transition ducking compose without subtracting two stems.
-            voice *= smoothedSingLevel;
         }
-        if (held == null || voice >= 1.0 - IDLE_EPSILON) return raw;
+        boolean adjustMix = mix != null && mixLevel < 1.0 - IDLE_EPSILON;
+        boolean adjustSing = full != null && smoothedSingLevel < 1.0 - IDLE_EPSILON;
+        if (!adjustMix && !adjustSing) return raw;
+
         int channels = getChannelsPerFrame();
         int frame = channels > 1 ? index / channels : index;
-        long position = (long) frame - held.firstFrame;
-        if (position < 0L || position >= held.samples.length) return raw;
-        return raw + held.samples[(int) position] * held.ratio * (voice - 1.0);
+        double remaining = 1.0;
+        if (adjustMix) {
+            long pos = (long) frame - mix.firstFrame;
+            if (pos >= 0 && pos < mix.samples.length) {
+                raw += mix.samples[(int) pos] * mix.ratio * (mixLevel - 1.0);
+                remaining = mixLevel;
+            }
+        }
+        // Preserve the existing AutoMix path at a neutral fader, even in unreliable Sing windows.
+        // Only scale the remaining share where AutoMix's own material has already been applied.
+        if (adjustSing && frame >= 0 && frame < full.samples.length) {
+            raw += full.samples[frame] * remaining * (smoothedSingLevel - 1.0);
+        }
+        return raw;
     }
 
     @Override

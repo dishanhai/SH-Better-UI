@@ -34,7 +34,7 @@ public final class SingVocalControl {
     private Future<?> work;
 
     public synchronized State state(CloudMusic.PlaybackSnapshot track) {
-        AudioPlayer next = track == null || track.preparing ? null : track.player;
+        AudioPlayer next = eligibleLocalPlayer(track);
         long nextSession = next == null ? -1 : track.sessionId;
         if (deck != next || session != nextSession) {
             cancel();
@@ -43,6 +43,12 @@ public final class SingVocalControl {
             state = next == null ? State.UNAVAILABLE : next.hasSingMaterial() ? State.READY : State.IDLE;
         }
         return state;
+    }
+
+    private static AudioPlayer eligibleLocalPlayer(CloudMusic.PlaybackSnapshot track) {
+        // Online providers can also have a decoded file-backed PCM deck. Its cache is not the local library.
+        return track != null && !track.preparing && track.music != null && track.music.isLocal()
+                ? track.player : null;
     }
 
     public synchronized int progress() { return progress; }
