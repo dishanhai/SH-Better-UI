@@ -5,11 +5,16 @@ cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.."
 
 gradle_version="${1:?Specify the Gradle version}"
 project_dir="${2:?Specify the project directory}"
+mode="${3:-build}"
+case "$mode:$project_dir" in
+  build:.|build:neoforge-*|test:.|test:neoforge-*|test:bridge) ;;
+  *) printf 'Unsupported CI mode/project: %s:%s\n' "$mode" "$project_dir" >&2; exit 2 ;;
+esac
 case "$gradle_version:$project_dir" in
   8.8:.)
     gradle_sha=a4b4158601f8636cdeeab09bd76afb640030bb5b144aafe261a5e8af027dc612
     ;;
-  9.2.1:neoforge-1.21.1|9.2.1:neoforge-26.1.2|9.2.1:neoforge-26.2)
+  9.2.1:neoforge-1.21.1|9.2.1:neoforge-26.1.2|9.2.1:neoforge-26.2|9.2.1:bridge)
     gradle_sha=72f44c9f8ebcb1af43838f45ee5c4aa9c5444898b3468ab3f4af7b6076c5bc3f
     ;;
   *)
@@ -45,6 +50,11 @@ toolchains=()
 if [[ -n ${JAVA_HOME_17_X64:-} && -n ${JAVA_HOME_21_X64:-} ]]; then
   toolchains+=("-Porg.gradle.java.installations.paths=$JAVA_HOME_17_X64,$JAVA_HOME_21_X64")
 fi
+case "$mode:$project_dir" in
+  build:*) tasks=(test kernelTest build verifyLibraryJar) ;;
+  test:bridge) tasks=(--continue test) ;;
+  test:*) tasks=(--continue test kernelTest) ;;
+esac
 "$staging/gradle-$gradle_version/bin/gradle" -p "$project_dir" \
   --no-daemon --console=plain --max-workers 3 "${toolchains[@]}" \
-  test kernelTest build verifyLibraryJar
+  "${tasks[@]}"

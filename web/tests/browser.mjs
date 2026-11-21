@@ -372,7 +372,10 @@ try {
     assets.set(referenceName, { data: reference });
   }
 
+  // Skip link, glass-kit link, then the site's theme picker before search.
   for (let i = 0; i < 3; i++) await key('Tab', 'Tab', 9);
+  assert.equal(await browser.evaluate('document.activeElement.id'), 'theme');
+  await key('Tab', 'Tab', 9);
   assert.equal(await browser.evaluate('document.activeElement.id'), 'query');
   await browser.command('Input.insertText', { text: '我需要一个类似 Apple Liquid Glass 的透明动态背景，具有背景折射、柔和边缘高光和自然动画。' });
   assert.equal(await browser.evaluate("document.querySelector('#results button').dataset.material"), 'sh_better_ui:liquid_glass');
