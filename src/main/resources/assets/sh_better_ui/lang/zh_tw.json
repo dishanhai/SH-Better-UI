@@ -2357,5 +2357,9 @@
   "sh_better_ui.online_music.redesign.sound.changed": "歌曲已切換，請再試一次。",
   "sh_better_ui.online_music.redesign.sound.native_only": "僅支援遊戲內原生播放。",
   "sh_better_ui.online_music.redesign.sound.qq_only": "僅支援遊戲內原生播放的 QQ 音樂。",
-  "sh_better_ui.online_music.redesign.sound.native_crossfade": "僅適用於支援的原生曲目。"
+  "sh_better_ui.online_music.redesign.sound.native_crossfade": "僅適用於支援的原生曲目。",
+  "sh_better_ui.muonium.lyric_language.title": "歌詞語言",
+  "sh_better_ui.muonium.lyric_language.original": "原文",
+  "sh_better_ui.muonium.lyric_language.translation": "翻譯",
+  "sh_better_ui.muonium.lyric_language.pronunciation": "發音"
 }

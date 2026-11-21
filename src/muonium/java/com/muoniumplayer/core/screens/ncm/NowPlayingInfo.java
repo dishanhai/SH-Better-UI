@@ -66,12 +66,23 @@ final class NowPlayingInfo implements SharedRenderingConstants {
     }
 
     boolean focusNext(boolean backwards) {
+        return focusNext(backwards, true);
+    }
+
+    void clearFocus() { focused = null; }
+
+    boolean focusNext(boolean backwards, boolean wrap) {
         if (hits.isEmpty()) return false;
         int index = backwards ? hits.size() : -1;
         for (int i = 0; i < hits.size(); i++) {
             if (hits.get(i).action() == focused) index = i;
         }
-        focused = hits.get(Math.floorMod(index + (backwards ? -1 : 1), hits.size())).action();
+        int next = index + (backwards ? -1 : 1);
+        if (!wrap && (next < 0 || next >= hits.size())) {
+            clearFocus();
+            return false;
+        }
+        focused = hits.get(Math.floorMod(next, hits.size())).action();
         return true;
     }
 

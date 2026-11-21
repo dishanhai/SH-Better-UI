@@ -59,6 +59,13 @@ final class SingVocalFader implements SharedRenderingConstants {
         return interactive && px >= x && px < x + W && py >= (expanded ? y - SHAFT : y) && py < y + H;
     }
 
+    boolean isVisible() { return visible; }
+
+    void yieldFocus() {
+        rollbackDrag();
+        expanded = focused = pressed = false;
+    }
+
     boolean capturesDrag() { return dragging; }
 
     boolean hasPress() { return consumeRelease; }

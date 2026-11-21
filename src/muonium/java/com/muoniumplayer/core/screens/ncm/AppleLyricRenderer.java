@@ -154,7 +154,8 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         double textHeight;
         double width;
         final List<Tok> toks = new ArrayList<Tok>();
-        String translation;
+        String[] translationRows;
+        double[] translationRawWidths;
         double translationRawWidth;
         double translationY;
         /** 本句之前的空档；{@code gapEndMs > gapStartMs} 时显示等待圆点。 */
@@ -226,6 +227,16 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         return blurPaints[key];
     }
 
+    private LyricLanguage explicitLanguage;
+    private boolean languageLayoutDirty;
+
+    void setLyricLanguage(LyricLanguage mode) {
+        if (explicitLanguage == mode) return;
+        explicitLanguage = mode;
+        languageLayoutDirty = true;
+        invalidateLyricPointer();
+    }
+
     private LyricLine laidOutCenter;
     private double laidOutWidth = -1;
     private double laidOutHeight = -1;
@@ -270,7 +281,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         AppleLyricInteraction.Bounds viewport = new AppleLyricInteraction.Bounds(
                 left, top, left + width, top + height);
         if (acceptingPointer) interaction.beginFrame(pointerSession, pointerRevision, viewport);
-        boolean viewportChanged = tuningDirty
+        boolean viewportChanged = tuningDirty || languageLayoutDirty
                 || Math.abs(width - laidOutWidth) >= 2.0
                 || Math.abs(height - laidOutHeight) >= 2.0;
         boolean relayout = currentLine != laidOutCenter || viewportChanged;
@@ -285,6 +296,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             double previousAnchorY = anchorY;
             LyricLine previousAnchor = anchorLine;
             rebuild(currentLine, positionMs, width, height);
+            languageLayoutDirty = false;
             laidOutCenter = currentLine;
             laidOutWidth = width;
             laidOutHeight = height;
@@ -367,12 +379,12 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             double textRight = pivotX + (blockX + row.width - pivotX) * lineScale;
             double visualTop = pivotY - lift + (textTop - pivotY) * lineScale;
             double visualBottom = visualTop + row.textHeight * lineScale;
-            if (row.translation != null && translationFont != null) {
+            if (row.translationRows != null && translationFont != null) {
                 double transWidth = row.translationRawWidth * translationScale;
                 textLeft = Math.min(textLeft, row.right ? blockX + row.width - transWidth : blockX);
                 textRight = Math.max(textRight, row.right ? blockX + row.width : blockX + transWidth);
                 visualBottom = Math.max(visualBottom, textTop + row.translationY - lift
-                        + FullscreenLyricStage.lineHeightOf(translationFont, translationScale));
+                        + translationHeight(row));
             }
             AppleLyricInteraction.Bounds target = new AppleLyricInteraction.Bounds(
                     textLeft - 3.0, visualTop - 3.0, textRight + 3.0, visualBottom + 3.0).clip(viewport);
@@ -421,17 +433,20 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                     positionMs, active, passed, rowAlpha, litColor, dimColor, glow, glowStrength, popScale);
         }
 
-        if (row.translation != null && translationFont != null) {
-            double transWidth = row.translationRawWidth * translationScale;
-            double transX = row.right ? blockX + row.width - transWidth : blockX;
-            double transY = textTop + row.translationY - lift;
-            FullscreenLyricStage.pushMatrix();
-            try {
-                FullscreenLyricStage.scaleAt(transX, transY, translationScale);
-                translationFont.drawString(row.translation, transX, transY,
-                        FullscreenLyricStage.withAlpha(dimColor, rowAlpha * .72));
-            } finally {
-                FullscreenLyricStage.popMatrix();
+        if (row.translationRows != null && translationFont != null) {
+            double lineHeight = FullscreenLyricStage.lineHeightOf(translationFont, translationScale);
+            for (int i = 0; i < row.translationRows.length; i++) {
+                double transWidth = row.translationRawWidths[i] * translationScale;
+                double transX = row.right ? blockX + row.width - transWidth : blockX;
+                double transY = textTop + row.translationY - lift + lineHeight * i;
+                FullscreenLyricStage.pushMatrix();
+                try {
+                    FullscreenLyricStage.scaleAt(transX, transY, translationScale);
+                    translationFont.drawString(row.translationRows[i], transX, transY,
+                            FullscreenLyricStage.withAlpha(dimColor, rowAlpha * .72));
+                } finally {
+                    FullscreenLyricStage.popMatrix();
+                }
             }
         }
     }
@@ -597,6 +612,10 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
     }
 
     /** 翻译行的未缩放宽度，逐字形累加（估算兜底只看首字符，整串扔进去会算错）。 */
+    private double translationHeight(Row row) {
+        return row.translationRows.length * FullscreenLyricStage.lineHeightOf(translationFont, translationScale);
+    }
+
     private double rawTranslationWidth(String text) {
         if (translationFont == null || text == null) return 0;
         double sum = 0;
@@ -723,17 +742,23 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                 if (!FullscreenLyricStage.glyphsReady(translationFont, translation)) {
                     metricsPending = true;
                 }
-                row.translation = translation;
-                row.translationRawWidth = rawTranslationWidth(translation);
+                String[] wrapped = line.wrappedRows(translationFont, translation,
+                        contentWidth / translationScale);
+                row.translationRows = wrapped;
+                row.translationRawWidths = new double[wrapped.length];
+                for (int j = 0; j < wrapped.length; j++) {
+                    double rawWidth = rawTranslationWidth(wrapped[j]);
+                    row.translationRawWidths[j] = rawWidth;
+                    row.translationRawWidth = Math.max(row.translationRawWidth, rawWidth);
+                }
                 row.translationY = row.textHeight + fontPx * .12;
             }
 
             applyGap(row, line, previousEnd);
             row.y = y;
             row.height = row.textTop + row.textHeight;
-            if (row.translation != null) {
-                row.height += fontPx * .12
-                        + FullscreenLyricStage.lineHeightOf(translationFont, translationScale);
+            if (row.translationRows != null) {
+                row.height += fontPx * .12 + translationHeight(row);
             }
             y += row.height + gapBetween;
             previousEnd = lastVocalEnd(line);
@@ -984,8 +1009,11 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
      * 地方只有 {@link CloudMusic#getSecondaryLyrics}（经典滚动歌词走的也是它），这里沿用同一条
      * 判定。Apple Music 的翻译行与发音行同样跟着设置走，行为正好一致。</p>
      */
-    private static String secondaryText(LyricLine line) {
+    private String secondaryText(LyricLine line) {
         if (line == null) return null;
+        if (explicitLanguage != null) {
+            return explicitLanguage.sidecar(line.translationText, line.romanizationText);
+        }
         // 先看这一行到底有没有副歌词：绝大多数歌一行都没有，直接短路掉，省下每次重排的设置查询。
         boolean any = line.translationText != null && !line.translationText.trim().isEmpty();
         if (!any) any = line.romanizationText != null && !line.romanizationText.trim().isEmpty();
