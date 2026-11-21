@@ -12,6 +12,7 @@ on:
       - scripts/test-custom-font-pack.py
       - bridge/**
       - web/tests/**
+      - src/test/**
 
 permissions:
   contents: read
