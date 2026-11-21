@@ -6,7 +6,7 @@ import com.muoniumplayer.core.rendering.ui.container.Panel;
 import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
 import com.muoniumplayer.core.rendering.ui.widgets.LabelWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedButtonWidget;
-import com.muoniumplayer.core.update.AnnouncementChecker;
+import com.muoniumplayer.core.update.UpdateChecker;
 import com.muoniumplayer.core.update.AnnouncementImageCache;
 import com.muoniumplayer.core.update.SponsorNotice;
 import com.muoniumplayer.core.utils.KeyboardUtils;
@@ -375,7 +375,7 @@ public final class SponsorNoticeOverlay extends NCMPanel {
         return Math.max(24, (font == null ? 18 : font.getFontHeight()) + 6);
     }
     private void openLink(String url) {
-        if (!acceptsInput() || !AnnouncementChecker.isLinkAllowed(url)) return;
+        if (!acceptsInput() || !UpdateChecker.isAllowedPage(url)) return;
         if (linkOpener != null) { linkOpener.accept(url); return; }
         if (BrowserUtils.open(url)) status = "已在浏览器打开 · 金额由你决定，感谢支持";
         else { KeyboardUtils.setClipboardString(url); status = "未能打开浏览器，赞助地址已复制"; }

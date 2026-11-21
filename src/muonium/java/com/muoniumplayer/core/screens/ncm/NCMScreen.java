@@ -29,7 +29,7 @@ import com.muoniumplayer.core.rendering.ui.widgets.RectWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
 import com.muoniumplayer.core.settings.HudConfig;
 import com.muoniumplayer.core.update.SponsorNotice;
-import com.muoniumplayer.core.screens.GuiAnnouncements;
+import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
 import com.muoniumplayer.core.screens.ncm.DownloadManagerOverlay;
 import com.muoniumplayer.core.screens.ncm.panels.ControlsBar;
 import com.muoniumplayer.core.screens.ncm.panels.HomePanel;
@@ -1301,6 +1301,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     /** 导航等待遮罩。见 {@link #navigateAsync}。 */
     private final NavigationLoadingOverlay navigationLoading = new NavigationLoadingOverlay();
+    private NCMPanel playingTrackDetails;
     private final NavigationRequestGate navigationRequests = new NavigationRequestGate();
     private String pendingNavigationLabel = "";
     /** 侧栏点击到异步结果落地之间暂存的语义键；由目标面板接管后进入历史。 */
@@ -1381,6 +1382,16 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
      *               所以 loader 里只该取数据、不要碰 GL
      */
     public void navigateAsync(String label, Supplier<NCMPanel> loader) {
+        navigateAsync(label, loader, false);
+    }
+
+    public void openPlayingTrackPage(String label, Supplier<NCMPanel> loader) {
+        if (this.musicLyricsPanel == null) return;
+        this.musicLyricsPanel.close();
+        navigateAsync(label, loader, true);
+    }
+
+    private void navigateAsync(String label, Supplier<NCMPanel> loader, boolean fromLyrics) {
         if (loader == null) return;
         final String targetName = label == null ? "" : label;
         // 同一入口去重；点击别的栏目则以新请求为准，不能被慢音源锁住。
@@ -1404,6 +1415,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                 if (panel != null) {
                     this.navigationLoading.clear();
                     this.setCurrentPanel(panel);
+                    if (fromLyrics) this.playingTrackDetails = panel;
                     return;
                 }
                 this.pendingPanelNavigationKey = null;
@@ -1541,6 +1553,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             this.pendingNavigationBackward = true;
             actions.get(currentActionPointer).run();
             this.handCoverBackIfNeeded(from);
+            returnToLyrics(from);
             return;
         }
 
@@ -1553,6 +1566,15 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             this.pendingNavigationBackward = true;
             this.setCurrentPanel(new HomePanel());
             this.handCoverBackIfNeeded(from);
+            returnToLyrics(from);
+        }
+    }
+
+    private void returnToLyrics(NCMPanel from) {
+        if (from != this.playingTrackDetails) return;
+        this.playingTrackDetails = null;
+        if (CloudMusic.currentlyPlaying != null) {
+            this.musicLyricsPanel = MusicLyricsPanel.takePrewarmed(CloudMusic.currentlyPlaying);
         }
     }
 
@@ -1650,15 +1672,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         }
     }
 
-    /**
-     * 打开公告中心。
-     *
-     * <p>它是一个独立的 Screen 而不是播放器浮层：主菜单那颗按钮与 HUD 设置里的入口都承载不了浮层，
-     * 三处共用同一个宿主，于是「关掉即整批已读」这一条行为只有一处实现，不必各写一遍。
-     * 走 {@code setScreen} 而不是共享的 {@code displayScreen}：后者只收 {@code ExtensionScreen}。</p>
-     */
-    public void openAnnouncements() {
-        GuiAnnouncements.open(this);
+    public void openProjectNews() {
+        ProjectNews.open(this);
     }
 
     public void openDownloadManager() {
@@ -2032,6 +2047,10 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             return;
         }
 
+        if (this.musicLyricsPanel != null && this.musicLyricsPanel.metadataKeyPressed(keyCode)) {
+            return;
+        }
+
         if (this.basePanel.onKeyTypedReceived(typedChar, keyCode)) {
             return;
         }
@@ -2050,6 +2069,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
             if (this.musicLyricsPanel != null)
                 this.musicLyricsPanel.close();
+            else if (this.currentPanel != null && this.currentPanel == this.playingTrackDetails)
+                this.navigateBack();
             else {
                 closing = true;
                 this.transitionMetrics.begin(false);

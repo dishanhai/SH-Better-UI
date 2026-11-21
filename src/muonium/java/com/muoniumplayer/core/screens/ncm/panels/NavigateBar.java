@@ -22,7 +22,7 @@ import com.muoniumplayer.core.ncm.music.PlaylistRefreshResult;
 import com.muoniumplayer.core.ncm.music.QishuiMusicService;
 import com.muoniumplayer.core.ncm.music.ImportedPlaylistStore;
 import com.muoniumplayer.core.ncm.music.LocalPlaylistStore;
-import com.muoniumplayer.core.update.AnnouncementChecker;
+import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
 import com.muoniumplayer.core.ncm.music.NeteaseSearchSuggestService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
@@ -1430,7 +1430,6 @@ public class NavigateBar extends NCMPanel {
         SidebarActionButton btnRefresh = new SidebarActionButton(SidebarActionIcon.REFRESH);
         // 公告排在最后：这四颗的位置用户已经用熟了，新来的那颗排到末尾比插进中间好。
         SidebarActionButton btnAnnouncement = new SidebarActionButton(SidebarActionIcon.ANNOUNCEMENT);
-        btnAnnouncement.setUnreadBadge(() -> AnnouncementChecker.hasUnread());
         this.announcementButton = btnAnnouncement;
         SidebarActionButton btnDownloads = new SidebarActionButton(SidebarActionIcon.DOWNLOADS);
         btnDownloads.setUnreadBadge(() -> DownloadCatalog.activeTasks() > 0 || DownloadCatalog.waitingTasks() > 0);
@@ -1524,7 +1523,7 @@ public class NavigateBar extends NCMPanel {
                 // 右键什么都不做，但也不放过去：这颗按钮下面就是账号行，穿透过去会打开账号管理。
                 return mouseButton == 1;
             }
-            NCMScreen.getInstance().openAnnouncements();
+            NCMScreen.getInstance().openProjectNews();
             return true;
         });
         btnAnnouncement.setBeforeRenderCallback(() -> {
@@ -2120,7 +2119,7 @@ public class NavigateBar extends NCMPanel {
             if (icon == SidebarActionIcon.FONT) return "更换界面字体";
             if (icon == SidebarActionIcon.SCALE) return "切换窗口大小（右键还原）";
             if (icon == SidebarActionIcon.REFRESH) return refreshTooltipText();
-            if (icon == SidebarActionIcon.ANNOUNCEMENT) return "查看公告";
+            if (icon == SidebarActionIcon.ANNOUNCEMENT) return ProjectNews.text("title").getString();
             if (icon == SidebarActionIcon.DOWNLOADS) return "下载管理 · 组件状态与安装";
             return "";
         }

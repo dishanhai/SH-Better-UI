@@ -37,6 +37,7 @@ import java.util.function.Supplier;
 
 /** 山海：通过回调组合现有 API 的原生界面，每次打开独立持有并释放上下文。 */
 public final class UiScreen extends Screen {
+    UiTheme workbenchPalette;
     @FunctionalInterface
     public interface Draw {
         void draw(UiScreen screen, UiFrame frame);
@@ -562,9 +563,10 @@ public final class UiScreen extends Screen {
     @Override
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (disposed || removed) return;
-        if (definition.theme() == null) renderContents(graphics, mouseX, mouseY, partialTick);
-        else UiTheme.preview(UiTheme.fromScope(context().themeScope()),
-                () -> renderContents(graphics, mouseX, mouseY, partialTick));
+        var palette = workbenchPalette != null ? workbenchPalette
+                : definition.theme() == null ? null : UiTheme.fromScope(context().themeScope());
+        if (palette == null) renderContents(graphics, mouseX, mouseY, partialTick);
+        else UiTheme.preview(palette, () -> renderContents(graphics, mouseX, mouseY, partialTick));
     }
 
     private void renderContents(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {

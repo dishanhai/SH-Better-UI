@@ -666,6 +666,17 @@ public class PlaylistPanel extends NCMPanel {
             // 非搜索模式的让位由 headerHeight 槽逐帧承载（封面回调写入），这里不再定格。
         } else {
             headerHeight[0] = 18.0;
+            if (playList.getName() != null && !playList.getName().isBlank() && !playList.isSearchResultList()) {
+                headerHeight[0] = 36.0;
+                LabelWidget heading = new LabelWidget(playList.getName(), FontManager.pf18bold);
+                this.addChild(heading);
+                heading.setBeforeRenderCallback(() -> {
+                    heading.setPosition(12, 10);
+                    heading.setMaxWidth(Math.max(1, getWidth() - 58));
+                    heading.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+                    heading.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+                });
+            }
         }
 
         Panel rwMusicsContainer = new Panel();
@@ -679,7 +690,7 @@ public class PlaylistPanel extends NCMPanel {
             // 将歌曲行裁剪到这个缩小后的视口，而不是让文字贴边。
             // 非搜索模式读 headerHeight 槽（宽档 176 / 窄档 144 随内容区宽切换），
             // 搜索模式恒 18。
-            double offsetY = searchLayout ? 18.0 : headerHeight[0];
+            double offsetY = headerHeight[0];
             rwMusicsContainer.setBounds(
                     Math.max(0.0, this.getWidth() - 36),
                     Math.max(0.0, this.getHeight() - offsetY - bottomSafeInset)

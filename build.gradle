@@ -70,11 +70,9 @@ dependencies {
     testImplementation 'org.junit.jupiter:junit-jupiter'
 }
 
-configurations { muoniumRhino; muoniumNatives; muoniumDevLibraries; muoniumModernUi }
+configurations { muoniumRhino; muoniumDevLibraries; muoniumModernUi }
 dependencies { muoniumRhino 'org.mozilla:rhino:1.7.15' }
 dependencies {
-    ['windows-x64', 'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64',
-     'android-arm64', 'android-x64'].each { muoniumNatives "io.github.humbleui:skija-${it}:0.143.17" }
     muoniumDevLibraries 'com.google.zxing:core:3.5.3'
     muoniumDevLibraries 'io.github.humbleui:types:0.2.0'
     muoniumDevLibraries 'io.github.humbleui:skija-shared:0.143.17'
@@ -200,10 +198,6 @@ tasks.withType(JavaExec).matching { it.name in ['runClient', 'runServer'] }.conf
 }
 
 processResources {
-    from({ configurations.muoniumNatives.collect { zipTree(it) } }) {
-        include 'io/github/humbleui/skija/**'
-        exclude '**/*.class'
-    }
     from('LICENSE')
     filteringCharset = 'UTF-8'
     def properties = [mod_id: mod_id, mod_name: mod_name, mod_version: mod_version,
@@ -301,6 +295,9 @@ tasks.register('verifyLibraryJar') {
     }
 }
 tasks.named('build') { dependsOn 'devJar', 'verifyLibraryJar' }
+
+ext.skijaReleaseArchive = layout.buildDirectory.file("libs/${releaseJarName}")
+apply from: 'gradle/skija-release.gradle'
 
 publishing {
     publications {
