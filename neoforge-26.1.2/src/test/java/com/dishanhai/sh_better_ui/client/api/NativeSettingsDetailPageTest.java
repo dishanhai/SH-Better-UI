@@ -25,7 +25,7 @@ class NativeSettingsDetailPageTest {
     @Test void keyboardRevealsClippedFieldsAndResizeRetainsScrollAndFocus()throws Exception{
         try(var client=NativeTestClient.install()){
             var controls=new ArrayList<UiButton>();var page=page(controls,null);var screen=page.builder().build();
-            client.client().screen=screen;screen.width=180;screen.height=180;screen.init();
+            client.screen(screen);screen.width=180;screen.height=180;screen.init();
             client.client().setLastInputType(net.minecraft.client.InputType.KEYBOARD_TAB);
             for(int i=0;i<10;i++)screen.keyPressed(new KeyEvent(258,0,0));
             assertTrue(page.scrollOffset()>0);var focus=screen.getFocused();assertTrue(controls.contains(focus));
@@ -43,10 +43,10 @@ class NativeSettingsDetailPageTest {
             var cancel=new AtomicInteger();var edits=new AtomicInteger(3);boolean[] fail={true};
             var actions=new UiSettingsDetailPage.Actions(()->Component.literal("Reset"),Component.literal("Cancel"),Component.literal("Apply"),
                     ()->edits.set(0),cancel::incrementAndGet,()->fail[0]?Component.literal("Invalid"):null,()->edits.get()!=0);
-            var page=page(new ArrayList<>(),actions);var screen=page.builder().build();client.client().screen=screen;screen.width=320;screen.height=220;screen.init();
+            var page=page(new ArrayList<>(),actions);var screen=page.builder().build();client.screen(screen);screen.width=320;screen.height=220;screen.init();
             assertFalse(page.applyDraft());assertEquals(3,edits.get());assertEquals(Component.literal("Invalid"),field(page,"status"));
             fail[0]=false;assertTrue(page.applyDraft());screen.removed();screen.removed();assertEquals(0,cancel.get());
-            client.client().screen=screen;screen.init();screen.removed();screen.removed();assertEquals(1,cancel.get());
+            client.screen(screen);screen.init();screen.removed();screen.removed();assertEquals(1,cancel.get());
         }
     }
     @Test void contextClosesDistinctEqualResourcesExactlyOnce()throws Exception{
@@ -60,7 +60,7 @@ class NativeSettingsDetailPageTest {
     @Test void tinyViewportDoesNotConstructInvalidControls()throws Exception{
         try(var client=NativeTestClient.install()){
             var controls=new ArrayList<UiButton>();var page=page(controls,null);var screen=page.builder().build();
-            client.client().screen=screen;screen.width=24;screen.height=40;assertDoesNotThrow(()->screen.init());assertTrue(controls.isEmpty());assertEquals(1,screen.children().size(),"Tiny fallback contains only Back");screen.removed();
+            client.screen(screen);screen.width=24;screen.height=40;assertDoesNotThrow(()->screen.init());assertTrue(controls.isEmpty());assertEquals(1,screen.children().size(),"Tiny fallback contains only Back");screen.removed();
         }
     }
     @Test void ownedConfirmationKeepsDraftOnNoAndCancelsExactlyOnceOnYesOrAbandon()throws Exception{
@@ -73,11 +73,11 @@ class NativeSettingsDetailPageTest {
             var other=new net.minecraft.client.gui.screens.Screen(Component.literal("Other")){};
             var screen=page.builder().parent(parent).build();screen.width=180;screen.height=180;
             java.util.function.Consumer<net.minecraft.client.gui.screens.Screen> show=next->{
-                if(client.client().screen!=null)client.client().screen.removed();client.client().screen=next;
+                if(client.screen()!=null)client.screen().removed();client.screen(next);
                 if(next instanceof UiScreen ui)ui.refreshLayout();
             };
             page.closeScreen=owner->{
-                try{UiScreen.closeIfCurrent(owner,parent,()->client.client().screen,show,
+                try{UiScreen.closeIfCurrent(owner,parent,()->client.screen(),show,
                         (java.util.function.BooleanSupplier)field(owner,"closeRequested"),()->null);}
                 catch(Exception error){throw new AssertionError(error);}
             };
@@ -88,15 +88,15 @@ class NativeSettingsDetailPageTest {
             show.accept(screen);
             var scrolling=(com.dishanhai.sh_better_ui.kernel.api.layout.VerticalScroll)field(page,"scroll");scrolling.scrollTo(64);
             var context=(UiSettingsDetailPage.Context)field(page,"context");var closes=new AtomicInteger();context.onClose(closes::incrementAndGet);
-            page.closeScreen.accept(screen);assertSame(modal,client.client().screen);assertEquals(7,draft.get());assertEquals(0,cancel.get());assertEquals(0,closes.get());
+            page.closeScreen.accept(screen);assertSame(modal,client.screen());assertEquals(7,draft.get());assertEquals(0,cancel.get());assertEquals(0,closes.get());
             // No returns to the same edit session, replacing only per-mount resources.
             show.accept(screen);assertEquals(7,draft.get());assertEquals(0,cancel.get());assertEquals(64,page.scrollOffset());assertEquals(1,closes.get());
             page.closeScreen.accept(screen);show.accept(screen);decision[0].run();
-            assertSame(parent,client.client().screen);assertEquals(1,cancel.get());assertEquals(0,draft.get());
+            assertSame(parent,client.screen());assertEquals(1,cancel.get());assertEquals(0,draft.get());
             decision[1].run();screen.removed();assertEquals(1,cancel.get());
             // A new session abandoned from its own modal also releases precisely once.
             draft.set(9);show.accept(screen);page.closeScreen.accept(screen);show.accept(other);decision[1].run();decision[1].run();
-            assertSame(other,client.client().screen);assertEquals(2,cancel.get());assertEquals(0,draft.get());assertNull(field(page,"owner"));
+            assertSame(other,client.screen());assertEquals(2,cancel.get());assertEquals(0,draft.get());assertNull(field(page,"owner"));
         }
     }
     @Test void eachRebuildReleasesOnlyPreviousMountResources()throws Exception{
@@ -108,7 +108,7 @@ class NativeSettingsDetailPageTest {
             });
             var actions=new UiSettingsDetailPage.Actions(()->Component.empty(),Component.empty(),Component.empty(),()->{},cancels::incrementAndGet,()->null,()->true);
             var page=new UiSettingsDetailPage(Component.literal("Lifecycle"),List.of(new UiSettingsDetailPage.Section(Component.literal("Section"),List.of(field))),actions);
-            var screen=page.builder().build();client.client().screen=screen;screen.width=320;screen.height=220;screen.init();
+            var screen=page.builder().build();client.screen(screen);screen.width=320;screen.height=220;screen.init();
             screen.refreshLayout();assertEquals(1,closes.get());assertEquals(0,cancels.get());
             screen.refreshLayout();assertEquals(2,closes.get());screen.removed();assertEquals(3,closes.get());assertEquals(1,cancels.get());
         }
@@ -118,7 +118,7 @@ class NativeSettingsDetailPageTest {
             var cancels=new AtomicInteger();var closes=new AtomicInteger();
             var actions=new UiSettingsDetailPage.Actions(()->Component.empty(),Component.empty(),Component.empty(),()->{},cancels::incrementAndGet,()->null,()->true);
             var page=page(new ArrayList<>(),actions);var first=page.builder().build();
-            client.client().screen=first;first.width=320;first.height=220;first.init();
+            client.screen(first);first.width=320;first.height=220;first.init();
             var context=(UiSettingsDetailPage.Context)field(page,"context");context.onClose(closes::incrementAndGet);
             var second=page.builder().build();second.width=320;second.height=220;
             assertThrows(IllegalStateException.class,()->second.init());

@@ -1,0 +1,2686 @@
+package com.muoniumplayer.core.screens.ncm;
+
+import com.muoniumplayer.core.music.source.QrCode;
+import com.muoniumplayer.core.music.source.QrLoginState;
+import com.google.gson.JsonObject;
+import com.muoniumplayer.core.management.FontManager;
+import com.muoniumplayer.core.ncm.OptionsUtil;
+import com.muoniumplayer.core.ncm.api.CloudMusicApi;
+import com.muoniumplayer.core.ncm.music.BilibiliMusicService;
+import com.muoniumplayer.core.ncm.music.NeteaseMusicService;
+import com.muoniumplayer.core.ncm.music.CloudMusic;
+import com.muoniumplayer.core.ncm.music.KuGouMusicService;
+import com.muoniumplayer.core.ncm.kugou.KuGouAuth;
+import com.muoniumplayer.core.ncm.music.MusicPlatform;
+import com.muoniumplayer.core.ncm.music.NeteaseAccountProfiles;
+import com.muoniumplayer.core.ncm.music.QishuiLoginBridge;
+import com.muoniumplayer.core.ncm.music.QishuiMusicService;
+import com.muoniumplayer.core.ncm.music.QishuiAccountProfiles;
+import com.muoniumplayer.core.ncm.music.QRCodeGenerator;
+import com.muoniumplayer.core.ncm.music.dto.User;
+import com.muoniumplayer.core.rendering.BrandVectorIcons;
+import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
+import com.muoniumplayer.core.rendering.FontelloIcons;
+import com.muoniumplayer.core.rendering.GlassLook;
+import com.muoniumplayer.core.rendering.MusicBrandIcons;
+import com.muoniumplayer.core.rendering.TextureManager;
+import com.muoniumplayer.core.rendering.font.CFontRenderer;
+import com.muoniumplayer.core.rendering.svg.AnimatedIcons;
+import com.muoniumplayer.core.rendering.svg.SmilSvg;
+import com.muoniumplayer.core.rendering.svg.SvgPlayback;
+import com.muoniumplayer.core.rendering.texture.AccountAvatar;
+import com.muoniumplayer.core.rendering.texture.DynamicTexture;
+import com.muoniumplayer.core.rendering.ui.AbstractWidget;
+import com.muoniumplayer.core.rendering.ui.container.Panel;
+import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
+import com.muoniumplayer.core.rendering.ui.widgets.AnimatedSvgWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.LabelWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.RoundedButtonWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.RoundedImageWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.TextFieldWidget;
+import com.muoniumplayer.core.utils.KeyboardUtils;
+import com.muoniumplayer.core.utils.Location;
+import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
+import com.muoniumplayer.party.ui.PartyIcons;
+
+import javax.imageio.ImageIO;
+import java.awt.image.BufferedImage;
+import java.io.ByteArrayInputStream;
+import java.util.Base64;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.DoubleSupplier;
+import java.util.function.IntSupplier;
+import java.util.function.Supplier;
+
+/**
+ * 账号与登录浮层：网易云 / QQ / 酷狗的扫码登录、Cookie 登录与本地已保存账号。
+ *
+ * <p>版式与动效在 {@link NcmSheet}；这里负责「哪一页显示什么」和全部网络流程。网络请求与
+ * 二维码解码都在后台线程，贴图提交与换页一律回主线程。</p>
+ *
+ * <p><b>这一轮为什么重写。</b>原来四个页面各自把弹窗、标题、卡片、状态行手写一遍，纵向位置是
+ * 写死的偏移（详情页的二维码盘在 48、按钮排在 {@code height-48 / -80 / -112}），而弹窗高度又被
+ * 视口夹住 —— 窗口一矮，二维码就压在按钮上。另外登录成功后页面停在原处只改一行字，用户得自己
+ * 点返回；现在成功反馈停留一下就自动回上一级。</p>
+ */
+public class AccountManagerOverlay extends NcmSheet {
+
+    private static final Location NETEASE_QR = Location.of("muonium/textures/account/netease_qr.png");
+    private static final Location QQ_QR = Location.of("muonium/textures/account/qq_qr.png");
+    private static final Location KUGOU_QR = Location.of("muonium/textures/account/kugou_qr.png");
+    private static final Location QISHUI_QR = Location.of("muonium/textures/account/qishui_qr.png");
+    private static final Location BILIBILI_QR = Location.of("muonium/textures/account/bilibili_qr.png");
+
+    /** 页眉占掉的高度：图标盘 / 返回键 34 见方 + 上下留白，标题与副标题都在这一段里。 */
+    private static final double HEADER_H = 64.0;
+    /** 二维码白盘边长。扫码靠明暗对比，盘必须是浅色，和主题无关。 */
+    private static final double QR_PLATE = 148.0;
+    private static final double STATUS_BLOCK = 30.0;
+    private static final double SAVED_ROW = 60.0;
+    /** 滚动区开头的让位（见 {@code plain} 的注释：悬停生长会越过上边界）。 */
+    private static final double LEAD = 6.0;
+
+    // ──────────────────────── W3 视觉重排新增量 ────────────────────────
+    //
+    // 二级页原来是「二维码/身份卡 + 状态行 + 分段器」按定值直接往下摞，区块之间只隔几像素，
+    // 读不出分组。这一轮把每页拆成「分区标题 + 内容」的小节，小节之间统一让 12 的整数倍：
+    // 间距是这一版最贵的装饰 —— 不新增任何阴影/玻璃层，层级只靠留白、圆角与字号建立。
+
+    /** 分区之间的呼吸。本页所有区块间距都取它的整数倍（规范：12L 的整数倍）。 */
+    private static final double SECTION_GAP = 12.0;
+    /** 分区标题行高：sectionLabel 的 11L 竖条 + 上下留白，与音源浮层同一档。 */
+    private static final double SECTION_LABEL_ROW = 20.0;
+    /** 分区标题到它自己那块内容之间的间隙，同样 12。 */
+    private static final double SECTION_LABEL_GAP = 12.0;
+    /** 「标题 + 间隙」整段高度，各页算内容高度时直接加它。 */
+    private static final double SECTION_LABEL_BLOCK = SECTION_LABEL_ROW + SECTION_LABEL_GAP;
+    /** 详情页主 / 次级按钮高（规范 20~24L）；圆角 6。 */
+    private static final double DETAIL_BUTTON_H = 22.0;
+    /** Cookie / Token 页的输入框与按钮统一 20L 高（规范）。 */
+    private static final double CREDENTIAL_FIELD_H = 20.0;
+    /** 同一组按钮之间的间隙。 */
+    private static final double BUTTON_GAP = 8.0;
+    /** 最底下一排按钮到弹窗下沿的留白（12 的整数倍）。 */
+    private static final double FOOTER_BOTTOM = 12.0;
+    /** 内容区与页脚之间也留 12。 */
+    private static final double FOOTER_TOP_GAP = 12.0;
+    /** 二维码白盘下方那行说明占的高度（12 字号墨迹 + 呼吸）。 */
+    private static final double QR_CAPTION = 14.0;
+    /** 扫码分区：标题 + 白盘 + 说明行。 */
+    private static final double QR_ROW = SECTION_LABEL_BLOCK + QR_PLATE + SECTION_GAP + QR_CAPTION;
+    /** 身份卡高。 */
+    private static final double IDENTITY_CARD = 84.0;
+    /** 身份卡分区：标题 + 卡片。 */
+    private static final double IDENTITY_ROW = SECTION_LABEL_BLOCK + IDENTITY_CARD;
+    /** 身份卡头像盘边长与左留白（比总览卡大一档：这是这一页的主角）。 */
+    private static final double IDENTITY_AVATAR = 48.0;
+    private static final double IDENTITY_AVATAR_LEFT = 16.0;
+    /** 身份卡文字左边缘 = 左留白 + 头像 + 间距。 */
+    private static final double IDENTITY_TEXT_LEFT = IDENTITY_AVATAR_LEFT + IDENTITY_AVATAR + 12.0;
+    /** 登录方式分段器轨道高：内缩 4×2 + 滑块 20，滑块正好和主操作按钮一样高。 */
+    private static final double SEGMENT_TRACK = 28.0;
+    /** 分段器分区：标题 + 轨道。 */
+    private static final double SEGMENT_ROW = SECTION_LABEL_BLOCK + SEGMENT_TRACK;
+    /** 详情页页头：品牌圆盘直径 / 左缘 / 标题左缘（返回键 30 + 8 间隙 + 盘 34 + 10）。 */
+    private static final double DETAIL_DISC = 34.0;
+    private static final double DETAIL_DISC_LEFT = PAD + 34.0;
+    private static final double DETAIL_TITLE_LEFT = PAD + 78.0;
+    /** 已保存账号行：头像 32、文字左缘 = 左留白 12 + 头像 32 + 间距 12。 */
+    private static final double SAVED_AVATAR = 32.0;
+    private static final double SAVED_TEXT_LEFT = 12.0 + SAVED_AVATAR + 12.0;
+    /** 已保存账号行右侧小按钮：高 20、宽 40、圆角 6，右缘留 12。 */
+    private static final double SAVED_BUTTON_H = 20.0;
+    private static final double SAVED_BUTTON_W = 40.0;
+    private static final double SAVED_BUTTON_RIGHT = 12.0;
+    /**
+     * 登录成功后停留多久再换页。
+     *
+     * <p>不留这一下的话用户只看到界面闪了一下，分不清是登上了还是被关掉了。</p>
+     */
+    private static final long SUCCESS_HOLD_MILLIS = 850L;
+
+    private final AtomicLong pageGeneration = new AtomicLong();
+    private volatile MusicPlatform detailPlatform;
+    private volatile String statusText = "";
+    /**
+     * 状态行语气：0 说明、1 成功、2 失败、3 进行中。
+     *
+     * <p>存语气而不是直接存颜色：说明态该跟着主题走（原来写死 {@code 0xAEB5C4}，浅色主题下几乎
+     * 看不见），而状态图标也得按语气挑 —— 拿颜色反推会在主题切换之后错配。</p>
+     */
+    private volatile int statusTone;
+    private volatile boolean requestRunning;
+    private volatile boolean qishuiAddAccountMode;
+    /** 二维码贴图是否已就绪。没就绪时盘里放占位图标，而不是露出一片空白。 */
+    private volatile boolean qrReady;
+    /**
+     * 已经扫上了。盖在盘上的扫码动画要在此刻让位给成功动画 —— 两枚同时转就是两团糊在一起。
+     */
+    private volatile boolean loginSucceeded;
+    /**
+     * 盘上那枚成功动画。{@link #qrBlock} 在建这一行时把它交出来，后台线程点名起播。
+     *
+     * <p>volatile：写它的是渲染线程（建控件），读它的是登录轮询那条后台线程。</p>
+     */
+    private volatile AnimatedSvgWidget loginSuccessIcon;
+    /**
+     * QQ 音乐有两条互不相干的扫码链路（QQ 的 ptlogin、微信开放平台的 OAuth）。这个选择必须显式保存，
+     * 才能保证选了微信之后走的是微信那条会话、而不是误用 QQ 的二维码。
+     */
+    private volatile QQLoginChannel qqLoginChannel = QQLoginChannel.QQ;
+
+    /**
+     * 酷狗这一次要按<b>哪个身份</b>扫码：标准版（酷狗音乐）还是概念版。
+     *
+     * <p>与 QQ 的「QQ / 微信」同性质——都是一个必须在发起会话前定下来的选择，因为
+     * 两条链路签出来的是<b>两种凭证</b>（二维码里嵌的 appid 一个是 1005、一个是 3116），
+     * 拿到 token 之后所有请求的 appid、签名盐与取流参数都得跟着它走。中途换档会出现
+     * 「扫码成功但什么都放不出」。</p>
+     *
+     * <p>不落盘：它只是「下一次扫码用哪个身份」，而登录成功之后该用哪个身份记在凭证里
+     * （{@code kugou_auth.json} 的 {@code profile} 字段）。</p>
+     */
+    private volatile boolean kuGouConceptLogin;
+
+    /** 二段选择器里左/右两半的文案。 */
+    private static final String[] KUGOU_VARIANTS = {"酷狗音乐", "酷狗概念版"};
+
+    private enum QQLoginChannel {
+        QQ,
+        WECHAT
+    }
+
+    @Override
+    public void onInit() {
+        showOverview();
+    }
+
+    /** 直接落到某个平台的账号页（音源浮层的账号角标跳进来用，免去再点一次）。 */
+    public void openPlatform(MusicPlatform platform) {
+        showDetail(platform);
+    }
+
+    @Override
+    public void dispose() {
+        super.dispose();
+        pageGeneration.incrementAndGet();
+    }
+
+    public void handleEscape() {
+        if (detailPlatform != null) {
+            back(this::showOverview).run();
+        } else {
+            dispose();
+        }
+    }
+    // ════════════════════════════ 一级页：账号总览 ════════════════════════════
+
+    /** 总览小方块的边长与行高（行 = 格 + 上下呼吸 8）。 */
+    private static final double OVERVIEW_CELL = 96.0;
+    private static final double OVERVIEW_ROW = OVERVIEW_CELL + 8.0;
+    /** 方格之间的间距：与音源浮层总览同一档，hover 生长每侧 2px 不会互压圆角。 */
+    private static final double OVERVIEW_GAP = 10.0;
+    /** 下一行比上一行少一格：第二行的格子整体居中，两行共一根中轴。 */
+    private static final int[] OVERVIEW_ROW_CELLS = {3, 2};
+
+    private void showOverview() {
+        pageGeneration.incrementAndGet();
+        detailPlatform = null;
+        requestRunning = false;
+        beginPage();
+
+        final Panel dialog = sheet(468, () -> HEADER_H + LEAD + OVERVIEW_ROW * 3 + 44);
+        header(dialog, PartyIcons.PERSON, "账号与登录",
+                () -> "凭据只保存在本地 · 各来源各自独立",
+                () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT));
+
+        final Panel body = body(dialog, () -> HEADER_H, () -> 44.0);
+        final ScrollPanel feed = feed(body);
+        // 开头让出几像素：格子悬停时绕着自己中心长，第一行贴着滚动区上边的话会被硬裁切掉圆角。
+        strip(feed, LEAD);
+        // 3 + 2 + 1 三行：Apple 加入后六个平台凑成 3-2-1 的阶梯（下一行收一列整体居中，
+        // 两两共用一根中轴，视觉上仍是对称的）—— 与其硬凑 3×2 的满格矩阵留两个窟窿，
+        // 不如让每行都比上一行少一格，收尾自然。
+        final MusicPlatform[][] rows = {
+                {MusicPlatform.NETEASE, MusicPlatform.QQ, MusicPlatform.KUGOU},
+                {MusicPlatform.QISHUI, MusicPlatform.BILIBILI},
+                {MusicPlatform.APPLE}};
+        int slot = 0;
+        for (int r = 0; r < rows.length; r++) {
+            final int rowSlot = r;
+            final MusicPlatform[] platforms = rows[r];
+            final Panel[] cells = new Panel[platforms.length];
+            for (int i = 0; i < cells.length; i++) cells[i] = new Panel();
+            final Panel row = new Panel();
+            feed.addChild(row);
+            for (Panel cell : cells) row.addChild(cell);
+            // 行自管尺寸（不走 strip）：beforeRenderCallback 是单槽，strip 的摆位回调会被
+            // 这里的排格回调覆盖，行就永远是 0×0、格子塌在左上角叠成一摞 —— 音源浮层的
+            // gridRow 为同一件事交过学费。宽随滚动区现算，feed(VERTICAL) 只摆 y。
+            row.setBeforeRenderCallback(() -> {
+                row.setBounds(Math.max(1, feed.getWidth()), Math.max(1, OVERVIEW_ROW));
+                double width = Math.max(1, row.getWidth() - (PAD + CARD_INSET) * 2);
+                // 格宽按当帧内容宽现算、以 OVERVIEW_CELL 为上限：窄弹窗（视口夹到 340 时
+                // 内容宽只有 294）下三格等比收到 ~91px 仍全部落在格内，不再越过右留白
+                // 被滚动区硬裁掉一角。两行按各自的格宽分别居中，共用一根中轴。
+                double cellWidth = Math.min(OVERVIEW_CELL,
+                        (width - OVERVIEW_GAP * (cells.length - 1)) / cells.length);
+                double span = cellWidth * cells.length + OVERVIEW_GAP * (cells.length - 1);
+                double left = PAD + CARD_INSET + Math.max(0.0, (width - span) * .5);
+                for (int i = 0; i < cells.length; i++) {
+                    cells[i].setBounds(cellWidth, Math.max(1, row.getHeight()));
+                    cells[i].setPosition(left + (cellWidth + OVERVIEW_GAP) * i, 0.0);
+                }
+            });
+            for (int i = 0; i < platforms.length; i++) {
+                accountCell(cells[i], rowSlot * 3 + i, platforms[i]);
+                slot++;
+            }
+        }
+        // YouTube 与 Spotify 不在这里：它们的登录不是扫码 / Cookie 导入，各自的登录页
+        // 挂在音源浮层（MusicSourceOverlay）自己的卡上。Apple 虽然也是 cookies 形态，
+        // 但它有独立的登录页（gamdl 整包状态 + cookies 导入 + 播放偏好），进这边的
+        // 详情页统一管理。
+
+        // 页脚说明走页脚那一档：格子逐张落位之后它才到场，退场时也先于格子收回去。
+        tip(veil(dialog, this::footerGate), () -> PartyIcons.LOCK,
+                () -> "登录信息仅保存在本地配置中，界面不会显示 Cookie 内容",
+                () -> NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT),
+                () -> dialog.getHeight() - 30);
+    }
+
+    /**
+     * 总览页的一颗账号方格：品牌头像盘居上、平台名与账号行居下、状态点缀在名字右端。
+     *
+     * <p>动画三件套与音源浮层的方格同一套语言：入场 {@code cardGate(slot)} 从下方落位
+     * （3+2 两行五个 slot 一条瀑布）、hover 真毫秒缩放（每侧 2px，10px 格距下不互压圆角）、
+     * 当前源的品牌色描边常亮 —— 「正在用谁」用一圈细描边说，不再像横条卡那样铺左侧色轨。
+     * 侧栏账号控件的接力板落点也跟着搬到当前源这一格。</p>
+     */
+    private void accountCell(final Panel cell, final int slot, final MusicPlatform platform) {
+        // 当前来源在建页时取一次快照：总览是点开时才建的一页，期间换源会整页重建；
+        // 而 getCurrentPlatform() 内含惰性加载，不该进每帧回调。
+        final boolean current = NeteaseMusicService.getCurrentPlatform() == platform;
+        final double[] hoverSmooth = {0.0};
+        final long[] hoverNanos = new long[1];
+        final Card card = new Card();
+        cell.addChild(card);
+        card.setRadius(10);
+        card.setGlassRim(GlassLook.Surface.PLAYER);
+        card.setBeforeRenderCallback(() -> {
+            card.reveal = cardGate(slot);
+            double hoverTarget = card.hover > .02 ? 1.0 : 0.0;
+            easeMs(hoverSmooth, hoverNanos, hoverTarget, 60.0);
+            card.setBounds(Math.max(1, cell.getWidth() - 2.0), Math.max(1, OVERVIEW_CELL));
+            card.setPosition(1.0, 2.0 + (1.0 - card.reveal) * 7.0);
+            card.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                    NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER), hoverSmooth[0]));
+            card.setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f));
+            card.setAlpha((float) card.reveal);
+        });
+        card.setTransformations(() -> {
+            double w = Math.max(1, card.getWidth());
+            card.scaleAtPos(card.getX() + w * .5, card.getY() + card.getHeight() * .5,
+                    1.0 + (4.0 / w) * card.hover);
+        });
+        card.setShouldOverrideMouseCursor(true);
+        card.setOnClickCallback((x, y, button) -> {
+            if (button != 0) return false;
+            showDetail(platform);
+            return true;
+        });
+        // 侧栏那颗账号控件报的是当前来源，于是接力板落在「你正在用的那个账号」这一格。
+        if (current) hero(card);
+        // 当前源描边：颜色不变、亮度随 hover 抬一档 —— 比铺色轻，不把「已登录」的状态点搅浑。
+        stroke(card, 10.0, platform::getBrandColor,
+                () -> current ? .45 + .25 * hoverSmooth[0] : 0.0);
+
+        // 头像盘 40 居上（登录后是头像照片，未登录是品牌字标，三层叠放语义与详情页一致）。
+        avatarSlot(card, platform, 40.0, () -> card.getWidth() * .5 - 20.0, () -> 30.0);
+
+        // 平台名居中；登录状态点缀在其右端（绿点=已登录、灰点=未登录），名字被夹时让位点先走。
+        final double dotWidth = 6.0 + 5.0
+                + Math.max(FontManager.pf10bold.getStringWidthD("已登录"),
+                        FontManager.pf10bold.getStringWidthD("未登录"));
+        final LabelWidget name = label(card, platform::getDisplayName, FontManager.pf12bold);
+        name.setBeforeRenderCallback(() -> {
+            name.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            name.setMaxWidth(Math.max(1, card.getWidth() - 16.0 - dotWidth));
+            name.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            name.setPosition(card.getWidth() * .5 - name.getWidth() * .5, inkTop(name, 60.0));
+        });
+        // 状态点：只在名字右端点亮一枚 6px 圆点；方格里放不下「点 + 文字」的整组，
+        // 文字语义挪到下面的账号行（未登录那行本来就写着状态）。
+        final RoundedRectWidget dot = new RoundedRectWidget();
+        card.addChild(dot);
+        dot.setClickable(false);
+        dot.setRadius(3);
+        dot.setBeforeRenderCallback(() -> {
+            dot.setBounds(6, 6);
+            dot.setPosition(card.getWidth() * .5 + name.getWidth() * .5 + 5.0,
+                    inkTop(name, 60.0) + labelInkHeight(name) * .5 - 3.0);
+            dot.setColor(NeteaseMusicService.isLoggedIn(platform) ? OK_COLOR
+                    : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        });
+
+        // 账号行：已登录显示昵称（截断），未登录写明「未登录」并提示可以点进来。
+        final LabelWidget account = label(card, () -> NeteaseMusicService.isLoggedIn(platform)
+                ? NeteaseMusicService.getAccountName(platform)
+                : "未登录 · 点击登录", FontManager.pf10bold);
+        account.setBeforeRenderCallback(() -> {
+            account.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            account.setMaxWidth(Math.max(1, card.getWidth() - 16.0));
+            account.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            account.setPosition(card.getWidth() * .5 - account.getWidth() * .5, inkTop(account, 76.0));
+        });
+    }
+
+    /**
+     * 右对齐的「小圆点 + 登录状态」。
+     *
+     * <p>比原来那枚胶囊轻：胶囊有底色，一列排下来像三个各自独立的状态按钮；圆点只说明「在线」，
+     * 文字才是状态本身。文案只有「已登录 / 未登录」两种，两者的墨迹宽度在构建期量一次存下来，
+     * 渲染回调里只做减法 —— 红线禁止每帧文本测量，这里也顺带避免了首帧靠上一帧宽度摆位的问题。</p>
+     *
+     * @param rightX 整组文字的右边缘（不含 chevron 区）
+     * @param centerY 文字墨迹的中心 y
+     * @return 这组状态文字的最大墨迹宽度（「已登录」「未登录」取宽者），调用方据此给标题留位
+     */
+    private double loginStateMark(final AbstractWidget<?> host, final MusicPlatform platform,
+                                  final DoubleSupplier rightX, final DoubleSupplier centerY) {
+        final double dot = 6.0;
+        final double gap = 5.0;
+        // 两串文案的墨迹宽度只在构建期量一次：渲染回调里不能再做文本测量（红线），
+        // 而且取宽者能保证两种状态切换时标题的让位量不跳。
+        final double textWidth = Math.max(FontManager.pf12.getStringWidthD("已登录"),
+                FontManager.pf12.getStringWidthD("未登录"));
+
+        final RoundedRectWidget mark = new RoundedRectWidget();
+        host.addChild(mark);
+        mark.setClickable(false);
+        mark.setRadius(dot * .5);
+        mark.setBeforeRenderCallback(() -> {
+            boolean online = NeteaseMusicService.isLoggedIn(platform);
+            mark.setBounds(dot, dot);
+            mark.setPosition(rightX.getAsDouble() - textWidth - gap - dot,
+                    centerY.getAsDouble() - dot * .5);
+            mark.setColor(online ? OK_COLOR : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        });
+
+        final LabelWidget caption = label(host, () -> NeteaseMusicService.isLoggedIn(platform)
+                ? "已登录" : "未登录", FontManager.pf12);
+        caption.setBeforeRenderCallback(() -> {
+            // 未登录用次文色：这一栏在没登录时不该比账号名更抢眼。
+            caption.setColor(NeteaseMusicService.isLoggedIn(platform)
+                    ? NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT)
+                    : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            caption.setPosition(rightX.getAsDouble() - textWidth, inkTop(caption, centerY.getAsDouble()));
+        });
+        return textWidth + gap + dot;
+    }
+
+    /**
+     * 二级页统一页头：返回键 + 品牌圆盘 + 平台名 + 登录状态点。
+     *
+     * <p>为什么不用 {@code subHeader()}：那个 helper 只有「返回 + 标题 + 副标题」，而这一轮的二级页
+     * 要在页头就把「这是哪个平台、现在登没登录」讲清楚。这里仍然复用它那套组合件
+     * （{@link #backButton}、{@link #veil} + {@code headerGate}、{@code label}/{@code brandMark}），
+     * 所以到场节奏、返回键位置与其它二级页逐像素一致。</p>
+     *
+     * @return 状态文字的宽度，调用方（标题）据此让位
+     */
+    private double detailHeader(final Panel dialog, final Runnable backAction, final MusicPlatform platform,
+                                final Supplier<String> titleText, final Supplier<String> subtitleText) {
+        // 返回键不套进 veil：那一层是不吃点击的，它要自己跟着底板淡入（与 subHeader 同一处理）。
+        backButton(dialog, backAction);
+        final Panel crown = veil(dialog, this::headerGate);
+
+        // 品牌圆盘：与页眉同高的 34L 盘，颜色按品牌色轻微染色，和总览卡的头像盘是同一套语言。
+        final RoundedRectWidget disc = new RoundedRectWidget();
+        crown.addChild(disc);
+        disc.setClickable(false);
+        disc.setRadius(DETAIL_DISC * .3);
+        disc.setBeforeRenderCallback(() -> {
+            disc.setBounds(DETAIL_DISC, DETAIL_DISC);
+            disc.setPosition(DETAIL_DISC_LEFT, 18.0);
+            disc.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.GENERIC_BACKGROUND),
+                    platform.getBrandColor(), .30));
+        });
+        brandMark(disc, platform, DETAIL_DISC * BrandVectorIcons.MARK_RATIO,
+                brandGlyph(platform), brandFont(platform),
+                () -> DETAIL_DISC * .5, () -> DETAIL_DISC * .5, platform::getBrandColor);
+
+        final double stateWidth = loginStateMark(crown, platform,
+                () -> dialog.getWidth() - PAD, () -> 28.0);
+
+        final LabelWidget title = label(crown, titleText, FontManager.pf18bold);
+        title.setBeforeRenderCallback(() -> {
+            title.setColor(platform.getBrandColor());
+            title.setMaxWidth(Math.max(1, dialog.getWidth() - DETAIL_TITLE_LEFT - PAD
+                    - stateWidth - 45.0));
+            title.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            title.setPosition(DETAIL_TITLE_LEFT, inkTop(title, 28.0));
+        });
+
+        final LabelWidget subtitle = label(crown, subtitleText, FontManager.pf12);
+        subtitle.setBeforeRenderCallback(() -> {
+            subtitle.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            subtitle.setMaxWidth(Math.max(1, dialog.getWidth() - DETAIL_TITLE_LEFT - PAD * 2));
+            subtitle.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            subtitle.setPosition(DETAIL_TITLE_LEFT, inkTop(subtitle, 44.0));
+        });
+        return stateWidth;
+    }
+
+    /**
+     * 头像位：三层叠着画，一层比一层更确切。
+     *
+     * <p>底盘（品牌色调）→ 未登录时的品牌字标 / 已登录时的昵称首字 → 头像照片。照片就绪就盖住
+     * 下面两层，没就绪也不会露出一个空盘。头像下载走 {@link AccountAvatar} 的按地址节流，
+     * 所以每帧都问一次是安全的。</p>
+     */
+    private void avatarSlot(final AbstractWidget<?> host, final MusicPlatform platform, final double size,
+                            final DoubleSupplier left, final DoubleSupplier centerY) {
+        final RoundedRectWidget disc = new RoundedRectWidget();
+        host.addChild(disc);
+        disc.setClickable(false);
+        disc.setRadius(size * .3);
+        disc.setBeforeRenderCallback(() -> {
+            disc.setBounds(size, size);
+            disc.setPosition(left.getAsDouble(), centerY.getAsDouble() - size * .5);
+            disc.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                    platform.getBrandColor(), NeteaseMusicService.isLoggedIn(platform) ? .32 : .16));
+        });
+
+        final Panel brandLayer = veil(disc, () -> NeteaseMusicService.isLoggedIn(platform) ? 0.0 : 1.0);
+        brandMark(brandLayer, platform, size * BrandVectorIcons.MARK_RATIO,
+                brandGlyph(platform), brandFont(platform),
+                () -> size * .5, () -> size * .5, platform::getBrandColor);
+
+        final Panel letterLayer = veil(disc, () -> NeteaseMusicService.isLoggedIn(platform) ? 1.0 : 0.0);
+        final CFontRenderer letterFont = size >= 48 ? FontManager.pf20bold : FontManager.pf16bold;
+        // 首字与它的宽度只在「昵称真的变了」时重算：原来每帧 initial()（会 new String）再量一次宽度，
+        // 既是红线禁止的每帧分配/测量，也让首帧只能读到上一帧的尺寸。页打开期间昵称基本不变，
+        // 真变了（异步资料到达）这里也会当场跟上。
+        final String[] seed = {null};
+        final String[] letterCache = {null};
+        final double[] letterWidth = {0.0};
+        final Supplier<String> letterText = () -> {
+            String name = NeteaseMusicService.getAccountName(platform);
+            if (name == null ? seed[0] != null : !name.equals(seed[0])) {
+                seed[0] = name;
+                letterCache[0] = initial(name);
+                letterWidth[0] = letterFont.getStringWidthD(letterCache[0]);
+            }
+            return letterCache[0];
+        };
+        // 先按当前昵称填一次缓存，避免首帧文字是 null。
+        letterText.get();
+        final LabelWidget letter = label(letterLayer, letterText, letterFont);
+        letter.setBeforeRenderCallback(() -> {
+            letter.setColor(0xFFFFFF);
+            letter.setPosition(size * .5 - letterWidth[0] * .5, inkTop(letter, size * .5));
+        });
+
+        final RoundedImageWidget photo = new RoundedImageWidget(
+                () -> AccountAvatar.textureOrNull(NeteaseMusicService.getAccountAvatarUrl(platform),
+                        NeteaseMusicService.getAccountAvatarLocation(platform)) == null
+                        ? null : NeteaseMusicService.getAccountAvatarLocation(platform),
+                0, 0, size, size);
+        disc.addChild(photo);
+        photo.setClickable(false);
+        photo.setRadius(size * .3);
+        photo.setLinearFilter(true);
+        photo.setBeforeRenderCallback(() -> {
+            photo.setBounds(size, size);
+            photo.setPosition(0, 0);
+        });
+    }
+    // ════════════════════════════ 二级页：某个平台的账号 ════════════════════════════
+
+    /** 听歌历史同步的授权文案。登录时的询问与详情页开关共用一份，避免同一件事出现两种说法。 */
+    private static final String SYNC_CONSENT_TITLE = "开启后会上报数据到网易云";
+    private static final String SYNC_CONSENT_BODY =
+            "开启后会收集你的电脑唯一标识符，包括但不限于 CPU、系统 OS、网卡、硬盘序列号、"
+                    + "IP 地址等信息。信息全部用于上报网易云客户端。";
+    private static final String SYNC_CONSENT_CONFIRM = "我已了解，开启";
+
+    private void showDetail(MusicPlatform platform) {
+        showDetail(platform, false);
+    }
+
+    /** {@code addAccountByQr}：即便已经有网易云账号在线，也走扫码添加另一个账号的流程。 */
+    private void showDetail(final MusicPlatform platform, final boolean addAccountByQr) {
+        final long token = pageGeneration.incrementAndGet();
+        qishuiAddAccountMode = platform == MusicPlatform.QISHUI && addAccountByQr;
+        detailPlatform = platform;
+        requestRunning = false;
+        qrReady = false;
+        // 成功动画的旗标也要跟着清：不清的话翻回来重看这张码时，盘上还压着一面对勾。
+        loginSucceeded = false;
+
+        final boolean loggedIn = NeteaseMusicService.isLoggedIn(platform);
+        if (platform == MusicPlatform.QISHUI && loggedIn) {
+            // 第一次启用存号器时，把当前活动账号补进列表；失败不会影响当前登录。
+            MultiThreadingUtil.runAsync(QishuiAccountProfiles::saveCurrent);
+        }
+        // 汽水的 Passport 取码/轮询要 a_bogus / msToken，只有官方安全组件在浏览器渲染进程里
+        // 算得出来，Java 侧没有。所以码由外部取码工具出：工具在就照常摆二维码，工具不在才
+        // 退回只留 Cookie 这一条路。<b>不做静默回落</b>——内置那条无签名请求必然被上游拒绝，
+        // 现象是「码出来了但永远扫不上」，比直接说缺工具难查得多。
+        final boolean qishuiBridgeReady = platform == MusicPlatform.QISHUI
+                && QishuiLoginBridge.isAvailable();
+        final boolean qishuiCookieOnly = platform == MusicPlatform.QISHUI && !qishuiBridgeReady;
+        // Apple 不取码：账号态在 cookies 文件里，登录页是 cookie 导入表单（与汽水
+        // 「缺外部工具」同形态——二维码区收起，身份卡照常展示）。
+        final boolean appleCookieOnly = platform == MusicPlatform.APPLE;
+        final boolean qrVisible = (!loggedIn || addAccountByQr) && !qishuiCookieOnly
+                && !appleCookieOnly;
+        final boolean identityVisible = !qrVisible && (loggedIn || !qishuiCookieOnly || appleCookieOnly);
+        final boolean qqChannelPicker = platform == MusicPlatform.QQ && !loggedIn;
+        final boolean wechat = platform == MusicPlatform.QQ && qqLoginChannel == QQLoginChannel.WECHAT;
+        // 酷狗的身份要在取码之前就定下来（两种客户端签的是两种凭证），所以选择器与二维码同页。
+        final boolean kugouVariantPicker = platform == MusicPlatform.KUGOU && !loggedIn;
+
+        final boolean qishuiExpired = platform == MusicPlatform.QISHUI && loggedIn
+                && QishuiMusicService.isReauthRequired();
+        statusText = addAccountByQr ? "正在准备扫码添加账号…"
+                : qishuiExpired ? "Cookie 已被上游拒绝：用外部工具重新获取一份 Cookie，再点下方按钮导入"
+                : loggedIn ? "当前账号已登录"
+                : platform == MusicPlatform.APPLE
+                ? "从 music.apple.com 网页端导出 cookies.txt，复制全部内容后点下方按钮导入"
+                : platform == MusicPlatform.QQ
+                ? (wechat ? "已选择微信登录，点下方按钮获取二维码" : "先选一种登录方式")
+                : platform == MusicPlatform.KUGOU && kuGouConceptLogin
+                ? "已选酷狗概念版：请用概念版 App 扫码，标准版扫不开这张码"
+                : qishuiCookieOnly
+                ? "汽水扫码需要外部取码工具：把 QishuiCookieTool.exe 放到 "
+                        + QishuiLoginBridge.requiredPath() + "（网盘 / QQ 群可下载）"
+                : "正在获取登录二维码…";
+        statusTone = qishuiExpired ? 2 : !addAccountByQr && loggedIn ? 1 : 0;
+
+        beginPage();
+
+        // 页脚按钮排的高度随状态变。算不准的话，内容区要么被按钮盖住、要么白留一大块。
+        // 一「排」= 22 高 + 8 间隙；两颗一排时只算一行，最上面再让 12、最下面留 12。
+        // 行数由调用点自己声明（footerRows）：谁和谁并排是排版决定，页高只认行数。
+        final double footerRows;
+        if (addAccountByQr) {
+            footerRows = 1;
+        } else if (platform == MusicPlatform.NETEASE) {
+            // 已登录 = 主按钮一行 + 「切换存号 / 历史同步」并排一行；未登录 = 主按钮 + Cookie 一行两颗。
+            footerRows = loggedIn ? 2 : 1;
+        } else if (platform == MusicPlatform.KUGOU) {
+            // 已登录 = 主按钮 + 备选取流并排；未登录再加 Token 登录（与备选取流并排成第二行）。
+            footerRows = loggedIn ? 1 : 2;
+        } else if (platform == MusicPlatform.QISHUI) {
+            // 存号器与主按钮并排；缺外部工具且已登录时再并进「导入新的 Cookie」。
+            footerRows = qishuiCookieOnly && loggedIn ? 2 : 1;
+        } else {
+            footerRows = 1;
+        }
+        final double footer = FOOTER_BOTTOM + DETAIL_BUTTON_H
+                + (footerRows - 1) * (DETAIL_BUTTON_H + BUTTON_GAP) + FOOTER_TOP_GAP;
+
+        // 内容按「分区」累加，和下面挂进滚动区的顺序一一对应：
+        //   顶部 12 → [扫码 / 身份卡] → 12 → 状态说明 → [12 → 登录方式] → 底部交给页脚的 12。
+        // 每个分区内部是「标题 20 + 间隙 12 + 内容」，所以整页的纵向节奏都是 12 的整数倍。
+        
+        final boolean segmentVisible = qqChannelPicker || kugouVariantPicker;
+        double content = SECTION_GAP;
+        if (qrVisible) {
+            content += QR_ROW + SECTION_GAP;
+        } else if (identityVisible) {
+            content += IDENTITY_ROW + SECTION_GAP;
+        }
+        content += STATUS_BLOCK;
+        if (segmentVisible) content += SECTION_GAP + SEGMENT_ROW;
+
+        // 弹窗宽度四层统一成 468：翻页只剩高度在动，宽度横跳会把「同一层级」读成「换了个界面」。
+        // sheet 的高度是个 supplier，每帧可能被问一次；content 是累加出来的局部变量，
+        // 直接进 lambda 就不是 effectively final 了。这里先定格成常量再捕获。
+        final double sheetContent = content;
+        final Panel dialog = sheet(468, () -> HEADER_H + sheetContent + footer);
+        detailHeader(dialog, addAccountByQr ? this::showSavedQishuiAccounts : this::showOverview, platform,
+                () -> addAccountByQr ? "扫码添加汽水账号" : platform.getDisplayName() + "账号",
+                () -> addAccountByQr ? "扫码成功后自动回到已保存账号"
+                        : loggedIn ? "本地已保存这个账号的登录凭据"
+                        : qishuiCookieOnly ? "未找到外部取码工具 · 可改用 Cookie 登录"
+                        : platform == MusicPlatform.APPLE ? "cookies 导入 · 完整版本机解密播放"
+                        : "请使用" + scanClientName(platform) + "扫码并确认");
+
+        final Panel body = body(dialog, () -> HEADER_H, () -> footer);
+        final ScrollPanel feed = feed(body);
+        strip(feed, SECTION_GAP);
+        if (qrVisible) {
+            qrBlock(strip(feed, QR_ROW), 0, platform);
+            strip(feed, SECTION_GAP);
+        } else if (identityVisible) {
+            identityBlock(strip(feed, IDENTITY_ROW), 0, platform);
+            strip(feed, SECTION_GAP);
+        }
+        // 状态行整块接页脚闸：它是「当前在等什么」的说明，主内容落位之后才到场；
+        // 等待语气（tone 3）下图标带一档 900ms 的呼吸 —— 静止的「正在检查…」读起来像卡住了。
+        statusLine(strip(feed, STATUS_BLOCK), () -> 6.0);
+        if (qqChannelPicker) {
+            strip(feed, SECTION_GAP);
+            channelSegment(strip(feed, SEGMENT_ROW));
+        }
+        if (kugouVariantPicker) {
+            strip(feed, SECTION_GAP);
+            profileSegment(strip(feed, SEGMENT_ROW));
+        }
+
+        // 主按钮与最重要的那颗次级并排成一行（paired），剩下的次级再两两成行：
+        // 原来最多三排全宽按钮竖着摞，页脚吃掉 100 多像素，工具气重。
+        // 谁和谁并排是排版决定，页高只认行数（footerRows）。
+        final boolean paired;
+        if (addAccountByQr) {
+            paired = false;
+        } else if (platform == MusicPlatform.APPLE) {
+            // Apple 没有扫码：主按钮就是「导入 / 更新 cookies」，独占一行。
+            paired = false;
+        } else if (platform == MusicPlatform.NETEASE) {
+            // 未登录：扫码与 Cookie 是两条平等入口，并排；已登录：退出登录独占一行。
+            paired = !loggedIn;
+        } else if (platform == MusicPlatform.KUGOU || platform == MusicPlatform.QISHUI) {
+            paired = true;
+        } else {
+            paired = false;
+        }
+        primaryAction(dialog, platform, loggedIn, addAccountByQr, paired);
+        if (!addAccountByQr && platform == MusicPlatform.NETEASE) {
+            if (loggedIn) {
+                // 账号数在建页时读一次：原来是每帧 load()（每次都读配置文件）再拼字符串。
+                // 这一页只要切过账号就会整页重建，构建期快照不会显示过期数字。
+                final String savedLabel = "切换已保存账号（" + NeteaseAccountProfiles.load().size() + "）";
+                footerHalfButton(dialog, 1, false, () -> PartyIcons.GROUP, () -> savedLabel,
+                        () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                        this::showSavedNeteaseAccounts);
+                historySyncAction(dialog, 1);
+            } else {
+                footerHalfButton(dialog, 0, true, () -> PartyIcons.KEY, () -> "Cookie 登录",
+                        () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                        this::showCookieLogin);
+            }
+        }
+        if (!addAccountByQr && platform == MusicPlatform.QISHUI) {
+            // 存号器始终与主按钮并排（主按钮在左，它占右半）；「导入新的 Cookie」只在
+            // 已登录且缺外部工具时出现，独占下一行（未登录时 Cookie 已升成主按钮，不需要它）。
+            final String savedLabel = "已保存账号（" + QishuiAccountProfiles.load().size() + "）";
+            footerHalfButton(dialog, 0, true, () -> PartyIcons.GROUP, () -> savedLabel,
+                    () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                    this::showSavedQishuiAccounts);
+            if (qishuiCookieOnly && loggedIn) {
+                footerButton(dialog, 1, () -> PartyIcons.KEY, () -> "导入新的 Cookie",
+                        () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                        this::showQishuiCookieLogin);
+            }
+        }
+        if (!addAccountByQr && platform == MusicPlatform.KUGOU) {
+            // 手上已经有 App 抓到的 token 时，不必为了换设备再扫一次码。与网易云那侧的
+            // 「Cookie 登录」同性质，所以同样与主按钮并排（主按钮在左，它占右半）。
+            if (!loggedIn) {
+                footerHalfButton(dialog, 0, true, () -> PartyIcons.KEY, () -> "Token 登录",
+                        () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                        this::showKuGouTokenLogin);
+            }
+            kuGouPrivUrlAction(dialog, loggedIn ? 0 : 1, loggedIn);
+        }
+
+        // 网易云与 B 站都只有一条扫码链路，进页面就直接取码。QQ 必须先定下走 QQ 还是微信，
+        // 否则会拿 QQ 的码去问微信的状态；酷狗要先看清选的是哪个身份（两种客户端签两种凭证）。
+        // 汽水只有在外部取码工具在位时才会走到 qrVisible，所以可以直接进这一条。
+        if ((platform == MusicPlatform.NETEASE || platform == MusicPlatform.KUGOU
+                || platform == MusicPlatform.BILIBILI || platform == MusicPlatform.QISHUI) && qrVisible) {
+            startQrLogin(platform, token, addAccountByQr);
+        }
+        if (platform == MusicPlatform.NETEASE && loggedIn && !addAccountByQr) {
+            maybePromptListeningHistorySync();
+        }
+    }
+
+    /**
+     * 详情页的状态行：整块接页脚闸，等待语气下图标呼吸。
+     *
+     * <p>呼吸只动图标（正弦调 alpha），文字不动 —— 一行字一起闪就成告警了。周期走真毫秒，
+     * 「正在检查登录状态」这句话配上静止的图标，读起来像界面卡住了。</p>
+     */
+    private void statusLine(final Panel row, final DoubleSupplier top) {
+        final Panel gate = veil(row, this::footerGate);
+        icon(gate, this::statusGlyph, ICON_S, () -> PAD + ICON_S * .5, () -> top.getAsDouble() + 6.0,
+                () -> {
+                    int color = statusColor();
+                    if (statusTone != 3) return color;
+                    // 0.9s 一轮的正弦：相位从 nanoTime 起算（任意但连续），等待期间匀速呼吸。
+                    double seconds = System.nanoTime() / 1_000_000_000.0;
+                    double pulse = .5 - .5 * Math.cos(seconds * (2.0 * Math.PI / 0.9));
+                    return mix(color, NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT),
+                            pulse * .55);
+                });
+        final LabelWidget caption = label(gate, () -> statusText, FontManager.pf12);
+        caption.setBeforeRenderCallback(() -> {
+            caption.setColor(statusColor());
+            caption.setMaxWidth(Math.max(1, row.getWidth() - PAD * 2 - ICON_S - 5.0));
+            caption.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            caption.setPosition(PAD + ICON_S + 5.0, NcmSheet.inkTop(caption, top.getAsDouble() + 6.0));
+        });
+    }
+
+    /**
+     * 扫码分区：分区标题 + 二维码白盘 + 一行说明。
+     *
+     * <p>白盘尺寸一点没动（扫码靠明暗对比，尺寸是可用性不是装饰），只把圆角收一档到 8、
+     * 在盘上方补一个分区标题 —— 原来这张盘直接贴在页头顶上，读不出它属于哪一组。</p>
+     */
+    private void qrBlock(final Panel row, final int slot, final MusicPlatform platform) {
+        sectionLabel(row, "扫码登录", () -> 4.0, platform::getBrandColor);
+
+        final RoundedRectWidget board = new RoundedRectWidget();
+        row.addChild(board);
+        board.setClickable(false);
+        board.setRadius(8);
+
+        final RoundedImageWidget image = new RoundedImageWidget(
+                () -> qrReady ? getQrLocation(platform) : null, 0, 0, QR_PLATE - 16, QR_PLATE - 16);
+        board.addChild(image);
+        image.setClickable(false);
+        image.setRadius(4);
+        image.setLinearFilter(true);
+        image.setBeforeRenderCallback(() -> {
+            image.setBounds(QR_PLATE - 16, QR_PLATE - 16);
+            image.setPosition(8, 8);
+        });
+
+        // 码到手、等手机扫的这一段，盘上盖一层扫码动画：红色取景框 + 一条走完整轮的扫描带。
+        // 原来这里什么都不盖，一张静止的码摆七八秒，用户分不清是还在等扫码还是已经超时。
+        // 次序有意义：同层控件按加入顺序画，所以这两枚必须在码图<b>之后</b> addChild，
+        // 否则一张不透明的码图正好把整层动画糊在下面。
+        final AnimatedSvgWidget scan = new AnimatedSvgWidget(AnimatedIcons.qrScan());
+        board.addChild(scan);
+        scan.setBeforeRenderCallback(() -> {
+            scan.setBounds(QR_PLATE, QR_PLATE);
+            scan.setPosition(0, 0);
+        });
+
+        // 登录成功那一枚只播一轮，走完一整轮才换页 —— 见 startLoginSuccessAnimation()。
+        final AnimatedSvgWidget success = new AnimatedSvgWidget(AnimatedIcons.loginSafe());
+        board.addChild(success);
+        success.setBeforeRenderCallback(() -> {
+            success.setBounds(QR_PLATE, QR_PLATE);
+            success.setPosition(0, 0);
+        });
+        this.loginSuccessIcon = success;
+
+        // 两枚动画的显隐统一写在 board 这一格里：board 永远可见，这一格每帧都跑。
+        // 不能让控件自己 setHidden 自己 —— renderWidget 在 isHidden() 时连
+        // beforeRenderCallback 都不执行，藏下去就再也没机会翻回来。
+        board.setBeforeRenderCallback(() -> {
+            double gate = cardGate(slot);
+            board.setBounds(QR_PLATE, QR_PLATE);
+            board.setPosition(row.getWidth() * .5 - QR_PLATE * .5 + pageSlide() * (1.0 - gate),
+                    SECTION_LABEL_BLOCK + (1.0 - gate) * 7.0);
+            // 二维码必须画在浅底上：扫码靠的是明暗对比，深色主题下铺主题底色会扫不出来。
+            board.setColor(0xF6F7F9);
+            board.setAlpha((float) gate);
+            scan.setHidden(!qrReady || loginSucceeded);
+            success.setHidden(!loginSucceeded);
+        });
+
+        // 码还没到手时盘里不能是一片空白：一枚随状态变的图标加一行说明，用户才分得清
+        // 「正在取码」和「还没开始取」。
+        final Panel waiting = veil(board, () -> qrReady ? 0.0 : 1.0);
+        icon(waiting, () -> requestRunning ? PartyIcons.HOURGLASS : PartyIcons.SYNC, ICON_XL,
+                () -> QR_PLATE * .5, () -> QR_PLATE * .5 - 12, () -> 0x9AA3B2);
+        // 白盘永远是浅色，盘内文字只能用固定深灰，不能跟着主题色走；两种文案的宽度
+        // 构建期各量一次，盘内居中就不必每帧测量（红线）。
+        final double fetchingWidth = FontManager.pf12.getStringWidthD("正在获取二维码…");
+        final double idleWidth = FontManager.pf12.getStringWidthD("点下方按钮获取二维码");
+        final Supplier<String> waitText = () -> requestRunning ? "正在获取二维码…" : "点下方按钮获取二维码";
+        final LabelWidget waitHint = label(waiting, waitText, FontManager.pf12);
+        waitHint.setBeforeRenderCallback(() -> {
+            waitHint.setColor(0x8A93A4);
+            double width = requestRunning ? fetchingWidth : idleWidth;
+            waitHint.setPosition(QR_PLATE * .5 - width * .5, inkTop(waitHint, QR_PLATE * .5 + 20));
+        });
+
+        // 盘下方这行是「下一步做什么」，12 次要色、居中；页头副标题说的是「这是什么页」，
+        // 两行分工不同，所以不合并。文案会随 QQ/微信、酷狗身份切换而变 —— 只有客户端名
+        // 真的换了才重建字符串与宽度，渲染回调里只做减法。
+        final String[] captionCache = {null};
+        final String[] clientCache = {null};
+        final double[] captionWidth = {0.0};
+        final Supplier<String> caption = () -> {
+            String client = scanClientName(platform);
+            if (!client.equals(clientCache[0])) {
+                clientCache[0] = client;
+                captionCache[0] = "请使用" + client + "扫码并确认";
+                captionWidth[0] = FontManager.pf12.getStringWidthD(captionCache[0]);
+            }
+            return captionCache[0];
+        };
+        caption.get();
+        // 说明行比白盘晚一档（slot 1）：「码 → 怎么扫」依次读，退场时先收说明再收盘。
+        final Panel hintGate = veil(row, () -> cardGate(1));
+        final LabelWidget scanHint = label(hintGate, caption, FontManager.pf12);
+        scanHint.setBeforeRenderCallback(() -> {
+            scanHint.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            scanHint.setMaxWidth(Math.max(1, row.getWidth() - PAD * 2));
+            scanHint.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            scanHint.setPosition(row.getWidth() * .5 - captionWidth[0] * .5,
+                    inkTop(scanHint, SECTION_LABEL_BLOCK + QR_PLATE + SECTION_GAP + QR_CAPTION * .5));
+        });
+    }
+
+    /**
+     * 身份卡分区：分区标题 + 一张只读卡片（大头像 + 昵称 + ID/身份 + 会员徽标）。
+     *
+     * <p>卡只是展示当前账号，不能点 —— 所以走 {@code plain()} 关掉悬停生长之外，
+     * 底色也只按品牌色轻染 12%：它不该看起来像总览里那种可点的平台卡。</p>
+     */
+    private void identityBlock(final Panel row, final int slot, final MusicPlatform platform) {
+        sectionLabel(row, "当前账号", () -> 4.0, platform::getBrandColor);
+
+        // 这张卡只是展示当前账号，不能点 —— 所以也不该跟着鼠标长。
+        final Card card = plain(card(row, slot, () -> SECTION_LABEL_BLOCK, () -> IDENTITY_CARD,
+                () -> mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                        platform.getBrandColor(), .12)));
+        card.setRadius(8.0);
+        avatarSlot(card, platform, IDENTITY_AVATAR, () -> IDENTITY_AVATAR_LEFT,
+                () -> card.getHeight() * .5);
+
+        final Panel vipLayer = veil(card, () -> isAccountVip(platform) ? 1.0 : 0.0);
+        final RoundedRectWidget vip = pill(vipLayer, () -> PartyIcons.VIP, () -> "会员", () -> VIP_COLOR,
+                () -> vipLayer.getWidth() - 14, () -> vipLayer.getHeight() * .5);
+
+        final LabelWidget name = label(card, () -> NeteaseMusicService.getAccountName(platform),
+                FontManager.pf14bold);
+        name.setBeforeRenderCallback(() -> {
+            name.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            name.setMaxWidth(Math.max(1, card.getWidth() - IDENTITY_TEXT_LEFT - 20
+                    - (isAccountVip(platform) ? vip.getWidth() + 22 : 0)));
+            name.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            name.setPosition(IDENTITY_TEXT_LEFT, inkTop(name, card.getHeight() * .5 - 10));
+        });
+
+        final LabelWidget meta = label(card, () -> identityMeta(platform), FontManager.pf12);
+        meta.setBeforeRenderCallback(() -> {
+            meta.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            meta.setMaxWidth(Math.max(1, card.getWidth() - IDENTITY_TEXT_LEFT - 20
+                    - (isAccountVip(platform) ? vip.getWidth() + 22 : 0)));
+            meta.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            meta.setPosition(IDENTITY_TEXT_LEFT, inkTop(meta, card.getHeight() * .5 + 11));
+        });
+    }
+
+    /**
+     * QQ 的登录方式分段控件。
+     *
+     * <p>做成一条轨道加一颗会滑的滑块，而不是两颗各自换色的按钮：滑块的位置本身就说明了
+     * 「这是二选一」，而两颗独立按钮看上去像两个可以各自开关的选项。</p>
+     */
+    private void channelSegment(final Panel row) {
+        sectionLabel(row, "登录方式", () -> 4.0, MusicPlatform.QQ::getBrandColor);
+        final SegmentControl.Spec spec = accountRowSpec(row);
+        // 轨道宽度构建期量好定格：spec 回调每帧都被读，把测量留在里面等于每帧做文本测量。
+        final double width = Math.max(1, segmentWidthFor(QQ_CHANNEL_GLYPHS, QQ_CHANNEL_SEGMENTS));
+        SegmentControl.attach(row, () -> {
+            spec.width = width;
+            spec.x = Math.max(0.0, (row.getWidth() - width) * .5);
+            return spec;
+        }, () -> qqLoginChannel == QQLoginChannel.WECHAT ? 1 : 0,
+                MusicPlatform.QQ::getBrandColor, () -> 0x4CAF72,
+                QQ_CHANNEL_GLYPHS,
+                QQ_CHANNEL_SEGMENTS,
+                index -> {
+                    // 一条会话正在跑就不换链路：否则会出现「用 QQ 的码去问微信的状态」。
+                    // 返回 false 与原来的写法等价——那一次点击不作数，继续往下透传。
+                    if (requestRunning) return false;
+                    qqLoginChannel = index == 0 ? QQLoginChannel.QQ : QQLoginChannel.WECHAT;
+                    statusText = index == 0
+                            ? "已选择 QQ 扫码，点下方按钮获取二维码"
+                            : "已选择微信登录，点下方按钮获取二维码";
+                    statusTone = 0;
+                    return true;
+                });
+    }
+
+    /**
+     * 分段器的两段文案与图标。预构造常量：轨道宽度按它们构建期量一次
+     * （渲染回调里不许做文本测量，见各 segmentWidthFor 调用点）。
+     */
+    private static final String[] QQ_CHANNEL_SEGMENTS = {"QQ 扫码", "微信登录"};
+    private static final String[] QQ_CHANNEL_GLYPHS = {FontelloIcons.QQ, FontelloIcons.WECHAT};
+    private static final String[] EMPTY_GLYPHS = {"", ""};
+
+    /**
+     * 分段器这一档的紧凑轨道：宽度按两段文案与它们的图标现量，居中摆，
+     * 与上方二维码白盘、下方说明行同一根中轴。
+     *
+     * <p>原来是整行减去两侧留白的全宽轨道管两个选项 —— 一颗 400 像素的滑块在 100 像素的
+     * 文案上滑，比例本身就在说「这东西失控了」。宽度 = 两侧滑块内缩 + 每格（图标（空图标不计）
+     * + 6 间隙 + 文字）取宽者 × 段数 + 端头呼吸 18。</p>
+     *
+     * <p><b>只在构建期调用</b>：里面有文本测量，spec 回调每帧被读，不能挂在里面。</p>
+     *
+     * @param glyphs 每段的图标（空串不计宽，与 {@code SegmentControl} 的间隙口径一致）
+     */
+    private double segmentWidthFor(final String[] glyphs, final String[] texts) {
+        double maxIcon = 0.0;
+        for (final String glyph : glyphs) {
+            if (glyph == null || glyph.isEmpty()) continue;
+            maxIcon = Math.max(maxIcon, FontManager.fontello16.getStringWidthD(glyph));
+        }
+        double maxText = 0.0;
+        for (final String text : texts) {
+            maxText = Math.max(maxText, FontManager.pf12bold.getStringWidthD(text));
+        }
+        double cell = maxIcon + (maxIcon == 0.0 ? 0.0 : 6.0) + maxText;
+        // 两侧滑块内缩 4×2 + 每格内容取宽者 × 段数 + 端头呼吸 18。
+        // 段数与 SegmentControl 自己的分格口径（Math.max(2, texts.length)）同源。
+        return 4.0 * 2 + cell * Math.max(2, texts.length) + 18.0;
+    }
+
+    /**
+     * 酷狗的身份分段控件（标准版 / 概念版）。
+     *
+     * <p>与 QQ 那一档的<b>关键差别</b>：这条链路两边共用同一批端点，只是签出来的凭证不同，
+     * 所以换身份时不必等人去点「开始扫码登录」——直接把当前这张码作废、按新身份重取一张。
+     * 留着旧码的话，用户点了概念版却扫到一张标准版的码，是这条入口最容易踩的坑。</p>
+     */
+    private void profileSegment(final Panel row) {
+        // 与 QQ 那档不同：酷狗的两个身份共用端点、只是凭证不同，所以标题写成「客户端身份」
+        // 更准确 —— 用户在选的是「这张 token 由哪个 App 签发」，不是「用哪种登录方式」。
+        sectionLabel(row, "客户端身份", () -> 4.0, MusicPlatform.KUGOU::getBrandColor);
+        final SegmentControl.Spec spec = accountRowSpec(row);
+        // 轨道宽度构建期量好定格（理由同 channelSegment）。
+        final double width = Math.max(1, segmentWidthFor(EMPTY_GLYPHS, KUGOU_VARIANTS));
+        SegmentControl.attach(row, () -> {
+            spec.width = width;
+            spec.x = Math.max(0.0, (row.getWidth() - width) * .5);
+            return spec;
+        }, () -> kuGouConceptLogin ? 1 : 0,
+                MusicPlatform.KUGOU::getBrandColor, MusicPlatform.KUGOU::getBrandColor,
+                EMPTY_GLYPHS, KUGOU_VARIANTS,
+                index -> {
+                    boolean concept = index == 1;
+                    if (concept == kuGouConceptLogin) return true;
+                    kuGouConceptLogin = concept;
+                    restartKuGouQr();
+                    return true;
+                });
+    }
+
+    /** 账号页里这两格共用同一套摆位：28 高、圆角 8、按当帧行宽居中。 */
+    private static SegmentControl.Spec accountRowSpec(final Panel row) {
+        final SegmentControl.Spec spec = new SegmentControl.Spec();
+        // x 由调用方的 spec 回调里按 (行宽 - width) * .5 现算 —— 与二维码白盘同一根中轴。
+        spec.x = 0.0;
+        // 分区标题块之后：轨道顶正好落在「标题 20 + 间隙 12」之后。
+        spec.y = SECTION_LABEL_BLOCK;
+        // 28 = 上下内缩 4×2 + 滑块 20，滑块高度与主操作按钮一致。
+        spec.height = SEGMENT_TRACK;
+        spec.radius = 8;
+        return spec;
+    }
+
+    /**
+     * 换身份之后重开一次酷狗扫码会话。
+     *
+     * <p>不换页、不重建控件：只把 {@code pageGeneration} 抬一格，上一轮轮询在下一次
+     * {@link #isCurrent} 检查时自己退出，然后按新身份重新取码。{@code requestRunning}
+     * 在这里直接归零是<b>有意的</b>：老循环可能在它自己的失败分支里再写一次 false，
+     * 那只会让按钮文案闪一下，不会开出第二条并发会话（新会话已经把它置回 true，
+     * 而老循环退出前不会再取码）。</p>
+     */
+    private void restartKuGouQr() {
+        long token = pageGeneration.incrementAndGet();
+        requestRunning = false;
+        qrReady = false;
+        statusText = kuGouConceptLogin
+                ? "已切到酷狗概念版，正在重新获取二维码…"
+                : "已切回酷狗音乐，正在重新获取二维码…";
+        statusTone = 0;
+        startQrLogin(MusicPlatform.KUGOU, token);
+    }
+
+    // ════════════════════════════ 页脚按钮 ════════════════════════════
+    //
+    // 页脚的摆位只有两句话：主按钮（行 0 左半或全宽）与并排的那颗次级（行 0 右半），
+    // 其余次级两两一行。行号从 0 起，行内半宽各占一半、中间隔 BUTTON_GAP —— 原来
+    // 「每颗独占一排、从下往上按序号摞」的写法在三排以上时页脚比内容还高。
+
+    /** 页脚第 {@code row} 行的全宽按钮（独占一排）。 */
+    private RoundedButtonWidget footerButton(final Panel dialog, final int row,
+                                             final Supplier<String> glyph, final Supplier<String> text,
+                                             final IntSupplier ink, final Runnable onClick) {
+        final RoundedButtonWidget button = action(dialog, glyph, text, FontManager.pf12bold, ink, onClick);
+        button.setRadius(6.0);
+        button.setBeforeRenderCallback(() -> {
+            button.setClickable(footerGate() > .5);
+            button.setAlpha((float) footerGate());
+            button.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), DETAIL_BUTTON_H);
+            button.setPosition(PAD + CARD_INSET,
+                    dialog.getHeight() - FOOTER_BOTTOM - DETAIL_BUTTON_H
+                            - row * (DETAIL_BUTTON_H + BUTTON_GAP));
+            button.setColor(button.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+        return button;
+    }
+
+    /** 页脚第 {@code row} 行的半宽按钮；{@code right} 决定它在左半还是右半。 */
+    private RoundedButtonWidget footerHalfButton(final Panel dialog, final int row, final boolean right,
+                                                 final Supplier<String> glyph, final Supplier<String> text,
+                                                 final IntSupplier ink, final Runnable onClick) {
+        final RoundedButtonWidget button = action(dialog, glyph, text, FontManager.pf12bold, ink, onClick);
+        button.setRadius(6.0);
+        button.setBeforeRenderCallback(() -> {
+            double full = Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2);
+            // 左右各占一半，中间留一道 BUTTON_GAP；空隙比两颗全宽按钮的距离近，
+            // 读起来才是「一对」，而不是两颗不相干的东西碰巧放在一行。
+            double width = Math.max(1, full * .5 - BUTTON_GAP * .5);
+            button.setClickable(footerGate() > .5);
+            button.setAlpha((float) footerGate());
+            button.setBounds(width, DETAIL_BUTTON_H);
+            button.setPosition(PAD + CARD_INSET + (right ? full - width : 0.0),
+                    dialog.getHeight() - FOOTER_BOTTOM - DETAIL_BUTTON_H
+                            - row * (DETAIL_BUTTON_H + BUTTON_GAP));
+            button.setColor(button.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+        return button;
+    }
+
+    private void primaryAction(final Panel dialog, final MusicPlatform platform,
+                               final boolean loggedIn, final boolean addAccountByQr,
+                               final boolean paired) {
+        final boolean signOut = loggedIn && !addAccountByQr;
+        // 汽水没登录、又没装外部取码工具时，主按钮才是 Cookie 登录：不该挂一颗必然取码失败的按钮。
+        final boolean qishuiCookie = platform == MusicPlatform.QISHUI && !loggedIn && !addAccountByQr
+                && !QishuiLoginBridge.isAvailable();
+        // Apple 没有扫码：登录 = 导入 cookies，退出 = 清 cookies。主按钮的两种形态都指向
+        // 同一个登录页（页内已登录时主按钮是退出，登录页页脚里才是重新导入）。
+        final boolean appleCookie = platform == MusicPlatform.APPLE && !addAccountByQr && !signOut;
+        final RoundedButtonWidget button = action(dialog,
+                () -> signOut ? PartyIcons.LOGOUT : requestRunning ? PartyIcons.HOURGLASS : PartyIcons.KEY,
+                () -> signOut ? "退出登录"
+                        : requestRunning ? "等待扫码…"
+                        : addAccountByQr ? "重新获取二维码"
+                        : appleCookie ? "导入 cookies 登录" : qishuiCookie ? "Cookie 登录" : "开始扫码登录",
+                FontManager.pf12bold, () -> 0xFFFFFF,
+                () -> {
+                    if (addAccountByQr) {
+                        if (requestRunning) {
+                            statusText = "等待扫码中，正在持续检查登录状态…";
+                            statusTone = 3;
+                        } else {
+                            startQrLogin(platform, pageGeneration.get(), true);
+                        }
+                    } else if (appleCookie) {
+                        showAppleCookieLogin();
+                    } else if (NeteaseMusicService.isLoggedIn(platform)) {
+                        logout(platform);
+                    } else if (qishuiCookie) {
+                        showQishuiCookieLogin();
+                    } else if (!requestRunning) {
+                        startQrLogin(platform, pageGeneration.get());
+                    }
+                });
+        // 圆角 6、高 22（规范 20~24）；paired 时占左半，给并排那颗次级让出右半。
+        // 页脚闸直接写在按钮自己的 alpha 上：veil 子层管不住 action() 里挂在按钮上的图标与文字。
+        button.setRadius(6.0);
+        button.setBeforeRenderCallback(() -> {
+            double full = Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2);
+            double width = paired ? full * .5 - BUTTON_GAP * .5 : full;
+            button.setClickable(footerGate() > .5);
+            button.setAlpha((float) footerGate());
+            button.setBounds(Math.max(1, width), DETAIL_BUTTON_H);
+            button.setPosition(PAD + CARD_INSET,
+                    dialog.getHeight() - FOOTER_BOTTOM - DETAIL_BUTTON_H);
+            int base = signOut ? BAD_COLOR : platform.getBrandColor();
+            button.setColor(mix(base, 0xFFFFFF, button.isHovering() ? .16 : 0.0));
+        });
+    }
+
+    /**
+     * 听歌历史开关的两种文案。
+     *
+     * <p>预构造而不是在 supplier 里拼字符串：LabelWidget 的 supplier 每帧都要读一次，
+     * 拼接会变成每帧一次小分配（性能红线第 1 条）。</p>
+     */
+    private static final String HISTORY_SYNC_ON = "听歌历史同步：已开启";
+    private static final String HISTORY_SYNC_OFF = "听歌历史同步：已关闭";
+
+    private void historySyncAction(final Panel dialog, final int row) {
+        footerHalfButton(dialog, row, true, () -> PartyIcons.SYNC,
+                () -> NCMPlayerConfig.isNeteaseListeningHistorySyncEnabled() ? HISTORY_SYNC_ON : HISTORY_SYNC_OFF,
+                () -> NCMPlayerConfig.isNeteaseListeningHistorySyncEnabled()
+                        ? OK_COLOR : NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                () -> {
+                    if (NCMPlayerConfig.isNeteaseListeningHistorySyncEnabled()) {
+                        // 关闭是收回授权，立即生效，不需要再确认一次。
+                        applyListeningHistorySync(false);
+                        return;
+                    }
+                    // 开启等于一次隐私授权：压暗页面、居中弹出模态确认，用户明确同意之前不写配置、
+                    // 也不允许操作下层界面（确认层在所有播放器内容之上，并独占鼠标与键盘）。
+                    NCMScreen.getInstance().openConfirmation(SYNC_CONSENT_TITLE, SYNC_CONSENT_BODY,
+                            SYNC_CONSENT_CONFIRM, () -> applyListeningHistorySync(true));
+                    // 这里同时把「问过」记下：用户已经自己找到这个开关了，登录时不必再弹一次。
+                    NCMPlayerConfig.markNeteaseListeningHistorySyncAsked();
+                });
+    }
+
+    /**
+     * 登录成功后就地问一次要不要开听歌历史同步。
+     *
+     * <p>这一项过去只藏在账号详情页的一个按钮里，登录完没有任何提示，等于默认没人知道它存在。
+     * 放在登录成功这一刻问，是因为此时用户的注意力正落在「我的账号」上，要不要把播放记录带回
+     * 网易云这件事的语境最清楚。标记先落盘再弹窗：窗口被直接关掉也算问过，否则每次登录都会
+     * 再弹一遍。</p>
+     */
+    private void maybePromptListeningHistorySync() {
+        if (!NCMPlayerConfig.shouldAskNeteaseListeningHistorySync()) return;
+        NCMScreen screen = NCMScreen.getInstance();
+        if (screen == null) return;
+        NCMPlayerConfig.markNeteaseListeningHistorySyncAsked();
+        screen.openConfirmation(SYNC_CONSENT_TITLE, SYNC_CONSENT_BODY, SYNC_CONSENT_CONFIRM,
+                () -> applyListeningHistorySync(true));
+    }
+
+    /**
+     * 写入听歌历史同步开关并刷新状态行。开启只会从确认框的回调进来，
+     * 因此「用户已明确同意」是这个方法被调用的前提。
+     */
+    private void applyListeningHistorySync(boolean enabled) {
+        NCMPlayerConfig.setNeteaseListeningHistorySyncEnabled(enabled);
+        statusText = enabled
+                ? "已开启：仅同步本地实际播放达到阈值的网易云歌曲"
+                : "已关闭：后续播放仅保留在本地播放器";
+        statusTone = enabled ? 1 : 0;
+    }
+
+    // ════════════════════════════ 三级页：Cookie 登录 ════════════════════════════
+
+    /** Cookie 导入会先校验登录状态，成功之后才替换本地会话。 */
+    private void showCookieLogin() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.NETEASE;
+        requestRunning = false;
+        statusText = "粘贴网易云 Cookie 后进行验证";
+        statusTone = 0;
+        beginPage();
+
+        // 这一页没有滚动区（只有一行输入），高度按「页头 → 12 → 分区标题 → 12 → 输入 → 12 →
+        // 状态行 → 12 → 主按钮 → 12」精确累加：全是 12 的整数倍，窗口再矮也不会互相压住。
+        // 与其他页共用 468 宽，翻页不横跳。
+        final double contentTop = HEADER_H + SECTION_GAP;
+        final double fieldTop = contentTop + SECTION_LABEL_BLOCK;
+        final double statusTop = fieldTop + CREDENTIAL_FIELD_H + SECTION_GAP;
+        final Panel dialog = sheet(468, () -> HEADER_H + SECTION_GAP + SECTION_LABEL_BLOCK
+                + CREDENTIAL_FIELD_H + SECTION_GAP + STATUS_BLOCK
+                + FOOTER_TOP_GAP + CREDENTIAL_FIELD_H + FOOTER_BOTTOM);
+        detailHeader(dialog, back(() -> showDetail(MusicPlatform.NETEASE)), MusicPlatform.NETEASE,
+                () -> "Cookie 登录",
+                () -> "仅本地保存 · 校验失败不会覆盖当前登录状态");
+        // 输入框引用通过单格数组交给提交回调：helper 返回值在 lambda 里捕获不了自己。
+        final TextFieldWidget[] cookieBox = new TextFieldWidget[1];
+        cookieBox[0] = credentialFieldRow(dialog, contentTop, MusicPlatform.NETEASE,
+                "粘贴 MUSIC_U、MUSIC_A 或完整 Cookie 字符串", 4096, true);
+
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> statusTop);
+
+        final RoundedButtonWidget confirm = action(dialog,
+                () -> requestRunning ? PartyIcons.HOURGLASS : PartyIcons.CHECK,
+                () -> requestRunning ? "正在校验…" : "验证并登录", FontManager.pf12bold, () -> 0xFFFFFF,
+                () -> submitCookie(cookieBox[0], token));
+        confirm.setRadius(6.0);
+        confirm.setBeforeRenderCallback(() -> {
+            confirm.setClickable(footerGate() > .5);
+            confirm.setAlpha((float) footerGate());
+            confirm.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), CREDENTIAL_FIELD_H);
+            confirm.setPosition(PAD + CARD_INSET,
+                    dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            confirm.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), 0xFFFFFF,
+                    confirm.isHovering() ? .16 : 0.0));
+        });
+    }
+
+    /**
+     * 凭据页的「分区标题 + 输入框」组合，三页（网易云 Cookie / 汽水 Cookie / 酷狗 Token）共用。
+     *
+     * <p>抽出来的原因与输入框版式本身一样：圆角底、内缩、聚焦描边分散在三页里迟早走样。
+     * 标题与输入框接同一块闸（凭据页没有滚动卡片，输入框就扮演那张卡，跟卡片档一起落位）。</p>
+     *
+     * @return 建好的输入框，调用方自己留着读文本
+     */
+    private TextFieldWidget credentialFieldRow(final Panel dialog, final double top,
+                                               final MusicPlatform platform,
+                                               final String placeholder, final int maxLength,
+                                               final boolean password) {
+        final Panel gate = veil(dialog, () -> cardGate(0));
+        // 标题也挂进闸：否则整页都在瀑布里渐入，唯独这行字第一帧就全亮。
+        // veil 铺满 dialog，坐标与直接挂 dialog 完全一致。
+        sectionLabel(gate, "登录凭据", () -> top, platform::getBrandColor);
+
+        final double fieldTop = top + SECTION_LABEL_BLOCK;
+        final RoundedRectWidget field = new RoundedRectWidget();
+        gate.addChild(field);
+        field.setClickable(false);
+        field.setRadius(6);
+        field.setBeforeRenderCallback(() -> {
+            field.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), CREDENTIAL_FIELD_H);
+            field.setPosition(PAD + CARD_INSET, fieldTop);
+            field.setColor(NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
+        });
+
+        final TextFieldWidget input = new TextFieldWidget(FontManager.pf12);
+        gate.addChild(input);
+        input.getTextField().setMaxStringLength(maxLength);
+        if (password) input.getTextField().isPassword = true;
+        input.setEnabled(true);
+        // 凭据页只有一件事可做，首个输入框自动聚焦。
+        input.setFocused(true);
+        input.setPlaceholder(placeholder);
+        input.drawUnderline(false);
+        input.setBeforeRenderCallback(() -> {
+            input.setBounds(Math.max(1, field.getWidth() - 20), Math.max(1, field.getHeight() - 10));
+            input.setPosition(field.getRelativeX() + 10, field.getRelativeY() + 5);
+            input.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            input.setDisabledTextColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        });
+        // 聚焦辉光：alpha 走真毫秒 ease（半衰期 55ms），点亮/熄灭都是渐变的 ——
+        // 原来布尔硬切（.7 : 0），切走焦点时描边「啪」一下消失，像出错了一样。
+        // 描边必须挂在输入框底板上：挂到 gate 那种铺满弹窗的容器上，会沿整窗边亮一圈。
+        final double[] glow = {1.0};
+        final long[] glowStamp = new long[1];
+        stroke(field, 6.0, () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT), () -> {
+            easeMs(glow, glowStamp, input.isFocused() ? 1.0 : 0.0, 55.0 / SheetClock.speed());
+            return glow[0] * .7;
+        });
+        return input;
+    }
+
+    private void submitCookie(final TextFieldWidget cookieField, final long token) {
+        if (requestRunning) return;
+        final String cookie = cookieField.getText() == null ? "" : cookieField.getText().trim();
+        if (cookie.isEmpty()) {
+            statusText = "请先粘贴 Cookie";
+            statusTone = 2;
+            return;
+        }
+        requestRunning = true;
+        statusText = "正在验证 Cookie…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            try {
+                JsonObject result = CloudMusicApi.loginStatusWithCookie(cookie).toJsonObject();
+                if (!hasProfile(result)) {
+                    throw new IllegalStateException("Cookie 无效、已过期或缺少登录凭据");
+                }
+                // 上面那次校验用的是一次性的 per-request Cookie，还没碰 OptionsUtil。
+                // 只有校验通过才写进当前会话。
+                CloudMusic.loadNCM(cookie);
+                if (CloudMusic.profile == null) {
+                    throw new IllegalStateException("登录资料加载失败");
+                }
+                NeteaseAccountProfiles.saveCurrent();
+                statusText = "Cookie 登录成功";
+                statusTone = 1;
+                DownloadDynamicIsland.showNetworkConnectionSuccess("网易云账号");
+                Thread.sleep(SUCCESS_HOLD_MILLIS);
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    requestRunning = false;
+                    if (!isCurrent(MusicPlatform.NETEASE, token)) return;
+                    NCMScreen.getInstance().markDirty();
+                    back(this::showOverview).run();
+                    maybePromptListeningHistorySync();
+                });
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable throwable) {
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    requestRunning = false;
+                    if (!isCurrent(MusicPlatform.NETEASE, token)) return;
+                    statusText = "Cookie 登录失败：" + safeMessage(throwable);
+                    statusTone = 2;
+                    DownloadDynamicIsland.showNetworkConnectionFailure("网易云账号", safeMessage(throwable));
+                });
+            }
+        });
+    }
+
+    private static boolean hasProfile(JsonObject result) {
+        if (result == null) return false;
+        if (result.has("profile") && result.get("profile").isJsonObject()) return true;
+        return result.has("data") && result.get("data").isJsonObject()
+                && result.getAsJsonObject("data").has("profile")
+                && result.getAsJsonObject("data").get("profile").isJsonObject();
+    }
+
+    // ════════════════════════════ 三级页：汽水 Cookie 登录 ════════════════════════════
+
+    /** 「粘贴」这颗次按钮的固定宽度，剩下的都给「验证并登录」。 */
+    private static final double QISHUI_PASTE_W = 96.0;
+
+    // ── Apple Music：cookies 导入登录页 ─────────────────────────────────────
+
+    /**
+     * Apple 的 Cookie 登录页（汽水同款版式）。
+     *
+     * <p>cookies 是<b>多行</b>的 Netscape 文件，单行输入框装不下——与音源浮层那页
+     * 同一决策：导入走「从剪贴板导入」按钮直接读剪贴板，摘要行只展示当前凭据状态。
+     * 校验走 {@code AppleApiClient.probeAccount()}（amp_api.py 助手），归因三类
+     * （订阅有效 / 有效无订阅 / 网络或凭据失败）如实落状态行。</p>
+     */
+    private void showAppleCookieLogin() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.APPLE;
+        requestRunning = false;
+        statusText = com.muoniumplayer.core.ncm.apple.AppleMusicService.describeStatus();
+        statusTone = com.muoniumplayer.core.ncm.apple.AppleMusicService.isLoggedIn() ? 1 : 0;
+        beginPage();
+
+        // 与汽水 Cookie 页同一套纵向网格与 468 页宽（见 showQishuiCookieLogin）。
+        // cookies 是多行 Netscape 文件，单行输入框装不下 —— 这里只放只读摘要，
+        // 导入动作在页脚按钮上直接读剪贴板。
+        final double contentTop = HEADER_H + SECTION_GAP;
+        final double statusTop = contentTop + SECTION_LABEL_BLOCK + CREDENTIAL_FIELD_H + SECTION_GAP;
+        final Panel dialog = sheet(468, () -> HEADER_H + SECTION_GAP + SECTION_LABEL_BLOCK
+                + CREDENTIAL_FIELD_H + SECTION_GAP + STATUS_BLOCK
+                + FOOTER_TOP_GAP + CREDENTIAL_FIELD_H + FOOTER_BOTTOM);
+        detailHeader(dialog, back(() -> showDetail(MusicPlatform.APPLE)),
+                MusicPlatform.APPLE, () -> "cookies 登录",
+                () -> "music.apple.com 网页端导出 · 解锁本人歌单与逐词歌词");
+
+        // 摘要行：分区标签 + 只读凭据状态（与凭据输入行同一套摆位）。
+        final Panel gate = veil(dialog, () -> cardGate(0));
+        sectionLabel(gate, "登录凭据", () -> contentTop, MusicPlatform.APPLE::getBrandColor);
+        final double fieldTop = contentTop + SECTION_LABEL_BLOCK;
+        final RoundedRectWidget field = new RoundedRectWidget();
+        gate.addChild(field);
+        field.setClickable(false);
+        field.setRadius(6);
+        field.setBeforeRenderCallback(() -> {
+            field.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), CREDENTIAL_FIELD_H);
+            field.setPosition(PAD + CARD_INSET, fieldTop);
+            field.setColor(NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
+        });
+        stroke(field, 6.0, MusicPlatform.APPLE::getBrandColor,
+                () -> requestRunning ? .62 : 0.0);
+        final LabelWidget digest = label(gate,
+                com.muoniumplayer.core.ncm.apple.AppleCookieSupport::describe, FontManager.pf12);
+        digest.setBeforeRenderCallback(() -> {
+            digest.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            digest.setMaxWidth(Math.max(1, field.getWidth() - 22));
+            digest.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            digest.setPosition(11, inkTop(digest, fieldTop + CREDENTIAL_FIELD_H * .5));
+        });
+
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> statusTop);
+
+        // 页脚两颗：主按钮「从剪贴板导入」占右侧吃剩余（导入是这一页唯一的主动作，
+        // 用强调色），「退出登录」固定宽在左。整排接页脚闸。
+        final RoundedButtonWidget signOut = action(dialog, () -> PartyIcons.LOGOUT, () -> "退出登录",
+                FontManager.pf12bold, () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                () -> logout(MusicPlatform.APPLE));
+        signOut.setRadius(6.0);
+        signOut.setBeforeRenderCallback(() -> {
+            signOut.setClickable(footerGate() > .5);
+            signOut.setAlpha((float) footerGate());
+            signOut.setBounds(QISHUI_PASTE_W, CREDENTIAL_FIELD_H);
+            signOut.setPosition(PAD + CARD_INSET, dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            signOut.setColor(signOut.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+        final RoundedButtonWidget paste = action(dialog,
+                () -> requestRunning ? PartyIcons.HOURGLASS : PartyIcons.LINK,
+                () -> requestRunning ? "正在校验…" : "从剪贴板导入 cookies", FontManager.pf12bold,
+                () -> 0xFFFFFF,
+                () -> submitAppleCookiesFromClipboard(token));
+        paste.setRadius(6.0);
+        paste.setBeforeRenderCallback(() -> {
+            paste.setClickable(footerGate() > .5 && !requestRunning);
+            paste.setAlpha((float) footerGate());
+            paste.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2
+                    - QISHUI_PASTE_W - BUTTON_GAP), CREDENTIAL_FIELD_H);
+            paste.setPosition(PAD + CARD_INSET + QISHUI_PASTE_W + BUTTON_GAP,
+                    dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            paste.setColor(mix(MusicPlatform.APPLE.getBrandColor(), 0xFFFFFF,
+                    paste.isHovering() ? .16 : 0.0));
+        });
+    }
+
+    /** 导入动作：读剪贴板 → 后台落盘校验（/v1/me/account 实测）→ 主线程写状态行。 */
+    private void submitAppleCookiesFromClipboard(final long token) {
+        if (requestRunning || token != pageGeneration.get()) return;
+        final String cookies = KeyboardUtils.getClipboardString();
+        if (cookies == null || cookies.trim().isEmpty()) {
+            statusText = "剪贴板是空的：先在浏览器里导出 cookies.txt 并复制全部内容";
+            statusTone = 2;
+            return;
+        }
+        requestRunning = true;
+        statusText = "正在校验 cookies…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            String outcome;
+            int tone;
+            try {
+                String imported = com.muoniumplayer.core.ncm.apple.AppleCookieSupport
+                        .importCookies(cookies);
+                if (imported == null) {
+                    outcome = "这不像一份 cookies.txt：应包含多行制表符分隔的 cookie 记录";
+                    tone = 2;
+                } else {
+                    com.muoniumplayer.core.ncm.apple.AppleApiClient.AccountProbe probe =
+                            com.muoniumplayer.core.ncm.apple.AppleApiClient.probeAccount();
+                    if (probe.valid && probe.subscriptionActive) {
+                        outcome = "已导入并验证：订阅有效，本人歌单与逐词歌词已解锁";
+                        tone = 1;
+                    } else if (probe.valid) {
+                        outcome = imported.isEmpty()
+                                ? "已导入（游客 cookies：无 media-user-token，无本人歌单）"
+                                : "已导入：账号有效，但该 Apple ID 无 Apple Music 订阅（完整版不可用）";
+                        tone = 0;
+                    } else {
+                        outcome = "已导入，但验证未通过：" + probe.reason;
+                        tone = 2;
+                    }
+                }
+            } catch (Throwable throwable) {
+                outcome = "导入失败：" + (throwable.getMessage() == null
+                        ? throwable.getClass().getSimpleName() : throwable.getMessage());
+                tone = 2;
+            }
+            final String finalOutcome = outcome;
+            final int finalTone = tone;
+            MultiThreadingUtil.runOnMainThread(() -> {
+                if (token != pageGeneration.get()) return;
+                requestRunning = false;
+                statusText = finalOutcome;
+                statusTone = finalTone;
+            });
+        });
+    }
+
+    /**
+     * 汽水音乐的手动 Cookie 入口。
+     *
+     * <p>为什么要有这一页：汽水 Passport 的扫码链路要在 Chromium 渲染进程里跑官方安全组件
+     * 生成 a_bogus / msToken，Java 侧复现不了，所以 mod 内不能做扫码。但拿到 cookie 之后的
+     * 全部 /luna/pc/* 接口都不需要签名——于是切成一前一后两个进程：外部工具负责扫码换
+     * cookie，这里负责把那段文本验一遍再用。两边只交换文本，不共享代码。
+     */
+    private void showQishuiCookieLogin() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.QISHUI;
+        requestRunning = false;
+        statusText = "粘贴 Cookie 后会先打一次账号接口验证";
+        statusTone = 0;
+        beginPage();
+
+        // 与网易云 Cookie 页同一套纵向网格与 468 页宽（见 showCookieLogin 的注释）。
+        final double contentTop = HEADER_H + SECTION_GAP;
+        final double statusTop = contentTop + SECTION_LABEL_BLOCK + CREDENTIAL_FIELD_H + SECTION_GAP;
+        final Panel dialog = sheet(468, () -> HEADER_H + SECTION_GAP + SECTION_LABEL_BLOCK
+                + CREDENTIAL_FIELD_H + SECTION_GAP + STATUS_BLOCK
+                + FOOTER_TOP_GAP + CREDENTIAL_FIELD_H + FOOTER_BOTTOM);
+        detailHeader(dialog, back(() -> {
+                    if (qishuiAddAccountMode) showSavedQishuiAccounts();
+                    else showDetail(MusicPlatform.QISHUI);
+                }), MusicPlatform.QISHUI, () -> "Cookie 登录",
+                () -> "需要外部工具获取 Cookie：网盘 / QQ群下载 · 仅本地保存");
+        // 不遮成密码框：cookie 过期是常态，用户得能看清自己贴进去的到底是哪一份。
+        final TextFieldWidget[] cookieBox = new TextFieldWidget[1];
+        cookieBox[0] = credentialFieldRow(dialog, contentTop, MusicPlatform.QISHUI,
+                "粘贴 sessionid=... 或完整 Cookie 字符串", 8192, false);
+
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> statusTop);
+
+        // 显式给一颗粘贴按钮，而不是进页面就自动读剪贴板：剪贴板里可能是别的东西。
+        // 两颗按钮左右并排（粘贴固定 96 宽在左、验证吃剩余），整排接页脚闸。
+        final RoundedButtonWidget paste = action(dialog, () -> PartyIcons.LINK, () -> "粘贴",
+                FontManager.pf12bold, () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                () -> fillQishuiCookieFromClipboard(cookieBox[0]));
+        paste.setRadius(6.0);
+        paste.setBeforeRenderCallback(() -> {
+            paste.setClickable(footerGate() > .5);
+            paste.setAlpha((float) footerGate());
+            paste.setBounds(QISHUI_PASTE_W, CREDENTIAL_FIELD_H);
+            paste.setPosition(PAD + CARD_INSET, dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            paste.setColor(paste.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+
+        final RoundedButtonWidget confirm = action(dialog,
+                () -> requestRunning ? PartyIcons.HOURGLASS : PartyIcons.CHECK,
+                () -> requestRunning ? "正在校验…" : "验证并登录", FontManager.pf12bold, () -> 0xFFFFFF,
+                () -> submitQishuiCookie(cookieBox[0], token));
+        confirm.setRadius(6.0);
+        confirm.setBeforeRenderCallback(() -> {
+            confirm.setClickable(footerGate() > .5);
+            confirm.setAlpha((float) footerGate());
+            confirm.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2
+                    - QISHUI_PASTE_W - BUTTON_GAP), CREDENTIAL_FIELD_H);
+            confirm.setPosition(PAD + CARD_INSET + QISHUI_PASTE_W + BUTTON_GAP,
+                    dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            confirm.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), 0xFFFFFF,
+                    confirm.isHovering() ? .16 : 0.0));
+        });
+    }
+
+    /** 填进输入框而不是直接提交：让用户先看见自己要导入的到底是什么。 */
+    private void fillQishuiCookieFromClipboard(final TextFieldWidget cookieField) {
+        String text = KeyboardUtils.getClipboardString();
+        if (text == null || text.trim().isEmpty()) {
+            statusText = "剪贴板是空的：先用外部工具（网盘 / QQ群下载）换取汽水 Cookie，再复制过来";
+            statusTone = 2;
+            return;
+        }
+        cookieField.setText(text.trim());
+        statusText = "已填入剪贴板内容，可继续编辑，再点「验证并登录」";
+        statusTone = 1;
+    }
+
+    private void submitQishuiCookie(final TextFieldWidget cookieField, final long token) {
+        if (requestRunning) return;
+        final String cookie = cookieField.getText() == null ? "" : cookieField.getText().trim();
+        if (cookie.isEmpty()) {
+            statusText = "请先粘贴 Cookie";
+            statusTone = 2;
+            return;
+        }
+        requestRunning = true;
+        statusText = "正在验证 Cookie…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            final QishuiMusicService.CookieImport result;
+            try {
+                result = QishuiMusicService.importCookie(cookie);
+            } catch (Throwable throwable) {
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    requestRunning = false;
+                    if (!isCurrent(MusicPlatform.QISHUI, token)) return;
+                    statusText = "Cookie 登录失败：" + safeMessage(throwable);
+                    statusTone = 2;
+                });
+                return;
+            }
+            if (!result.success) {
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    requestRunning = false;
+                    if (!isCurrent(MusicPlatform.QISHUI, token)) return;
+                    statusText = "Cookie 登录失败：" + result.message;
+                    statusTone = 2;
+                    DownloadDynamicIsland.showNetworkConnectionFailure("汽水音乐账号", result.message);
+                });
+                return;
+            }
+            MultiThreadingUtil.runOnMainThread(() -> {
+                if (!isCurrent(MusicPlatform.QISHUI, token)) return;
+                statusText = result.message + (result.nickname.isEmpty() ? "" : "：" + result.nickname);
+                statusTone = 1;
+                DownloadDynamicIsland.showNetworkConnectionSuccess("汽水音乐账号");
+            });
+            try {
+                Thread.sleep(SUCCESS_HOLD_MILLIS);
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+                return;
+            }
+            MultiThreadingUtil.runOnMainThread(() -> {
+                requestRunning = false;
+                if (!isCurrent(MusicPlatform.QISHUI, token)) return;
+                NCMScreen.getInstance().markDirty();
+                if (qishuiAddAccountMode) {
+                    qishuiAddAccountMode = false;
+                    showSavedQishuiAccounts();
+                } else {
+                    showDetail(MusicPlatform.QISHUI);
+                }
+            });
+        });
+    }
+    // ════════════════════════════ 三级页：酷狗 token 登录 ════════════════════════════
+
+    /**
+     * 酷狗的 {@code token} + {@code userid} 粘贴登录。
+     *
+     * <p><b>必须是 App 侧的 token。</b>浏览器 Cookie 里那个 {@code token} 是 Web 会话凭证
+     * （{@code a_id=1014}），在网关上稳定报 {@code 20006}——那不是参数写错，是两种凭证本就不同源。
+     * 占位符与状态行都写着这件事，否则用户会拿浏览器 Cookie 反复试。</p>
+     *
+     * <p>校验走「必须登录态」的只读请求，失败时<b>什么都不写</b>：本地原来登着谁就还是谁。</p>
+     */
+    private void showKuGouTokenLogin() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.KUGOU;
+        requestRunning = false;
+        // 这一页内的身份选择单独一份：粘贴进来的 token 是哪个客户端签的，只有用户知道，
+        // 不能拿「上一次扫码选了谁」替它决定。
+        final boolean[] concept = {kuGouConceptLogin};
+        statusText = "只有酷狗 App 抓包或扫码得到的 token 才能通过校验";
+        statusTone = 0;
+        beginPage();
+
+        // 与两个 Cookie 页同一套纵向网格与 468 页宽，只是多一行输入、页脚多一段「签发客户端」
+        // 分段器（标题+间隙 32 + 轨道 28）。
+        final double contentTop = HEADER_H + SECTION_GAP;
+        final double tokenTop = contentTop + SECTION_LABEL_BLOCK;
+        final double userIdTop = tokenTop + CREDENTIAL_FIELD_H + SECTION_GAP;
+        final double statusTop = userIdTop + CREDENTIAL_FIELD_H + SECTION_GAP;
+        final double segmentTop = statusTop + STATUS_BLOCK + SECTION_GAP;
+        final Panel dialog = sheet(468, () -> HEADER_H + SECTION_GAP + SECTION_LABEL_BLOCK
+                + CREDENTIAL_FIELD_H + SECTION_GAP + CREDENTIAL_FIELD_H + SECTION_GAP + STATUS_BLOCK
+                + SECTION_GAP + SECTION_LABEL_BLOCK + SEGMENT_TRACK + FOOTER_TOP_GAP
+                + CREDENTIAL_FIELD_H + FOOTER_BOTTOM);
+        detailHeader(dialog, back(() -> showDetail(MusicPlatform.KUGOU)), MusicPlatform.KUGOU,
+                () -> "Token 登录",
+                () -> "仅本地保存 · 校验失败不会覆盖当前登录状态");
+        // 两块输入框与分区标题接同一块闸（凭据页的「卡片」就是它们）。
+        final Panel gate = veil(dialog, () -> cardGate(0));
+        sectionLabel(gate, "登录凭据", () -> contentTop, MusicPlatform.KUGOU::getBrandColor);
+        final TextFieldWidget tokenField = textField(gate, dialog, tokenTop,
+                "粘贴 App 侧 token（不是浏览器 Cookie 里的 token）", 4096, true);
+        final TextFieldWidget userIdField = textField(gate, dialog, userIdTop,
+                "userid（纯数字的酷狗 ID）", 32, false);
+
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> statusTop);
+
+        // 「粘贴 token」在左、「验证并登录」在右，与汽水 Cookie 页同一排型。
+        final RoundedButtonWidget paste = action(dialog, () -> PartyIcons.LINK, () -> "粘贴 token",
+                FontManager.pf12bold, () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT),
+                () -> fillKuGouTokenFromClipboard(tokenField));
+        paste.setRadius(6.0);
+        paste.setBeforeRenderCallback(() -> {
+            paste.setClickable(footerGate() > .5);
+            paste.setAlpha((float) footerGate());
+            paste.setBounds(QISHUI_PASTE_W, CREDENTIAL_FIELD_H);
+            paste.setPosition(PAD + CARD_INSET, dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            paste.setColor(paste.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+
+        final RoundedButtonWidget confirm = action(dialog,
+                () -> requestRunning ? PartyIcons.HOURGLASS : PartyIcons.CHECK,
+                () -> requestRunning ? "正在校验…" : "验证并登录", FontManager.pf12bold, () -> 0xFFFFFF,
+                () -> submitKuGouToken(tokenField, userIdField, concept, token));
+        confirm.setRadius(6.0);
+        confirm.setBeforeRenderCallback(() -> {
+            confirm.setClickable(footerGate() > .5);
+            confirm.setAlpha((float) footerGate());
+            confirm.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2
+                    - QISHUI_PASTE_W - BUTTON_GAP), CREDENTIAL_FIELD_H);
+            confirm.setPosition(PAD + CARD_INSET + QISHUI_PASTE_W + BUTTON_GAP,
+                    dialog.getHeight() - FOOTER_BOTTOM - CREDENTIAL_FIELD_H);
+            confirm.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), 0xFFFFFF,
+                    confirm.isHovering() ? .16 : 0.0));
+        });
+
+        // 签发客户端改成分段选择器（与详情页的登录方式/客户端身份同一控件同一语言）：
+        // 「一颗会自己换文案的按钮」读不出这是二选一。这张 token 属于哪个客户端，
+        // 是提交之前最后一个能改的东西。标题与轨道同接页脚闸。
+        final Panel segmentGate = veil(dialog, this::footerGate);
+        sectionLabel(segmentGate, "签发客户端", () -> segmentTop, MusicPlatform.KUGOU::getBrandColor);
+        final SegmentControl.Spec spec = new SegmentControl.Spec();
+        spec.y = segmentTop + SECTION_LABEL_BLOCK;
+        spec.height = SEGMENT_TRACK;
+        spec.radius = 8;
+        // 轨道宽度构建期量好定格（理由同 channelSegment）。
+        final double width = Math.max(1, segmentWidthFor(EMPTY_GLYPHS, KUGOU_VARIANTS));
+        SegmentControl.attach(segmentGate, () -> {
+            spec.width = width;
+            spec.x = Math.max(0.0, (dialog.getWidth() - width) * .5);
+            return spec;
+        }, () -> concept[0] ? 1 : 0,
+                MusicPlatform.KUGOU::getBrandColor, MusicPlatform.KUGOU::getBrandColor,
+                EMPTY_GLYPHS, KUGOU_VARIANTS,
+                index -> {
+                    // 进场没到位不接点击：与页脚按钮同一道闸（命中区在控件内部，宿主只能守回调）。
+                    if (footerGate() <= .5) return false;
+                    boolean picked = index == 1;
+                    if (picked == concept[0]) return true;
+                    concept[0] = picked;
+                    statusText = picked
+                            ? "已按概念版身份校验：token 要抓自酷狗概念版 App"
+                            : "已按标准版身份校验：token 要抓自酷狗音乐 App";
+                    statusTone = 0;
+                    return true;
+                });
+    }
+
+    /**
+     * 一个「圆角底 + 输入框」的组合。
+     *
+     * <p>抽出来是因为 token 登录这一页有两个输入框，而这两处版式必须完全一致——
+     * 复制两份的结果通常是第二个框的描边忘了接、焦点看起来永远停在第一个上。</p>
+     *
+     * @param host 挂载点（通常是一块已经接好闸的容器）；定位仍按 {@code dialog} 算
+     */
+    private TextFieldWidget textField(final AbstractWidget<?> host, final Panel dialog, final double y,
+                                      final String placeholder, final int maxLength,
+                                      final boolean autoFocus) {
+        final RoundedRectWidget backing = new RoundedRectWidget();
+        host.addChild(backing);
+        backing.setClickable(false);
+        backing.setRadius(6);
+        backing.setBeforeRenderCallback(() -> {
+            backing.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), CREDENTIAL_FIELD_H);
+            backing.setPosition(PAD + CARD_INSET, y);
+            backing.setColor(NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
+        });
+
+        final TextFieldWidget field = new TextFieldWidget(FontManager.pf12);
+        host.addChild(field);
+        field.getTextField().setMaxStringLength(maxLength);
+        // 不遮成密码框：凭证过期是常态，用户得能看清自己贴进去的到底是哪一份。
+        field.setEnabled(true);
+        if (autoFocus) field.setFocused(true);
+        field.setPlaceholder(placeholder);
+        field.drawUnderline(false);
+        field.setBeforeRenderCallback(() -> {
+            field.setBounds(Math.max(1, backing.getWidth() - 20), Math.max(1, backing.getHeight() - 10));
+            field.setPosition(backing.getRelativeX() + 10, backing.getRelativeY() + 5);
+            field.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            field.setDisabledTextColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        });
+        // 聚焦辉光：与 credentialFieldRow 同一条 55ms 半衰期，两框切换焦点时渐变交接。
+        // 挂在 backing（输入框底板）上，不挂在铺满弹窗的 gate 上。
+        final double[] glow = {autoFocus ? 1.0 : 0.0};
+        final long[] glowStamp = new long[1];
+        stroke(backing, 6.0, () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT), () -> {
+            easeMs(glow, glowStamp, field.isFocused() ? 1.0 : 0.0, 55.0 / SheetClock.speed());
+            return glow[0] * .7;
+        });
+        return field;
+    }
+
+    /** 填进输入框而不是直接提交：让用户先看见自己要导入的到底是什么。 */
+    private void fillKuGouTokenFromClipboard(final TextFieldWidget tokenField) {
+        String text = KeyboardUtils.getClipboardString();
+        if (text == null || text.trim().isEmpty()) {
+            statusText = "剪贴板是空的：先复制酷狗 App 的 token";
+            statusTone = 2;
+            return;
+        }
+        tokenField.setText(text.trim());
+        statusText = "已填入剪贴板内容，可继续编辑，再点「验证并登录」";
+        statusTone = 1;
+    }
+
+    private void submitKuGouToken(final TextFieldWidget tokenField, final TextFieldWidget userIdField,
+                                  final boolean[] concept, final long token) {
+        if (requestRunning) return;
+        final String value = tokenField.getText() == null ? "" : tokenField.getText().trim();
+        final String userId = userIdField.getText() == null ? "" : userIdField.getText().trim();
+        if (value.isEmpty() || userId.isEmpty()) {
+            statusText = "token 与 userid 都要填，缺一不可";
+            statusTone = 2;
+            return;
+        }
+        requestRunning = true;
+        statusText = "正在用这条凭证打一次只读请求…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            // loginWithToken 内部就是「先落盘 → 用必须登录态的接口验一次 → 不通就回滚」，
+            // 所以这里不需要自己再判一次权限；它返回 false 时本地状态没有被碰过。
+            final boolean ok = KuGouMusicService.loginWithToken(value, userId, concept[0]);
+            MultiThreadingUtil.runOnMainThread(() -> {
+                requestRunning = false;
+                if (!isCurrent(MusicPlatform.KUGOU, token)) return;
+                if (ok) {
+                    statusText = "登录成功：" + KuGouMusicService.getProfileLabel();
+                    statusTone = 1;
+                    DownloadDynamicIsland.showNetworkConnectionSuccess("酷狗账号");
+                } else {
+                    statusText = "校验失败：不是 App 侧 token、已失效，或签发客户端选错";
+                    statusTone = 2;
+                    DownloadDynamicIsland.showNetworkConnectionFailure("酷狗账号", "token 校验未通过");
+                    return;
+                }
+                NCMScreen.getInstance().markDirty();
+                back(() -> showDetail(MusicPlatform.KUGOU)).run();
+            });
+        });
+    }
+
+    /**
+     * 「备选取流 /v6」开关，放在酷狗账号页。
+     *
+     * <p>为什么不放进设置页而放这里：它只对酷狗有意义，而且是一条<b>没有定论</b>的路径——
+     * 本仓只在标准版身份下实测过它失败，概念版从没测过。默认关，开着也只会在
+     * {@code /v5/url} 阶梯与老 trackercdn 都拿不到地址时多打一次请求，所以它不会
+     * 拖慢正常播放，只是一个「什么都不行了再试它一下」的最后兜底。</p>
+     */
+    /** 备选取流开关的两种文案：预构造，理由同 {@link #HISTORY_SYNC_ON}。 */
+    private static final String KUGOU_FALLBACK_ON = "备选取流 /v6：已开启";
+    private static final String KUGOU_FALLBACK_OFF = "备选取流 /v6：已关闭";
+
+    private void kuGouPrivUrlAction(final Panel dialog, final int row, final boolean shareRow) {
+        final Supplier<String> glyph = () -> PartyIcons.WARNING;
+        final Supplier<String> text = () -> NCMPlayerConfig.isKuGouPrivUrlFallbackEnabled()
+                ? KUGOU_FALLBACK_ON : KUGOU_FALLBACK_OFF;
+        final IntSupplier ink = () -> NCMPlayerConfig.isKuGouPrivUrlFallbackEnabled()
+                ? OK_COLOR : NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT);
+        final Runnable onClick = () -> {
+            boolean enabled = !NCMPlayerConfig.isKuGouPrivUrlFallbackEnabled();
+            NCMPlayerConfig.setKuGouPrivUrlFallbackEnabled(enabled);
+            statusText = enabled
+                    ? "已开启：前两级拿不到地址时再试 /v6/priv_url；结果会打在日志里（概念版未实测）"
+                    : "已关闭：取流只走实测可用的 /v5/url 与老 trackercdn";
+            statusTone = enabled ? 2 : 0;
+        };
+        // 已登录时它和「退出登录」并排；未登录时独占 Token 登录下面那一行。
+        if (shareRow) {
+            footerHalfButton(dialog, row, true, glyph, text, ink, onClick);
+        } else {
+            footerButton(dialog, row, glyph, text, ink, onClick);
+        }
+    }
+
+    // ════════════════════════════ 三级页：已保存账号 ════════════════════════════
+
+    private void showSavedQishuiAccounts() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.QISHUI;
+        requestRunning = false;
+        statusText = "点一行即可切换；移除只删除本地快捷记录";
+        statusTone = 0;
+        beginPage();
+
+        final List<QishuiAccountProfiles.Account> accounts = QishuiAccountProfiles.load();
+        final double listHeight = accounts.isEmpty()
+                ? 84.0 : Math.min(accounts.size() * SAVED_ROW, 4 * SAVED_ROW);
+        // 内容 = 顶部 12 + 列表 + 底部 12；页脚 = 上间隙 12 + 主按钮 22 + 12 + 状态行 30。
+        final double content = SECTION_GAP + listHeight + SECTION_GAP;
+        final double footer = FOOTER_TOP_GAP + DETAIL_BUTTON_H + SECTION_GAP + STATUS_BLOCK;
+        final Panel dialog = sheet(468, () -> HEADER_H + content + footer);
+        detailHeader(dialog, back(() -> showDetail(MusicPlatform.QISHUI)), MusicPlatform.QISHUI,
+                () -> "汽水已保存账号", () -> "本地切换 · 最多保存 8 个");
+
+        final Panel body = body(dialog, () -> HEADER_H, () -> footer);
+        final ScrollPanel feed = feed(body);
+        strip(feed, SECTION_GAP);
+        if (accounts.isEmpty()) {
+            emptyState(strip(feed, 84.0));
+        } else {
+            for (int i = 0; i < accounts.size(); i++) {
+                final QishuiAccountProfiles.Account account = accounts.get(i);
+                savedAccountRow(strip(feed, SAVED_ROW), i, QishuiAccountProfiles.isActive(account),
+                        MusicPlatform.QISHUI, account.getDisplayName(), account.getMeta(),
+                        account.getAvatarUrl(), account.getAvatarLocation(),
+                        () -> switchQishuiAccount(account, token),
+                        () -> removeQishuiAccount(account));
+            }
+        }
+        strip(feed, SECTION_GAP);
+
+        final boolean bridgeReady = QishuiLoginBridge.isAvailable();
+        final RoundedButtonWidget add = action(dialog,
+                () -> bridgeReady ? PartyIcons.PERSON_ADD : PartyIcons.KEY,
+                () -> bridgeReady ? "扫码添加" : "Cookie 添加", FontManager.pf12bold,
+                () -> 0xFFFFFF, () -> {
+                    if (requestRunning) return;
+                    if (bridgeReady) showDetail(MusicPlatform.QISHUI, true);
+                    else {
+                        qishuiAddAccountMode = true;
+                        showQishuiCookieLogin();
+                    }
+                });
+        add.setRadius(6.0);
+        add.setBeforeRenderCallback(() -> {
+            add.setClickable(footerGate() > .5);
+            add.setAlpha((float) footerGate());
+            add.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), DETAIL_BUTTON_H);
+            add.setPosition(PAD + CARD_INSET, dialog.getHeight() - STATUS_BLOCK - SECTION_GAP
+                    - DETAIL_BUTTON_H);
+            add.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), 0xFFFFFF,
+                    add.isHovering() ? .16 : 0.0));
+        });
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> dialog.getHeight() - STATUS_BLOCK);
+    }
+
+    private void qishuiAccountRow(final Panel row, final int slot,
+                                  final QishuiAccountProfiles.Account account, final long token) {
+        final boolean current = QishuiAccountProfiles.isActive(account);
+        final Card[] self = new Card[1];
+        final Card card = card(row, slot, () -> 0.0, () -> 52.0, () -> current
+                ? mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                MusicPlatform.QISHUI.getBrandColor(), .22)
+                : mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER), self[0].hover));
+        self[0] = card;
+        card.setShouldOverrideMouseCursor(!current);
+        card.setOnClickCallback((x, y, button) -> {
+            if (button != 0 || requestRunning || current) return false;
+            switchQishuiAccount(account, token);
+            return true;
+        });
+        stroke(card, 12.0, MusicPlatform.QISHUI::getBrandColor, () -> current ? .5 : 0.0);
+
+        final RoundedRectWidget disc = new RoundedRectWidget();
+        card.addChild(disc);
+        disc.setClickable(false);
+        disc.setRadius(11);
+        disc.setBeforeRenderCallback(() -> {
+            disc.setBounds(36, 36);
+            disc.setPosition(12, card.getHeight() * .5 - 18);
+            disc.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                    MusicPlatform.QISHUI.getBrandColor(), .30));
+        });
+        final String initial = initial(account.getDisplayName());
+        // 墨迹宽度是常量串的度量，构建期量一次就够：放进渲染回调等于每帧做一次文本测量。
+        final double initialWidth = FontManager.pf16bold.getStringWidthD(initial);
+        final LabelWidget letter = label(disc, initial, FontManager.pf16bold);
+        letter.setBeforeRenderCallback(() -> {
+            letter.setColor(0xFFFFFF);
+            letter.setPosition(18 - initialWidth * .5, inkTop(letter, 18.0));
+        });
+        final Location avatar = account.getAvatarLocation();
+        final RoundedImageWidget photo = new RoundedImageWidget(
+                () -> AccountAvatar.textureOrNull(account.getAvatarUrl(), avatar) == null ? null : avatar,
+                0, 0, 36, 36);
+        disc.addChild(photo);
+        photo.setClickable(false);
+        photo.setRadius(11);
+        photo.setLinearFilter(true);
+        photo.setBeforeRenderCallback(() -> {
+            photo.setBounds(36, 36);
+            photo.setPosition(0, 0);
+        });
+
+        final RoundedRectWidget remove = new RoundedRectWidget();
+        card.addChild(remove);
+        remove.setRadius(9);
+        remove.setShouldOverrideMouseCursor(true);
+        remove.setOnClickCallback((x, y, button) -> {
+            if (button != 0 || requestRunning) return false;
+            removeQishuiAccount(account);
+            return true;
+        });
+        remove.setBeforeRenderCallback(() -> {
+            remove.setBounds(26, 26);
+            remove.setPosition(Math.max(0, card.getWidth() - 38), card.getHeight() * .5 - 13);
+            remove.setColor(remove.isHovering()
+                    ? mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND), BAD_COLOR, .35)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+        icon(remove, PartyIcons.CLOSE, ICON_S, () -> 13.0, () -> 13.0,
+                () -> remove.isHovering() ? 0xFFFFFF
+                        : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+
+        final Panel currentLayer = veil(card, () -> current ? 1.0 : 0.0);
+        final RoundedRectWidget flag = pill(currentLayer, () -> PartyIcons.CHECK, () -> "当前",
+                () -> OK_COLOR, () -> currentLayer.getWidth() - 46, () -> currentLayer.getHeight() * .5);
+        final LabelWidget name = label(card, account::getDisplayName, FontManager.pf12bold);
+        name.setBeforeRenderCallback(() -> {
+            name.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            name.setMaxWidth(Math.max(1, card.getWidth() - 58 - 54 - (current ? flag.getWidth() : 0)));
+            name.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            name.setPosition(58, inkTop(name, card.getHeight() * .5 - 8));
+        });
+        final LabelWidget meta = label(card, account.getMeta(), FontManager.pf12);
+        meta.setBeforeRenderCallback(() -> {
+            meta.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            meta.setMaxWidth(Math.max(1, card.getWidth() - 58 - 54 - (current ? flag.getWidth() : 0)));
+            meta.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            meta.setPosition(58, inkTop(meta, card.getHeight() * .5 + 8));
+        });
+    }
+
+    private void switchQishuiAccount(final QishuiAccountProfiles.Account account, final long token) {
+        requestRunning = true;
+        statusText = "正在验证并切换汽水账号…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            QishuiMusicService.CookieImport result = QishuiAccountProfiles.switchTo(account);
+            MultiThreadingUtil.runOnMainThread(() -> {
+                requestRunning = false;
+                if (!isCurrent(MusicPlatform.QISHUI, token)) return;
+                if (!result.success) {
+                    statusText = "切换失败：" + result.message;
+                    statusTone = 2;
+                    return;
+                }
+                NCMScreen.getInstance().markDirty();
+                showDetail(MusicPlatform.QISHUI);
+            });
+        });
+    }
+
+    private void removeQishuiAccount(final QishuiAccountProfiles.Account account) {
+        NCMScreen screen = NCMScreen.getInstance();
+        if (screen == null) return;
+        screen.openConfirmation("移除汽水已保存账号",
+                "只从本地列表移除「" + account.getDisplayName() + "」，不会退出当前账号。",
+                "移除", () -> {
+                    QishuiAccountProfiles.remove(account);
+                    showSavedQishuiAccounts();
+                    statusText = "已移除「" + account.getDisplayName() + "」";
+                    statusTone = 1;
+                });
+    }
+
+    private void showSavedNeteaseAccounts() {
+        final long token = pageGeneration.incrementAndGet();
+        detailPlatform = MusicPlatform.NETEASE;
+        requestRunning = false;
+        statusText = "点一行即可切换；删除只移除本地记录，不会退出账号";
+        statusTone = 0;
+        beginPage();
+
+        final List<NeteaseAccountProfiles.Account> accounts = NeteaseAccountProfiles.load();
+        // 最多先给四行的高度，再多就滚 —— 八个账号全摊开会把弹窗顶到视口边上。
+        final double listHeight = accounts.isEmpty()
+                ? 84.0 : Math.min(accounts.size() * SAVED_ROW, 4 * SAVED_ROW);
+        final Panel dialog = sheet(468, () -> HEADER_H + LEAD + listHeight + 84.0);
+        subHeader(dialog, back(() -> showDetail(MusicPlatform.NETEASE)), () -> "已保存账号",
+                () -> "本地切换 · 最多保存 8 个",
+                MusicPlatform.NETEASE::getBrandColor);
+
+        final Panel body = body(dialog, () -> HEADER_H, () -> 84.0);
+        final ScrollPanel feed = feed(body);
+        strip(feed, LEAD);
+        if (accounts.isEmpty()) {
+            emptyState(strip(feed, 84.0));
+        } else {
+            for (int i = 0; i < accounts.size(); i++) {
+                final NeteaseAccountProfiles.Account account = accounts.get(i);
+                // meta 文案与「是不是当前账号」都在建页时定下来：前者是纯字符串，后者要读配置。
+                final String meta = account.id == null || account.id.trim().isEmpty()
+                        ? "本地凭据" : "网易云 ID " + account.id;
+                savedAccountRow(strip(feed, SAVED_ROW), i, NeteaseAccountProfiles.isActive(account),
+                        MusicPlatform.NETEASE, account.getDisplayName(), meta,
+                        account.getAvatarUrl(), account.getAvatarLocation(),
+                        () -> switchAccount(account, token),
+                        () -> removeAccount(account));
+            }
+        }
+
+        // 扫码是主路径；Cookie 添加是给手上已经有凭据的人留的，所以做成次级样式。
+        // 两颗 50/50 并排（原来 54/46 是随手的比例，不成对的间隙看着像量错了）。
+        // 这一页的纵向网格与详情页不同（按钮距底 76、tip 距底 30），位置在这里手写，
+        // 不走 footerHalfButton 的详情页公式。宽度必须每帧现算：建页那一刻弹窗还没量出尺寸，
+        // 构建期读到的getWidth() 是 0，把 1 像素宽定格成永远。
+        final RoundedButtonWidget scan = action(dialog, () -> PartyIcons.PERSON_ADD, () -> "扫码添加",
+                FontManager.pf12bold, () -> 0xFFFFFF, () -> {
+                    if (requestRunning) return;
+                    showDetail(MusicPlatform.NETEASE, true);
+                });
+        scan.setRadius(6.0);
+        scan.setBeforeRenderCallback(() -> {
+            double pairWidth = Math.max(1.0, (dialog.getWidth() - (PAD + CARD_INSET) * 2 - BUTTON_GAP) * .5);
+            scan.setClickable(footerGate() > .5);
+            scan.setAlpha((float) footerGate());
+            scan.setBounds(pairWidth, 30);
+            scan.setPosition(PAD + CARD_INSET, dialog.getHeight() - 76);
+            scan.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), 0xFFFFFF,
+                    scan.isHovering() ? .16 : 0.0));
+        });
+
+        final RoundedButtonWidget byCookie = action(dialog, () -> PartyIcons.KEY, () -> "Cookie 添加",
+                FontManager.pf12bold, () -> NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), () -> {
+                    if (requestRunning) return;
+                    showCookieLogin();
+                });
+        byCookie.setRadius(6.0);
+        byCookie.setBeforeRenderCallback(() -> {
+            double pairWidth = Math.max(1.0, (dialog.getWidth() - (PAD + CARD_INSET) * 2 - BUTTON_GAP) * .5);
+            byCookie.setClickable(footerGate() > .5);
+            byCookie.setAlpha((float) footerGate());
+            byCookie.setBounds(pairWidth, 30);
+            byCookie.setPosition(PAD + CARD_INSET + pairWidth + BUTTON_GAP, dialog.getHeight() - 76);
+            byCookie.setColor(byCookie.isHovering()
+                    ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+
+        tip(veil(dialog, this::footerGate), this::statusGlyph, () -> statusText, this::statusColor,
+                () -> dialog.getHeight() - 30);
+    }
+
+    private void emptyState(final Panel row) {
+        // 空态整块跟第一张卡同档到场：没有列表可排瀑布时，它就是那张卡。
+        final Panel gate = veil(row, () -> cardGate(0));
+        icon(gate, PartyIcons.PERSON_ADD, ICON_XL, () -> row.getWidth() * .5, () -> 30.0,
+                () -> NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        final String text = "还没有保存过账号";
+        // 常量文案的墨迹宽度在构建期量一次：渲染回调里不能再做文本测量。
+        final double textWidth = FontManager.pf12bold.getStringWidthD(text);
+        final LabelWidget caption = label(gate, text, FontManager.pf12bold);
+        caption.setBeforeRenderCallback(() -> {
+            caption.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            caption.setPosition(row.getWidth() * .5 - textWidth * .5, inkTop(caption, 58.0));
+        });
+    }
+
+    /**
+     * 已保存账号的一行（网易云 / 汽水共用）。
+     *
+     * <p>两个平台的「已保存账号」页结构完全一样：一行一个账号，左边头像、中间名字与副标题、
+     * 右边「当前」标记与删除键，点整行切换。原来这里写死了网易云的账号类型、品牌色与 meta 文案，
+     * 汽水那边只能另起一份；把会变的那几样（平台、名称、meta、头像地址、两个动作）当参数传进来，
+     * 一份实现管两边，行高、间距与 hover 语言也就自然一致了。</p>
+     *
+     * <p>「是不是当前账号」由调用方在建页时算好传进来，而不是每帧问：判活要去读配置里的凭据，
+     * 那不是每帧该做的事；而这一页只要切过账号就会换页重建。</p>
+     *
+     * @param current 这一行是不是当前生效的账号（建页时快照）
+     * @param onSwitch 点整行切换；当前行不可点
+     * @param onRemove 点右侧删除键
+     */
+    private void savedAccountRow(final Panel row, final int slot, final boolean current,
+                                 final MusicPlatform platform, final String displayName, final String metaText,
+                                 final String avatarUrl, final Location avatarLocation,
+                                 final Runnable onSwitch, final Runnable onRemove) {
+        final Card[] self = new Card[1];
+        final Card card = card(row, slot, () -> 0.0, () -> 52.0, () -> current
+                ? mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                platform.getBrandColor(), .22)
+                : mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER), self[0].hover));
+        self[0] = card;
+        card.setShouldOverrideMouseCursor(!current);
+        card.setOnClickCallback((x, y, button) -> {
+            if (button != 0 || requestRunning || current) return false;
+            onSwitch.run();
+            return true;
+        });
+        stroke(card, 12.0, platform::getBrandColor, () -> current ? .5 : 0.0);
+
+        savedAvatar(card, platform, displayName, avatarUrl, avatarLocation);
+
+        final RoundedRectWidget remove = new RoundedRectWidget();
+        card.addChild(remove);
+        remove.setRadius(9);
+        remove.setShouldOverrideMouseCursor(true);
+        remove.setOnClickCallback((x, y, button) -> {
+            if (button != 0 || requestRunning) return false;
+            onRemove.run();
+            return true;
+        });
+        remove.setBeforeRenderCallback(() -> {
+            remove.setBounds(26, 26);
+            remove.setPosition(Math.max(0, card.getWidth() - 38), card.getHeight() * .5 - 13);
+            remove.setColor(remove.isHovering()
+                    ? mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND), BAD_COLOR, .35)
+                    : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
+        });
+        icon(remove, PartyIcons.CLOSE, ICON_S, () -> 13.0, () -> 13.0,
+                () -> remove.isHovering() ? 0xFFFFFF : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+
+        final Panel currentLayer = veil(card, () -> current ? 1.0 : 0.0);
+        final RoundedRectWidget flag = pill(currentLayer, () -> PartyIcons.CHECK, () -> "当前",
+                () -> OK_COLOR, () -> currentLayer.getWidth() - 46, () -> currentLayer.getHeight() * .5);
+
+        final LabelWidget name = label(card, () -> displayName, FontManager.pf12bold);
+        name.setBeforeRenderCallback(() -> {
+            name.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
+            name.setMaxWidth(Math.max(1, card.getWidth() - 58 - 54 - (current ? flag.getWidth() : 0)));
+            name.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            name.setPosition(58, inkTop(name, card.getHeight() * .5 - 8));
+        });
+
+        final LabelWidget metaLabel = label(card, () -> metaText, FontManager.pf12);
+        metaLabel.setBeforeRenderCallback(() -> {
+            metaLabel.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            metaLabel.setMaxWidth(Math.max(1, card.getWidth() - 58 - 54 - (current ? flag.getWidth() : 0)));
+            metaLabel.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+            metaLabel.setPosition(58, inkTop(metaLabel, card.getHeight() * .5 + 8));
+        });
+    }
+
+    /**
+     * 已保存账号行左边的头像位：品牌色底盘 → 昵称首字 → 头像照片，三层叠着画。
+     *
+     * <p>与 {@link #savedAvatar(Card, NeteaseAccountProfiles.Account)} 的区别只在数据来源，
+     * 这样汽水的账号不必为了画一个头像而先被包装成网易云的账号类型。</p>
+     */
+    private void savedAvatar(final Card card, final MusicPlatform platform, final String displayName,
+                             final String avatarUrl, final Location avatarLocation) {
+        final RoundedRectWidget disc = new RoundedRectWidget();
+        card.addChild(disc);
+        disc.setClickable(false);
+        disc.setRadius(11);
+        disc.setBeforeRenderCallback(() -> {
+            disc.setBounds(36, 36);
+            disc.setPosition(12, card.getHeight() * .5 - 18);
+            disc.setColor(mix(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND),
+                    platform.getBrandColor(), .30));
+        });
+
+        final String first = initial(displayName);
+        // 同上：首字是常量串，宽度构建期量一次。
+        final double firstWidth = FontManager.pf16bold.getStringWidthD(first);
+        final LabelWidget letter = label(disc, first, FontManager.pf16bold);
+        letter.setBeforeRenderCallback(() -> {
+            letter.setColor(0xFFFFFF);
+            letter.setPosition(18 - firstWidth * .5, inkTop(letter, 18.0));
+        });
+
+        final RoundedImageWidget photo = new RoundedImageWidget(
+                () -> AccountAvatar.textureOrNull(avatarUrl, avatarLocation) == null ? null : avatarLocation,
+                0, 0, 36, 36);
+        disc.addChild(photo);
+        photo.setClickable(false);
+        photo.setRadius(11);
+        photo.setLinearFilter(true);
+        photo.setBeforeRenderCallback(() -> {
+            photo.setBounds(36, 36);
+            photo.setPosition(0, 0);
+        });
+    }
+
+    private void switchAccount(final NeteaseAccountProfiles.Account account, final long token) {
+        requestRunning = true;
+        statusText = "正在切换账号…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            boolean success = NeteaseAccountProfiles.switchTo(account);
+            MultiThreadingUtil.runOnMainThread(() -> {
+                requestRunning = false;
+                if (!isCurrent(MusicPlatform.NETEASE, token)) return;
+                if (!success) {
+                    // 失败就留在这一页：换页会把这行提示冲掉，用户不知道刚才发生了什么。
+                    statusText = "账号切换失败，Cookie 可能已过期";
+                    statusTone = 2;
+                    return;
+                }
+                NCMScreen.getInstance().markDirty();
+                // 成功回上一级（网易云账号页）：这一页的任务已经完成了。
+                back(() -> showDetail(MusicPlatform.NETEASE)).run();
+            });
+        });
+    }
+
+    private void removeAccount(final NeteaseAccountProfiles.Account account) {
+        NCMScreen screen = NCMScreen.getInstance();
+        if (screen == null) return;
+        screen.openConfirmation("移除已保存账号",
+                "只从本地列表里移除「" + account.getDisplayName() + "」，不会退出当前登录，也不会影响网易云账号本身。",
+                "移除", () -> {
+                    NeteaseAccountProfiles.remove(account);
+                    // 先重建再写状态：重建那一步会把状态行重置成默认说明。
+                    showSavedNeteaseAccounts();
+                    statusText = "已移除「" + account.getDisplayName() + "」";
+                    statusTone = 1;
+                });
+    }
+    // ════════════════════════════ 扫码登录 ════════════════════════════
+
+    private void startQrLogin(MusicPlatform platform, long token) {
+        startQrLogin(platform, token, false);
+    }
+
+    /**
+     * 让一次扫码会话一直活到上游给出终态。状态变更都发回主线程，
+     * 所以「等待」「已扫码」不会在轮询还在跑的时候凭空消失。
+     */
+    private void startQrLogin(MusicPlatform platform, long token, boolean addAccountByQr) {
+        if (requestRunning || closing || detailPlatform != platform || token != pageGeneration.get()) return;
+        requestRunning = true;
+        qrReady = false;
+        // 上一轮的成功动画要收回去：不收回的话重新取码时盘上还压着一面对勾。
+        // 两枚动画的显隐都由 board 那一格按这两个标志摆，这里只改标志。
+        loginSucceeded = false;
+        publishQrStatus(platform, token, "正在获取登录二维码…", 0);
+
+        // 微信是一条独立的会话：取码与轮询都必须成对地走微信那两个方法。在这里一次性定下来，
+        // 循环里就不会出现「用 QQ 的码去问微信的状态」这类跨链路误用。
+        final boolean wechat = platform == MusicPlatform.QQ && qqLoginChannel == QQLoginChannel.WECHAT;
+        // 酷狗同理：概念版与标准版签的是两种凭证。轮询这一侧不必再传一次——
+        // createQrSession 已经把身份记在 KuGouMusicService 的会话里，checkQr 跟着它走。
+        final boolean kuGouConcept = platform == MusicPlatform.KUGOU && kuGouConceptLogin;
+        MultiThreadingUtil.runAsync(() -> {
+            try {
+                QrCode qr = wechat
+                        ? NeteaseMusicService.createQqWechatQrCode()
+                        : NeteaseMusicService.createQrCode(platform, kuGouConcept);
+                if (!isCurrent(platform, token)) return;
+                loadQrTexture(platform, qr.getQrContent(), token);
+                publishQrStatus(platform, token, "等待扫码 · 正在持续检查登录状态…", 3);
+                int transientErrors = 0;
+
+                while (isCurrent(platform, token)) {
+                    // 二维码已经初始化了 内置音源层 的登录会话。不要在每次轮询时重新套用旧的网易云
+                    // cookie：那会在 内置音源层 落盘之前就把刚扫上的账号弄失效。
+                    QrLoginState state = wechat
+                            ? NeteaseMusicService.checkQqWechatQrCode(qr)
+                            : NeteaseMusicService.checkQrCodeSession(platform, qr);
+                    if (!isCurrent(platform, token)) return;
+                    if (state == QrLoginState.WAITING) {
+                        transientErrors = 0;
+                        publishQrStatus(platform, token, waitingText(platform), 3);
+                    } else if (state == QrLoginState.SCANNED) {
+                        transientErrors = 0;
+                        publishQrStatus(platform, token, "已扫码，请在手机上确认…", 3);
+                    } else if (state == QrLoginState.CONFIRMED) {
+                        if (platform == MusicPlatform.QISHUI) {
+                            QishuiAccountProfiles.saveCurrent();
+                        } else if (platform == MusicPlatform.NETEASE) {
+                            String confirmedCookie = OptionsUtil.getCookie();
+                            if (confirmedCookie == null || confirmedCookie.trim().isEmpty()) {
+                                throw new IllegalStateException("服务端未返回有效登录凭据");
+                            }
+                            CloudMusic.loadNCM(confirmedCookie);
+                            if (CloudMusic.profile == null) {
+                                throw new IllegalStateException("登录资料加载失败");
+                            }
+                            NeteaseAccountProfiles.saveCurrent();
+                        } else if (platform == MusicPlatform.QQ) {
+                            NeteaseMusicService.refreshQQAccountData();
+                        }
+                        // 酷狗的资料与歌单已经在 checkQrCodeSession 确认那一刻异步拉起，这里不再重复。
+                        requestRunning = false;
+                        publishQrStatus(platform, token, addAccountByQr ? "扫码成功，账号已添加" : "登录成功", 1);
+                        DownloadDynamicIsland.showNetworkConnectionSuccess(platform.getDisplayName() + "账号");
+                        // 让成功动画整轮走完再换页。亮一下就跳走的话用户只看到界面闪了一下，
+                        // 分不清是登上了还是被关掉了。
+                        Thread.sleep(startLoginSuccessAnimation());
+                        MultiThreadingUtil.runOnMainThread(() -> {
+                            if (!isCurrent(platform, token)) return;
+                            NCMScreen.getInstance().markDirty();
+                    if (addAccountByQr && (platform == MusicPlatform.NETEASE || platform == MusicPlatform.QISHUI)) {
+                        if (platform == MusicPlatform.NETEASE) showSavedNeteaseAccounts();
+                        else showSavedQishuiAccounts();
+                    } else {
+                        showOverview();
+                    }
+
+                            if (platform == MusicPlatform.NETEASE) {
+                                maybePromptListeningHistorySync();
+                            }
+                        });
+                        return;
+                    } else if (state == QrLoginState.EXPIRED) {
+                        publishQrStatus(platform, token, "二维码已过期，点下方按钮重新获取", 2);
+                        DownloadDynamicIsland.showNetworkConnectionFailure(platform.getDisplayName() + "登录", "二维码已过期");
+                        requestRunning = false;
+                        return;
+                    } else if (state == QrLoginState.ERROR) {
+                        transientErrors++;
+                        if (transientErrors >= 3) {
+                            publishQrStatus(platform, token, "登录状态检查失败，点下方按钮重新获取", 2);
+                            DownloadDynamicIsland.showNetworkConnectionFailure(platform.getDisplayName() + "登录", "状态检查失败");
+                            requestRunning = false;
+                            return;
+                        }
+                        publishQrStatus(platform, token, "检查连接波动，正在继续检查（" + transientErrors + "/3）…", 3);
+                    }
+                    Thread.sleep(2000L);
+                }
+            } catch (InterruptedException ignored) {
+                Thread.currentThread().interrupt();
+            } catch (Throwable throwable) {
+                if (isCurrent(platform, token)) {
+                    publishQrStatus(platform, token, "二维码登录失败：" + safeMessage(throwable), 2);
+                    DownloadDynamicIsland.showNetworkConnectionFailure(platform.getDisplayName() + "登录", safeMessage(throwable));
+                    requestRunning = false;
+                }
+            } finally {
+                // 汽水的码是外部进程在替我们取的：不管是登上了、过期了还是人翻页走了，
+                // 都要通知它一声，让它从这一轮会话里退出来、转为空闲等下次复用。
+                // 注意是「转空闲」而不是「杀进程」——杀掉的话下次取码要重新自解压 88 MB；
+                // 而且风控那一次人是还在外部窗口里操作的，一杀就等于把他的验证作废。
+                if (platform == MusicPlatform.QISHUI) QishuiMusicService.cancelQrLogin();
+            }
+        });
+    }
+
+    /**
+     * 「等待扫码」那一行字。
+     *
+     * <p>汽水要照抄外部取码工具的话：上游要求二次验证时，工具已经把验证窗口弹出来了，
+     * 人正在<b>游戏外</b>操作，游戏里这句还写「等待扫码」就是在骗人。</p>
+     */
+    private String waitingText(MusicPlatform platform) {
+        if (platform == MusicPlatform.QISHUI) {
+            String hint = QishuiMusicService.getQrStatusHint();
+            if (hint != null && !hint.isEmpty()) return hint;
+        }
+        return "等待扫码 · 正在持续检查登录状态…";
+    }
+
+    /**
+     * 点名让盘上的成功动画开播，并返回<b>它走完一整轮还要多少毫秒</b>。
+     *
+     * <p>登录轮询跑在后台线程，而控件只能由渲染线程动，所以这里把「起播」投回主线程，
+     * 自己只负责算出要等多久。时间轴走墙上时钟（见 {@link SvgPlayback}），因此这个等待
+     * 和帧率无关 —— 界面卡一下、掉几帧，都不会让它提前跳页，也不会让它拖长。</p>
+     *
+     * <p>素材读不到时退回原来那个固定停留时长：换页这件事不该因为一枚图标而卡住。</p>
+     */
+    private long startLoginSuccessAnimation() {
+        final SmilSvg icon = AnimatedIcons.loginSafe();
+        if (icon == null) {
+            return SUCCESS_HOLD_MILLIS;
+        }
+        final SvgPlayback playback = SvgPlayback.once(icon);
+        MultiThreadingUtil.runOnMainThread(() -> {
+            // 只换时钟。显隐不用在这儿管：board 那一格每帧按 loginSucceeded 摆这两枚动画。
+            loginSucceeded = true;
+            AnimatedSvgWidget widget = loginSuccessIcon;
+            if (widget != null) {
+                widget.setPlayback(playback);
+            }
+        });
+        // 等的是「这一轮实际要播多久」，不是整轮时长：素材带停住相位时两者不一样。
+        return Math.round(playback.span() * 1000.0);
+    }
+
+    private void publishQrStatus(MusicPlatform platform, long token, String text, int tone) {
+        MultiThreadingUtil.runOnMainThread(() -> {
+            if (!isCurrent(platform, token)) return;
+            statusText = text;
+            statusTone = tone;
+        });
+    }
+
+    private void logout(MusicPlatform platform) {
+        long token = pageGeneration.incrementAndGet();
+        requestRunning = true;
+        statusText = "正在退出登录…";
+        statusTone = 3;
+        MultiThreadingUtil.runAsync(() -> {
+            try {
+                NeteaseMusicService.logout(platform);
+                statusText = "已退出登录";
+                statusTone = 1;
+            } catch (Throwable throwable) {
+                statusText = "退出失败：" + safeMessage(throwable);
+                statusTone = 2;
+            } finally {
+                requestRunning = false;
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    NCMScreen.getInstance().markDirty();
+                    // 退出之后留在这一页：接下来大概就是要重新登，不该把人踢回总览。
+                    if (!closing && detailPlatform == platform && token == pageGeneration.get()) {
+                        showDetail(platform);
+                    }
+                });
+            }
+        });
+    }
+
+    private void loadQrTexture(MusicPlatform platform, String content, long token) throws Exception {
+        BufferedImage image;
+        // 有的端点回一段可重新编码的文本，有的直接回一张画好的 PNG，这一句挑的是后者。
+        // <b>QQ 必须按平台写死</b>：它回的是<b>不带 {@code data:} 前缀</b>的裸 base64，
+        // 只看前缀会把那段 base64 当成二维码文本去重画，画出来的码扫不出登录。
+        // 其余平台按内容前缀判断，于是「上游给图」与「本地生成」能共用一条路径——
+        // 酷狗概念版走前者（从没实测过，上游给什么图就用什么图），标准版仍是后者（实测能扫）。
+        // 汽水现在走后者：外部取码工具给的是一条 {@code https://} 扫码链接，由这里自己画成码，
+        // 工具那张 PNG 根本不必传过来——少一次图片编解码，也少一处可能画歪的地方。
+        boolean upstreamImage = platform == MusicPlatform.QQ
+                || (content != null && content.startsWith("data:image"));
+        if (upstreamImage) {
+            String encoded = content == null ? "" : content;
+            int comma = encoded.indexOf(',');
+            if (comma >= 0) encoded = encoded.substring(comma + 1);
+            image = ImageIO.read(new ByteArrayInputStream(Base64.getDecoder().decode(encoded)));
+        } else {
+            image = QRCodeGenerator.generateQRCode(content, 128, 128);
+        }
+        if (image == null || !isCurrent(platform, token)) throw new IllegalStateException("二维码图片为空");
+        final BufferedImage finalImage = image;
+        MultiThreadingUtil.runOnMainThread(() -> {
+            if (!isCurrent(platform, token)) return;
+            TextureManager manager = TextureManager.getInstance();
+            Location location = getQrLocation(platform);
+            if (manager.getTexture(location) != null) manager.deleteTexture(location);
+            manager.loadTexture(location, new DynamicTexture(finalImage));
+            // 只有走到这里才算「盘里真有一张能扫的码」。拿贴图存在与否判断会误判：
+            // 同一平台上一次会话留下的旧贴图还在表里。
+            qrReady = true;
+        });
+    }
+
+    private boolean isCurrent(MusicPlatform platform, long token) {
+        return !closing && detailPlatform == platform && pageGeneration.get() == token;
+    }
+
+    private Location getQrLocation(MusicPlatform platform) {
+        if (platform == MusicPlatform.KUGOU) return KUGOU_QR;
+        if (platform == MusicPlatform.QISHUI) return QISHUI_QR;
+        if (platform == MusicPlatform.BILIBILI) return BILIBILI_QR;
+        return platform == MusicPlatform.QQ ? QQ_QR : NETEASE_QR;
+    }
+
+    // ════════════════════════════ 文案与状态 ════════════════════════════
+
+    /** 扫码提示里该出现的客户端名。微信那条链路要扫的是微信，不是 QQ 音乐。 */
+    private String scanClientName(MusicPlatform platform) {
+        if (platform == MusicPlatform.QQ && qqLoginChannel == QQLoginChannel.WECHAT) return "微信";
+        if (platform == MusicPlatform.KUGOU) {
+            // <b>没登录时问的是「这一次要扫哪个身份」，已登录时问的是「这张凭证是哪个客户端签的」</b>：
+            // 两者不是一回事——选了概念版还没扫，提示就该让人用概念版 App；已经登上了，
+            // 再按选择器说就成了假话（凭证可能是上次登的标准版）。
+            return (NeteaseMusicService.isLoggedIn(platform)
+                    ? KuGouMusicService.isConceptProfile() : kuGouConceptLogin)
+                    ? "酷狗概念版客户端" : "酷狗音乐客户端";
+        }
+        if (platform == MusicPlatform.QISHUI) return "抖音 App";
+        if (platform == MusicPlatform.BILIBILI) return "哔哩哔哩 App";
+        if (platform == MusicPlatform.QQ) return "手机 QQ";
+        return "网易云音乐客户端";
+    }
+
+    private String identityMeta(MusicPlatform platform) {
+        if (platform == MusicPlatform.NETEASE) {
+            User profile = CloudMusic.profile;
+            if (profile != null) return "网易云 ID " + profile.getId();
+        }
+        if (platform == MusicPlatform.QISHUI) {
+            String douyinId = QishuiMusicService.getDouyinId();
+            if (!douyinId.isEmpty()) return "抖音 ID " + douyinId;
+            String accountId = QishuiMusicService.getAccountId();
+            if (!accountId.isEmpty()) return "汽水账号 " + accountId;
+        }
+        if (platform == MusicPlatform.BILIBILI) {
+            String uid = BilibiliMusicService.getAccountId();
+            if (!uid.isEmpty()) return "B 站 UID " + uid;
+        }
+        if (platform == MusicPlatform.KUGOU) {
+            // 身份<b>跟着凭证走，不跟着选择器走</b>：一台机器上两种客户端的账号都可能登过，
+            // 而这次会话选的是「下一次扫码用哪个身份」，与已经登着的那个不是一回事。
+            String name = KuGouMusicService.getAccountName();
+            String label = KuGouMusicService.getProfileLabel();
+            String meta = name == null || name.isEmpty() ? label + " · 已登录" : label + " · " + name;
+            // 概念版身份但 user_verify 没过：最常见原因是拿标准版 App 扫了概念版码。
+            // 只提示不拦截——网络抖动也会落在这里，凭证本身未必无效。
+            if (KuGouMusicService.isConceptProfile() && !KuGouAuth.isUserVerified()) {
+                meta += " · 凭证校验未过，建议用概念版 App 重扫";
+            }
+            return meta;
+        }
+        if (platform == MusicPlatform.APPLE) {
+            // Apple 不暴露账号标识；cookies 里有 media-user-token 也只是个 opaque 令牌，
+            // 展示它只会诱导用户把它当密码贴去别处。
+            return com.muoniumplayer.core.ncm.apple.AppleMusicService.isLoggedIn()
+                    ? "Apple Music · cookies 已验证" : "Apple Music · 未登录";
+        }
+        return platform.getDisplayName() + " · 已登录";
+    }
+
+    private boolean isAccountVip(MusicPlatform platform) {
+        if (platform == MusicPlatform.QISHUI) {
+            return NeteaseMusicService.isLoggedIn(platform) && QishuiMusicService.isVipAccount();
+        }
+        if (platform == MusicPlatform.BILIBILI) {
+            return NeteaseMusicService.isLoggedIn(platform) && BilibiliMusicService.isVipAccount();
+        }
+        if (platform == MusicPlatform.APPLE) {
+            // cookies 里没有可查的订阅档位；不写这条会掉进 isNeteaseVip 的默认档 ——
+            // 它对非 NETEASE 平台恒 false，行为碰巧正确，但那是个巧合不是约定。
+            return false;
+        }
+        return isNeteaseVip(platform);
+    }
+
+    /**
+     * 是不是「网易云 + 已登录 + 会员」。
+     *
+     * <p>三个条件缺一不可：QQ 与酷狗没有对应的会员字段，而 {@code CloudMusic.profile} 在切到别的
+     * 来源之后仍然留着上一次的网易云资料，只看 profile 会让 QQ 卡上也挂一枚网易云会员标。</p>
+     */
+    private boolean isNeteaseVip(MusicPlatform platform) {
+        if (platform != MusicPlatform.NETEASE || !NeteaseMusicService.isLoggedIn(platform)) return false;
+        User profile = CloudMusic.profile;
+        return profile != null && profile.isVipMember();
+    }
+
+    private int statusColor() {
+        if (statusTone == 1) return OK_COLOR;
+        if (statusTone == 2) return BAD_COLOR;
+        if (statusTone == 3) return WARN_COLOR;
+        return NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT);
+    }
+
+    private String statusGlyph() {
+        if (statusTone == 1) return PartyIcons.CLOUD_DONE;
+        if (statusTone == 2) return PartyIcons.WARNING;
+        if (statusTone == 3) return PartyIcons.HOURGLASS;
+        return PartyIcons.INFO;
+    }
+
+    private static String brandGlyph(MusicPlatform platform) {
+        if (platform == MusicPlatform.KUGOU) return MusicBrandIcons.KUGOU_MONOGRAM;
+        if (platform == MusicPlatform.QISHUI) return MusicBrandIcons.QISHUI_MONOGRAM;
+        if (platform == MusicPlatform.BILIBILI) return MusicBrandIcons.BILIBILI_MONOGRAM;
+        if (platform == MusicPlatform.APPLE) return MusicBrandIcons.APPLE_MONOGRAM;
+        return platform == MusicPlatform.QQ ? MusicBrandIcons.QQ_MUSIC : MusicBrandIcons.NETEASE_CLOUD_MUSIC;
+    }
+
+    /**
+     * 品牌字标的字体。
+     *
+     * <p>必须配对到自己那份字体：music-brand-icons 里没有 U+E888（QQ 音乐），拿错字体会落到
+     * 兜底字体上、画出一片空白。酷狗两份图标字体里都没有，用正文字体画一枚汉字字标。</p>
+     *
+     * <p>这一对只在 {@link BrandVectorIcons} 画不出来时兜底：酷狗、B 站与汽水现在都有真矢量标识。</p>
+     */
+    private static CFontRenderer brandFont(MusicPlatform platform) {
+        if (platform == MusicPlatform.KUGOU || platform == MusicPlatform.QISHUI
+                || platform == MusicPlatform.BILIBILI) return FontManager.pf34bold;
+        return platform == MusicPlatform.QQ ? FontManager.qqMusicIcon68 : FontManager.musicBrand52;
+    }
+
+    private String safeMessage(Throwable throwable) {
+        String message = throwable == null ? null : throwable.getMessage();
+        return message == null || message.trim().isEmpty() ? "未知错误" : message;
+    }
+}

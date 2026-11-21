@@ -42,6 +42,7 @@ public final class UiResourcePickerSources {
     }
     public static List<Entry<ItemStack>> bookmarks() { return List.of(); }
     public static boolean bookmarksAvailable() { return false; }
+    public static boolean jeiOrderAvailable() { return false; }
     public static Entry<ItemStack> entry(String key, ItemStack original, int amount) {
         var stack = original.copy(); stack.setCount(1);
         String id = BuiltInRegistries.ITEM.getKey(stack.getItem()).toString();

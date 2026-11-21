@@ -37,7 +37,8 @@ public final class UiButton extends Button {
     private final boolean primary;
     private final UiStyle style;
     private final DarkModeTheme.Interaction motion = DarkModeTheme.Interaction.control();
-    private boolean justPressed;
+    private long pressUntil;
+    private boolean pointerHeld;
     private boolean held;
     private boolean selected;
     private long selectedAt;
@@ -125,6 +126,9 @@ public final class UiButton extends Button {
     }
 
     ThemeButtonStyle.Paint themePaint(DarkModeTheme.State state, boolean pressed) {
+        var theme = UiTheme.current();
+        if (theme == UiTheme.EDITOR_WORKBENCH)
+            return theme.editorButton(state.enabled(), state.highContrast(), selected, state.hover(), state.press());
         var paint = hasThemeBinding() ? themeBinding.sample(isHovered(), pressed, state.focused(), state.enabled(),
                 state.highContrast(), selected, state.hover(), state.press())
                 : DisplaySuiteButtonPaint.sample(com.dishanhai.sh_better_ui.config.ClientUiSettings.current().theme(),
@@ -239,7 +243,7 @@ public final class UiButton extends Button {
 
     @Override
     public void onPress() {
-        justPressed = true;
+        pressUntil = PageTransition.nowMs() + 110L;
         super.onPress();
     }
 
@@ -247,21 +251,40 @@ public final class UiButton extends Button {
     public boolean mouseClicked(double mouseX, double mouseY, int button) {
         if (UiLocalModal.hidesSource(this)) return false;
         boolean handled = super.mouseClicked(mouseX, mouseY, button);
-        if (handled) UiLocalModal.captureSourcePress(this, button);
+        if (handled) {
+            pointerHeld = button == 0;
+            UiLocalModal.captureSourcePress(this, button);
+        }
         return handled;
     }
+
+    @Override
+    public boolean mouseReleased(double mouseX, double mouseY, int button) {
+        if (button == 0) pointerHeld = false;
+        return super.mouseReleased(mouseX, mouseY, button);
+    }
+
+    @Override
+    public void setFocused(boolean focused) {
+        super.setFocused(focused);
+        if (!focused) pointerHeld = false;
+    }
+
+    private boolean pressed(long now) { return active && (held || pointerHeld && isHovered() || now < pressUntil); }
 
     @Override
     protected void renderWidget(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (UiLocalModal.hidesSource(this)) {
             isHovered = false;
-            justPressed = false;
+            pointerHeld = false;
+            pressUntil = 0;
             return;
         }
         if (isHovered && UiLocalModal.coversMouse(mouseX, mouseY)) isHovered = false;
         if (isCapsule() && UiOverlayHost.hidesSource(this)) return;
         long now = PageTransition.nowMs();
-        boolean pressed = justPressed || held;
+        if (!Minecraft.getInstance().isWindowActive()) pointerHeld = false;
+        boolean pressed = pressed(now);
         var effective = effectivePreferences();
         var state = sampleMotion(now, effective);
         var paint = themePaint(state, pressed);
@@ -304,7 +327,7 @@ public final class UiButton extends Button {
     }
 
     int expansionFill(long now) {
-        boolean pressed = justPressed || held;
+        boolean pressed = pressed(now);
         var effective = effectivePreferences();
         var state = sampleMotion(now, effective);
         var paint = themePaint(state, pressed);
@@ -316,7 +339,7 @@ public final class UiButton extends Button {
 
     FluidMorph renderMorph(GuiGraphics graphics, GuiRect target, UiPreferences panelPreferences,
                            float progress, long now) {
-        boolean pressed = justPressed || held;
+        boolean pressed = pressed(now);
         var effective = effectivePreferences();
         var state = sampleMotion(now, effective);
         var paint = themePaint(state, pressed);
@@ -363,9 +386,7 @@ public final class UiButton extends Button {
     }
 
     private DarkModeTheme.State sampleMotion(long now, UiPreferences effective) {
-        var state = motion.sample(isHovered(), justPressed || held, isFocused(), active, effective, now);
-        justPressed = false;
-        return state;
+        return motion.sample(isHovered(), pressed(now), isFocused(), active, effective, now);
     }
 
     /** 山海：聚合控件在提交点击前同步按住状态，不触发操作回调。 */

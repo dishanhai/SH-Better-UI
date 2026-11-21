@@ -11,7 +11,7 @@ class NativeRichDocumentMediaTest {
     @Test void resizeRetainsOwnerButRemovalClosesAndReopeningGetsFreshOwner() throws Exception {
         try(var client=NativeTestClient.install()) {
             var screen=new NativeRichDocumentScreen(null,Component.literal("Media"),new RichDocument(java.util.List.of()));
-            client.client().screen=screen;screen.width=320;screen.height=220;screen.init();
+            client.screen(screen);screen.width=320;screen.height=220;screen.init();
             var field=NativeRichDocumentScreen.class.getDeclaredField("media");field.setAccessible(true);
             var first=field.get(screen);assertNotNull(first);
             screen.width=200;screen.init();assertSame(first,field.get(screen));

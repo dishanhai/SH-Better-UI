@@ -59,9 +59,9 @@ class NativeMarkdownScreenTest {
         try (var fixture = NativeTestClient.install()) {
             var previous = new MarkdownExampleScreen(null, "Old");
             var current = new MarkdownExampleScreen(null, "Current");
-            fixture.client().screen = current;
+            fixture.screen(current);
             previous.onClose();
-            assertSame(current, fixture.client().screen);
+            assertSame(current, fixture.screen());
         }
     }
 

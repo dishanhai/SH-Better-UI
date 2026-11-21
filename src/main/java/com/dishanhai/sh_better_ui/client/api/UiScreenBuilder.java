@@ -1,5 +1,7 @@
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+
 import com.dishanhai.sh_better_ui.theme.ScopeOverride;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
@@ -12,6 +14,7 @@ import java.util.function.Supplier;
 
 /** 山海：Java 与客户端脚本共用的原生界面构建器，构建时冻结回调。 */
 public final class UiScreenBuilder {
+    UiTheme workbenchPalette;
     private final Component title;
     private final Supplier<UiApiContext> contexts;
     private final Consumer<UiScreen> onBuilt;
@@ -123,6 +126,7 @@ public final class UiScreenBuilder {
     public UiScreen build() {
         var screen = new UiScreen(new Definition(title.copy(), contexts, parent, parentSpecified, returnFocus, pausesGame,
                 backButton, backgroundMode, onInit, onRender, onForeground, onTick, onRemoved, onError, theme));
+        screen.workbenchPalette = workbenchPalette;
         onBuilt.accept(screen);
         return screen;
     }

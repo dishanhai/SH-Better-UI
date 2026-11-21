@@ -14,7 +14,7 @@ class NativeGlassDetailPageTest {
             var saved=ControlPanelSettings.current();var parent=new ControlPanelScreen(null);
             var initial=saved.withGlass(saved.backgroundBlur(),true,50,60,70);set(parent,"draft",initial);
             var page=parent.glassParametersPage();var screen=page.builder().parent(parent).build();
-            client.client().screen=screen;screen.width=320;screen.height=220;var init=UiScreen.class.getDeclaredMethod("init");init.setAccessible(true);init.invoke(screen);
+            client.screen(screen);screen.width=320;screen.height=220;var init=UiScreen.class.getDeclaredMethod("init");init.setAccessible(true);init.invoke(screen);
             client.client().setLastInputType(net.minecraft.client.InputType.KEYBOARD_TAB);
             var slider=screen.children().stream().filter(UiSlider.class::isInstance).map(UiSlider.class::cast).findFirst().orElseThrow();
             screen.setFocused(slider);assertTrue(screen.keyPressed(new KeyEvent(262,0,0)));

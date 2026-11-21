@@ -1,0 +1,20 @@
+SHBUI headphone surround impulse responses
+
+Bill Gardner and Keith Martin, HRTF Measurements of a KEMAR Dummy-Head
+Microphone, MIT Media Lab, May 1994 (Technical Report 280).
+Copyright 1994 by the MIT Media Laboratory.
+The authors permit use of the data, including in commercial applications,
+subject to attribution. Their terms and measurements are available at
+https://sound.media.mit.edu/resources/KEMAR.html
+https://sound.media.mit.edu/resources/KEMAR/hrtfdoc.txt
+
+Source: https://sound.media.mit.edu/resources/KEMAR/compact.zip
+SHA-256: 0bcd69f8e8760cf8eacff4a89594ceca7d44fb94f28ecf0bf19970003bbfb3e0
+
+The compact set derives symmetric 128-sample binaural responses from the
+small-pinna measurements and includes loudspeaker equalization. SHBUI uses
+five horizontal source directions, 15, 30, 45, 60 and 75 degrees. SHBUI
+separates the near/far channels, mirrors the source pair, converts to
+little-endian float32 and supplies an impulse-gain-corrected 48 kHz copy.
+All directions share one attenuation for headroom. The transformation is
+reproducible with scripts/generate-kemar-responses.py.

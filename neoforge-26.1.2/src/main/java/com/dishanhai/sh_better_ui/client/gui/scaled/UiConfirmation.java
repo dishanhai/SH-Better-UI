@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -73,7 +74,7 @@ public final class UiConfirmation {
                                     Consumer<GuiGraphicsExtractor> context, Supplier<? extends GuiEventListener> restoreFocus,
                                     Runnable onConfirm, GraphicIcon icon, boolean glass, Runnable onAbandon) {
         Minecraft client = Minecraft.getInstance();
-        if (parent == null || client.screen != parent) return false;
+        if (parent == null || NativePort.screen(client) != parent) return false;
         Objects.requireNonNull(prompt);
         Objects.requireNonNull(preferences);
         Objects.requireNonNull(restoreFocus);
@@ -81,17 +82,17 @@ public final class UiConfirmation {
         var choice = new Choice(client, parent, restoreFocus, onConfirm, onAbandon);
         var screen = new ConfirmationScreen(prompt, preferences, context, choice.state, icon, glass);
         choice.state.attach(screen);
-        client.setScreen(screen);
-        return client.screen == screen;
+        NativePort.show(client, screen);
+        return NativePort.screen(client) == screen;
     }
 
     private static final class Choice {
         private final ConfirmationChoice<Screen> state;
         private Choice(Minecraft client, Screen parent, Supplier<? extends GuiEventListener> restoreFocus,
                        Runnable onConfirm, Runnable onAbandon) {
-            state = new ConfirmationChoice<>(parent, () -> client.screen, client::setScreen, () -> {
+            state = new ConfirmationChoice<>(parent, () -> NativePort.screen(client), next -> NativePort.show(client, next), () -> {
                 GuiEventListener target = restoreFocus.get();
-                if (client.screen == parent && target != null && parent.children().contains(target)
+                if (NativePort.screen(client) == parent && target != null && parent.children().contains(target)
                         && (!(target instanceof net.minecraft.client.gui.components.AbstractWidget widget)
                             || widget.active && widget.visible)) parent.setFocused(target);
             }, onConfirm, onAbandon);

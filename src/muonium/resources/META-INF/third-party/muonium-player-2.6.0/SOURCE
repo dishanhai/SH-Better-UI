@@ -1,0 +1,41 @@
+MuoniumPlayer 2.6.0
+Copyright 2026 MuoniumPlayer Team
+https://github.com/zihe114514/MuoniumPlayer-multiversion/tree/eb541684e9d681d8145f5f9d681cf31980646dc7
+Source modules: muonium-common, mpparty-common, mpserver-core, version-specific source and loader adapters.
+
+SHBUI changes by dishanhai, November 2026:
+* Player-facing branding is SHBUI. The MuoniumPlayer Team and third-party contributors
+  retain their respective copyrights.
+  The original package names, protocol identifiers, configuration paths and preset formats
+  are retained. Optional SHBUI theme and widget choices are local UI preferences.
+* Player and room implementation compiled from source into the host. Loader events, mixins,
+  resource discovery, native libraries and launch routes are integrated with SHBUI.
+* Native widgets and fonts live in the UUK platform source root; theme, input and font
+  callbacks are supplied by the host. Text fonts use SHBUI's licensed fonts; remapped
+  Lucide glyphs retain their own notice in META-INF/third-party/lucide.
+* The desktop directory picker uses LWJGL. Startup no longer installs separate mods,
+  the optional Closure compiler or the Qishui companion. Original settings and media
+  catalog identifiers are retained. Local YRC and ViPER kernels can be supplied by users.
+* WAV random-access reads respect the data chunk's last complete sample. The embedded
+  room engine preserves the mpsync wire format. Its license and notice are included.
+  Direct invitations include the current room code and accept both the documented
+  address:port#password#code form and the older four-segment form.
+* Apple's full subscription playback remains with SHBUI's browser MusicKit integration.
+  The embedded player's PCM route supports public previews and its provider fallback.
+* Bundled MP devices/keys, third-party song lyrics, Apple font binaries, and
+  personal-use impulse responses are excluded.
+* Stock headphone surround uses the symmetric MIT KEMAR measurements by Bill
+  Gardner and Keith Martin. The two SHBUI room presets use the University of
+  Surrey's measured BRIRs. See META-INF/third-party/mit-kemar and surrey-brir
+  for data-specific credits and terms. User-provided original kernels take precedence.
+  The ViPER DSP implementation remains derived from NEURAX-FX/ViPERDSP and
+  its upstream contributors, as noted in the individual source files.
+
+Upstream LICENSE and NOTICE are reproduced here. Individual components retain their own
+licenses and copyright notices. See the Java sources in repackage/ and the sources JAR.
+Skija and Skia notices are included here. ZXing is from com.google.zxing:core:3.5.3.
+Rhino 1.7.15 is package-relocated. Its original notices are included here.
+Processing Sound: https://github.com/processing/processing-sound
+TarsosDSP and BeatRoot: https://github.com/JorenSix/TarsosDSP
+JOrbis, JLayer and jFLAC retain the notices in their source files. See also
+META-INF/third-party/jlayer/LICENSE-LGPL-2.1. JSyn's Apache-2.0 notices remain in source.

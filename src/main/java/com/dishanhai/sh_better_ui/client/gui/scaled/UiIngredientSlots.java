@@ -41,6 +41,7 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
     private double pointerX, pointerY;
     private boolean allowDrag = true;
     private boolean rounded;
+    private int markedSlot = -1;
     private boolean cancelledPress;
 
     public UiIngredientSlots(Font font, Bounds area, Component name, int columns, List<ItemStack> items,
@@ -87,6 +88,9 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
     /** Maps a hovered slot to its drop destination. Returning -1 for (from, from) disables dragging that slot. */
     public void setDropTarget(IntBinaryOperator target) { dropTarget = Objects.requireNonNull(target); }
     public void setRounded(boolean value) { rounded = value; }
+
+    /** Marks an assignment target independently of keyboard focus. Use -1 to clear the mark. */
+    public void setMarkedSlot(int index) { markedSlot = index; }
 
     /** Call when unmounting a widget before its Screen closes. */
     public void cancelInteraction() {
@@ -201,12 +205,17 @@ public final class UiIngredientSlots extends UiIngredientSlotsPlatform {
         int pressed = state.pressed(), target = state.target(), selected = isFocused() ? state.selected() : -1;
         int highlight = preferences.highContrast() ? theme.text() : theme.accent();
         int surface = theme.surface() | 0xFF000000;
+        int pressedSurface = GuiMotion.lerpColor(surface, theme.background(), 0.65f);
+        int targetSurface = GuiMotion.lerpColor(surface, highlight, 0.22f);
         boolean dragging = state.dragging();
         for (int i = 0; i < items.size(); i++) {
             int sx = getX() + i % columns * (side + 2), sy = getY() + i / columns * (side + 2);
-            boolean marked = i == target || i == pressed || i == hovered || i == selected;
+            boolean marked = i == target || i == pressed || i == hovered || i == selected || i == markedSlot;
             fillSlot(canvas, sx, sy, side, marked ? highlight : theme.border());
-            if (side > 2) fillSlot(canvas, sx + 1, sy + 1, side - 2, surface);
+            if (side > 2) {
+                int fill = i == pressed ? pressedSurface : i == target || i == markedSlot ? targetSurface : surface;
+                fillSlot(canvas, sx + 1, sy + 1, side - 2, fill);
+            }
             var stack = items.get(i);
             if (side >= 18 && !stack.isEmpty() && !(dragging && i == pressed))
                 canvas.item(font, stack, sx + (side - 16) / 2, sy + (side - 16) / 2);

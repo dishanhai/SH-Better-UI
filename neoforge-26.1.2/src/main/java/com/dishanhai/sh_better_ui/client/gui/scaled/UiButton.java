@@ -45,7 +45,7 @@ public final class UiButton extends Button {
     private final Transition hoverMotion = new Transition();
     private final Transition pressMotion = new Transition();
     private UiPreferences preferences;
-    private boolean justPressed;
+    private long pressUntil;
     private boolean pointerHeld;
     private boolean held;
     private boolean selected;
@@ -220,7 +220,7 @@ public final class UiButton extends Button {
     }
 
     public void onPress() {
-        justPressed = true;
+        pressUntil = Util.getMillis() + 110L;
         onPress.onPress(this);
     }
 
@@ -257,13 +257,14 @@ public final class UiButton extends Button {
         boolean enabled = isActive();
         boolean focused = enabled && isFocused();
         if (!enabled || pointerHeld && !Minecraft.getInstance().isWindowActive()) pointerHeld = false;
-        boolean pressed = enabled && (justPressed || pointerHeld || held);
-        justPressed = false;
         long now = Util.getMillis();
+        boolean pressed = enabled && (now < pressUntil || pointerHeld && isHovered() || held);
         boolean immediate = effective.reducedMotion() || !enabled;
         float hover = hoverMotion.sample(enabled && isHovered(), immediate || !feedback.hoverAnimation(), now);
         float press = pressMotion.sample(pressed, immediate || pressed || !feedback.pressAnimation(), now);
-        var paint = binding == null
+        var theme = UiTheme.current();
+        var paint = theme == UiTheme.EDITOR_WORKBENCH ? theme.editorButton(enabled, effective.highContrast(), selected, hover, press)
+                : binding == null
                 ? palette(effective, focused, enabled, hover, press, now)
                 : binding.sample(isHovered(), pressed, focused, enabled, effective.highContrast(), selected, hover, press);
         if (cornerRadius >= 0) paint = new ThemeButtonStyle.Paint(paint.fill(), paint.text(), paint.border(),
@@ -332,6 +333,8 @@ public final class UiButton extends Button {
             int indicator = effective.highContrast() || !isActive() ? text : paint.accent();
             if (mode != null) {
                 drawModeIndicators(graphics, mode, text, indicator, effective);
+            } else if (selected && UiTheme.current() == UiTheme.EDITOR_WORKBENCH && width > 4 && height > 5) {
+                graphics.fill(x + 2, y + height - 3, x + width - 2, y + height - 1, applyAlpha(indicator));
             } else if (selected && width > 10 && height > 5) {
                 int halfWidth = Math.min(4, width / 4);
                 int center = x + width / 2;

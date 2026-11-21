@@ -181,8 +181,8 @@ final class NativeRichDocumentEditorTest {
     @Test void staleCloseCannotNavigateOrDiscardEdits() throws Exception {
         try (var fixture = NativeTestClient.install()) {
             var screen = new NativeRichDocumentEditorScreen(null, Component.literal("Editor"), initial());
-            screen.model.add("text"); fixture.client().screen = null;
-            screen.onClose(); assertTrue(screen.model.dirty()); assertNull(fixture.client().screen);
+            screen.model.add("text"); fixture.screen(null);
+            screen.onClose(); assertTrue(screen.model.dirty()); assertNull(fixture.screen());
         }
     }
 }
