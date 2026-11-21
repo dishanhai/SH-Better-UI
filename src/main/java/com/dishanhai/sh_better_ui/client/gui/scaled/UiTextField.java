@@ -226,7 +226,8 @@ public final class UiTextField extends UiTextFieldPlatform {
         boolean quiet = appearance == Appearance.QUIET;
         int stroke = quiet ? (focused || error != null || preferences.highContrast() ? 1 : 0) : (focused ? 2 : 1);
         if (quiet) fill = GuiMotion.lerpColor(opaque(theme.background()), ink, .055f + emphasis * .025f);
-        canvas.box(getX(), getY(), getWidth(), getHeight(), quiet ? 4 : 5, stroke, edge, fill);
+        int radius = theme == UiTheme.EDITOR_WORKBENCH ? 0 : quiet ? 4 : 5;
+        canvas.box(getX(), getY(), getWidth(), getHeight(), radius, stroke, edge, fill);
         int lineHeight = lineHeight();
         if (getWidth() <= 2 * PADDING || getHeight() < lineHeight) return;
         revealCaret();

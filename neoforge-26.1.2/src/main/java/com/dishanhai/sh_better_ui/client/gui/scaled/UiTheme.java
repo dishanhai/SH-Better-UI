@@ -13,6 +13,8 @@ import com.dishanhai.sh_better_ui.theme.token.TokenLookup;
 public record UiTheme(boolean light, int background, int surface, int border, int text, int accent, int overrides) {
     private static final int BACKGROUND = 1, SURFACE = 2, BORDER = 4, TEXT = 8, ACCENT = 16, LIQUID_GLASS = 32, HUD_GLASS = 64;
     private static final ThreadLocal<UiTheme> PREVIEW = new ThreadLocal<>();
+    public static final UiTheme EDITOR_WORKBENCH = new UiTheme(false, 0xFF0D1624, 0xFF162B40,
+            0xFF37576B, 0xFFE4F0FC, 0xFF68E3FA, BACKGROUND | SURFACE | BORDER | TEXT | ACCENT);
     private static final UiTheme DARK = new UiTheme(false, ThemeTokens.BACKGROUND.defaultValue().argb(),
             ThemeTokens.SURFACE.defaultValue().argb(), ThemeTokens.BORDER.defaultValue().argb(),
             ThemeTokens.TEXT.defaultValue().argb(), ThemeTokens.ACCENT.defaultValue().argb(), 0);
@@ -84,6 +86,15 @@ public record UiTheme(boolean light, int background, int surface, int border, in
             case CUSTOM -> GraphicIcon.CUSTOM_THEME;
             case LIQUID_GLASS, HUD_GLASS -> GraphicIcon.BLUR;
         };
+    }
+
+    ThemeButtonStyle.Paint editorButton(boolean enabled, boolean contrast, boolean selected, float hover, float press) {
+        int focus = contrast ? text : accent;
+        int fill = enabled ? GuiMotion.lerpColor(surface, accent, (selected ? 0.15f : 0f) + 0.12f * hover) : background;
+        fill = GuiMotion.lerpColor(fill, background, press * 0.7f);
+        int edge = contrast || selected ? focus : GuiMotion.lerpColor(border, accent, Math.max(hover * 0.4f, press));
+        int label = enabled || contrast ? text : secondaryText(text, 0.48f);
+        return new ThemeButtonStyle.Paint(fill, label, edge, focus, accent, background, 0, 1, false);
     }
 
     public boolean liquidGlass() { return (overrides & LIQUID_GLASS) != 0; }
