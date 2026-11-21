@@ -1,11 +1,12 @@
-name: Build SH-Better-UI
+name: Build SH-Better-UI (Push)
 
 on:
   push:
-    branches: [main]
+    branches: ['**']
+  # A fork's push is not a push to this repository.
   pull_request:
     branches: [main]
-  workflow_dispatch:
+  workflow_call:
 
 permissions:
   contents: read
@@ -16,11 +17,11 @@ concurrency:
 
 jobs:
   build:
+    # Same-repository PR commits already run on push; keep the check for fork PRs.
+    if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name != github.repository
     name: ${{ matrix.platform }}
     runs-on: ubuntu-24.04
     timeout-minutes: 40
-    # 26.2 is tracked here without blocking the supported targets. See TODO.md.
-    continue-on-error: ${{ matrix.experimental }}
     strategy:
       fail-fast: false
       matrix:
@@ -29,22 +30,18 @@ jobs:
             project: .
             gradle: '8.8'
             java: '21'
-            experimental: false
           - platform: neoforge-1.21.1
             project: neoforge-1.21.1
             gradle: '9.2.1'
             java: '21'
-            experimental: false
           - platform: neoforge-26.1.2
             project: neoforge-26.1.2
             gradle: '9.2.1'
             java: '25'
-            experimental: false
           - platform: neoforge-26.2
             project: neoforge-26.2
             gradle: '9.2.1'
             java: '25'
-            experimental: true
 
     steps:
       - name: Check out source
