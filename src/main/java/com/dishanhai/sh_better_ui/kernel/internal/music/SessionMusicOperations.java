@@ -98,7 +98,13 @@ public final class SessionMusicOperations implements AutoCloseable {
             try { owner=action.get(); }
             catch(RuntimeException error) { owner=CompletableFuture.failedFuture(error); }
             synchronized(this) { handle.owner=owner; }
-            owner.whenComplete((value,error)->complete(handle,value,error));
+            owner.whenComplete((value,error)-> {
+                complete(handle,value,error);
+                // Observers can update the view immediately. Publish only after the registry
+                // has recorded the terminal state and the history-retention timestamp.
+                if (error == null) handle.settled.complete(value);
+                else handle.settled.completeExceptionally(error);
+            });
             return handle;
         }
     }
@@ -141,6 +147,7 @@ public final class SessionMusicOperations implements AutoCloseable {
     public final class Handle<T> {
         private final long id; private final Request request;
         private CompletableFuture<T> owner;
+        private final CompletableFuture<T> settled = new CompletableFuture<>();
         private State state=State.RUNNING;private Error error=Error.NONE;private boolean background;
         private long completed, accountEpoch;
         private Handle(long id,Request request){this.id=id;this.request=request;this.accountEpoch=accountEpochs.getOrDefault(request.source(),0L); }
@@ -154,7 +161,7 @@ public final class SessionMusicOperations implements AutoCloseable {
         /** Independent observer: cancelling this future never cancels session-owned work. */
         public CompletableFuture<T> observe(){synchronized(SessionMusicOperations.this){
             if(!valid())return CompletableFuture.failedFuture(new CancellationException());
-            return owner.copy();
+            return settled.copy();
         }}
         /** Called only while the view still has an unconsumed observer. Completion may race page removal. */
         public void detach(){synchronized(SessionMusicOperations.this){
