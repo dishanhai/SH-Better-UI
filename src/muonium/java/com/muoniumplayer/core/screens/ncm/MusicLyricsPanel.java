@@ -47,6 +47,7 @@ import java.util.List;
  */
 public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstants {
     static double scrollOffset, scrollTarget;
+    private final SingVocalFader singFader = new SingVocalFader();
 
     static ITextureObject prevCover;
     static Music prevMusic = null;
@@ -716,6 +717,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     /** Release the native fluid compositor when the panel is removed from the screen. */
     public void dispose() {
+        singFader.dispose();
         fluidLyricBackground.dispose();
         foliaBackground.dispose();
         appleCoverBackdrop.reset();
@@ -729,6 +731,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     public void close() {
         invalidateLyricPointers();
+        singFader.dispose();
         closing = true;
         CoverHeroTransition.beginClose();
     }
@@ -758,10 +761,11 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         // 进场前 16% 与退场末段本层都是全透明的。此前只有退场会跳过，进场仍会完整画一遍
         // 背景、控制栏与歌词；低配机上这就是开头连续掉帧的来源之一。
         if (alpha <= CLOSE_ALPHA_EPSILON) {
+            singFader.dismiss();
             invalidateLyricPointers();
             return;
         }
-        if (lmbDownNow) {
+        if (lmbDownNow && !singFader.capturesDrag()) {
             classicLyricPointer.pointerMoved(mouseX, mouseY, Math.max(1, TouchSettings.DRAG_THRESHOLD_PX));
             appleRenderer().dragLyric(mouseX, mouseY);
         }
@@ -799,11 +803,17 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         // 读同一个时钟，稳态严格归零。歌词窗口尚未开始显现时直接跳过整列布局/绘制；
         // 这不改变任何可见像素，却避免进场前半段在低配机上白算一整首歌词。
         double lyricsFade = CoverHeroTransition.lyricsFade();
+        boolean showSing = lyricsFade > .002 && !presentation.preparing
+                && currentStyleRenderer() instanceof AppleLyricRenderer;
+        singFader.layout(snapshot, showSing, !CoverHeroTransition.isRunning() && !closing
+                && !styleQuickPanel.isExpanded() && !NCMScreen.getInstance().isModalOverlayActive(),
+                lyricViewport.left, lyricViewport.top, lyricViewport.right(), lyricViewport.bottom());
         if (lyricsFade > .002) {
             double lyricRise = (1.0 - lyricsFade) * height * .014;
             // 快捷面板的触摸滚动先于歌词列认领（面板浮在歌词之上，同一点按下时上面那层赢）。
             this.styleQuickPanel.advanceTouchDrag();
-            int lyricWheel = this.styleQuickPanel.handleScroll(dWheel, mouseX, mouseY) ? 0 : dWheel;
+            int lyricWheel = this.styleQuickPanel.handleScroll(dWheel, mouseX, mouseY)
+                    || singFader.scroll(dWheel, mouseX, mouseY) ? 0 : dWheel;
             api.getGLStateManager().pushMatrix();
             api.getGLStateManager().translate(0, lyricRise, 0);
             if (presentation.preparing) {
@@ -817,6 +827,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             invalidateLyricPointers();
         }
         // 快捷面板画在最后：它是浮层，必须盖在封面与歌词之上。
+        singFader.render(mouseX, mouseY, lmbDownNow, alpha * (float) lyricsFade);
         this.styleQuickPanel.render(mouseX, mouseY, posX, posY, width, height, alpha);
         api.getGLStateManager().popMatrix();
     }
@@ -2183,6 +2194,17 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         prev.onMouseClickReceived(mouseX, mouseY, mouseButton);
         next.onMouseClickReceived(mouseX, mouseY, mouseButton);
     }
+
+    boolean pressSingFader(double x, double y) {
+        return !closing && !styleQuickPanel.isExpanded() && !NCMScreen.getInstance().isModalOverlayActive()
+                && singFader.press(x, y);
+    }
+
+    boolean hasSingFaderPress() { return singFader.hasPress(); }
+
+    boolean releaseSingFader(double x, double y) { return singFader.release(x, y); }
+
+    boolean singKeyPressed(int keyCode) { return singFader.key(keyCode); }
 
     boolean metadataKeyPressed(int keyCode) {
         if (metadataTrack == null || closing || this.styleQuickPanel.isExpanded()) return false;

@@ -413,7 +413,7 @@ public class AudioPlayer {
      */
     private float routeVocalDepth(float depth) {
         SoundFile deck = this.player;
-        if (deck == null || !deck.hasVocalMaterial()) return depth;
+        if (deck == null || (!deck.hasVocalMaterial() && !deck.hasSingMaterial())) return depth;
         deck.setVocalMaterialLevel(1.0 - depth);
         return 0f;
     }
@@ -442,7 +442,32 @@ public class AudioPlayer {
         if (deck == null || !deck.hasVocalMaterial()) return;
         deck.detachVocalMaterial();
         AutomixDeckChain chain = this.automixChain;
-        if (chain != null) chain.duckDepth(this.vocalDuckDepth);
+        if (chain != null) chain.duckDepth(routeVocalDepth(this.vocalDuckDepth));
+    }
+
+    synchronized boolean attachSingMaterial(float[] voice) {
+        SoundFile deck = this.player;
+        if (deck == null || !isUsable() || !deck.attachSingMaterial(voice, FoliaStemProfile.MATERIAL_RATE))
+            return false;
+        AutomixDeckChain chain = this.automixChain;
+        float depth = routeVocalDepth(this.vocalDuckDepth);
+        if (chain != null) chain.duckDepth(depth);
+        return true;
+    }
+
+    boolean hasSingMaterial() {
+        SoundFile deck = this.player;
+        return deck != null && deck.hasSingMaterial();
+    }
+
+    void setSingVocalLevel(float level) {
+        SoundFile deck = this.player;
+        if (deck != null) deck.setSingVocalLevel(level);
+    }
+
+    float getSingVocalLevel() {
+        SoundFile deck = this.player;
+        return deck == null ? 1f : deck.getSingVocalLevel();
     }
 
     /** 这条接缝的人声让路是否已经由素材接管。 */

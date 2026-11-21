@@ -1,4 +1,11 @@
 {
+  "sh_better_ui.muonium.sing.label": "Vocal level",
+  "sh_better_ui.muonium.sing.idle": "Prepare vocals (Alt+V)",
+  "sh_better_ui.muonium.sing.preparing": "Separating vocals · %s%% · Click to cancel",
+  "sh_better_ui.muonium.sing.ready": "Vocals · %s%%",
+  "sh_better_ui.muonium.sing.model_missing": "Install the Folia stem model and runtime in AutoMix settings",
+  "sh_better_ui.muonium.sing.unsupported": "Requires local 44.1 kHz audio, up to six minutes",
+  "sh_better_ui.muonium.sing.failed": "No usable vocal stem. Click to retry.",
   "sh_better_ui.playing_metadata.artist": "Artist · %s",
   "sh_better_ui.playing_metadata.album": "Album · %s",
   "sh_better_ui.project_news.title": "SHBUI News",

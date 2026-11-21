@@ -101,7 +101,7 @@ final class FoliaVocalStem {
     }
 
     /** 分块读，避免为了 5 MB 素材先在堆上放一份等大的字节数组。 */
-    private static float[] readLittleEndianFloats(File file, long frames) throws Exception {
+    static float[] readLittleEndianFloats(File file, long frames) throws Exception {
         float[] samples = new float[(int) frames];
         int chunkFrames = 1 << 17;                             // 128K 帧 ≈ 512 KB
         ByteBuffer buffer = ByteBuffer.allocate(chunkFrames * FLOAT_BYTES).order(ByteOrder.LITTLE_ENDIAN);

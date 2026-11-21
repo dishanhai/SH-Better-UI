@@ -54,6 +54,10 @@ public final class VocalMaterialSample extends FloatSample {
     }
 
     private volatile Material material;
+    private volatile Material singMaterial;
+    private volatile double singLevel = 1.0;
+    // Only the audio read path uses this value. A live fader move ramps instead of stepping.
+    private double smoothedSingLevel = 1.0;
     private volatile double level = 1.0;
 
     public VocalMaterialSample(FloatSample inner) {
@@ -103,6 +107,24 @@ public final class VocalMaterialSample extends FloatSample {
         return this.material != null;
     }
 
+    public boolean attachSing(float[] voice, double rate) {
+        if (voice == null || voice.length != getNumFrames() || voice.length == 0
+                || !Double.isFinite(rate) || Math.round(rate) != Math.round(getFrameRate()))
+            return false;
+        singLevel = 1.0;
+        singMaterial = new Material(voice, 0L, 1.0);
+        return true;
+    }
+
+    public boolean hasSing() { return singMaterial != null; }
+
+    public void setSingLevel(double level) {
+        if (singMaterial != null)
+            singLevel = Double.isFinite(level) ? Math.max(0.0, Math.min(1.0, level)) : 1.0;
+    }
+
+    public double getSingLevel() { return singLevel; }
+
     /**
      * 人声在这一刻占几份：{@code 1} 为原样（也是直通分支），{@code 0} 为完全减掉。
      *
@@ -119,8 +141,17 @@ public final class VocalMaterialSample extends FloatSample {
     @Override
     public double readDouble(int index) {
         double raw = inner.readDouble(index);
-        Material held = this.material;
+        Material full = this.singMaterial;
+        Material held = full == null ? this.material : full;
         double voice = this.level;
+        if (full != null) {
+            double target = this.singLevel;
+            double delta = target - smoothedSingLevel;
+            double step = 1.0 / Math.max(1.0, getFrameRate() * getChannelsPerFrame() * .010);
+            smoothedSingLevel += Math.abs(delta) <= step ? delta : Math.copySign(step, delta);
+            // User attenuation and transition ducking compose without subtracting two stems.
+            voice *= smoothedSingLevel;
+        }
         if (held == null || voice >= 1.0 - IDLE_EPSILON) return raw;
         int channels = getChannelsPerFrame();
         int frame = channels > 1 ? index / channels : index;
@@ -167,6 +198,8 @@ public final class VocalMaterialSample extends FloatSample {
 
     @Override
     public void cleanUp() {
+        singMaterial = null;
+        singLevel = 1.0;
         detach();
         try {
             inner.cleanUp();
