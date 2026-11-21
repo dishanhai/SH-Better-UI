@@ -9,6 +9,9 @@ on:
       - .github/workflows/regression-tests.yml
       - scripts/ci-build.sh
       - scripts/ci-test-report.py
+      - scripts/test-custom-font-pack.py
+      - bridge/**
+      - web/tests/**
 
 permissions:
   contents: read
