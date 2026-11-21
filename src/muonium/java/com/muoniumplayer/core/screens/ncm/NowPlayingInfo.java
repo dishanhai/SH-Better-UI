@@ -44,7 +44,7 @@ import com.muoniumplayer.party.ui.PartyIcons;
  */
 final class NowPlayingInfo implements SharedRenderingConstants {
 
-    enum Action { EFFECTS, ARTIST, ALBUM }
+    enum Action { EFFECTS, ARTIST, ALBUM, PLAYLIST }
 
     private record Hit(Action action, double x, double y, double width, double height) {
         boolean contains(double px, double py) {
@@ -118,6 +118,7 @@ final class NowPlayingInfo implements SharedRenderingConstants {
     private final ScrollText stSubtitle = new ScrollText();
     private final ScrollText stArtist = new ScrollText();
     private final ScrollText stAlbum = new ScrollText();
+    private final ScrollText stPlaylist = new ScrollText();
 
     /** 曲名。全屏页的视觉锚点，尺寸与改版前一致。 */
     private static CFontRenderer titleFont() {
@@ -156,10 +157,12 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         String subtitle = subtitleOf(music);
         String artist = music == null ? "" : nonNull(music.getArtistsName()).trim();
         String album = albumOf(music);
+        String playlist = PlayingTrackPages.originalPlaylistName(music);
         List<Pill> pills = pillsOf(music);
 
         boolean showSubtitle = !subtitle.isEmpty();
         boolean showAlbum = !album.isEmpty();
+        boolean showPlaylist = !playlist.isEmpty();
         boolean showPills = !pills.isEmpty();
 
         double bottom;
@@ -169,8 +172,10 @@ final class NowPlayingInfo implements SharedRenderingConstants {
             if (showPills) bottom += GAP_PILLS + PILL_H;
             if (!artist.isEmpty()) bottom += GAP_ARTIST + rowFont.getHeight();
             if (showAlbum) bottom += GAP_ALBUM + rowFont.getHeight();
+            if (showPlaylist) bottom += GAP_ALBUM + rowFont.getHeight();
 
             if (bottom <= bottomLimit) break;
+            if (showPlaylist) { showPlaylist = false; continue; }
             if (showAlbum) { showAlbum = false; continue; }
             if (showSubtitle) { showSubtitle = false; continue; }
             if (showPills) { showPills = false; continue; }
@@ -196,17 +201,22 @@ final class NowPlayingInfo implements SharedRenderingConstants {
 
         if (!artist.isEmpty()) {
             cursor += GAP_ARTIST;
-            Action action = PlayingTrackPages.firstArtist(music).isEmpty() ? null : Action.ARTIST;
+            Action action = PlayingTrackPages.canOpen(music, false) ? Action.ARTIST : null;
             renderIconRow(PartyIcons.MIC, stArtist, artist, x, cursor, width, alpha * .90f, action);
             cursor += rowFont.getHeight();
         }
 
         if (showAlbum) {
             cursor += GAP_ALBUM;
-            renderIconRow(PartyIcons.ALBUM, stAlbum, album, x, cursor, width, alpha * .82f, Action.ALBUM);
+            Action action = PlayingTrackPages.canOpen(music, true) ? Action.ALBUM : null;
+            renderIconRow(PartyIcons.ALBUM, stAlbum, album, x, cursor, width, alpha * .82f, action);
             cursor += rowFont.getHeight();
         }
 
+        if (showPlaylist) {
+            cursor += GAP_ALBUM;
+            renderIconRow(PartyIcons.QUEUE_MUSIC, stPlaylist, playlist, x, cursor, width, alpha * .82f, Action.PLAYLIST);
+        }
         return bottom;
     }
 

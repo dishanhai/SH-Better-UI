@@ -136,6 +136,9 @@ public class Music {
     private transient String sourceId;
     private transient String sourceMid;
     private transient String externalCoverUrl;
+    /** Provider-native catalog IDs; the numeric DTO hashes are not valid endpoint IDs. */
+    private transient String catalogArtistId;
+    private transient String catalogAlbumId;
     /**
      * 自定义源（LX 脚本）补出来的封面。{@code null} 是「还没问过」，空串是「问过了，它也没有」。
      * 问一次要 20 秒起步，不能每帧都问。
@@ -674,6 +677,8 @@ public class Music {
                 artistList, Collections.emptyList(), album, track.durationMillis, 0L, 0L,
                 Collections.emptyList());
         music.source = MusicPlatform.SPOTIFY;
+        music.catalogArtistId = nonNull(track.artistId);
+        music.catalogAlbumId = nonNull(track.albumId);
         music.sourceId = trackId;
         music.sourceMid = trackId;
         music.externalCoverUrl = cover;
@@ -742,6 +747,8 @@ public class Music {
                 artistList, Collections.emptyList(), album, track.durationMillis, 0L, 0L,
                 Collections.emptyList());
         music.source = MusicPlatform.APPLE;
+        music.catalogArtistId = nonNull(track.artistId);
+        music.catalogAlbumId = nonNull(track.albumId);
         music.sourceId = trackId;
         music.sourceMid = trackId;
         music.externalCoverUrl = cover;
@@ -779,6 +786,8 @@ public class Music {
         copy.kugouHash = kugouHash;
         copy.kugouHash320 = kugouHash320;
         copy.kugouHashLossless = kugouHashLossless;
+        copy.catalogArtistId = catalogArtistId;
+        copy.catalogAlbumId = catalogAlbumId;
         copy.kugouAlbumId = kugouAlbumId;
         copy.kugouAlbumAudioId = kugouAlbumAudioId;
         copy.kugouCoverTemplate = kugouCoverTemplate;

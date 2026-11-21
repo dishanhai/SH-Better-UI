@@ -94,7 +94,12 @@ class Listen1BackupTest {
         assertNull(right.imported());
         assertThrows(IOException.class,()->Listen1Backup.parse("invalid", SOURCES));
         assertEquals(2,left.imported().supportedTracks());
-        left.replace(new Listen1Backup.Imported(List.of(),Map.of(),0,0));
-        assertTrue(left.imported().playlists().isEmpty());
+        var previous = left.imported();
+        assertFalse(left.replace(Listen1Backup.parse(
+                "{\"favoriteplayerlists\":[\"neplaylist_123\"]}", SOURCES)));
+        assertFalse(left.replace(Listen1Backup.parse(UPSTREAM_SHAPE, Set.of())));
+        assertSame(previous, left.imported());
+        assertFalse(right.replace(new Listen1Backup.Imported(List.of(),Map.of(),0,0)));
+        assertNull(right.imported());
     }
 }

@@ -374,6 +374,10 @@ public class CloudMusicApi {
         return RequestUtil.createRequest("/api/digitalAlbum/purchased", data, OptionsUtil.createOptions("weapi"));
     }
 
+    public RequestUtil.RequestAnswer artist(long artistId) {
+        return RequestUtil.createRequest("/api/v1/artist/" + artistId, new HashMap<>(), OptionsUtil.createOptions("weapi"));
+    }
+
     public RequestUtil.RequestAnswer album(long albumId) {
         return RequestUtil.createRequest("/api/v1/album/" + albumId, new HashMap<>(), OptionsUtil.createOptions("weapi"));
     }

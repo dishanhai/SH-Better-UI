@@ -17,7 +17,7 @@ class AppleLyricInteractionTest {
         begin();
         input.add(first, 2_000, box(20, 40, 60, 58));
         input.add(second, 3_000, box(20, 60, 60, 78));
-        input.press(35, 49, SESSION, REVISION);
+        input.press(35, 49, SESSION, REVISION, 5);
         assertTrue(input.isPressed(first));
 
         begin();
@@ -35,7 +35,7 @@ class AppleLyricInteractionTest {
         assertFalse(input.canHit(45, 19));
         assertFalse(input.canHit(65, 30));
         assertTrue(input.canHit(45, 20));
-        input.press(66, 30, SESSION, REVISION);
+        input.press(66, 30, SESSION, REVISION, 5);
         assertEquals(-1, input.release(64, 30, SESSION, REVISION));
     }
 
@@ -43,18 +43,18 @@ class AppleLyricInteractionTest {
     void cancelsDragsAndRejectsStaleOrUnpaintedFrames() {
         begin();
         input.add(new Object(), 8_000, box(20, 30, 65, 50));
-        input.press(35, 40, SESSION, REVISION);
+        input.press(35, 40, SESSION, REVISION, 5);
         input.drag(35, 52);
         assertEquals(-1, input.release(35, 40, SESSION, REVISION));
 
-        input.press(35, 40, SESSION, REVISION);
+        input.press(35, 40, SESSION, REVISION, 5);
         assertEquals(-1, input.release(46, 40, SESSION, REVISION));
-        input.press(35, 40, SESSION, REVISION);
+        input.press(35, 40, SESSION, REVISION, 5);
         assertEquals(-1, input.release(35, 40, SESSION + 1, REVISION));
-        input.press(35, 40, SESSION, REVISION);
+        input.press(35, 40, SESSION, REVISION, 5);
         assertEquals(-1, input.release(35, 40, SESSION, REVISION + 1));
 
-        input.press(35, 40, SESSION, REVISION);
+        input.press(35, 40, SESSION, REVISION, 5);
         input.invalidate();
         assertFalse(input.canHit(35, 40));
         assertEquals(-1, input.release(35, 40, SESSION, REVISION));

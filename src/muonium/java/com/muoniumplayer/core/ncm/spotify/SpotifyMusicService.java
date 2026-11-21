@@ -54,6 +54,7 @@ public final class SpotifyMusicService {
         public String id = "";
         public String name = "";
         public String artist = "";
+        public String artistId = "";
         public String album = "";
         public String albumId = "";
         public long durationMillis;
@@ -173,6 +174,22 @@ public final class SpotifyMusicService {
     }
 
     /** 专辑当卡片：封面与曲目数来自专辑本体，曲目由 {@link #playlistTracks} 的前缀分支拉。 */
+    public static List<Track> artistTopTracks(String artistId) {
+        try {
+            JsonObject body = SpotifyWebApiClient.getJson("/artists/" + artistId + "/top-tracks", null);
+            List<Track> tracks = new ArrayList<>();
+            JsonArray rows = body == null ? null : body.getAsJsonArray("tracks");
+            if (rows != null) for (JsonElement row : rows) {
+                if (!row.isJsonObject()) continue;
+                Track track = readTrack(row.getAsJsonObject());
+                if (track != null) tracks.add(track);
+            }
+            return tracks;
+        } catch (IOException failure) {
+            return List.of();
+        }
+    }
+
     public static Playlist albumCard(String albumId) {
         if (albumId == null || albumId.trim().isEmpty()) return null;
         try {
@@ -506,7 +523,11 @@ public final class SpotifyMusicService {
         out.durationMillis = track.has("duration_ms") && track.get("duration_ms").isJsonPrimitive()
                 ? track.get("duration_ms").getAsLong() : 0L;
         if (track.has("artists") && track.get("artists").isJsonArray()) {
-            out.artist = joinArtistNames(track.getAsJsonArray("artists"));
+            JsonArray artists = track.getAsJsonArray("artists");
+            out.artist = joinArtistNames(artists);
+            if (artists.size() > 0 && artists.get(0).isJsonObject()) {
+                out.artistId = text(artists.get(0).getAsJsonObject(), "id");
+            }
         }
         if (track.has("album") && track.get("album").isJsonObject()) {
             JsonObject album = track.getAsJsonObject("album");

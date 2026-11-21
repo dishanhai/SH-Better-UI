@@ -78,6 +78,7 @@ public final class AppleMusicService {
         public String id = "";
         public String name = "";
         public String artist = "";
+        public String artistId = "";
         public String album = "";
         public String albumId = "";
         public long durationMillis;
@@ -123,6 +124,35 @@ public final class AppleMusicService {
     }
 
 
+
+    /** Reads exact artist/album relationships for a catalog song without a name search. */
+    public static String songRelationId(String songId, boolean album) {
+        String relation = album ? "albums" : "artists";
+        try {
+            Map<String, String> query = new LinkedHashMap<>();
+            query.put("include", relation);
+            JsonObject payload = AppleApiClient.getCatalog(catalogPath(
+                    "/catalog/" + AppleConfigStore.storefront() + "/songs/" + songId, query));
+            JsonArray rows = payload.getAsJsonArray("data");
+            return rows != null && rows.size() > 0 && rows.get(0).isJsonObject()
+                    ? relatedId(rows.get(0).getAsJsonObject(), relation) : "";
+        } catch (IOException | AppleApiClient.AppleApiException failure) {
+            return "";
+        }
+    }
+
+    public static List<Track> artistTopTracks(String artistId) {
+        try {
+            JsonObject payload = AppleApiClient.getCatalog(catalogPath(
+                    "/catalog/" + AppleConfigStore.storefront() + "/artists/" + artistId
+                            + "/view/top-songs", Collections.emptyMap()));
+            List<Track> tracks = new ArrayList<>();
+            readTracksInto(tracks, payload.getAsJsonArray("data"));
+            return tracks;
+        } catch (IOException | AppleApiClient.AppleApiException failure) {
+            return List.of();
+        }
+    }
 
     /** 搜公开歌单（关键词）。歌单搜索框的 Apple 结果。助手优先，同 {@link #search}。 */
     public static List<Playlist> searchPlaylists(String keyword, int limit) {
@@ -646,9 +676,20 @@ public final class AppleMusicService {
         JsonObject relationships = album.getAsJsonObject("relationships");
         List<Track> out = new ArrayList<>();
         if (relationships == null) return out;
-        int before = out.size();
-        readTracksInto(out, relationships.getAsJsonArray("tracks"));
-        for (int index = before; index < out.size(); index++) {
+        JsonObject tracks = relationships.getAsJsonObject("tracks");
+        if (tracks == null) return out;
+        readTracksInto(out, tracks.getAsJsonArray("data"));
+        String next = text(tracks, "next");
+        while (!next.isEmpty() && out.size() < max) {
+            JsonObject page = AppleApiClient.getCatalog(next.startsWith("/") ? next : "/" + next);
+            int before = out.size();
+            readTracksInto(out, page.getAsJsonArray("data"));
+            String following = text(page, "next");
+            if (out.size() == before || next.equals(following)) break;
+            next = following;
+        }
+        if (out.size() > max) out.subList(max, out.size()).clear();
+        for (int index = 0; index < out.size(); index++) {
             Track track = out.get(index);
             if (track.album.isEmpty()) track.album = albumName;
             if (track.coverUrl.isEmpty()) track.coverUrl = cover;
@@ -722,7 +763,9 @@ public final class AppleMusicService {
         if (out.name.isEmpty()) return null;
         out.artist = text(attributes, "artistName");
         out.album = text(attributes, "albumName");
+        out.artistId = relatedId(resource, "artists");
         out.albumId = text(attributes, "albumId");
+        if (out.albumId.isEmpty()) out.albumId = relatedId(resource, "albums");
         out.durationMillis = attributes.has("durationInMillis")
                 && attributes.get("durationInMillis").isJsonPrimitive()
                 ? attributes.get("durationInMillis").getAsLong() : 0L;
@@ -735,6 +778,14 @@ public final class AppleMusicService {
      * 曲目主键。catalog 行直接是数字 id；library 行是库内 id，能匹配到 catalog 时
      * {@code playParams.catalogId} 会带上真正的 catalog id——换源与 preview 都认它。
      */
+    private static String relatedId(JsonObject resource, String relation) {
+        JsonObject relationships = resource.getAsJsonObject("relationships");
+        JsonObject related = relationships == null ? null : relationships.getAsJsonObject(relation);
+        JsonArray data = related == null ? null : related.getAsJsonArray("data");
+        return data != null && data.size() > 0 && data.get(0).isJsonObject()
+                ? text(data.get(0).getAsJsonObject(), "id") : "";
+    }
+
     private static String catalogIdOf(JsonObject resource) {
         String id = text(resource, "id");
         if (id.startsWith("i.")) {

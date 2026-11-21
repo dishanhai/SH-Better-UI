@@ -212,6 +212,16 @@ class OnlineMusicAccountViewTest {
         assertSame(old,imports.imported());
         assertFalse(view.permitsScreenClose());
         assertEquals(List.of(list),read(view,"playlists"));
+
+        replace.onPress();
+        write(view,"pendingListen1",CompletableFuture.completedFuture(
+                new com.dishanhai.sh_better_ui.kernel.internal.music.Listen1Backup.Imported(List.of(),Map.of(),0,0)));
+        call(view,"pollOperations");
+        assertSame(old,imports.imported());
+        assertEquals(List.of(list),read(view,"playlists"));
+        assertTrue(((net.minecraft.network.chat.Component)read(view,"listen1Status"))
+                .getContents() instanceof net.minecraft.network.chat.contents.TranslatableContents message
+                && message.getKey().equals("sh_better_ui.online_music.listen1.empty_backup"));
         view.suspend();
     }
 

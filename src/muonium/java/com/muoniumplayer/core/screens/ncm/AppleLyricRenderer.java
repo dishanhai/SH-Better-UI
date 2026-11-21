@@ -3,9 +3,11 @@ package com.muoniumplayer.core.screens.ncm;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.rendering.font.CFontRenderer;
 import com.muoniumplayer.core.settings.HudConfig;
+import com.muoniumplayer.core.settings.TouchSettings;
 import com.muoniumplayer.core.utils.cursor.CursorUtils;
 import com.muoniumplayer.render.skija.SkijaGfx;
 import io.github.humbleui.skija.Canvas;
@@ -165,6 +167,12 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
 
     private final List<Row> rows = new ArrayList<Row>();
     private final AppleLyricInteraction interaction = new AppleLyricInteraction();
+    private final AppleLyricScroll manualScroll = new AppleLyricScroll();
+    private boolean expandedLayout;
+    private boolean layoutExpansionDirty;
+    private long laidOutRevision = Long.MIN_VALUE;
+    private long laidOutFontRevision;
+
     /** Half-pixel sigma steps, up to 6px; never allocate a filter per line or per frame. */
     private final Paint[] blurPaints = new Paint[13];
     private double pointerX = Double.NaN;
@@ -185,26 +193,51 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         acceptingPointer = false;
         pointerX = pointerY = Double.NaN;
         interaction.invalidate();
+        manualScroll.end(System.nanoTime());
+    }
+
+    void scrollLyrics(int wheel) {
+        if (wheel == 0) return;
+        cancelLyricPress();
+        manualScroll.wheel(wheel, cameraY, System.nanoTime());
+        expandBrowseLayout();
+    }
+
+    private void expandBrowseLayout() {
+        if (!expandedLayout) {
+            expandedLayout = true;
+            layoutExpansionDirty = true;
+        }
     }
 
     boolean pressLyric(double x, double y, CloudMusic.PlaybackSnapshot snapshot, long revision) {
-        return interaction.press(x, y, snapshot.sessionId, revision);
+        if (!interaction.canBrowse(x, y, snapshot.sessionId, revision)) return false;
+        double slop = Math.max(1, TouchSettings.DRAG_THRESHOLD_PX);
+        interaction.press(x, y, snapshot.sessionId, revision, slop);
+        manualScroll.press(x, y, slop);
+        return true;
     }
 
     boolean hasLyricPress() {
-        return interaction.isPressed();
+        return manualScroll.ownsPress();
     }
 
     long releaseLyric(double x, double y, CloudMusic.PlaybackSnapshot snapshot, long revision) {
-        return interaction.release(x, y, snapshot.sessionId, revision);
+        dragLyric(x, y);
+        long millis = interaction.release(x, y, snapshot.sessionId, revision);
+        manualScroll.end(System.nanoTime());
+        if (millis >= 0) manualScroll.reset();
+        return millis;
     }
 
     void cancelLyricPress() {
         interaction.cancel();
+        manualScroll.end(System.nanoTime());
     }
 
     void dragLyric(double x, double y) {
         interaction.drag(x, y);
+        if (manualScroll.move(x, y, cameraY, System.nanoTime())) expandBrowseLayout();
     }
 
     void disposeLyricBlur() {
@@ -264,6 +297,9 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
 
     protected void onReset() {
         invalidateLyricPointer();
+        manualScroll.reset();
+        expandedLayout = layoutExpansionDirty = false;
+        laidOutRevision = Long.MIN_VALUE;
         rows.clear();
         laidOutCenter = null;
         laidOutWidth = -1;
@@ -281,12 +317,22 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         AppleLyricInteraction.Bounds viewport = new AppleLyricInteraction.Bounds(
                 left, top, left + width, top + height);
         if (acceptingPointer) interaction.beginFrame(pointerSession, pointerRevision, viewport);
-        boolean viewportChanged = tuningDirty || languageLayoutDirty
+        long revision = CloudMusic.lyricsRevision;
+        boolean trackChanged = laidOutRevision != revision;
+        if (trackChanged) {
+            manualScroll.reset();
+            expandedLayout = layoutExpansionDirty = false;
+            cameraReady = false;
+            anchorLine = null;
+            laidOutRevision = revision;
+        }
+        boolean viewportChanged = tuningDirty || languageLayoutDirty || layoutExpansionDirty || trackChanged
+                || expandedLayout && laidOutFontRevision != fontRevision()
                 || Math.abs(width - laidOutWidth) >= 2.0
                 || Math.abs(height - laidOutHeight) >= 2.0;
-        boolean relayout = currentLine != laidOutCenter || viewportChanged;
+        boolean relayout = (!expandedLayout && currentLine != laidOutCenter) || viewportChanged;
         // 字形没上传完就重排下一帧：这一帧照常绘制会把字形逐步上传，下一帧量出来的宽度才是真的。
-        if (!relayout && metricsPending && metricsRetries < METRICS_MAX_RETRIES) {
+        if (!relayout && !expandedLayout && metricsPending && metricsRetries < METRICS_MAX_RETRIES) {
             relayout = true;
             metricsRetries++;
         } else if (relayout) {
@@ -296,7 +342,8 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             double previousAnchorY = anchorY;
             LyricLine previousAnchor = anchorLine;
             rebuild(currentLine, positionMs, width, height);
-            languageLayoutDirty = false;
+            laidOutFontRevision = fontRevision();
+            languageLayoutDirty = layoutExpansionDirty = false;
             laidOutCenter = currentLine;
             laidOutWidth = width;
             laidOutHeight = height;
@@ -304,7 +351,9 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             if (previousAnchor != null) {
                 double newY = docTopOf(previousAnchor);
                 if (!Double.isNaN(newY)) {
-                    cameraY += newY - previousAnchorY;
+                    double shift = newY - previousAnchorY;
+                    cameraY += shift;
+                    manualScroll.rebase(shift);
                 }
             }
             anchorLine = currentLine;
@@ -312,8 +361,13 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         }
         if (rows.isEmpty() || font == null) return;
 
-        double targetY = focusTop(currentLine, positionMs);
-        if (!cameraReady) {
+        long now = System.nanoTime();
+        boolean browsing = manualScroll.isBrowsing(now);
+        Row lastRow = rows.get(rows.size() - 1);
+        double documentEnd = lastRow.y + Math.max(0.0, lastRow.height - height * (1.0 - ANCHOR));
+        double targetY = manualScroll.target(focusTop(currentLine, positionMs),
+                rows.get(0).y, documentEnd, now);
+        if (!cameraReady || UiPreferences.configured().reducedMotion()) {
             cameraY = targetY;
             cameraVelocity = 0;
             cameraReady = true;
@@ -341,10 +395,10 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         int activeIndex = activeRowIndex(currentLine, positionMs);
         double inset = Math.max(6.0, width * .06);
 
-        for (int i = 0; i < rows.size(); i++) {
+        for (int i = firstVisibleRow(cameraY + top - anchorScreenY - 12); i < rows.size(); i++) {
             Row row = rows.get(i);
             double blockY = anchorScreenY + (row.y - cameraY);
-            if (blockY + row.height < top - 12 || blockY > top + height + 12) continue;
+            if (blockY > top + height + 12) break;
 
             int distance = i - activeIndex;
             boolean active = distance == 0;
@@ -398,7 +452,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                         5.0, litColor, alpha * (pressed ? .11 : .055));
             }
 
-            double blur = HudConfig.fullscreenLyricEdgeBlur
+            double blur = HudConfig.fullscreenLyricEdgeBlur && !browsing
                     ? AppleLyricInteraction.blurWeight(positionMs, row.line.timestamp, distance <= 0,
                             hovered || pressed)
                     : 0.0;
@@ -564,6 +618,24 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
     }
 
     /** 镜头该把哪一句的正文顶边贴到锚点上。 */
+    private long fontRevision() {
+        CFontRenderer harmony = FullscreenLyricStage.fontAtMost(Math.max(8.0, fontPx * BACKGROUND_SCALE));
+        long revision = font == null ? 0L : font.metricsRevision();
+        revision = 31 * revision + (harmony == null ? 0L : harmony.metricsRevision());
+        return 31 * revision + (translationFont == null ? 0L : translationFont.metricsRevision());
+    }
+
+    private int firstVisibleRow(double documentTop) {
+        int low = 0, high = rows.size();
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            Row row = rows.get(mid);
+            if (row.y + row.height < documentTop) low = mid + 1;
+            else high = mid;
+        }
+        return low;
+    }
+
     private double focusTop(LyricLine currentLine, double positionMs) {
         int index = activeRowIndex(currentLine, positionMs);
         if (index < 0 || index >= rows.size()) return rows.isEmpty() ? 0 : rows.get(0).y;
@@ -678,16 +750,31 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         rows.clear();
         font = null;
         metricsPending = false;
-        List<LyricLine> lines = window(center, positionMs, WINDOW_BEFORE, WINDOW_AFTER);
-        if (lines.isEmpty()) return;
+        List<LyricLine> fittingWindow = window(center, positionMs, WINDOW_BEFORE, WINDOW_AFTER);
+        if (fittingWindow.isEmpty()) return;
 
         double targetPx = FullscreenLyricStage.baseFontPx(viewWidth, viewHeight) * .92;
+        boolean fitted = false;
         for (int attempt = 0; attempt < 7; attempt++) {
-            if (layout(lines, targetPx, viewWidth, viewHeight)) return;
+            if (layout(fittingWindow, targetPx, viewWidth, viewHeight)) {
+                fitted = true;
+                break;
+            }
             targetPx *= .87;
             if (targetPx < 9) break;
         }
-        layout(lines, targetPx, viewWidth, viewHeight);
+        if (expandedLayout) {
+            // Size against the ordinary local window so a long lyric elsewhere in the song
+            // neither shrinks the whole document nor makes the first scroll jump.
+            List<LyricLine> document;
+            synchronized (CloudMusic.lyrics) {
+                document = new ArrayList<>(CloudMusic.lyrics);
+            }
+            document.removeIf(line -> line == null || line.isBreakLine);
+            layout(document, targetPx, viewWidth, viewHeight);
+        } else if (!fitted) {
+            layout(fittingWindow, targetPx, viewWidth, viewHeight);
+        }
     }
     /**
      * 把这一批行摆进文档坐标。
