@@ -16,7 +16,7 @@ final class NativeDockExample implements UIModule {
     ModuleDiscovery.Candidate candidate(){return new ModuleDiscovery.Candidate("sh_better_ui",getClass().getName(),this,GRANTS,false,true);}
     @Override public ModuleDescriptor descriptor(){
         var descriptor=ModuleDescriptor.builder().id(UiId.parse("sh_better_ui:native_dock_example"))
-                .version("1.0.0").platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2))
+                .version("1.0.0").platforms(Set.of(ModuleDescriptor.Platform.NEOFORGE_26_1_2, ModuleDescriptor.Platform.NEOFORGE_26_2))
                 .initializationPhase(ModuleDescriptor.InitializationPhase.EXTENSION);
         GRANTS.forEach(descriptor::requestPermission);return descriptor.build();
     }

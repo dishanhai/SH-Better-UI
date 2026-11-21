@@ -1,5 +1,5 @@
 # Author: dishanhai
-license="MIT"
+license="MIT (SHBUI); Apache-2.0 (MuoniumPlayer); bundled components retain their individual licenses"
 
 [[mods]]
 modId="${mod_id}"
@@ -8,6 +8,9 @@ displayName="${mod_name}"
 logoFile="cover.png"
 authors="dishanhai"
 description="Shared UI kernel and GUI library. NeoForge 26.1.2 alpha port."
+
+[[mixins]]
+config="muonium.mixins.json"
 
 [[mixins]]
 config="sh_better_ui-26-blur.mixins.json"
@@ -38,3 +41,11 @@ type="required"
 versionRange="[${kff_version},)"
 ordering="AFTER"
 side="BOTH"
+
+[[dependencies.sh_better_ui]]
+modId="muonium"
+type="incompatible"
+versionRange="[0,)"
+ordering="NONE"
+side="CLIENT"
+reason="SH-Better-UI includes the MuoniumPlayer client."

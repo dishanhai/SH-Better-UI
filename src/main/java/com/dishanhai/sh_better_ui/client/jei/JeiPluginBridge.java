@@ -23,6 +23,7 @@ import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.renderer.Rect2i;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.locale.Language;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -34,8 +35,10 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.Supplier;
 import java.util.stream.Stream;
 
 /** 山海：仅由 JEI 加载的 Forge／NeoForge 可选插件。 */
@@ -84,6 +87,8 @@ public final class JeiPluginBridge implements IModPlugin {
         private final IIngredientManager ingredients;
         private final IIngredientVisibility visibility;
         private final IModIdHelper modIds;
+        private final Supplier<?> sortSetting;
+        private Object sortStages;
         private final AtomicLong revision = new AtomicLong();
         private Language language = Language.getInstance();
         private long snapshotRevision = -1;
@@ -96,8 +101,17 @@ public final class JeiPluginBridge implements IModPlugin {
             this.ingredients = runtime.getIngredientManager();
             this.visibility = runtime.getJeiHelpers().getIngredientVisibility();
             this.modIds = runtime.getJeiHelpers().getModIdHelper();
+            sortSetting = sortSetting(runtime);
             ingredients.registerIngredientListener(this);
             visibility.registerListener(this);
+        }
+
+        @SuppressWarnings("removal") // Configuration API provided by the supported JEI 15 and 19 runtimes.
+        private static Supplier<?> sortSetting(IJeiRuntime runtime) {
+            return runtime.getConfigManager().getConfigFiles().stream().flatMap(file -> file.getCategories().stream())
+                    .flatMap(category -> category.getConfigValues().stream())
+                    .filter(value -> value.getName().equals("ingredientSortStages"))
+                    .<Supplier<?>>map(value -> value::getValue).findFirst().orElse(() -> null);
         }
 
         @Override
@@ -105,6 +119,11 @@ public final class JeiPluginBridge implements IModPlugin {
             Language currentLanguage = Language.getInstance();
             if (language != currentLanguage) {
                 language = currentLanguage;
+                revision.incrementAndGet();
+            }
+            var currentStages = sortSetting.get();
+            if (!Objects.equals(sortStages, currentStages)) {
+                sortStages = currentStages instanceof List<?> stages ? List.copyOf(stages) : currentStages;
                 revision.incrementAndGet();
             }
             return revision.get();
@@ -125,6 +144,39 @@ public final class JeiPluginBridge implements IModPlugin {
                 snapshotRevision = currentRevision;
             }
             return snapshot;
+        }
+
+        @Override
+        public List<ResourceLocation> orderedItemIds() {
+            if (!active) return List.of();
+            var filter = runtime.getIngredientFilter();
+            if (filter.getFilterText().isBlank()) {
+                return filter.getFilteredItemStacks().stream()
+                        .map(stack -> BuiltInRegistries.ITEM.getKey(stack.getItem())).distinct().toList();
+            }
+            // The API only exposes the filtered overlay. JEI 15 and 19 share this unfiltered
+            // query path. Call it without changing the player's native search text.
+            try {
+                var field = filter.getClass().getDeclaredField("ingredientFilter");
+                field.setAccessible(true);
+                var nativeFilter = field.get(filter);
+                var refresh = nativeFilter.getClass().getDeclaredMethod("updateDirtyState");
+                refresh.setAccessible(true);
+                refresh.invoke(nativeFilter);
+                var unfiltered = nativeFilter.getClass().getDeclaredMethod("getIngredientListUncached", String.class);
+                unfiltered.setAccessible(true);
+                if (unfiltered.invoke(nativeFilter, "") instanceof Stream<?> rows) {
+                    try (rows) {
+                        return rows.filter(ITypedIngredient.class::isInstance)
+                                .map(row -> ((ITypedIngredient<?>) row).getIngredient())
+                                .filter(ItemStack.class::isInstance).map(ItemStack.class::cast)
+                                .map(stack -> BuiltInRegistries.ITEM.getKey(stack.getItem())).distinct().toList();
+                    }
+                }
+            } catch (ReflectiveOperationException | RuntimeException incompatible) {
+                // A different overlay implementation can still use the registered catalog.
+            }
+            return List.of();
         }
 
         @Override

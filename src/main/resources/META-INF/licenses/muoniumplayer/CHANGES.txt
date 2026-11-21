@@ -1,3 +1,7 @@
+SHBUI incorporates MuoniumPlayer 2.6.0. Its source, modifications and notices are
+documented in META-INF/third-party/muonium-player-2.6.0/. The following notes describe
+earlier releases and their incremental adaptations.
+
 SHBUI adaptation of MuoniumPlayer UI palettes
 
 Upstream: https://github.com/zihe114514/MuoniumPlayer-multiversion

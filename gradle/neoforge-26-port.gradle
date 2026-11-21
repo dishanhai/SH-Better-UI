@@ -239,6 +239,7 @@ sourceSets.test {
     resources.srcDir('../src/test/resources')
     java {
         srcDir('../src/test/java')
+        include('com/muoniumplayer/**')
         include("${packagePath}/client/font/Native*.java")
         include("${packagePath}/client/font/LocalFontPackTest.java")
         include("${packagePath}/client/gui/scaled/ConfirmationChoiceTest.java")
@@ -527,7 +528,9 @@ tasks.register('verifyLibraryJar') {
             def forbidden = zip.entries().findAll { entry ->
                 entry.name == 'META-INF/mods.toml' ||
                         (entry.name.endsWith('.mixins.json') && !portMixinConfigs.contains(entry.name)) ||
-                        entry.name.startsWith('META-INF/jarjar/') || entry.name.startsWith('kotlin/') ||
+                        (entry.name.startsWith('META-INF/jarjar/') && !entry.directory &&
+                         !(entry.name in ['META-INF/jarjar/metadata.json', 'META-INF/jarjar/types-0.2.0.jar',
+                                          'META-INF/jarjar/skija-shared-0.143.17.jar'])) || entry.name.startsWith('kotlin/') ||
                         entry.name.startsWith('thedarkcolour/')
             }
             if (!forbidden.isEmpty()) throw new GradleException("Unexpected packaged entries: ${forbidden*.name}")

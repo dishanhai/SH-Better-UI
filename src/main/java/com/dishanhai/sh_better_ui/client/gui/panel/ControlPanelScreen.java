@@ -388,10 +388,18 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             row(button(x, 124, contentWidth, Component.translatable("sh_better_ui.native_preferences.title"), GraphicIcon.NEXT, false,
                     () -> minecraft.setScreen(new NativePreferencesScreen(this, draft.settings(),
                             changes -> stageNativeSettings(changes.apply(draft.settings())), true))));
-            var open = row(button(x, 156, contentWidth, label("muonium.open"), GraphicIcon.NEXT, false,
-                    () -> com.dishanhai.sh_better_ui.kernel.internal.mp.MpSettingsScreen.open(this)));
+            row(button(x, 156, contentWidth, label("muonium.player"), GraphicIcon.MUSIC, false,
+                    com.muoniumplayer.core.screens.onboarding.OnboardingManager::openPlayerEntry));
+            var open = row(button(x, 188, contentWidth, label("muonium.open"), GraphicIcon.NEXT, false,
+                    () -> com.muoniumplayer.MuoniumPlayerClient.getInstance().openHudEditor(minecraft)));
             open.setPreview(label("muonium.description").copy().append(" ").append(label("muonium.independent")));
-            contentHeight = 196 + font.split(label("muonium.independent"), contentWidth).size() * font.lineHeight;
+            playerAppearanceOption(x, 220, "host_theme",
+                    com.muoniumplayer.core.settings.PlayerAppearance::useShbuiTheme,
+                    com.muoniumplayer.core.settings.PlayerAppearance::setShbuiTheme);
+            playerAppearanceOption(x, 252, "host_controls",
+                    com.muoniumplayer.core.settings.PlayerAppearance::useShbuiControls,
+                    com.muoniumplayer.core.settings.PlayerAppearance::setShbuiControls);
+            contentHeight = 294 + font.split(label("muonium.independent"), contentWidth).size() * font.lineHeight;
         } else if (selectedArea == Area.MUSIC) {
             musicOpen = row(button(x, 28, contentWidth, label("music.open"), GraphicIcon.NEXT, false,
                     () -> minecraft.setScreen(ShBetterUiApi.settings().onlineMusicScreen(this, () -> musicOpen))));
@@ -858,6 +866,18 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         options.add(new ToggleOption(control, read));
     }
 
+    private void playerAppearanceOption(int x, int y, String key, BooleanSupplier read, Consumer<Boolean> write) {
+        String translation = "sh_better_ui.muonium.center." + key;
+        var control = toggle(x, y, contentWidth, key,
+                value -> Component.translatable(translation).append(": ").append(onOff(value)), value -> {
+                    write.accept(value);
+                    refreshActions();
+                });
+        control.button().setPreview(Component.translatable(translation + ".desc"));
+        control.setValue(read.getAsBoolean());
+        options.add(new ToggleOption(control, read));
+    }
+
     private UiSlider optionSlider(int x, int y, String key, int min, int max, int step, IntSupplier read, IntConsumer write) {
         var slider = new UiSlider(new Bounds(x, y, contentWidth, BUTTON_HEIGHT), min, max, step, read.getAsInt(),
                 preferences, value -> label(key, value), write);
@@ -978,6 +998,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             widgetBlur.setValue(settings.widgetBackdropBlur() && !settings.highContrast());
             widgetBlur.button().active = !settings.highContrast();
             if (settings.highContrast()) widgetBlur.button().setMessage(label("widget_blur.suspended"));
+        } else if (searchQuery.isBlank() && selectedArea == Area.MUONIUM) {
+            options.forEach(option -> option.control().setValue(option.read().getAsBoolean()));
         } else if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION) switch (selectedSection) {
             case GLASS -> {
                 var backdrop = settings.backdrop();
@@ -1611,7 +1633,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                     themeGroupName(), mouseX, mouseY, preferences);
         }
         if (searchQuery.isBlank() && selectedArea == Area.MUONIUM) {
-            int lineY = origin + 188;
+            int lineY = origin + 286;
             for (var line : font.split(label("muonium.independent"), contentWidth)) {
                 graphics.drawString(font, line, x, lineY, LiquidGlassTheme.mutedTextColor(), false);
                 lineY += font.lineHeight;

@@ -1,12 +1,14 @@
 // Author: dishanhai
 plugins {
     id 'java-library'
+    id 'com.gradleup.shadow' version '8.3.11'
     id 'net.neoforged.moddev' version '2.0.148'
     id 'org.jetbrains.kotlin.jvm' version '2.3.10'
 }
 
-ext.portMixinConfigs = ['sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'sh_better_ui-26-text-compat.mixins.json']
+ext.portMixinConfigs = ['muonium.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'sh_better_ui-26-text-compat.mixins.json']
 apply from: '../gradle/neoforge-26-port.gradle'
+apply from: '../gradle/muonium-neoforge.gradle'
 
 // Optional integrations are compiled against pinned official artifacts, never bundled or required at runtime.
 // Keep this source set out of the 26.2 port until those upstream APIs are separately verified.
@@ -39,7 +41,7 @@ dependencies {
 tasks.named('verifyLibraryJar') {
     doLast {
         new java.util.zip.ZipFile(tasks.jar.archiveFile.get().asFile).withCloseable { zip ->
-            if (zip.entries().any { it.name.startsWith('guideme/') || it.name.startsWith('dev/ftb/') || it.name.startsWith('META-INF/jarjar/') }) {
+            if (zip.entries().any { it.name.startsWith('guideme/') || it.name.startsWith('dev/ftb/') }) {
                 throw new GradleException('Optional third-party implementation must not be bundled')
             }
         }

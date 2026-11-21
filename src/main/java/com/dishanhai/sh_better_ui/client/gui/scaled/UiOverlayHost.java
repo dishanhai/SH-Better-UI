@@ -1,6 +1,8 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.UiFrameScheduler;
+import com.dishanhai.sh_better_ui.client.api.UiScreen;
+import com.dishanhai.sh_better_ui.client.api.UiWorkbench;
 import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import net.minecraft.client.Minecraft;
@@ -324,6 +326,12 @@ public final class UiOverlayHost {
 
     public void render(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         if (Minecraft.getInstance().screen != owner) return;
+        if (owner instanceof UiScreen screen && UiWorkbench.editorStyle(screen)) {
+            UiTheme.preview(UiTheme.EDITOR_WORKBENCH, () -> renderLayers(graphics, mouseX, mouseY, partialTick));
+        } else renderLayers(graphics, mouseX, mouseY, partialTick);
+    }
+
+    private void renderLayers(GuiGraphics graphics, int mouseX, int mouseY, float partialTick) {
         ownModal();
         Layer layer = modal;
         boolean morph = layer != null && sourceAvailable(layer.source);
@@ -724,6 +732,10 @@ public final class UiOverlayHost {
                     renderMorphContents(graphics, mouseX, mouseY, partialTick, frame, progress);
                     return;
                 }
+            } else if (UiTheme.current() == UiTheme.EDITOR_WORKBENCH) {
+                var theme = UiTheme.current();
+                RoundedCorners.draw(graphics, panel.x(), panel.y(), panel.width(), panel.height(), 0, 1,
+                        preferences.highContrast() ? theme.text() : theme.border(), theme.background());
             } else {
                 LiquidGlassTheme.layeredPopover(graphics, panel.x(), panel.y(), panel.width(), panel.height(),
                         preferences, 0.65f + 0.35f * progress);

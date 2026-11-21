@@ -36,6 +36,9 @@ public final class ShBetterUi {
     private static volatile ModConfig clientConfig;
 
     public ShBetterUi(ModContainer container) {
+        if (net.neoforged.fml.loading.FMLEnvironment.dist == net.neoforged.api.distmarker.Dist.CLIENT) {
+            new com.muoniumplayer.loader.neoforge.MuoniumPlayerNeoForge(container.getEventBus());
+        }
         FumoRegistration.register(container.getEventBus());
         PlatformLiveActivityNetwork.register(container.getEventBus());
         PlatformPageNetwork.register(container.getEventBus());

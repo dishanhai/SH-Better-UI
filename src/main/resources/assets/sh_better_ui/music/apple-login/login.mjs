@@ -34,6 +34,13 @@ const seekSong = document.getElementById('seek-song');
 const rateInput = document.getElementById('playback-rate');
 const rateApply = document.getElementById('apply-rate');
 const playbackStatus = document.getElementById('playback-status');
+let selectionRevision = 0;
+function applySelection(selection) {
+  if (!Number.isSafeInteger(selection.selectionRevision) || selection.selectionRevision <= selectionRevision
+      || typeof selection.catalogId !== 'string' || !/^[1-9][0-9]{0,19}$/.test(selection.catalogId)) return;
+  selectionRevision = selection.selectionRevision;
+  document.getElementById('song-id').value = selection.catalogId;
+}
 const playbackLabels = { IDLE: '等待加载歌曲', LOGIN_REQUIRED: '请先授权', INVALID_ID: '请输入数字目录歌曲 ID',
   INVALID_RATE: '倍率范围为 0.5–2.0', RATE_UNAVAILABLE: '当前浏览器播放器不支持倍率或正在忙碌', RATE_CHANGING: '正在请求倍率',
   ORDER_UNAVAILABLE: 'MusicKit 无法保留这份列表的顺序，未播放其他歌曲', CLICK_TO_START: '浏览器要求再次点击。请点「播放 / 继续」播放所选曲目',
@@ -94,6 +101,7 @@ try {
   const configResponse = await request('/config', { credentials: 'omit', cache: 'no-store', headers: { 'X-SHBUI-Session': session } });
   if (!configResponse.ok) throw new Error();
   const config = await configResponse.json();
+  applySelection(config);
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error()), 20000);
     document.addEventListener('musickitloaded', () => { clearTimeout(timer); resolve(); }, { once: true });
@@ -123,6 +131,7 @@ try {
     try {
       const response = await request('/status', { credentials: 'omit', cache: 'no-store', headers: { 'X-SHBUI-Session': session } });
       if (!response.ok) throw new Error();
+      applySelection(await response.json());
     } catch {
       bridgeFailed = true;
       status.textContent = labels[flow.state] + ' 游戏连接已失效，请重新从游戏开启；本页仍可断开 Apple 授权。';

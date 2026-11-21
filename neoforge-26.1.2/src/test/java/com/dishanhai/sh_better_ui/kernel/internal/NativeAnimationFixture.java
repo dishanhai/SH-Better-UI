@@ -45,7 +45,7 @@ final class NativeAnimationFixture implements AutoCloseable {
                 BuiltinService.candidate(platforms,UIApis.COLLAPSE,collapse,new CapabilityKey(UIApis.COLLAPSE.id())),
                 new ModuleDiscovery.Candidate("example","fixture",consumer,Set.of(),false)));
         if(module==null)throw new AssertionError("Native consumer failed discovery/capability resolution");
-        client.client().screen=screen;screen.width=400;screen.height=240;
+        client.screen(screen);screen.width=400;screen.height=240;
         screens.show(screen);tree=screens.mountTrusted(module,screen,UiId.parse("example:motion/tree"));
     }
     void frame(long millis){

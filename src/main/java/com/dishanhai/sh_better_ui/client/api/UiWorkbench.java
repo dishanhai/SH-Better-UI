@@ -19,6 +19,8 @@ import net.minecraft.world.item.ItemStack;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
+import java.util.function.BiConsumer;
 import java.util.function.Consumer;
 import java.util.function.Supplier;
 
@@ -27,8 +29,19 @@ public final class UiWorkbench {
     private UiWorkbench() {}
 
     public static UiScreenBuilder builder(Component title, Screen parent) {
-        return new UiScreenBuilder(title).parent(parent).backButton(false).dynamicTheme();
+        var builder = new UiScreenBuilder(title).parent(parent).backButton(false).dynamicTheme();
+        if (parent instanceof UiScreen screen) builder.workbenchPalette = screen.workbenchPalette;
+        return builder;
     }
+
+    /** Creates a workbench with a local dark-blue editor palette inherited by its dialogs. */
+    public static UiScreenBuilder editorBuilder(Component title, Screen parent) {
+        var builder = builder(title, parent);
+        builder.workbenchPalette = UiTheme.EDITOR_WORKBENCH;
+        return builder;
+    }
+
+    public static boolean editorStyle(UiScreen owner) { return owner.workbenchPalette == UiTheme.EDITOR_WORKBENCH; }
 
     public static UiButton button(UiScreen owner, int x, int y, int width, int height, Component label, Runnable action) {
         return owner.button(x, y, width, height, label, action);
@@ -51,8 +64,8 @@ public final class UiWorkbench {
         var theme = UiTheme.current();
         frame.graphics().fill(0, 0, owner.width, owner.height, 0xB0000000);
         int border = frame.preferences().highContrast() ? theme.text() : theme.border();
-        RoundedCorners.draw(frame.graphics(), panel.x(), panel.y(), panel.width(), panel.height(), 9, 1,
-                border, theme.surface() | 0xFF000000);
+        RoundedCorners.draw(frame.graphics(), panel.x(), panel.y(), panel.width(), panel.height(), editorStyle(owner) ? 0 : 9, 1,
+                border, editorStyle(owner) ? theme.background() : theme.surface() | 0xFF000000);
     }
 
     /** Content bounds with room for a title, controls and visible margins on small windows. */
@@ -104,5 +117,12 @@ public final class UiWorkbench {
     public static boolean selectItemSequence(UiScreen owner, Component title, Supplier<? extends GuiEventListener> focus,
                                              int limit, Consumer<java.util.List<ItemStack>> onSelect) {
         return UiResourcePicker.openSequence(owner, title, focus, limit, onSelect);
+    }
+
+    /** Stages the fixed input slots and an optional output edit. A present empty output clears the slot. */
+    public static boolean selectItemSequence(UiScreen owner, Component title, Supplier<? extends GuiEventListener> focus,
+                                             List<UiResourcePicker.InputSlot> initialInputs, ItemStack initialOutput,
+                                             BiConsumer<List<UiResourcePicker.InputSlot>, Optional<ItemStack>> onSelect) {
+        return UiResourcePicker.openSequence(owner, title, focus, initialInputs, initialOutput, onSelect);
     }
 }

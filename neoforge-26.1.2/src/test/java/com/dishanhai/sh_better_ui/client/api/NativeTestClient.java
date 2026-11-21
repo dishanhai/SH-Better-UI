@@ -19,6 +19,8 @@ public final class NativeTestClient implements AutoCloseable {
     private final Object previousClient;
     private final Object previousRenderThread;
     private final Minecraft client;
+    private final Object screenOwner;
+    private final Field screenField;
     private boolean closed;
 
     private NativeTestClient() throws Exception {
@@ -32,6 +34,23 @@ public final class NativeTestClient implements AutoCloseable {
         unsafeField.setAccessible(true);
         var unsafe = (sun.misc.Unsafe) unsafeField.get(null);
         client = (Minecraft) unsafe.allocateInstance(Minecraft.class);
+        Object owner = client;
+        Field slot;
+        try {
+            slot = Minecraft.class.getDeclaredField("screen");
+        } catch (NoSuchFieldException movedToGui) {
+            Field gui = Minecraft.class.getDeclaredField("gui");
+            gui.setAccessible(true);
+            owner = unsafe.allocateInstance(gui.getType());
+            gui.set(client, owner);
+            Field minecraft = owner.getClass().getDeclaredField("minecraft");
+            minecraft.setAccessible(true);
+            minecraft.set(owner, client);
+            slot = gui.getType().getDeclaredField("screen");
+        }
+        screenField = slot;
+        screenField.setAccessible(true);
+        screenOwner = owner;
         var options = (net.minecraft.client.Options) unsafe.allocateInstance(net.minecraft.client.Options.class);
         var highContrast = net.minecraft.client.Options.class.getDeclaredField("highContrast");
         highContrast.setAccessible(true);
@@ -59,6 +78,18 @@ public final class NativeTestClient implements AutoCloseable {
 
     public static NativeTestClient install() throws Exception { return new NativeTestClient(); }
     public Minecraft client() { return client; }
+
+    public net.minecraft.client.gui.screens.Screen screen() {
+        return com.dishanhai.sh_better_ui.kernel.internal.NativePort.screen(client);
+    }
+
+    public void screen(net.minecraft.client.gui.screens.Screen screen) {
+        try {
+            screenField.set(screenOwner, screen);
+        } catch (IllegalAccessException failure) {
+            throw new AssertionError(failure);
+        }
+    }
 
     @Override public void close() throws Exception {
         if (closed) return;

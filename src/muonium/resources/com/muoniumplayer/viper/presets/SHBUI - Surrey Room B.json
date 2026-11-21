@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 2.1,
+  "name": "SHBUI - Surrey Room B",
+  "convolver": {
+    "enable": true,
+    "kernelFile": "Surrey-Room-B.wav",
+    "crossChannel": 1.0
+  }
+}
