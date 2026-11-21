@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingTrackPages;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
@@ -211,6 +212,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
      * 仍然不压到进度条"。</p>
      */
     private final NowPlayingInfo nowPlaying = new NowPlayingInfo();
+    private Music metadataTrack;
     IconWidget playPauseButton = new IconWidget("G", FontManager.music40, 0, 0, 24, 24);
     IconWidget prev = new IconWidget("E", FontManager.music40, 0, 0, 32, 32);
     IconWidget next = new IconWidget("H", FontManager.music40, 0, 0, 32, 32);
@@ -737,6 +739,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         //  · lmbPressEdge：按下沿。进度条的拖拽起手是<b>拖</b>不是点，仍在按下沿启动，
         //    由手势层的主轴锁定负责让位（竖向手势滑过进度条不 seek，见那一处的门）。
         boolean lmbDownNow = Mouse.isButtonDown(0);
+        metadataTrack = null;
         boolean prevLatch = prevMouse;
         this.tapReleaseEdge = prevLatch && !lmbDownNow
                 && !TouchGestures.get().lastPressWasDrag();
@@ -2093,8 +2096,13 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             }
         }
 
+        var host = NCMScreen.getInstance();
+        boolean acceptsMetadata = !closing && alpha >= .98f && !presentation.preparing
+                && !this.styleQuickPanel.isExpanded() && !host.isModalOverlayActive();
         double infoBottom = nowPlaying.render(music, elementsXOffset, elementsYOffset, coverSizeMax,
-                alpha, progressBarYOffset - INFO_BAR_GAP);
+                alpha, progressBarYOffset - INFO_BAR_GAP,
+                acceptsMetadata ? mouseX : Double.NaN, acceptsMetadata ? mouseY : Double.NaN, Mouse.isButtonDown(0));
+        metadataTrack = acceptsMetadata ? music : null;
         // 面板矮到连"曲名 + 艺人"两行都塞不进去时让进度条让路：宁可挤了传送带，也不压住文字。
         progressBarYOffset = Math.max(progressBarYOffset, infoBottom + INFO_BAR_GAP);
 
@@ -2264,9 +2272,36 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         if (this.styleQuickPanel.consumeClick(mouseX, mouseY, mouseButton)) {
             return;
         }
+        if (mouseButton == 0 && metadataTrack != null && !closing) {
+            var action = nowPlaying.hitAt(mouseX, mouseY);
+            if (action != null) {
+                openMetadata(NCMScreen.getInstance(), action, metadataTrack);
+                return;
+            }
+        }
         playPauseButton.onMouseClickReceived(mouseX, mouseY, mouseButton);
         prev.onMouseClickReceived(mouseX, mouseY, mouseButton);
         next.onMouseClickReceived(mouseX, mouseY, mouseButton);
+    }
+
+    boolean metadataKeyPressed(int keyCode) {
+        if (metadataTrack == null || closing || this.styleQuickPanel.isExpanded()) return false;
+        if (keyCode == Keyboard.KEY_TAB) {
+            return nowPlaying.focusNext(Keyboard.isKeyDown(Keyboard.KEY_LSHIFT)
+                    || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
+        }
+        var action = nowPlaying.focusedAction();
+        if (action == null || (keyCode != Keyboard.KEY_RETURN && keyCode != Keyboard.KEY_SPACE)) return false;
+        openMetadata(NCMScreen.getInstance(), action, metadataTrack);
+        return true;
+    }
+
+    private static void openMetadata(NCMScreen host, NowPlayingInfo.Action action, Music track) {
+        switch (action) {
+            case EFFECTS -> host.openViperEffects();
+            case ARTIST -> PlayingTrackPages.open(host, track, false);
+            case ALBUM -> PlayingTrackPages.open(host, track, true);
+        }
     }
 
     private String formatDuration(float totalMillis) {

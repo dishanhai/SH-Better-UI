@@ -1,11 +1,11 @@
 package com.muoniumplayer.core.screens;
 
+import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
 import com.mojang.blaze3d.platform.Window;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.Button;
 import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.gui.screens.TitleScreen;
-import net.minecraft.network.chat.Component;
 
 /**
  * 主菜单上那颗「公告」按钮。
@@ -21,9 +21,6 @@ import net.minecraft.network.chat.Component;
  * 一个写错的目标方法名会让四个版本的玩家一起进不了游戏）。</p>
  */
 public final class TitleMenuAnnouncementButton {
-
-    /** 按钮文案。四个版本、两侧加载器共用一份，改名只改这里。 */
-    public static final String LABEL = "公告";
 
     private static final int WIDTH = 100;
     private static final int HEIGHT = 20;
@@ -57,8 +54,8 @@ public final class TitleMenuAnnouncementButton {
         Window window = Minecraft.getInstance().getWindow();
         int left = window.getGuiScaledWidth() / 2 - WIDTH / 2;
         int top = window.getGuiScaledHeight() - HEIGHT - BOTTOM_GAP;
-        return Button.builder(Component.literal(LABEL),
-                button -> GuiAnnouncements.open(Minecraft.getInstance().screen))
+        return Button.builder(ProjectNews.text("title"),
+                button -> ProjectNews.open(Minecraft.getInstance().screen))
                 .bounds(left, top, WIDTH, HEIGHT)
                 .build();
     }

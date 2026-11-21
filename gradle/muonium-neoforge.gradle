@@ -25,7 +25,6 @@ configurations {
         exclude group: 'com.google.errorprone', module: 'error_prone_annotations'
     }
     muoniumDevSkija
-    muoniumNatives
 }
 
 def relocateMuoniumRhino = tasks.register('relocateMuoniumRhino', shadowJarType) {
@@ -73,8 +72,6 @@ dependencies {
     compileOnly 'io.github.humbleui:skija-shared:0.143.17'
     muoniumDevSkija 'io.github.humbleui:types:0.2.0'
     muoniumDevSkija 'io.github.humbleui:skija-shared:0.143.17'
-    ['windows-x64', 'linux-x64', 'linux-arm64', 'macos-x64', 'macos-arm64',
-     'android-arm64', 'android-x64'].each { muoniumNatives "io.github.humbleui:skija-${it}:0.143.17" }
     if (muoniumModernUi) {
         compileOnly "icyllis.modernui:ModernUI-NeoForge:${project.minecraft_version}-3.13.0.1"
         compileOnly('dev.icyllis:modernui-core:3.13.0') {
@@ -101,10 +98,7 @@ tasks.named('classes') {
     }
 }
 tasks.withType(JavaCompile).configureEach { dependsOn flattenMuoniumLibraries }
-tasks.named('processResources') {
-    from({ configurations.muoniumNatives.collect { zipTree(it) } }) {
-        include 'io/github/humbleui/skija/**'
-        exclude '**/*.class'
-    }
-}
 tasks.named('jar') { exclude 'io/github/humbleui/**/*.class' }
+
+ext.skijaReleaseArchive = tasks.named('jar', Jar).flatMap { it.archiveFile }
+apply from: '../gradle/skija-release.gradle'

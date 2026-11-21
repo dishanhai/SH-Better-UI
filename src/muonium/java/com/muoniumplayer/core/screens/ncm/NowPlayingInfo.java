@@ -1,5 +1,7 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingTrackPages;
+
 import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
@@ -41,6 +43,44 @@ import com.muoniumplayer.party.ui.PartyIcons;
  * （进度条与控制键）本来就是贴底边算的、不跟着这里走，所以块高随歌变化也不会让它上下跳。</p>
  */
 final class NowPlayingInfo implements SharedRenderingConstants {
+
+    enum Action { EFFECTS, ARTIST, ALBUM }
+
+    private record Hit(Action action, double x, double y, double width, double height) {
+        boolean contains(double px, double py) {
+            return px >= x && px < x + width && py >= y && py < y + height;
+        }
+    }
+
+    private final List<Hit> hits = new ArrayList<>(3);
+    private Action focused;
+    private boolean pointerDown;
+    private double mouseX;
+    private double mouseY;
+
+    Action hitAt(double x, double y) {
+        for (Hit hit : hits) {
+            if (hit.contains(x, y)) return hit.action();
+        }
+        return null;
+    }
+
+    boolean focusNext(boolean backwards) {
+        if (hits.isEmpty()) return false;
+        int index = backwards ? hits.size() : -1;
+        for (int i = 0; i < hits.size(); i++) {
+            if (hits.get(i).action() == focused) index = i;
+        }
+        focused = hits.get(Math.floorMod(index + (backwards ? -1 : 1), hits.size())).action();
+        return true;
+    }
+
+    Action focusedAction() {
+        for (Hit hit : hits) {
+            if (hit.action() == focused) return focused;
+        }
+        return null;
+    }
 
     /** 胶囊高度。10 像素的标签在里头上下各留 4 像素，再矮字就贴边了。 */
     private static final double PILL_H = 16.0;
@@ -92,7 +132,12 @@ final class NowPlayingInfo implements SharedRenderingConstants {
      *
      * @param bottomLimit 允许占到的最低位置；超过就按优先级砍掉可选行
      */
-    double render(Music music, double x, double y, double width, float alpha, double bottomLimit) {
+    double render(Music music, double x, double y, double width, float alpha, double bottomLimit,
+                  double mouseX, double mouseY, boolean pointerDown) {
+        hits.clear();
+        this.mouseX = mouseX;
+        this.mouseY = mouseY;
+        this.pointerDown = pointerDown;
         CFontRenderer title = titleFont();
         CFontRenderer subFont = subtitleFont();
         CFontRenderer rowFont = rowFont();
@@ -140,13 +185,14 @@ final class NowPlayingInfo implements SharedRenderingConstants {
 
         if (!artist.isEmpty()) {
             cursor += GAP_ARTIST;
-            renderIconRow(PartyIcons.MIC, stArtist, artist, x, cursor, width, alpha * .90f);
+            Action action = PlayingTrackPages.firstArtist(music).isEmpty() ? null : Action.ARTIST;
+            renderIconRow(PartyIcons.MIC, stArtist, artist, x, cursor, width, alpha * .90f, action);
             cursor += rowFont.getHeight();
         }
 
         if (showAlbum) {
             cursor += GAP_ALBUM;
-            renderIconRow(PartyIcons.ALBUM, stAlbum, album, x, cursor, width, alpha * .66f);
+            renderIconRow(PartyIcons.ALBUM, stAlbum, album, x, cursor, width, alpha * .82f, Action.ALBUM);
             cursor += rowFont.getHeight();
         }
 
@@ -190,10 +236,16 @@ final class NowPlayingInfo implements SharedRenderingConstants {
     private static final class Pill {
         final String text;
         final int rgb;
+        final Action action;
 
         Pill(String text, int rgb) {
+            this(text, rgb, null);
+        }
+
+        Pill(String text, int rgb, Action action) {
             this.text = text;
             this.rgb = rgb;
+            this.action = action;
         }
     }
 
@@ -232,7 +284,7 @@ final class NowPlayingInfo implements SharedRenderingConstants {
                             : qishuiTrial
                             ? (english ? "TRIAL · " + trialBadgeEn() : QishuiMusicService.trialBadgeLabel())
                             : quality,
-                    qishuiTrial || appleTrial ? WARN : NEUTRAL));
+                    qishuiTrial || appleTrial ? WARN : NEUTRAL, Action.EFFECTS));
         }
         String lyric = lyricLabel(english);
         if (!lyric.isEmpty()) pills.add(new Pill(lyric, NEUTRAL));
@@ -362,6 +414,7 @@ final class NowPlayingInfo implements SharedRenderingConstants {
                     RGBA.color(pill.rgb, alpha * .07f));
             roundedOutline(cursor, y, pillWidth, PILL_H, PILL_RADIUS, 1.0,
                     awt(pill.rgb, alpha * .32f));
+            drawAction(pill.action, cursor, y, pillWidth, PILL_H, alpha);
             font.drawCenteredStringVertical(pill.text, cursor + PILL_PAD, y + PILL_H * .5,
                     RGBA.color(pill.rgb, alpha * .86f));
 
@@ -373,8 +426,10 @@ final class NowPlayingInfo implements SharedRenderingConstants {
 
     /** 一行"图标 + 文字"。 */
     private void renderIconRow(String glyph, ScrollText scroll, String text,
-                               double x, double y, double width, float alpha) {
+                               double x, double y, double width, float alpha, Action action) {
         CFontRenderer font = rowFont();
+        double rowWidth = Math.min(width, ICON_BOX + ICON_TEXT_GAP + font.getStringWidthD(text) + 6);
+        drawAction(action, x, y, rowWidth, font.getHeight(), alpha);
         double centerY = y + font.getHeight() * .5;
         CFontRenderer iconFont = FontManager.partyIcon24;
         int iconColor = RGBA.white(alpha * .82f);
@@ -392,6 +447,19 @@ final class NowPlayingInfo implements SharedRenderingConstants {
 
         double textX = x + ICON_BOX + ICON_TEXT_GAP;
         scroll.render(font, text, textX, y, Math.max(1.0, width - (textX - x)), RGBA.white(alpha));
+    }
+
+    private void drawAction(Action action, double x, double y, double width, double height, float alpha) {
+        if (action == null || width <= 0 || height <= 0) return;
+        var hit = new Hit(action, x, y, width, height);
+        hits.add(hit);
+        boolean hover = hit.contains(mouseX, mouseY);
+        int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT) & 0xFFFFFF;
+        float fill = hover && pointerDown ? .34f : hover || focused == action ? .20f : .08f;
+        roundedRect(x, y, width, height, PILL_RADIUS, RGBA.color(accent, alpha * fill));
+        if (focused == action || hover) {
+            roundedOutline(x, y, width, height, PILL_RADIUS, 1.0, awt(accent, alpha * .82f));
+        }
     }
 
     private static Color awt(int rgb, float alpha) {

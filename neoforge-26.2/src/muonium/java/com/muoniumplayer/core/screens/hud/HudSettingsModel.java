@@ -21,8 +21,7 @@ import com.muoniumplayer.core.screens.ncm.NCMTheme;
 import com.muoniumplayer.core.settings.DesktopLyricSetting;
 import com.muoniumplayer.core.settings.HudConfig;
 import com.muoniumplayer.core.settings.HudSetting;
-import com.muoniumplayer.core.screens.GuiAnnouncements;
-import com.muoniumplayer.core.update.AnnouncementChecker;
+import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.core.widget.impl.BlossomLyricStyle;
 import com.muoniumplayer.core.widget.impl.MusicLyricsWidget;
@@ -2181,7 +2180,8 @@ public final class HudSettingsModel {
                                 action("撤销上次套用", "回到上一次套用前的本地备份，结果显示在预设页。", PresetSettingsActions::undo),
                                 action("导入模板", "从剪贴板分享码或 .mpreset.json 文件导入，确认后再套用。", PresetSettingsActions::importPreset))),
 
-                new Category("缓存与公告", "音乐缓存占多大盘、公告入口", 0xFFD8A657, HudSettingsIcons.STORAGE,
+                new Category(ProjectNews.text("cache_section").getString(), ProjectNews.text("cache_hint").getString(),
+                        0xFFD8A657, HudSettingsIcons.STORAGE,
                         new Group("音频缓存", HudSettingsIcons.SWEEP,
                                 choice("缓存上限",
                                         "缓存最多占多少磁盘，超了从最久没听的开始删（正在播与预备播的不动）。",
@@ -2205,21 +2205,12 @@ public final class HudSettingsModel {
                                                 sweepAudioCache();
                                             }
                                         })),
-                        new Group(HudCenterSections.Section.ABOUT, "公告中心", HudSettingsIcons.INFO,
-                                action(AnnouncementChecker::unreadLabel,
-                                        "没读过的公告会在主菜单弹一次，看过之后就只能从这个入口进去回看。"
-                                                + "公告与更新检查读同一份远端清单，最多 30 分钟问一次。",
-                                        HudSettingsModel::openAnnouncements)))
+                        new Group(HudCenterSections.Section.ABOUT, ProjectNews.text("title").getString(), HudSettingsIcons.INFO,
+                                action(() -> ProjectNews.text("open").getString(),
+                                        ProjectNews.text("hint").getString(), HudSettingsModel::openProjectNews)))
         };
     }
 
-    /**
-     * 打开公告中心。
-     *
-     * <p>三套设置界面（Classic / Pro / Folia）与 OneConfig 都读同一份模型，所以这一行只在模型里
-     * 写一次就三处都有。公告窗是一个独立 Screen 而不是浮层：设置界面自己就是 {@code Screen}，
-     * 关掉时按 {@code parent} 回到打开它的那一屏。</p>
-     */
     /** Called by PresetSettingsActions on the client main thread; only this version-local seam knows Minecraft screen APIs. */
     public static void openPresetSettings(PresetSettingsActions.Mode mode) {
         net.minecraft.client.Minecraft client = net.minecraft.client.Minecraft.getInstance();
@@ -2231,8 +2222,8 @@ public final class HudSettingsModel {
         com.muoniumplayer.MuoniumPlayerClient.getInstance().openShbuiSettings(net.minecraft.client.Minecraft.getInstance().gui.screen());
     }
 
-    private static void openAnnouncements() {
-        GuiAnnouncements.open(net.minecraft.client.Minecraft.getInstance().gui.screen());
+    private static void openProjectNews() {
+        ProjectNews.open(net.minecraft.client.Minecraft.getInstance().gui.screen());
     }
 
     /** 「立即清理」那一行的标签，顺带把当前占用显示出来。 */
