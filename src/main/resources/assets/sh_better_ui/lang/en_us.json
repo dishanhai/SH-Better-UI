@@ -3165,5 +3165,9 @@
   "sh_better_ui.online_music.redesign.sound.changed": "Track changed. Try again.",
   "sh_better_ui.online_music.redesign.sound.native_only": "Requires native playback.",
   "sh_better_ui.online_music.redesign.sound.qq_only": "Requires native QQ Music playback.",
-  "sh_better_ui.online_music.redesign.sound.native_crossfade": "Applies to supported native tracks only."
+  "sh_better_ui.online_music.redesign.sound.native_crossfade": "Applies to supported native tracks only.",
+  "sh_better_ui.muonium.lyric_language.title": "Lyric language",
+  "sh_better_ui.muonium.lyric_language.original": "Original",
+  "sh_better_ui.muonium.lyric_language.translation": "Translation",
+  "sh_better_ui.muonium.lyric_language.pronunciation": "Pronunciation"
 }
