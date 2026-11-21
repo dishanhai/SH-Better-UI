@@ -1329,7 +1329,8 @@ public class NavigateBar extends NCMPanel {
                         ? "正在加载 Spotify 歌单…" : "暂无可用 Spotify 歌单");
             } else if (appleMode) {
                 status = !NeteaseMusicService.isLoggedIn(MusicPlatform.APPLE)
-                        ? "导入 Apple cookies 后加载歌单（音源浮层里登录）"
+                        ? net.minecraft.network.chat.Component.translatable(
+                            "sh_better_ui.online_music.apple_account.native_library").getString()
                         : (com.muoniumplayer.core.ncm.apple.AppleMusicService.areUserPlaylistsLoading()
                         ? "正在加载 Apple 歌单…" : "暂无可用 Apple 歌单");
             } else {

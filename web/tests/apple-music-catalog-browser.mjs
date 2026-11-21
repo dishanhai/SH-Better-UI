@@ -24,6 +24,7 @@ const data = {
     '/v1/catalog/tw/albums/99/tracks': { data: [song('9', 'Album Song')] }
 };
 data['/v1/me/recommendations'] = { data: [{ type: 'personal-recommendation', relationships: { contents: { data: [personal] } } }] };
+data['/v1/me/storefront'] = { data: [{ type: 'storefronts', id: 'tw' }] };
 data['/v1/catalog/tw/playlists/pl.pm-fixture'] = { data: [personal] };
 data['/v1/catalog/tw/playlists/pl.pm-fixture/tracks'] = { data: [song('3', 'Personal fixture song')] };
 data['/v1/catalog/tw/playlists/' + id] = { data: [playlist] };
@@ -34,7 +35,7 @@ Object.assign(player, {
   api: { music: async (path) => {
     window.fixtureRequests.push(path); return { data: data[path] ?? { errors: ['unexpected path'] } };
   } },
-  async authorize() { this.isAuthorized = true; this.dispatchEvent(new Event('authorizationStatusDidChange')); },
+  async authorize() { this.isAuthorized = true; this.dispatchEvent(new Event('authorizationStatusDidChange')); return 'private-fixture-token'; },
   async unauthorize() { this.isAuthorized = false; this.dispatchEvent(new Event('authorizationStatusDidChange')); },
   async setQueue(options) {
     window.fixtureCalls.push(['queue', options, this.shuffleMode]);
@@ -53,9 +54,15 @@ window.MusicKit = { configure: async () => {}, getInstance: () => player, Playba
 document.dispatchEvent(new Event('musickitloaded'));
 `;
 const routes = new Set(['/login.mjs','/auth-flow.mjs','/playback-flow.mjs','/catalog-flow.mjs','/catalog-view.mjs','/rate-bridge.mjs','/']);
+const accountReports = [];
 const server = createServer(async (request, response) => {
   const path = request.url;
   if (path === '/config' || path === '/state' || path === '/status' || path === '/playback-rate') {
+    if (path === '/state') {
+      let body = '';
+      for await (const part of request) body += part;
+      accountReports.push(JSON.parse(body));
+    }
     response.setHeader('Content-Type', 'application/json');
     response.end(path === '/config' ? '{"developerToken":"test.only.placeholder"}' : '{}');
   } else if (path === '/fixture-musickit.js') {
@@ -95,6 +102,8 @@ try {
   assert.deepEqual(await call(() => window.fixtureCalls), []);
   await click('#connect');
   await eventually(() => call(() => !document.querySelector('.catalog-tracks [data-play-row="2"]').disabled), 'authorized ordered playback');
+  await eventually(() => accountReports.at(-1)?.storefront === 'tw', 'Apple Music account report');
+  assert.deepEqual(accountReports, [{ state: 'AUTHORIZING' }, { state: 'AUTHORIZED' }, { state: 'AUTHORIZED', storefront: 'tw' }]);
   await click('.catalog-tracks [data-play-row="2"]');
   await eventually(() => call(() => /Selected title/.test(document.querySelector('#playback-status').textContent)), 'observed SDK playback');
   assert.deepEqual(await call(() => window.fixtureCalls), [
@@ -122,7 +131,9 @@ try {
   await click('#disconnect');
   await eventually(() => call(() => document.querySelector('#catalog-detail').hidden &&
     document.querySelector('#catalog-recommendations').disabled && !document.body.textContent.includes('Personal fixture')), 'clear personalized content on disconnect');
-  console.log('Simulated MusicKit browser detail, ordered playback and opt-in recommendations passed.');
+  await eventually(() => accountReports.at(-1)?.state === 'SIGNED_OUT', 'Apple Music sign-out report');
+  assert.deepEqual(accountReports.at(-1), { state: 'SIGNED_OUT' });
+  console.log('Simulated MusicKit account login and sign-out, catalog detail, ordered playback and recommendations passed.');
 } finally {
   await browser?.close();
   await new Promise(resolve => server.close(resolve));

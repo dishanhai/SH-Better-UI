@@ -49,3 +49,37 @@ test('errors report no error details or credentials',async()=>{
   const states=[];const flow=createAuthorizationFlow({isAuthorized:false,async authorize(){throw Error('sensitive-secret');}},s=>states.push(s));
   await flow.connect();assert.deepEqual(states,['AUTHORIZING','FAILED']);
 });
+
+test('login and restored authorization read the personal storefront without reporting other data', async () => {
+  for (const restored of [false, true]) {
+    const reports = [], paths = [];
+    const sdk = {
+      isAuthorized: restored,
+      async authorize() { assert.equal(restored, false); this.isAuthorized = true; return 'private-token'; },
+      api: { async music(path) {
+        paths.push(path);
+        return { data: { data: [{ type: 'storefronts', id: 'tw', personal: 'private-data' }] } };
+      } }
+    };
+    const flow = createAuthorizationFlow(sdk, (state, storefront) => reports.push({ state, storefront }));
+    if (restored) flow.observe();
+    else await flow.connect();
+    await Promise.resolve();
+    assert.deepEqual(paths, ['/v1/me/storefront']);
+    assert.deepEqual(reports.filter(report => report.state === 'AUTHORIZED'), [
+      { state: 'AUTHORIZED', storefront: undefined }, { state: 'AUTHORIZED', storefront: 'tw' }
+    ]);
+  }
+});
+
+test('a storefront reply arriving after the SDK signs out is discarded', async () => {
+  const pending = deferred(), reports = [];
+  const sdk = { isAuthorized: true, api: { music: () => pending.promise } };
+  const flow = createAuthorizationFlow(sdk, (...args) => reports.push(args));
+  flow.observe();
+  sdk.isAuthorized = false;
+  flow.observe();
+  pending.resolve({ data: { data: [{ type: 'storefronts', id: 'us' }] } });
+  await Promise.resolve();
+  assert.deepEqual(reports, [['AUTHORIZED'], ['SIGNED_OUT']]);
+});

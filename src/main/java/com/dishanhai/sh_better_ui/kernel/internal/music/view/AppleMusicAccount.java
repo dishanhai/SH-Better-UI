@@ -43,7 +43,7 @@ public final class AppleMusicAccount implements AutoCloseable {
     private String token() { return setting(TOKEN_PROPERTY, TOKEN_ENV); }
     private String port() { return setting(PORT_PROPERTY, PORT_ENV); }
 
-    boolean running() {
+    public boolean running() {
         return login != null && login.state() != AppleMusicBrowserLogin.State.EXPIRED
                 && login.state() != AppleMusicBrowserLogin.State.CLOSED;
     }
@@ -62,7 +62,17 @@ public final class AppleMusicAccount implements AutoCloseable {
         return running();
     }
 
-    boolean primaryAvailable(boolean linksAllowed) { return running() || linksAllowed && configured(); }
+    public boolean primaryAvailable(boolean linksAllowed) { return running() || linksAllowed && configured(); }
+
+    public void toggleConnection(boolean linksAllowed) {
+        if (running()) close();
+        else if (primaryAvailable(linksAllowed)) open();
+    }
+
+    public boolean authorized() { return login != null && login.state() == AppleMusicBrowserLogin.State.AUTHORIZED; }
+    public String storefront() { return login == null ? "" : login.storefront(); }
+
+    public String stateKey(boolean linksAllowed) { return linksAllowed || running() ? stateKey() : "links_disabled"; }
 
     String stateKey() {
         if (!running() && !configured()) return "configuration_missing";

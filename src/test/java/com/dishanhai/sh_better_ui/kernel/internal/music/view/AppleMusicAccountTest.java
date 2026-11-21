@@ -34,11 +34,11 @@ class AppleMusicAccountTest {
         }
     }
 
-    @Test void openUsesOneLoopbackCompanionAndReportsOnlyBrowserState() throws Exception {
+    @Test void openUsesOneLoopbackCompanionAndReportsBrowserAccount() throws Exception {
         var current = new AtomicReference<URI>();
         try (var account = new AppleMusicAccount(k -> null, TEST_CONFIG::get, uri -> assertTrue(current.compareAndSet(null, uri)))) {
             assertEquals("ready", account.stateKey());
-            account.open();
+            account.toggleConnection(true);
             account.open(); // repeated UI press cannot create a second browser session
             assertTrue(account.running());
             assertEquals("browser_open", account.stateKey());
@@ -52,11 +52,15 @@ class AppleMusicAccountTest {
             var request = HttpRequest.newBuilder(origin.resolve("/state"))
                     .header("X-SHBUI-Session", target.getFragment())
                     .header("Origin", origin.toString()).header("Content-Type", "application/json")
-                    .POST(HttpRequest.BodyPublishers.ofString("{\"state\":\"AUTHORIZED\"}")).build();
+                    .POST(HttpRequest.BodyPublishers.ofString("{\"state\":\"AUTHORIZED\",\"storefront\":\"tw\"}")).build();
             assertEquals(200, client.send(request, HttpResponse.BodyHandlers.discarding()).statusCode());
             assertEquals("browser_authorized", account.stateKey());
-            account.close();
+            assertTrue(account.authorized());
+            assertEquals("tw", account.storefront());
+            account.toggleConnection(false);
             assertFalse(account.running());
+            assertFalse(account.authorized());
+            assertEquals("", account.storefront());
             assertEquals("ready", account.stateKey()); // local closure never reports browser sign-out
             assertThrows(IOException.class, () -> client.send(request, HttpResponse.BodyHandlers.discarding()));
         }

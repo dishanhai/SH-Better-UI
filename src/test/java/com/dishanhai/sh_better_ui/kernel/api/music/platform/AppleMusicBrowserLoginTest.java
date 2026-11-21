@@ -59,6 +59,24 @@ class AppleMusicBrowserLoginTest {
             assertEquals(413,post(login,origin(login),"x".repeat(257)).statusCode());
         }
     }
+    @Test void storefrontIsRestrictedToAnAuthorizedSession() throws Exception {
+        try (var login = new AppleMusicBrowserLogin("header.payload.signature")) {
+            String origin = origin(login);
+            assertEquals("", login.storefront());
+            assertEquals(400, post(login, origin, "{\"state\":\"AUTHORIZING\",\"storefront\":\"tw\"}").statusCode());
+            assertEquals(400, post(login, origin, "{\"state\":\"AUTHORIZED\",\"storefront\":12}").statusCode());
+            assertEquals(400, post(login, origin, "{\"state\":\"AUTHORIZED\",\"storefront\":\"TW\"}").statusCode());
+            assertEquals(400, post(login, origin, "{\"state\":\"AUTHORIZED\",\"storefront\":\"tw\",\"email\":\"private\"}").statusCode());
+            assertEquals(200, post(login, origin, "{\"state\":\"AUTHORIZED\",\"storefront\":\"tw\"}").statusCode());
+            assertEquals(AppleMusicBrowserLogin.State.AUTHORIZED, login.state());
+            assertEquals("tw", login.storefront());
+            assertEquals(200, post(login, origin, "{\"state\":\"SIGNED_OUT\"}").statusCode());
+            assertEquals("", login.storefront());
+            assertEquals(200, post(login, origin, "{\"state\":\"AUTHORIZED\",\"storefront\":\"us\"}").statusCode());
+            login.close();
+            assertEquals("", login.storefront());
+        }
+    }
     @Test void selectedSongIsSessionScopedVersionedAndValidated() throws Exception {
         try (var login = new AppleMusicBrowserLogin("header.payload.signature")) {
             assertEquals("{}", get(login, "/status", true).body());

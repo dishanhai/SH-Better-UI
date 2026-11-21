@@ -15,6 +15,7 @@
 - [x] 用两个独立 NeoForge 1.21.1 游戏客户端复现并修复直连邀请串丢失房间码。使用修复后的生产类从标准三段邀请自动入房，两端播放本地生成的 WAV，跳转至 45 秒、同步暂停和退房均通过。
 - [ ] 使用真实授权账号联调各音源的登录、付费内容与长时间播放；跨设备网络、真实模型文件、音效及用户自带的 ViPER 内核仍待验证。
 - [ ] Apple Music 订阅整曲目前走浏览器 MusicKit。内置播放器走换源与官方试听，需验证同一账号下两条入口的切歌、暂停与状态呈现。
+- [ ] 用与回环来源匹配的项目 MusicKit 开发者令牌，在 Windows 游戏客户端从 Apple Music 账号浮层完成真实 Apple 授权，复验地区自动回填、重开浏览器时恢复授权、取消和断开后的状态。配置见 [MusicKit 接入说明](docs/MUSIC_PLATFORM_SOURCES.md#游戏客户端账户控件接入)。
 
 ## 山海 Fumo（2026-11-18）
 
@@ -757,3 +758,7 @@ PR #1 整合快照以 JDK 21 編譯核心並保留 Java 17 classfile。雙端 `k
 
 - [ ] 在 Forge 1.20.1、NeoForge 1.21.1、26.1.2 客户端验收开发者图库的 PillNav：深浅主题、分离／合并、填充与翻滚、滑块与圆点、尺寸与材质、自动折叠、滚轮菜单、按压拖离取消、Esc、失焦、受控选择、资源重载、GUI 缩放、高对比、减少动效与旁白；逐帧对照所给 React/CSS 源码。
 - [ ] 全量回归：2026-11-16 的 PillNav 验证中，Forge／NeoForge 1.21.1 均在 `GraphicIconShaderTest.builtInShadersReferenceTheirPackagedFragmentsAndSharedVertexStage` 出现一项非 PillNav 失败。待图标效果的工作区改动稳定后重新执行全量 `build`；本次不覆盖该功能的未提交修改。
+
+## 播放页触控与公告中心
+
+- [ ] 在真实触屏客户端验收音质标签、歌手行和专辑行，覆盖点按、拖动取消、从曲目页返回以及 QQ 音乐可获得的曲目。验证 SHBUI 公告中心三个入口的打开与返回。

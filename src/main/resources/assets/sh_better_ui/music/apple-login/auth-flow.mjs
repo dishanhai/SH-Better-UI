@@ -1,13 +1,35 @@
-// Author: dishanhai. MusicKit owns all user credentials; this module reports states only.
+// Author: dishanhai. MusicKit owns all user credentials.
 export function createAuthorizationFlow(music, report) {
   let pending = false;
   let generation = 0;
   let state = 'WAITING';
   const emit = next => { state = next; report(next); };
+  async function reportStorefront(current) {
+    try {
+      const { data } = await music.api.music('/v1/me/storefront');
+      const storefront = data?.data?.find(item => item?.type === 'storefronts')?.id;
+      if (current === generation && state === 'AUTHORIZED' && music.isAuthorized === true
+          && typeof storefront === 'string' && /^[a-z]{2}$/.test(storefront)) {
+        report('AUTHORIZED', storefront);
+      }
+    } catch { /* A storefront lookup failure does not invalidate MusicKit authorization. */ }
+  }
+  function authorized(current) {
+    emit('AUTHORIZED');
+    void reportStorefront(current);
+  }
   return {
     get busy() { return pending; },
     get authorized() { return music.isAuthorized === true; },
     get state() { return state; },
+    observe() {
+      if (pending) return;
+      if (state === 'WAITING' && music.isAuthorized === true) authorized(++generation);
+      else if (state === 'AUTHORIZED' && music.isAuthorized !== true) {
+        ++generation;
+        emit('SIGNED_OUT');
+      }
+    },
     async connect() {
       if (pending) return;
       pending = true;
@@ -24,7 +46,8 @@ export function createAuthorizationFlow(music, report) {
           return;
         }
         // MusicKit may resolve undefined after cancellation. A resolved Promise isn't success.
-        emit(music.isAuthorized ? 'AUTHORIZED' : 'CANCELLED');
+        if (music.isAuthorized === true) authorized(current);
+        else emit('CANCELLED');
       } catch {
         if (current === generation) emit('FAILED');
       } finally { pending = false; }

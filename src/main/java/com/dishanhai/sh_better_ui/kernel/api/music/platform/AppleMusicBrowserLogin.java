@@ -26,7 +26,8 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     private final String session;
     private final String origin;
     private volatile String developerToken;
-    private volatile State state = State.WAITING;
+    private record Authorization(State state, String storefront) {}
+    private volatile Authorization authorization = new Authorization(State.WAITING, "");
     private volatile boolean stopped;
     private String catalogId;
     private long selectionRevision;
@@ -70,7 +71,9 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     }
     /** This one-session fragment is not a platform credential; do not publish or log it. */
     public URI browserUri() { return URI.create(origin + "/#" + session); }
-    public State state() { return state; }
+    public State state() { return authorization.state(); }
+    /** Apple Music storefront reported by the companion, or empty before it is available. */
+    public String storefront() { return authorization.storefront(); }
     /** Selects an Apple catalog song without loading or playing it in the browser. */
     public synchronized void selectSong(String id) {
         if (id == null || !id.matches("[1-9][0-9]{0,19}")) throw new IllegalArgumentException("Invalid catalog song ID");
@@ -85,12 +88,12 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
         }
     }
     /** Only a recent, ready, authorized browser SDK observation enables rate control. */
-    public boolean supportsPlaybackRate() { return !stopped && state == State.AUTHORIZED && rates.supported(System.nanoTime()); }
+    public boolean supportsPlaybackRate() { return !stopped && state() == State.AUTHORIZED && rates.supported(System.nanoTime()); }
     /** Last observed SDK rate, not an optimistic requested value. */
     public double playbackRate() { return rates.rate(); }
     public synchronized void playbackRate(double rate) {
         AppleMusicRateControl.validate(rate);
-        if (stopped || state != State.AUTHORIZED) throw new UnsupportedOperationException("Apple browser playback rate unavailable");
+        if (stopped || state() != State.AUTHORIZED) throw new UnsupportedOperationException("Apple browser playback rate unavailable");
         rates.request(rate, System.nanoTime());
     }
     public String playbackRateResult() { return rates.result(System.nanoTime()); }
@@ -98,7 +101,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
     private synchronized void stop(State terminal) {
         if (stopped) return;
         stopped = true;
-        state = terminal;
+        authorization = new Authorization(terminal, "");
         developerToken = "";
         catalogId = null;
         selectionRevision = 0;
@@ -131,14 +134,27 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                     if (contentType == null || !contentType.toLowerCase(Locale.ROOT).startsWith("application/json")) { reply(exchange, 415, "text/plain", "JSON required"); return; }
                     byte[] body = exchange.getRequestBody().readNBytes(257);
                     if (body.length > 256) { reply(exchange, 413, "text/plain", "Too large"); return; }
-                    State next;
+                    Authorization next;
                     try {
                         var json = JsonParser.parseString(new String(body, StandardCharsets.UTF_8)).getAsJsonObject();
-                        if (json.size() != 1 || !json.has("state")) throw new IllegalArgumentException();
-                        next = State.valueOf(json.get("state").getAsString());
-                        if (next == State.WAITING || next == State.EXPIRED || next == State.CLOSED) throw new IllegalArgumentException();
+                        var stateValue = json.getAsJsonPrimitive("state");
+                        if (!stateValue.isString()) throw new IllegalArgumentException();
+                        State state = State.valueOf(stateValue.getAsString());
+                        if (state == State.WAITING || state == State.EXPIRED || state == State.CLOSED) throw new IllegalArgumentException();
+                        String storefront = "";
+                        if (json.keySet().equals(Set.of("state", "storefront")) && state == State.AUTHORIZED) {
+                            var region = json.getAsJsonPrimitive("storefront");
+                            if (!region.isString() || !region.getAsString().matches("[a-z]{2}")) throw new IllegalArgumentException();
+                            storefront = region.getAsString();
+                        } else if (!json.keySet().equals(Set.of("state"))) throw new IllegalArgumentException();
+                        next = new Authorization(state, storefront);
                     } catch (RuntimeException invalid) { reply(exchange, 400, "text/plain", "Invalid state"); return; }
-                    synchronized (this) { if (!stopped) { state = next; if (next != State.AUTHORIZED) rates.clear(); } }
+                    synchronized (this) {
+                        if (!stopped) {
+                            authorization = next;
+                            if (next.state() != State.AUTHORIZED) rates.clear();
+                        }
+                    }
                     reply(exchange, 200, "application/json", "{}");
                 } else reply(exchange, 405, "text/plain", "Method not allowed");
                 return;
@@ -183,7 +199,7 @@ public final class AppleMusicBrowserLogin implements AutoCloseable {
                     || !json.getAsJsonPrimitive("status").isString()) throw new IllegalArgumentException();
             long ack = json.get("ack").getAsBigDecimal().longValueExact();
             synchronized (this) {
-                if (!stopped && state == State.AUTHORIZED) rates.observe(json.get("supported").getAsBoolean(), json.get("rate").getAsDouble(),
+                if (!stopped && state() == State.AUTHORIZED) rates.observe(json.get("supported").getAsBoolean(), json.get("rate").getAsDouble(),
                         ack, json.get("status").getAsString(), System.nanoTime());
             }
             reply(exchange,200,"application/json","{}");

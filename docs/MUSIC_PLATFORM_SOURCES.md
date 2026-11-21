@@ -74,15 +74,15 @@ var firstPage = catalog.search("artist or song", 0, 20);
 ```java
 // A valid short-lived project developer token is still required.
 // Keep this instance owned by the page/session and close it when leaving.
-var login = new AppleMusicBrowserLogin(projectDeveloperToken);
+var login = new AppleMusicBrowserLogin(projectDeveloperToken, configuredPort);
 // On an explicit player action, open login.browserUri() in their system browser.
-// The browser then requires a separate click on "使用 Apple Music 登录".
+// When authorization is needed, the player clicks "使用 Apple 账号登录" in the browser.
 // Poll login.state() for UI feedback only, not subscription/playback entitlement.
 ```
 
-- 只绑定 `127.0.0.1` 的短期随机端口，10 分钟到期关闭。随机会话值放 URL fragment，页面读取后立刻从地址栏移除。
+- 只绑定 `127.0.0.1`，10 分钟到期关闭。随机会话值放 URL fragment，页面读取后立刻从地址栏移除。
 - 使用 Apple 托管的 MusicKit v3，点击后调用官方 `authorize()`。Apple 自己的窗口处理账号、密码、验证码与授权。不是普通 Sign in with Apple OAuth，也不是模组自己实现 Apple 登录表单。
-- Music User Token 完全由 MusicKit 浏览器会话管理。Java 回调只允许固定状态字段，拒绝 token/其他字段。不会转存到现有 QQ/网易 cookie 仓库。
+- Music User Token 由 MusicKit 浏览器会话管理。Java 回调只接受固定状态及授权时可选的双字母 storefront 代码。
 - 凭据配置端点需要随机会话头，严格验证 Host；状态回调还验证 Origin。拒绝重定向、外部回调地址、查询参数，响应 no-store。
 - 重复点击不会打开多个授权；取消后拒绝迟到成功，并尝试官方 `unauthorize()`；断开也调用 `unauthorize()`。撤销失败明确显示失败，不冒称已退出。
 - 关闭 Java 桥接或浏览器页面不等于撤销 Apple 授权。页面明确要求使用“断开”按钮；不承诺绕过 MusicKit 自身的浏览器会话存储。
@@ -94,22 +94,25 @@ var login = new AppleMusicBrowserLogin(projectDeveloperToken);
 
 系统浏览器承载的是 MusicKit 官方支持的 Web 运行时，**本机回环 origin 是否被该项目 developer token 和 Apple 授权配置接受，仍需真实联调**。若项目要求固定 HTTPS origin，应改用获授权的固定宿主和其受控通信设计，不能自行去掉 Apple 的 origin 校验。仓库尚无项目 token、获许可宿主或玩家真实授权，因此本次不宣称 Apple 登录已在真实账号成功。
 
-目前提供公共授权 API 和可运行页面，尚未把需要配置才能工作的按钮挂到默认播放器账户页。没有浏览器播放器驱动，授权成功也不会自动让 Java MP3 后端播放 Apple Music。
+播放器的 Apple Music 账号页通过官方 MusicKit 浏览器伴侣授权。授权后的订阅播放由浏览器播放器承载。
 
 官方依据：
 - 初始化与 developer token：https://js-cdn.music.apple.com/musickit/v3/docs/iframe.html?path=%2Fstory%2Fget-started--page
 - authorize/unauthorize：https://js-cdn.music.apple.com/musickit/v3/docs/iframe.html?id=user-authorization--page
 - Web 自动管理用户 token：https://developer.apple.com/documentation/applemusicapi/user-authentication-for-musickit
+- 授权账户的地区：https://developer.apple.com/documentation/applemusicapi/get-a-user%27s-storefront
 
 Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, configuredPort)` 使用已配置端口；端口被占用时失败，不悄悄更换 origin。随机端口构造器仅适合 token/授权配置明确支持该来源的测试，不建议为了让它工作而移除 origin 安全限制。Apple 官方开发者论坛 DTS 回复也指出文档没有保证 local origin 是否可接受，并有 Windows Chrome/Edge 授权失败调查，因此仍以真实配置与账号验证为门禁：https://developer.apple.com/forums/thread/853567 。
 
 ### 游戏客户端账户控件接入
 
-账户控件应在用户明确点击“在浏览器打开 Apple Music 登录”时调用会话控制器，视图销毁或用户点击“关闭本地浏览器会话”时清理本机监听器。不要显示、复制或记录会话地址。关闭本机连接不等于浏览器登出，玩家必须在浏览器中使用“断开连接”。
+在「音乐来源 → Apple Music 卡片上的钥匙 → Apple Music 账号」点击「使用 Apple 账号登录」，随后在浏览器的 Apple 官方窗口授权。游戏自动更新授权状态，并通过 MusicKit 查询个人 storefront 后显示地区。浏览器恢复已有授权时也会同步。MusicKit 管理音乐用户令牌，游戏只接收状态和地区代码。姓名、邮箱属于另一套 Apple 身份授权。玩家可在浏览器使用「断开 Apple Music」退出授权；游戏中的「关闭游戏连接」会清除本地会话和已显示的地区。
+
+游戏内的个人歌单仍使用已有的「旧版 Cookie 登录」。官方授权后的音乐浏览和播放可在浏览器伴侣中使用。
 
 客户端读取项目维护者部署的短期令牌和端口：环境变量 `SHBUI_APPLE_MUSIC_DEVELOPER_TOKEN`、`SHBUI_APPLE_MUSIC_LOOPBACK_PORT`，或同名用途的 JVM 属性 `shbui.appleMusic.developerToken`、`shbui.appleMusic.loopbackPort`（优先）。推荐从本机受控环境注入，不要把私钥或凭证写进 JAR、整合包、公开配置、日志或工单。端口须匹配项目的授权 origin；仅在项目明确允许随机 origin 的测试环境中设置为 `0`。未配置时应显示说明，不能让玩家用个人 Apple 账号代替。
 
-### 授权原型验证结果
+### 授权原型验证结果（历史记录）
 
 - 最终源码 Forge 1.20.1、NeoForge 1.21.1 各 13 项 Apple 定向测试通过（目录 8 + 本机 HTTP/生命周期 5），零跳过。
 - Node 状态机 7 项通过：点击内同步发起、重复点击、正常授权、resolve 但未授权、取消后迟到成功、撤销失败与敏感错误不外泄。

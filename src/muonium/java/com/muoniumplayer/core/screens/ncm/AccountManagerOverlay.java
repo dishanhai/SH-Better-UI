@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.AppleMusicAccount;
 import com.muoniumplayer.core.music.source.QrCode;
 import com.muoniumplayer.core.music.source.QrLoginState;
 import com.google.gson.JsonObject;
@@ -43,13 +44,17 @@ import com.muoniumplayer.core.utils.KeyboardUtils;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.client.Minecraft;
+import net.minecraft.network.chat.Component;
 
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;
 import java.util.Base64;
 import java.util.List;
+import java.util.Locale;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.function.BooleanSupplier;
 import java.util.function.DoubleSupplier;
 import java.util.function.IntSupplier;
 import java.util.function.Supplier;
@@ -280,9 +285,7 @@ public class AccountManagerOverlay extends NcmSheet {
             }
         }
         // YouTube 与 Spotify 不在这里：它们的登录不是扫码 / Cookie 导入，各自的登录页
-        // 挂在音源浮层（MusicSourceOverlay）自己的卡上。Apple 虽然也是 cookies 形态，
-        // 但它有独立的登录页（gamdl 整包状态 + cookies 导入 + 播放偏好），进这边的
-        // 详情页统一管理。
+        // 挂在音源浮层（MusicSourceOverlay）自己的卡上。Apple 的浏览器授权在这里管理。
 
         // 页脚说明走页脚那一档：格子逐张落位之后它才到场，退场时也先于格子收回去。
         tip(veil(dialog, this::footerGate), () -> PartyIcons.LOCK,
@@ -361,12 +364,13 @@ public class AccountManagerOverlay extends NcmSheet {
             dot.setBounds(6, 6);
             dot.setPosition(card.getWidth() * .5 + name.getWidth() * .5 + 5.0,
                     inkTop(name, 60.0) + labelInkHeight(name) * .5 - 3.0);
-            dot.setColor(NeteaseMusicService.isLoggedIn(platform) ? OK_COLOR
+            dot.setColor(displaySignedIn(platform) ? OK_COLOR
                     : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
         });
 
         // 账号行：已登录显示昵称（截断），未登录写明「未登录」并提示可以点进来。
-        final LabelWidget account = label(card, () -> NeteaseMusicService.isLoggedIn(platform)
+        final LabelWidget account = label(card, () -> platform == MusicPlatform.APPLE ? appleIdentity()
+                : NeteaseMusicService.isLoggedIn(platform)
                 ? NeteaseMusicService.getAccountName(platform)
                 : "未登录 · 点击登录", FontManager.pf10bold);
         account.setBeforeRenderCallback(() -> {
@@ -388,7 +392,7 @@ public class AccountManagerOverlay extends NcmSheet {
      * @param centerY 文字墨迹的中心 y
      * @return 这组状态文字的最大墨迹宽度（「已登录」「未登录」取宽者），调用方据此给标题留位
      */
-    private double loginStateMark(final AbstractWidget<?> host, final MusicPlatform platform,
+    private double loginStateMark(final AbstractWidget<?> host, final BooleanSupplier signedIn,
                                   final DoubleSupplier rightX, final DoubleSupplier centerY) {
         final double dot = 6.0;
         final double gap = 5.0;
@@ -402,18 +406,18 @@ public class AccountManagerOverlay extends NcmSheet {
         mark.setClickable(false);
         mark.setRadius(dot * .5);
         mark.setBeforeRenderCallback(() -> {
-            boolean online = NeteaseMusicService.isLoggedIn(platform);
+            boolean online = signedIn.getAsBoolean();
             mark.setBounds(dot, dot);
             mark.setPosition(rightX.getAsDouble() - textWidth - gap - dot,
                     centerY.getAsDouble() - dot * .5);
             mark.setColor(online ? OK_COLOR : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
         });
 
-        final LabelWidget caption = label(host, () -> NeteaseMusicService.isLoggedIn(platform)
+        final LabelWidget caption = label(host, () -> signedIn.getAsBoolean()
                 ? "已登录" : "未登录", FontManager.pf12);
         caption.setBeforeRenderCallback(() -> {
             // 未登录用次文色：这一栏在没登录时不该比账号名更抢眼。
-            caption.setColor(NeteaseMusicService.isLoggedIn(platform)
+            caption.setColor(signedIn.getAsBoolean()
                     ? NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT)
                     : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
             caption.setPosition(rightX.getAsDouble() - textWidth, inkTop(caption, centerY.getAsDouble()));
@@ -433,6 +437,13 @@ public class AccountManagerOverlay extends NcmSheet {
      */
     private double detailHeader(final Panel dialog, final Runnable backAction, final MusicPlatform platform,
                                 final Supplier<String> titleText, final Supplier<String> subtitleText) {
+        return detailHeader(dialog, backAction, platform, titleText, subtitleText,
+                () -> NeteaseMusicService.isLoggedIn(platform));
+    }
+
+    private double detailHeader(final Panel dialog, final Runnable backAction, final MusicPlatform platform,
+                                final Supplier<String> titleText, final Supplier<String> subtitleText,
+                                final BooleanSupplier signedIn) {
         // 返回键不套进 veil：那一层是不吃点击的，它要自己跟着底板淡入（与 subHeader 同一处理）。
         backButton(dialog, backAction);
         final Panel crown = veil(dialog, this::headerGate);
@@ -452,7 +463,7 @@ public class AccountManagerOverlay extends NcmSheet {
                 brandGlyph(platform), brandFont(platform),
                 () -> DETAIL_DISC * .5, () -> DETAIL_DISC * .5, platform::getBrandColor);
 
-        final double stateWidth = loginStateMark(crown, platform,
+        final double stateWidth = loginStateMark(crown, signedIn,
                 () -> dialog.getWidth() - PAD, () -> 28.0);
 
         final LabelWidget title = label(crown, titleText, FontManager.pf18bold);
@@ -553,6 +564,10 @@ public class AccountManagerOverlay extends NcmSheet {
 
     /** {@code addAccountByQr}：即便已经有网易云账号在线，也走扫码添加另一个账号的流程。 */
     private void showDetail(final MusicPlatform platform, final boolean addAccountByQr) {
+        if (platform == MusicPlatform.APPLE) {
+            showAppleAccount();
+            return;
+        }
         final long token = pageGeneration.incrementAndGet();
         qishuiAddAccountMode = platform == MusicPlatform.QISHUI && addAccountByQr;
         detailPlatform = platform;
@@ -573,12 +588,8 @@ public class AccountManagerOverlay extends NcmSheet {
         final boolean qishuiBridgeReady = platform == MusicPlatform.QISHUI
                 && QishuiLoginBridge.isAvailable();
         final boolean qishuiCookieOnly = platform == MusicPlatform.QISHUI && !qishuiBridgeReady;
-        // Apple 不取码：账号态在 cookies 文件里，登录页是 cookie 导入表单（与汽水
-        // 「缺外部工具」同形态——二维码区收起，身份卡照常展示）。
-        final boolean appleCookieOnly = platform == MusicPlatform.APPLE;
-        final boolean qrVisible = (!loggedIn || addAccountByQr) && !qishuiCookieOnly
-                && !appleCookieOnly;
-        final boolean identityVisible = !qrVisible && (loggedIn || !qishuiCookieOnly || appleCookieOnly);
+        final boolean qrVisible = (!loggedIn || addAccountByQr) && !qishuiCookieOnly;
+        final boolean identityVisible = !qrVisible && (loggedIn || !qishuiCookieOnly);
         final boolean qqChannelPicker = platform == MusicPlatform.QQ && !loggedIn;
         final boolean wechat = platform == MusicPlatform.QQ && qqLoginChannel == QQLoginChannel.WECHAT;
         // 酷狗的身份要在取码之前就定下来（两种客户端签的是两种凭证），所以选择器与二维码同页。
@@ -589,8 +600,6 @@ public class AccountManagerOverlay extends NcmSheet {
         statusText = addAccountByQr ? "正在准备扫码添加账号…"
                 : qishuiExpired ? "Cookie 已被上游拒绝：用外部工具重新获取一份 Cookie，再点下方按钮导入"
                 : loggedIn ? "当前账号已登录"
-                : platform == MusicPlatform.APPLE
-                ? "从 music.apple.com 网页端导出 cookies.txt，复制全部内容后点下方按钮导入"
                 : platform == MusicPlatform.QQ
                 ? (wechat ? "已选择微信登录，点下方按钮获取二维码" : "先选一种登录方式")
                 : platform == MusicPlatform.KUGOU && kuGouConceptLogin
@@ -648,7 +657,6 @@ public class AccountManagerOverlay extends NcmSheet {
                 () -> addAccountByQr ? "扫码成功后自动回到已保存账号"
                         : loggedIn ? "本地已保存这个账号的登录凭据"
                         : qishuiCookieOnly ? "未找到外部取码工具 · 可改用 Cookie 登录"
-                        : platform == MusicPlatform.APPLE ? "cookies 导入 · 完整版本机解密播放"
                         : "请使用" + scanClientName(platform) + "扫码并确认");
 
         final Panel body = body(dialog, () -> HEADER_H, () -> footer);
@@ -678,9 +686,6 @@ public class AccountManagerOverlay extends NcmSheet {
         // 谁和谁并排是排版决定，页高只认行数（footerRows）。
         final boolean paired;
         if (addAccountByQr) {
-            paired = false;
-        } else if (platform == MusicPlatform.APPLE) {
-            // Apple 没有扫码：主按钮就是「导入 / 更新 cookies」，独占一行。
             paired = false;
         } else if (platform == MusicPlatform.NETEASE) {
             // 未登录：扫码与 Cookie 是两条平等入口，并排；已登录：退出登录独占一行。
@@ -881,7 +886,8 @@ public class AccountManagerOverlay extends NcmSheet {
      * 底色也只按品牌色轻染 12%：它不该看起来像总览里那种可点的平台卡。</p>
      */
     private void identityBlock(final Panel row, final int slot, final MusicPlatform platform) {
-        sectionLabel(row, "当前账号", () -> 4.0, platform::getBrandColor);
+        final boolean apple = platform == MusicPlatform.APPLE;
+        sectionLabel(row, apple ? appleText("current") : "当前账号", () -> 4.0, platform::getBrandColor);
 
         // 这张卡只是展示当前账号，不能点 —— 所以也不该跟着鼠标长。
         final Card card = plain(card(row, slot, () -> SECTION_LABEL_BLOCK, () -> IDENTITY_CARD,
@@ -895,7 +901,7 @@ public class AccountManagerOverlay extends NcmSheet {
         final RoundedRectWidget vip = pill(vipLayer, () -> PartyIcons.VIP, () -> "会员", () -> VIP_COLOR,
                 () -> vipLayer.getWidth() - 14, () -> vipLayer.getHeight() * .5);
 
-        final LabelWidget name = label(card, () -> NeteaseMusicService.getAccountName(platform),
+        final LabelWidget name = label(card, () -> apple ? appleIdentity() : NeteaseMusicService.getAccountName(platform),
                 FontManager.pf14bold);
         name.setBeforeRenderCallback(() -> {
             name.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
@@ -1103,15 +1109,12 @@ public class AccountManagerOverlay extends NcmSheet {
         // 汽水没登录、又没装外部取码工具时，主按钮才是 Cookie 登录：不该挂一颗必然取码失败的按钮。
         final boolean qishuiCookie = platform == MusicPlatform.QISHUI && !loggedIn && !addAccountByQr
                 && !QishuiLoginBridge.isAvailable();
-        // Apple 没有扫码：登录 = 导入 cookies，退出 = 清 cookies。主按钮的两种形态都指向
-        // 同一个登录页（页内已登录时主按钮是退出，登录页页脚里才是重新导入）。
-        final boolean appleCookie = platform == MusicPlatform.APPLE && !addAccountByQr && !signOut;
         final RoundedButtonWidget button = action(dialog,
                 () -> signOut ? PartyIcons.LOGOUT : requestRunning ? PartyIcons.HOURGLASS : PartyIcons.KEY,
                 () -> signOut ? "退出登录"
                         : requestRunning ? "等待扫码…"
                         : addAccountByQr ? "重新获取二维码"
-                        : appleCookie ? "导入 cookies 登录" : qishuiCookie ? "Cookie 登录" : "开始扫码登录",
+                        : qishuiCookie ? "Cookie 登录" : "开始扫码登录",
                 FontManager.pf12bold, () -> 0xFFFFFF,
                 () -> {
                     if (addAccountByQr) {
@@ -1121,8 +1124,6 @@ public class AccountManagerOverlay extends NcmSheet {
                         } else {
                             startQrLogin(platform, pageGeneration.get(), true);
                         }
-                    } else if (appleCookie) {
-                        showAppleCookieLogin();
                     } else if (NeteaseMusicService.isLoggedIn(platform)) {
                         logout(platform);
                     } else if (qishuiCookie) {
@@ -1369,7 +1370,59 @@ public class AccountManagerOverlay extends NcmSheet {
     /** 「粘贴」这颗次按钮的固定宽度，剩下的都给「验证并登录」。 */
     private static final double QISHUI_PASTE_W = 96.0;
 
-    // ── Apple Music：cookies 导入登录页 ─────────────────────────────────────
+    private void showAppleAccount() {
+        MusicPlatform platform = MusicPlatform.APPLE;
+        pageGeneration.incrementAndGet();
+        detailPlatform = platform;
+        requestRunning = false;
+        beginPage();
+
+        AppleMusicAccount account = NCMScreen.getInstance().appleMusicAccount();
+        double footer = FOOTER_BOTTOM + 2 * DETAIL_BUTTON_H + BUTTON_GAP + FOOTER_TOP_GAP;
+        Panel dialog = sheet(468, () -> HEADER_H + SECTION_GAP + IDENTITY_ROW + SECTION_GAP + STATUS_BLOCK + footer);
+        detailHeader(dialog, this::showOverview, platform, () -> appleText("title"),
+                () -> appleText(account.running() ? "browser_disconnect" : "subtitle"), () -> displaySignedIn(platform));
+        ScrollPanel feed = feed(body(dialog, () -> HEADER_H, () -> footer));
+        strip(feed, SECTION_GAP);
+        identityBlock(strip(feed, IDENTITY_ROW), 0, platform);
+        strip(feed, SECTION_GAP);
+        tip(veil(strip(feed, STATUS_BLOCK), this::footerGate),
+                () -> appleText(account.stateKey(appleLinksAllowed())),
+                () -> NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT), () -> 6.0);
+
+        RoundedButtonWidget connect = action(dialog, () -> account.running() ? PartyIcons.CLOSE : PartyIcons.KEY,
+                () -> appleText(account.running() ? "close" : "open"), FontManager.pf12bold, () -> 0xFFFFFF,
+                () -> account.toggleConnection(appleLinksAllowed()));
+        connect.setRadius(6.0);
+        connect.setBeforeRenderCallback(() -> {
+            boolean available = account.primaryAvailable(appleLinksAllowed());
+            connect.setClickable(available && footerGate() > .5);
+            connect.setAlpha((float) footerGate() * (available ? 1f : .55f));
+            connect.setBounds(Math.max(1, dialog.getWidth() - (PAD + CARD_INSET) * 2), DETAIL_BUTTON_H);
+            connect.setPosition(PAD + CARD_INSET, dialog.getHeight() - FOOTER_BOTTOM - DETAIL_BUTTON_H);
+            connect.setColor(mix(platform.getBrandColor(), 0xFFFFFF, available && connect.isHovering() ? .16 : 0));
+        });
+        footerButton(dialog, 1, () -> PartyIcons.KEY, () -> appleText("legacy"),
+                () -> NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT), this::showAppleCookieLogin);
+    }
+
+    private static boolean appleLinksAllowed() {
+        return Minecraft.getInstance().options.chatLinks().get();
+    }
+
+    private static boolean displaySignedIn(MusicPlatform platform) {
+        return (platform == MusicPlatform.APPLE && NCMScreen.getInstance().appleMusicAccount().authorized())
+                || NeteaseMusicService.isLoggedIn(platform);
+    }
+
+    private static String appleIdentity() {
+        if (NCMScreen.getInstance().appleMusicAccount().authorized()) return appleText("connected");
+        return appleText(NeteaseMusicService.isLoggedIn(MusicPlatform.APPLE) ? "legacy_connected" : "guest");
+    }
+
+    private static String appleText(String key, Object... arguments) {
+        return Component.translatable("sh_better_ui.online_music.apple_account." + key, arguments).getString();
+    }
 
     /**
      * Apple 的 Cookie 登录页（汽水同款版式）。
@@ -1396,8 +1449,7 @@ public class AccountManagerOverlay extends NcmSheet {
                 + CREDENTIAL_FIELD_H + SECTION_GAP + STATUS_BLOCK
                 + FOOTER_TOP_GAP + CREDENTIAL_FIELD_H + FOOTER_BOTTOM);
         detailHeader(dialog, back(() -> showDetail(MusicPlatform.APPLE)),
-                MusicPlatform.APPLE, () -> "cookies 登录",
-                () -> "music.apple.com 网页端导出 · 解锁本人歌单与逐词歌词");
+                MusicPlatform.APPLE, () -> appleText("legacy"), () -> appleText("legacy_subtitle"));
 
         // 摘要行：分区标签 + 只读凭据状态（与凭据输入行同一套摆位）。
         final Panel gate = veil(dialog, () -> cardGate(0));
@@ -2608,10 +2660,8 @@ public class AccountManagerOverlay extends NcmSheet {
             return meta;
         }
         if (platform == MusicPlatform.APPLE) {
-            // Apple 不暴露账号标识；cookies 里有 media-user-token 也只是个 opaque 令牌，
-            // 展示它只会诱导用户把它当密码贴去别处。
-            return com.muoniumplayer.core.ncm.apple.AppleMusicService.isLoggedIn()
-                    ? "Apple Music · cookies 已验证" : "Apple Music · 未登录";
+            String region = NCMScreen.getInstance().appleMusicAccount().storefront();
+            return region.isEmpty() ? platform.getDisplayName() : appleText("storefront", region.toUpperCase(Locale.ROOT));
         }
         return platform.getDisplayName() + " · 已登录";
     }

@@ -61,11 +61,11 @@ test('errors are sanitized and close removes listeners, including late completio
   let finish;music.pause=()=>new Promise(resolve=>{finish=resolve;});const pending=flow.pause();
   flow.close();const length=reports.length;finish();await pending;assert.equal(listeners.size,0);assert.equal(reports.length,length);
 });
-test('companion serves playback module, retains state-only auth callback and explicit gesture wiring',async()=>{
+test('companion serves playback module and reports only account state and optional storefront',async()=>{
   const base=new URL('../../',import.meta.url);
   const login=await readFile(new URL('src/main/resources/assets/sh_better_ui/music/apple-login/login.mjs',base),'utf8');
   const server=await readFile(new URL('src/main/java/com/dishanhai/sh_better_ui/kernel/api/music/platform/AppleMusicBrowserLogin.java',base),'utf8');
-  assert.match(login,/playSong\.addEventListener\('click'/);assert.match(login,/JSON.stringify\(\{ state \}\)/);
+  assert.match(login,/playSong\.addEventListener\('click'/);assert.match(login,/JSON.stringify\(\{ state, storefront \}\)/);
   assert.match(server,/case "\/playback-flow.mjs" -> "playback-flow.mjs"/);
 });
 

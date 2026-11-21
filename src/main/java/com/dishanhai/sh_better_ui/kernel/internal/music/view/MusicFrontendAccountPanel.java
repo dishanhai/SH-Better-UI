@@ -87,8 +87,7 @@ final class MusicFrontendAccountPanel {
 
     private void primary() {
         if (isAppleDetail()) {
-            if (apple.running()) apple.close();
-            else if (apple.primaryAvailable(webLinks.getAsBoolean())) apple.open();
+            apple.toggleConnection(webLinks.getAsBoolean());
         } else if (isNativeDetail()) nativeAccount.primary(displayedNativeAction);
         refresh();
     }
@@ -97,7 +96,7 @@ final class MusicFrontendAccountPanel {
         if (route == null || primary == null) return;
         accounts.forEach((source, item) -> {
             item.setVisible(route.page() == Page.ACCOUNTS && item.getY() + item.getHeight() <= body.bottom());
-            if (item.visible) item.setSecondary(source.equals(APPLE) ? apple("browser_only")
+            if (item.visible) item.setSecondary(source.equals(APPLE) ? appleSummary()
                     : label(nativeAccount.authenticated(source) ? "view.signed_in" : "view.guest"));
         });
         boolean browser = isAppleDetail(), detail = isNativeDetail();
@@ -140,7 +139,8 @@ final class MusicFrontendAccountPanel {
         if (primary == null || route == null || route.page() != Page.ACCOUNT) return;
         refresh();
         if (isAppleDetail()) {
-            var state = apple(webLinks.getAsBoolean() || apple.running() ? apple.stateKey() : "links_disabled");
+            var state = apple(apple.stateKey(webLinks.getAsBoolean()));
+            if (apple.authorized()) state = state.copy().append("\n").append(appleSummary());
             var hint = apple(apple.running() ? "close_hint" : "instructions");
             primary.setPreview(state.copy().append("\n").append(hint));
             paragraph(ui, state.copy().append("\n").append(hint), body.width(), 30, muted);
@@ -194,4 +194,11 @@ final class MusicFrontendAccountPanel {
     }
     private static Component label(String key) { return MusicTypography.text(Component.translatable("sh_better_ui.online_music." + key)); }
     private static Component apple(String key) { return label("apple_account." + key); }
+    private Component appleSummary() {
+        String region = apple.storefront();
+        if (!apple.authorized()) return apple("browser_only");
+        if (region.isEmpty()) return apple("connected");
+        return MusicTypography.text(Component.translatable("sh_better_ui.online_music.apple_account.storefront",
+                region.toUpperCase(java.util.Locale.ROOT)));
+    }
 }

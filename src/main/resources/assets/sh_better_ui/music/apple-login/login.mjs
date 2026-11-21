@@ -13,7 +13,7 @@ history.replaceState(null, '', '/');
 const labels = {
   WAITING: '已准备。点击按钮，在 Apple 官方窗口授权。',
   AUTHORIZING: '请在 Apple 窗口完成授权。',
-  AUTHORIZED: 'Apple Music 浏览器会话已授权。尚未验证游戏内播放或订阅能力。',
+  AUTHORIZED: 'Apple Music 已授权。',
   SIGNED_OUT: '已断开 Apple Music 授权。',
   CANCELLED: '本次授权已取消。请关闭 Apple 弹窗；若它仍完成授权，会立即尝试撤销。',
   FAILED: '授权未完成。请检查弹窗权限、开发者配置或稍后重试；不会显示敏感错误详情。'
@@ -73,6 +73,10 @@ pauseSong.addEventListener('click', () => transport(() => playback.pause()));
 rateApply.addEventListener('click', () => transport(() => playback.playbackRate(rateInput.valueAsNumber)));
 seekSong.addEventListener('click', () => transport(() => playback.seek(document.getElementById('seek-time').valueAsNumber)));
 let bridgeFailed = false;
+let accountStatus = labels.WAITING;
+function paintAccountStatus() {
+  status.textContent = accountStatus + (bridgeFailed ? ' 游戏连接已失效，请重新从游戏开启；本页仍可断开 Apple 授权。' : '');
+}
 function paint() {
   if (!flow) return;
   connect.disabled = flow.busy || playback?.snapshot().busy || flow.state === 'AUTHORIZED';
@@ -82,25 +86,27 @@ function paint() {
 }
 // Serialize state notifications so an older AUTHORIZING callback cannot overwrite AUTHORIZED.
 let notifications = Promise.resolve();
-function report(state) {
-  status.textContent = labels[state];
+function report(state, storefront) {
+  accountStatus = labels[state] + (storefront ? ` 地区：${storefront.toUpperCase()}。` : '');
+  paintAccountStatus();
   notifications = notifications.then(async () => {
     try {
       const response = await request('/state', { method: 'POST', credentials: 'omit', cache: 'no-store',
-        headers: { 'Content-Type': 'application/json', 'X-SHBUI-Session': session }, body: JSON.stringify({ state }) });
+        headers: { 'Content-Type': 'application/json', 'X-SHBUI-Session': session }, body: JSON.stringify({ state, storefront }) });
       if (!response.ok) throw new Error();
-    } catch { bridgeFailed = true; }
-    if (bridgeFailed) status.textContent = labels[flow.state] + ' 游戏连接已失效，请重新从游戏开启；本页仍可断开 Apple 授权。';
+    } catch { bridgeFailed = true; paintAccountStatus(); }
   });
 }
 connect.addEventListener('click', () => { const operation = flow.connect(); paint(); operation.finally(paint); });
 cancel.addEventListener('click', () => { flow.cancel(); paint(); });
 disconnect.addEventListener('click', () => { const operation = flow.disconnect(); paint(); operation.finally(paint); });
+let configuredBridge = false;
 try {
   if (!/^[A-Za-z0-9_-]{43}$/.test(session)) throw new Error();
   const configResponse = await request('/config', { credentials: 'omit', cache: 'no-store', headers: { 'X-SHBUI-Session': session } });
   if (!configResponse.ok) throw new Error();
   const config = await configResponse.json();
+  configuredBridge = true;
   applySelection(config);
   await new Promise((resolve, reject) => {
     const timer = setTimeout(() => reject(new Error()), 20000);
@@ -117,7 +123,8 @@ try {
   playback = createPlaybackFlow(music, MusicKit, () => paint());
   catalogView = createCatalogView(document.getElementById('catalog'), createCatalog(music), music,
     (songs, index) => transport(() => playback.playOrdered(songs, index)));
-  status.textContent = labels.WAITING;
+  flow.observe();
+  paintAccountStatus();
   paint();
   const rateBridge = createRateBridge(playback, async (method, body) => {
     const response = await request('/playback-rate', { method, credentials: 'omit', cache: 'no-store',
@@ -128,18 +135,23 @@ try {
   });
   const ratePoll = setInterval(() => rateBridge.poll().catch(() => {}), 1000);
   const heartbeat = setInterval(async () => {
+    flow.observe();
+    paint();
     try {
       const response = await request('/status', { credentials: 'omit', cache: 'no-store', headers: { 'X-SHBUI-Session': session } });
       if (!response.ok) throw new Error();
       applySelection(await response.json());
     } catch {
       bridgeFailed = true;
-      status.textContent = labels[flow.state] + ' 游戏连接已失效，请重新从游戏开启；本页仍可断开 Apple 授权。';
+      if (flow.state === 'AUTHORIZING') flow.cancel();
+      paintAccountStatus();
       clearInterval(heartbeat);
     }
   }, 5000);
   addEventListener('pagehide', () => { clearInterval(heartbeat); clearInterval(ratePoll); rateBridge.close(); catalogView.close(); playback.close(); }, { once: true });
 } catch {
-  status.textContent = '无法初始化官方 MusicKit。需要有效的项目开发者 token，以及 Apple 接受的网页来源/浏览器。请重新从游戏发起；仅登录玩家账户不能替代开发者配置。';
+  if (configuredBridge) report('FAILED');
+  accountStatus = '无法初始化官方 MusicKit。请检查项目开发者令牌、网页来源和浏览器，再从游戏重试。';
+  paintAccountStatus();
   connect.disabled = true;
 }

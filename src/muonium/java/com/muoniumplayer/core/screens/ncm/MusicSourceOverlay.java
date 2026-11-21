@@ -490,7 +490,8 @@ public final class MusicSourceOverlay extends NcmSheet {
         if (platform == MusicPlatform.APPLE) {
             // 账号入口在账号管理里(与其它平台同一扇门);这颗角标直接落到 Apple 账号页。
             cornerButton(card, PartyIcons.KEY, MusicPlatform.APPLE,
-                    () -> NeteaseMusicService.isLoggedIn(MusicPlatform.APPLE),
+                    () -> NCMScreen.getInstance().appleMusicAccount().authorized()
+                            || NeteaseMusicService.isLoggedIn(MusicPlatform.APPLE),
                     () -> NCMScreen.getInstance().openAccountManager(MusicPlatform.APPLE), 0);
         }
     }
@@ -2145,14 +2146,15 @@ public final class MusicSourceOverlay extends NcmSheet {
                     : "未登录 · 元数据源，搜索无需登录，登录需自备 Client ID";
         }
         if (platform == MusicPlatform.APPLE) {
-            // 与 Spotify 同理：目录搜索公开，登录只是账号能力；gamdl 是完整版的另一条腿，
-            // 完整版能力由本机引擎承担，这里只说账号与能力边界。
+            if (NCMScreen.getInstance().appleMusicAccount().authorized()) {
+                return net.minecraft.network.chat.Component.translatable(
+                        "sh_better_ui.online_music.apple_account.connected").getString();
+            }
             if (NeteaseMusicService.isLoggedIn(platform)) {
                 return "已登录 · 本人歌单与逐词歌词已解锁";
             }
-            return com.muoniumplayer.core.ncm.apple.AppleMusicService.isConfigured()
-                    ? "cookies 已导入 · 待验证或已过期，重新导入即可"
-                    : "未登录 · 搜索无需登录，cookies 换来本人歌单与逐词歌词";
+            return net.minecraft.network.chat.Component.translatable(
+                    "sh_better_ui.online_music.apple_account.source_hint").getString();
         }
         if (NeteaseMusicService.isLoggedIn(platform)) {
             return "已登录 · " + NeteaseMusicService.getAccountName(platform);
