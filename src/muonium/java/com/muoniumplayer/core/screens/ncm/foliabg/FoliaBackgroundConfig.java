@@ -44,6 +44,9 @@ public final class FoliaBackgroundConfig {
      */
     public static int backgroundKind = 2;
 
+    /** Optional cover-color backdrop. Does not replace the remembered Folia/QPlayer selection. */
+    public static boolean appleCoverBackdrop = false;
+
     /** 旧的布尔口径：现在「用不用 Folia」等价于「档位不是 QPlayer 那两档」。 */
     public static boolean enabled() {
         return backgroundKind >= FoliaBackgroundOptions.KIND_FOLIA_FIRST;
@@ -167,6 +170,7 @@ public final class FoliaBackgroundConfig {
         try {
             backgroundKind = clampInt(getInt(root, "backgroundKind",
                     getBoolean(root, "enabled", true) ? 2 : 0), 0, 2);
+            appleCoverBackdrop = getBoolean(root, "appleCoverBackdrop", false);
             mode = readMode(root);
             staticMode = getBoolean(root, "staticMode", staticMode);
             audioResponse = clamp(getFloat(root, "audioResponse", audioResponse), 0f, 2f);
@@ -247,6 +251,7 @@ public final class FoliaBackgroundConfig {
     public static synchronized JsonObject toJson() {
             JsonObject root = new JsonObject();
             root.addProperty("backgroundKind", backgroundKind);
+            root.addProperty("appleCoverBackdrop", appleCoverBackdrop);
             root.addProperty("mode", mode);
             root.addProperty("staticMode", staticMode);
             root.addProperty("audioResponse", audioResponse);
@@ -318,6 +323,7 @@ public final class FoliaBackgroundConfig {
     /** 把全部字段恢复出厂（folia 默认）。 */
     public static synchronized void resetAll() {
         backgroundKind = 2;
+        appleCoverBackdrop = false;
         mode = FoliaBackgroundMode.LATENT.storedId();
         staticMode = false;
         audioResponse = 1.0f;

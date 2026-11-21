@@ -65,6 +65,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
     private static final int KIND_BACKGROUND_KIND = 25;
     /** 当前档位下 Folia 的参数行，内容由 {@link #foliaSpecs()} 决定。 */
     private static final int KIND_FOLIA_SPEC = 26;
+    private static final int KIND_APPLE_BACKDROP = 27;
 
     private static final int KIND_STYLE = 0;
     private static final int KIND_SLIDER = 1;
@@ -839,23 +840,31 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         addRow(KIND_STYLE, 0, PICK_ROW_HEIGHT);
         // ---- 背景：一行切六档（QPlayer 流体 / 模糊封面 / 四种 Folia 样式），
         //      下面紧接着换成这一档自己的参数。切换即换配置项。----
-        addRow(KIND_BACKGROUND_KIND, 0, PICK_ROW_HEIGHT);
-        if (FoliaBackgroundOptions.isQPlayer(FoliaBackgroundOptions.currentKind())) {
-            if (FoliaBackgroundOptions.currentKind() == FoliaBackgroundOptions.KIND_QPLAYER_FLUID) {
-                addRow(KIND_SECTION, 3, SECTION_HEIGHT);
-                addRow(KIND_FLUID_STYLE, 0, PICK_ROW_HEIGHT);
-                addRow(KIND_BACKGROUND, 0, PICK_ROW_HEIGHT);
-                addRow(KIND_FLUID_SLIDER, FLUID_SATURATION_SLIDER, ROW_HEIGHT);
-                addRow(KIND_FLUID_SLIDER, FLUID_AUDIO_SLIDER, ROW_HEIGHT);
-            }
+        addRow(KIND_APPLE_BACKDROP, 0, PICK_ROW_HEIGHT);
+        if (FoliaBackgroundConfig.appleCoverBackdrop) {
+            addRow(KIND_BACKGROUND, 0, PICK_ROW_HEIGHT);
         } else {
-            List<FoliaBackgroundOptions.Spec> specs = foliaSpecs();
-            for (int i = 0; i < specs.size(); i++) {
-                addRow(KIND_FOLIA_SPEC, i, FoliaBackgroundOptions.rowHeight(specs.get(i)));
+            addRow(KIND_BACKGROUND_KIND, 0, PICK_ROW_HEIGHT);
+            if (FoliaBackgroundOptions.isQPlayer(FoliaBackgroundOptions.currentKind())) {
+                if (FoliaBackgroundOptions.currentKind() == FoliaBackgroundOptions.KIND_QPLAYER_FLUID) {
+                    addRow(KIND_SECTION, 3, SECTION_HEIGHT);
+                    addRow(KIND_FLUID_STYLE, 0, PICK_ROW_HEIGHT);
+                    addRow(KIND_BACKGROUND, 0, PICK_ROW_HEIGHT);
+                    addRow(KIND_FLUID_SLIDER, FLUID_SATURATION_SLIDER, ROW_HEIGHT);
+                    addRow(KIND_FLUID_SLIDER, FLUID_AUDIO_SLIDER, ROW_HEIGHT);
+                }
+            } else {
+                List<FoliaBackgroundOptions.Spec> specs = foliaSpecs();
+                for (int i = 0; i < specs.size(); i++) {
+                    addRow(KIND_FOLIA_SPEC, i, FoliaBackgroundOptions.rowHeight(specs.get(i)));
+                }
             }
         }
         // 全局效果开关，与用哪套背景无关，紧挨背景组方便一起够到。
-        addRow(KIND_EDGE_BLUR, 0, PICK_ROW_HEIGHT);
+        var lyricStyle = FullscreenLyricStyle.current();
+        if (lyricStyle == FullscreenLyricStyle.CLASSIC || lyricStyle == FullscreenLyricStyle.APPLE) {
+            addRow(KIND_EDGE_BLUR, 0, PICK_ROW_HEIGHT);
+        }
         addRow(KIND_THEME_SOURCE, 0, PICK_ROW_HEIGHT);
 
         for (int i = 0; i < SETTINGS.length; i++) {
@@ -1002,6 +1011,14 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             List<FoliaBackgroundOptions.Spec> specs = foliaSpecs();
             if (row.index >= 0 && row.index < specs.size()) {
                 handleFoliaSpec(specs.get(row.index), right);
+            }
+            return;
+        }
+
+        if (row.kind == KIND_APPLE_BACKDROP) {
+            if (!right) {
+                FoliaBackgroundConfig.appleCoverBackdrop = !FoliaBackgroundConfig.appleCoverBackdrop;
+                FoliaBackgroundConfig.save();
             }
             return;
         }
@@ -1476,8 +1493,14 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             return;
         }
 
+        if (row.kind == KIND_APPLE_BACKDROP) {
+            renderPickRow(row, "Apple Music 风格背景", FoliaBackgroundConfig.appleCoverBackdrop ? "开" : "关",
+                    mouseX, mouseY, panelAlpha);
+            return;
+        }
+
         if (row.kind == KIND_EDGE_BLUR) {
-            renderPickRow(row, "未到行模糊", HudConfig.fullscreenLyricEdgeBlur ? "开" : "关",
+            renderPickRow(row, "未唱歌词模糊", HudConfig.fullscreenLyricEdgeBlur ? "开" : "关",
                     mouseX, mouseY, panelAlpha);
             return;
         }
