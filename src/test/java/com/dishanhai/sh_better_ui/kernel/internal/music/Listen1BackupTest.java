@@ -50,6 +50,23 @@ class Listen1BackupTest {
         assertEquals(List.of(),Listen1Backup.parse("{\"favoriteplayerlists\":[\"neplaylist_123\"]}",SOURCES).playlists());
     }
 
+    @Test void keepsDuplicateQueuePositionsAndOrderAcrossUnsupportedRows() throws IOException {
+        var result = Listen1Backup.parse("""
+                {"playerlists":["myplaylist_order"],
+                 "myplaylist_order":{"info":{"id":"myplaylist_order","title":"Order"},"tracks":[
+                  {"source":"qq","id":"qqtrack_QQ1","title":"First"},
+                  {"source":"kuwo","id":"kwtrack_1","title":"Skipped"},
+                  {"source":"netease","id":"netrack_24","title":"Middle"},
+                  {"source":"qq","id":"qqtrack_QQ1","title":"First"},
+                  {"source":"qq","id":"qqtrack_QQ2","title":"Last"}
+                 ]}}
+                """, SOURCES);
+        assertEquals(4, result.supportedTracks());
+        assertEquals(1, result.skippedTracks());
+        assertEquals(List.of("QQ1", "24", "QQ1", "QQ2"),
+                result.tracks(result.playlists().get(0)).stream().map(OnlineTrack::id).toList());
+    }
+
     @Test void rejectsMalformedOrDeepJsonAndDoesNotExposeValues() {
         for (String bad : List.of("{'playerlists':[]}", "{\"playerlists\":[]}{\"secret\":\"do not reveal\"}", "[]", "{}",
                 "{\"playerlists\":null}", "{\"playerlists\":[],\"unused\":"+"[".repeat(40)+"]".repeat(40)+"}")) {
