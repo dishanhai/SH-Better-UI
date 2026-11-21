@@ -997,10 +997,21 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
                             LyricDuetGroups.rightAligned(lyric.duetSlot)).first.length;
             if (rows == 0) continue;
             double mainTextHeight = rows * fontHeight;
+            double paintedHeight = mainTextHeight;
+            if (lyric.translationText != null && !lyric.translationText.isBlank()) {
+                CFontRenderer translationFont = FontManager.pf34bold;
+                int translationRows = lyric.wrappedRows(translationFont, lyric.translationText,
+                        qplayerWrapWidth(columnWidth)).length;
+                if (translationRows > 0) {
+                    double translationBottom = (rows - 1) * fontHeight + fontHeight * .85 + 8
+                            + translationRows * translationFont.getHeight() + 4 * (translationRows - 1);
+                    paintedHeight = Math.max(paintedHeight, translationBottom);
+                }
+            }
             float activeK = qplayerActiveK(qplayerLineToGroup[k], songProgress);
             double rowScale = qplayerLineScale(activeK, anchorY, rowTop + mainTextHeight * .5, mainTextHeight);
             classicLyricPointer.addRow(k, lyric.timestamp, columnLeft, rowTop, columnWidth,
-                    lyric.height, mainTextHeight, rowScale);
+                    paintedHeight, mainTextHeight, rowScale);
         }
         return classicLyricPointer.hover(mouseX, mouseY);
     }
