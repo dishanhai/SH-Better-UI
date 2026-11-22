@@ -6,6 +6,7 @@ import org.junit.jupiter.api.Test;
 import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,6 +31,24 @@ class BuiltInSvgIconsTest {
                         containsVisibleInk = raster.getRGB(x, y) >>> 24 > 100;
                 assertTrue(containsVisibleInk, name);
             }
+        }
+    }
+
+    @Test
+    void cachedDocumentProducesTheSamePixelsAcrossSizesAndThreads() throws Exception {
+        String name = "compact_clock";
+        var expected32 = BuiltInSvgIcons.render(name, 32).getRGB(0, 0, 32, 32, null, 0, 32);
+        var expected96 = BuiltInSvgIcons.render(name, 96).getRGB(0, 0, 96, 96, null, 0, 96);
+        var workers = Executors.newFixedThreadPool(2);
+        try {
+            for (int repeat = 0; repeat < 3; repeat++) {
+                var first = workers.submit(() -> BuiltInSvgIcons.argbPixels(name, 32));
+                var second = workers.submit(() -> BuiltInSvgIcons.argbPixels(name, 96));
+                assertArrayEquals(expected32, first.get());
+                assertArrayEquals(expected96, second.get());
+            }
+        } finally {
+            workers.shutdownNow();
         }
     }
 

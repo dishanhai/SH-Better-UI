@@ -14,7 +14,9 @@ public final class SvgIconTexture {
     public record Region(Identifier id, int side) {}
 
     private static final Map<Identifier, String> ICON_NAMES = new HashMap<>();
-    private static final Map<Identifier, Region> TEXTURES = new HashMap<>();
+    // Slots index by side / 16; the minimum 24px bucket has its own slot.
+    private static final int SIZE_SLOTS = BuiltInSvgIcons.MAX_TEXTURE_SIDE / 16 + 1;
+    private static final Map<String, Region[]> TEXTURES = new HashMap<>();
 
     private SvgIconTexture() {}
 
@@ -33,14 +35,16 @@ public final class SvgIconTexture {
         });
         if (name.isEmpty()) return null;
         int side = BuiltInSvgIcons.textureSide(logicalSide * minecraft.getWindow().getGuiScale());
-        var id = Identifier.fromNamespaceAndPath("sh_better_ui", "svg_icon_cache/" + side + "/" + name);
-        var region = TEXTURES.get(id);
+        var tiers = TEXTURES.computeIfAbsent(name, ignored -> new Region[SIZE_SLOTS]);
+        int slot = side / 16;
+        var region = tiers[slot];
         if (region == null) {
-            var raster = BuiltInSvgIcons.render(name, side);
+            var id = Identifier.fromNamespaceAndPath("sh_better_ui", "svg_icon_cache/" + side + "/" + name);
+            int[] argb = BuiltInSvgIcons.argbPixels(name, side);
             var pixels = new NativeImage(side, side, false);
             for (int y = 0; y < side; y++) {
                 for (int x = 0; x < side; x++) {
-                    int color = raster.getRGB(x, y);
+                    int color = argb[y * side + x];
                     pixels.setPixel(x, y, color);
                 }
             }
@@ -48,7 +52,7 @@ public final class SvgIconTexture {
 
             minecraft.getTextureManager().register(id, dynamic);
             region = new Region(id, side);
-            TEXTURES.put(id, region);
+            tiers[slot] = region;
         }
         return region;
     }
