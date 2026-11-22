@@ -44,13 +44,13 @@ LETTERS = {
 def path(d, width=1.1):
     return f'<path d="{d}" stroke-width="{width}"/>'
 
-def legend(word):
+def legend(word, alphabet=LETTERS):
     height = 4.65
     gap = 1.2
     x0 = (16 - (len(word) * 2 + (len(word) - 1) * gap)) / 2
     d = " ".join(
         "M" + " ".join(f"{x0 + i * (2 + gap) + x:.2f},{(16-height)/2 + y * height/4:.2f}" for x, y in line)
-        for i, c in enumerate(word) for line in LETTERS[c]
+        for i, c in enumerate(word) for line in alphabet[c]
     )
     return path(d, .79 if len(word) == 3 else .98)
 

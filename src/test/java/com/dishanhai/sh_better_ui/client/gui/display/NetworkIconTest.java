@@ -306,6 +306,14 @@ class NetworkIconTest {
             assertNotNull(image, path);
             assertEquals(size, image.getWidth(), path);
             assertEquals(size, image.getHeight(), path);
+            int accent = switch (path.substring(path.lastIndexOf('/') + 1)) {
+                case "gamepad_xbox_a.png", "gamepad_xbox_guide.png" -> 0x39A872;
+                case "gamepad_xbox_b.png" -> 0xD6485D;
+                case "gamepad_xbox_x.png" -> 0x468BDE;
+                case "gamepad_xbox_y.png" -> 0xC59131;
+                default -> 0xFFFFFF;
+            };
+            boolean hasAccent = false;
             boolean transparent = false;
             boolean painted = false;
             for (int y = 0; y < size; y++) {
@@ -314,14 +322,40 @@ class NetworkIconTest {
                     if ((pixel >>> 24) == 0) {
                         transparent = true;
                     } else {
-                        assertEquals(0xFFFFFF, pixel & 0xFFFFFF, path);
+                        int rgb = pixel & 0xFFFFFF;
+                        if (accent == 0xFFFFFF) {
+                            assertEquals(0xFFFFFF, rgb, path);
+                        } else if ((pixel >>> 24) >= 128) {
+                            // SVG rasterization blends the white rim into partially covered accent pixels.
+                            assertTrue(matchesAccentRamp(rgb, accent), path + " contains an unexpected color");
+                        }
+                        hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, accent, 3);
                         painted = true;
                     }
                 }
             }
-            assertTrue(transparent && painted, path);
+            assertTrue(transparent && painted && hasAccent, path);
             return image;
         }
+    }
+
+    private static boolean matchesAccentRamp(int rgb, int accent) {
+        int numerator = 765 - ((rgb >> 16) & 0xFF) - ((rgb >> 8) & 0xFF) - (rgb & 0xFF);
+        int denominator = 765 - ((accent >> 16) & 0xFF) - ((accent >> 8) & 0xFF) - (accent & 0xFF);
+        double coverage = Math.min(1.0, (double) numerator / denominator);
+        int expected = 0;
+        for (int shift = 0; shift < 24; shift += 8) {
+            int channel = 255 - (int) Math.round(coverage * (255 - ((accent >> shift) & 0xFF)));
+            expected |= channel << shift;
+        }
+        return nearColor(rgb, expected, 4);
+    }
+
+    private static boolean nearColor(int rgb, int expected, int tolerance) {
+        for (int shift = 0; shift < 24; shift += 8) {
+            if (Math.abs(((rgb >> shift) & 0xFF) - ((expected >> shift) & 0xFF)) > tolerance) return false;
+        }
+        return true;
     }
 
     private static void assertVectorCompanion(String path, BufferedImage original) throws IOException {

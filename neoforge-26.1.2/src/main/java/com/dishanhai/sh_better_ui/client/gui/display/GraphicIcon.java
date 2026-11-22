@@ -126,6 +126,11 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     public static final GraphicIcon GAMEPAD = builtIn("gamepad");
     public static final GraphicIcon MOUSE = builtIn("mouse");
     public static final GraphicIcon KEYBOARD = builtIn("keyboard");
+    public static final GraphicIcon KEY_LINUX_SUPER = builtIn("key_linux_super");
+    public static final GraphicIcon KEY_LINUX_COMPOSE = builtIn("key_linux_compose");
+    public static final GraphicIcon KEY_LINUX_ALTGR = builtIn("key_linux_altgr");
+    public static final GraphicIcon KEY_LINUX_SYSRQ = builtIn("key_linux_sysrq");
+    public static final GraphicIcon KEY_LINUX_MENU = builtIn("key_linux_menu");
     public static final GraphicIcon HEADPHONES = builtIn("headphones");
     public static final GraphicIcon MICROPHONE = builtIn("microphone");
     public static final GraphicIcon FORGE = builtIn("forge");
