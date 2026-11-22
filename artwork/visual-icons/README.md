@@ -1,6 +1,9 @@
 # Visual icon masters
 
-These monochrome SVGs are drawn on a 16-unit grid for readability at 16 px.
+Every built-in catalog icon has an editable 16-unit SVG master. Most use
+a monochrome tint mask; a few gamepad icons retain their identifying accents.
+The platform and brand pictograms are redraws based on this repository’s
+existing icons, not official asset downloads.
 Keep outlines rounded and use negative space to distinguish status or action icons.
 They contain editable geometry, not embedded images.
 
@@ -44,7 +47,7 @@ running the icon exporter.
 ### Search the built-in icons
 
 See [the Chinese icon reference](CATALOG.zh-TW.md) for names, stable texture IDs,
-SVG masters, and both PNG sizes. It lists PNG-only icons as well as migrated icons.
+SVG masters, and both PNG sizes. It checks the SVG and both PNG paths against the files in the catalog.
 
 When adding an icon ID, add its Chinese name in [the TSV](icon-names.zh-TW.tsv).
 After adding, removing, or migrating icons, regenerate and verify the table:

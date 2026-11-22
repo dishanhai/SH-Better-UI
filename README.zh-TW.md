@@ -439,7 +439,7 @@ Forge 與 NeoForge 的原生 `Screen` 可使用 `client.gui.display` 下的圖�
 
 查看[內建圖示索引](artwork/visual-icons/CATALOG.zh-TW.md)，可按名稱、ID 或 SVG 檔名搜尋。
 
-內建圖示的 64×64 透明紋理位於 `sh_better_ui:textures/gui/display_64/<圖示名稱>.png`，與 16×16 版本同名。有 SVG 原稿的圖示會按兩種尺寸分別渲染；尚未遷移的 PNG 圖示仍採最鄰近取樣放大 4 倍。內建 `GraphicIcon` 常數仍引用 16×16 PNG。
+內建圖示的 64×64 透明紋理位於 `sh_better_ui:textures/gui/display_64/<圖示名稱>.png`，與 16×16 版本同名。內建目錄的圖示皆有可編輯的 SVG 原稿，按兩種尺寸分別渲染。內建 `GraphicIcon` 常數仍引用 16×16 PNG。
 
 AE2 介面可用 `AE2_ORDER`（下單）、`AE2_PATTERN_UPLOAD`（樣板上傳）、`AE2_ORDERABLE`（可下單）和 `AE2_STOCK`（AE 庫存）。對應紋理名為 `ae2_order.png`、`ae2_pattern_upload.png`、`ae2_orderable.png`、`ae2_stock.png`。
 

@@ -442,7 +442,7 @@ Native Forge and NeoForge `Screen` implementations can use the icons and status 
 
 Use the [built-in icon reference (Chinese)](artwork/visual-icons/CATALOG.zh-TW.md) to look up names, IDs, SVG sources, and runtime textures.
 
-Built-in 64×64 transparent textures are at `sh_better_ui:textures/gui/display_64/<icon-name>.png` and keep the same names as the 16×16 textures. SVG-backed icons are rendered separately at each size. Legacy PNG-only icons still use 4× nearest-neighbor scaling. Built-in `GraphicIcon` constants still reference the 16×16 PNGs.
+Built-in 64×64 transparent textures are at `sh_better_ui:textures/gui/display_64/<icon-name>.png` and keep the same names as the 16×16 textures. The built-in catalog has an editable SVG master for every icon. Both PNG sizes are exported independently. Built-in `GraphicIcon` constants still reference the 16×16 PNGs.
 
 - AE2: `AE2_ORDER` (place order), `AE2_PATTERN_UPLOAD`, `AE2_ORDERABLE` and `AE2_STOCK`; textures are `ae2_order.png`, `ae2_pattern_upload.png`, `ae2_orderable.png` and `ae2_stock.png`.
 - Shop and tools: `PRODUCT_CARD`, `PRODUCT`, `PRODUCT_OUTPUT`, `PRODUCT_INPUT`, `MY_PROFILE`, `MY_FAVORITES`, `HIDE`, `SELECT_ALL`, `SELECT_PARTIAL`, `RENDER`, `TOOL`, `TOOLBAR`, `INSTALL`, `COMPATIBILITY` and `QUANTUM`.
