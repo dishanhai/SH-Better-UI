@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.client.blur.GaussBlur.RevealDirection;
 import com.dishanhai.sh_better_ui.client.visual.VisualEffectResult;
@@ -85,24 +86,28 @@ public final class VisualRevealRenderer extends RenderType {
 
     static VisualEffectResult drawTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width,
                                           int height, RevealProfile profile, float radius, RevealDirection direction) {
+        var svg = com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture.find(texture, Math.max(width, height));
+        var sourceId = svg == null ? texture : svg.id();
         graphics.flush();
-        return GuiStateGuard.call(() -> drawTextureIsolated(graphics, texture, x, y, width, height, profile, radius, direction));
+        if (LegacyGuiBackend.isNonOpenGlWindow()) {
+            LegacyGuiBackend.texturedQuad(graphics, sourceId, x, y, width, height, 0f, 0f, 1f, 1f, 0xffffffff);
+            return FALLBACK;
+        }
+        return GuiStateGuard.call(() -> drawTextureIsolated(graphics, sourceId, x, y, width, height, profile, radius, direction));
     }
 
     private static VisualEffectResult drawTextureIsolated(GuiGraphics graphics, ResourceLocation texture, int x, int y,
                                                           int width, int height, RevealProfile profile, float radius,
                                                           RevealDirection direction) {
-        var svg = com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture.find(texture, Math.max(width, height));
-        var sourceId = svg == null ? texture : svg.id();
         if (shader == null) {
             // 归一化纹理范围是整张图，源尺寸与绘制尺寸彼此独立。
-            graphics.blit(sourceId, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
+            graphics.blit(texture, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
             graphics.flush();
             return FALLBACK;
         }
 
         shader.safeGetUniform("Reveal").set(radius, profile.fullBlurUntil(), profile.sharpFrom());
-        AbstractTexture source = Minecraft.getInstance().getTextureManager().getTexture(sourceId);
+        AbstractTexture source = Minecraft.getInstance().getTextureManager().getTexture(texture);
         shader.safeGetUniform("Direction").set(direction.ordinal());
         shader.setSampler("TextureSampler", source);
         try {
