@@ -395,8 +395,12 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     }
 
     private void blit(GuiGraphicsExtractor graphics, int x, int y, int size, int argb) {
-        graphics.blit(RenderPipelines.GUI_TEXTURED, texture, x, y, 0f, 0f, size, size,
-                PIXELS, PIXELS, PIXELS, PIXELS, argb);
+        var pose = graphics.pose();
+        double density = Math.max(Math.hypot(pose.m00(), pose.m01()), Math.hypot(pose.m10(), pose.m11()));
+        var svg = SvgIconTexture.find(texture, size * density);
+        int texels = svg == null ? PIXELS : svg.side();
+        graphics.blit(RenderPipelines.GUI_TEXTURED, svg == null ? texture : svg.id(), x, y, 0f, 0f,
+                size, size, texels, texels, texels, texels, argb);
     }
 
     private static GraphicIcon builtIn(String name) {
