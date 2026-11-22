@@ -3,8 +3,10 @@ package com.dishanhai.sh_better_ui.client.gui.display;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.concurrent.Executors;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -30,6 +32,37 @@ class BuiltInSvgIconsTest {
                 assertTrue(containsVisibleInk, name);
             }
         }
+    }
+
+    @Test
+    void cachedDocumentProducesTheSamePixelsAcrossSizesAndThreads() throws Exception {
+        String name = "compact_clock";
+        var expected32 = BuiltInSvgIcons.render(name, 32).getRGB(0, 0, 32, 32, null, 0, 32);
+        var expected96 = BuiltInSvgIcons.render(name, 96).getRGB(0, 0, 96, 96, null, 0, 96);
+        var workers = Executors.newFixedThreadPool(2);
+        try {
+            for (int repeat = 0; repeat < 3; repeat++) {
+                var first = workers.submit(() -> BuiltInSvgIcons.argbPixels(name, 32));
+                var second = workers.submit(() -> BuiltInSvgIcons.argbPixels(name, 96));
+                assertArrayEquals(expected32, first.get());
+                assertArrayEquals(expected96, second.get());
+            }
+        } finally {
+            workers.shutdownNow();
+        }
+    }
+
+    @Test
+    void replacementPngWinsOverBundledSvg() throws Exception {
+        String path = "textures/gui/display/info.png";
+        byte[] bundled;
+        try (var in = BuiltInSvgIcons.class.getResourceAsStream("/assets/sh_better_ui/" + path)) {
+            bundled = in.readAllBytes();
+        }
+        assertEquals("info", BuiltInSvgIcons.select("sh_better_ui", path, () -> new ByteArrayInputStream(bundled)));
+        var replacement = bundled.clone();
+        replacement[replacement.length / 2] ^= 1;
+        assertNull(BuiltInSvgIcons.select("sh_better_ui", path, () -> new ByteArrayInputStream(replacement)));
     }
 
     @Test
