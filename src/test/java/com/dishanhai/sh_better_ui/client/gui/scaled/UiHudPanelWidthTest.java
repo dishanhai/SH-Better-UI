@@ -33,6 +33,16 @@ class UiHudPanelWidthTest {
         assertTrue(shortPanel.fit(320, 180).width() > new UiHudPanel(FONT, List.of(shortLabel)).fit(320, 180).width());
     }
 
+    @Test
+    void largerIconsLeaveTheTextAndPanelGeometryUnchanged() {
+        var rows = List.of(row("玩家"), row("服务器"));
+        var standard = new UiHudPanel(FONT, rows, 100);
+        var enlarged = new UiHudPanel(FONT, rows, 100, 10);
+
+        assertEquals(standard.fit(320, 180, 0.75f), enlarged.fit(320, 180, 0.75f));
+        assertEquals(standard.fit(90, 40), enlarged.fit(90, 40));
+    }
+
     private static UiHudPanel.Row row(String text) {
         return new UiHudPanel.Row(GraphicIcon.PIN, 0xffffffff, Component.literal(text));
     }
