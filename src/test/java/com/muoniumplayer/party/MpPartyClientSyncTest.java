@@ -8,19 +8,41 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
 
+import java.lang.reflect.Field;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
+
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
 class MpPartyClientSyncTest {
+    private final List<JsonObject> sent = new ArrayList<>();
+    private Field hostField;
+    private MpHost previousHost;
+
     @BeforeEach
-    void establishClockOffset() {
+    void establishClockOffset() throws ReflectiveOperationException {
+        // Bind only the transport; these frame tests do not need the wall-clock ticker.
+        hostField = MpPartyClient.class.getDeclaredField("host");
+        hostField.setAccessible(true);
+        previousHost = (MpHost) hostField.get(null);
+        hostField.set(null, new MpHost() {
+            private final UUID player = UUID.randomUUID();
+
+            @Override public boolean canSend() { return true; }
+            @Override public void send(byte[] frame) { sent.add(MpProto.decode(frame)); }
+            @Override public UUID selfUuid() { return player; }
+            @Override public void chat(String message) {}
+        });
         MpSyncPolicy.compensate(0L, System.currentTimeMillis() + 10_000L);
     }
 
     @AfterEach
-    void leaveRoom() {
+    void leaveRoom() throws ReflectiveOperationException {
         receive(MpProto.msg(MpProto.S_LEFT));
+        hostField.set(null, previousHost);
     }
 
     @Test
@@ -73,13 +95,14 @@ class MpPartyClientSyncTest {
     }
 
     @Test
-    void personalPauseSurvivesOrdinaryTrackChangesUntilResync() throws ReflectiveOperationException {
+    void personalPauseSurvivesOrdinaryTrackChangesUntilResync() {
         receive(track(2, 10_000L, true));
-        setPersonalPause();
+        MpPartyClient.setSelfPause(true);
 
         receive(track(3, 0L, true));
         assertTrue(MpPartyClient.selfPaused());
 
+        MpPartyClient.setSelfPause(false);
         JsonObject staleResync = track(2, 10_000L, true);
         staleResync.addProperty("resync", true);
         receive(staleResync);
@@ -92,19 +115,41 @@ class MpPartyClientSyncTest {
     }
 
     @Test
-    void idleResyncClearsPersonalPause() throws ReflectiveOperationException {
-        setPersonalPause();
+    void idleResyncClearsPersonalPause() {
+        MpPartyClient.setSelfPause(true);
+        MpPartyClient.setSelfPause(false);
         JsonObject stop = frame(MpProto.S_STOP, 4, 0L);
         stop.addProperty("resync", true);
         receive(stop);
         assertFalse(MpPartyClient.selfPaused());
     }
 
-    private static void setPersonalPause() throws ReflectiveOperationException {
-        // Simulate the local half of the request without binding the process-wide ticker.
-        var field = MpPartyClient.class.getDeclaredField("selfPaused");
-        field.setAccessible(true);
-        field.setBoolean(null, true);
+    @Test
+    void legacyIdleStopCompletesAResume() {
+        MpPartyClient.setSelfPause(true);
+        MpPartyClient.setSelfPause(false);
+        receive(frame(MpProto.S_STOP, 4, 0L));
+        assertFalse(MpPartyClient.selfPaused());
+    }
+
+    @ParameterizedTest
+    @ValueSource(booleans = {false, true})
+    void duplicateResumeDoesNotSendAndALateResyncCannotClearANewerPause(boolean emptyRoom) {
+        if (!emptyRoom) receive(track(4, 0L, true));
+        MpPartyClient.toggleSelfPause();
+        MpPartyClient.toggleSelfPause();
+        MpPartyClient.toggleSelfPause();
+        assertEquals(List.of(true, false), sent.stream().map(m -> m.get("paused").getAsBoolean()).toList());
+        assertTrue(MpPartyClient.selfPaused());
+
+        JsonObject resync = emptyRoom ? frame(MpProto.S_STOP, 4, 0L) : track(4, 15_000L, true);
+        resync.addProperty("resync", true);
+        receive(resync);
+        assertFalse(MpPartyClient.selfPaused());
+
+        MpPartyClient.toggleSelfPause();
+        receive(resync);
+        assertTrue(MpPartyClient.selfPaused());
     }
 
     private static JsonObject track(long seq, long pos, boolean playing) {
