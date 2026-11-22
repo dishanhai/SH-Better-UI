@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.client.gui.display.BuiltInSvgIcons;
 import com.dishanhai.sh_better_ui.kernel.internal.NativePort;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.systems.RenderSystem;
@@ -131,6 +132,12 @@ public final class NativeRichMedia implements AutoCloseable {
     }
     static RichMediaDecoder.Sheet decodePack(Identifier id,ResourceManager resources)throws IOException {
         if(!supports(id))throw new IOException("Only resource-pack textures are supported");
+        String svgName = BuiltInSvgIcons.name(id.getNamespace(), id.getPath());
+        if (BuiltInSvgIcons.hasSource(svgName)) {
+            int side = 128;
+            return new RichMediaDecoder.Sheet(BuiltInSvgIcons.render(svgName, side), side, side,
+                    java.util.List.of(new RichMediaDecoder.Frame(0, 0, 0)), 1);
+        }
         var resource=resources.getResource(id).orElseThrow(()->new IOException("Missing inline image"));byte[] metadata=null;
         if(id.getPath().endsWith(".png")){
             var sidecar=resources.getResource(Identifier.parse(id+".mcmeta")).orElse(null);

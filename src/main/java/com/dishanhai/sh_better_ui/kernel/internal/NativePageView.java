@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal;
 
+import com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture;
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.api.UiScreen;
 import com.dishanhai.sh_better_ui.client.api.LayoutApi;
@@ -671,7 +672,10 @@ final class NativePageView {
                     case "icon", "image" -> {
                         if (texture != null) {
                             int drawWidth = type.equals("icon") ? Math.min(w, h) : w;
-                            graphics.blit(texture, x, y, 0f, 0f, drawWidth, h, drawWidth, h);
+                            var svg = SvgIconTexture.find(texture, Math.max(drawWidth, h));
+                            if (svg == null) graphics.blit(texture, x, y, 0f, 0f, drawWidth, h, drawWidth, h);
+                            else graphics.blit(svg.id(), x, y, drawWidth, h, 0f, 0f,
+                                    svg.side(), svg.side(), svg.side(), svg.side());
                         } else if (!narration.getString().isEmpty()) {
                             drawLabel(graphics, font, narration, x, y, Math.max(1, w));
                         }

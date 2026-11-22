@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture;
 import com.dishanhai.sh_better_ui.client.blur.GaussBlur;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
@@ -170,8 +171,10 @@ final class UiTextDetailsScreen extends Screen {
             graphics.enableScissor(textLeft, viewTop, textRight, viewBottom);
             try {
                 if (headingInset > 0 && scroll < ICON_SIZE) {
-                    graphics.blit(EXPAND_LARGE, textLeft, headingY, ICON_SIZE, ICON_SIZE,
-                            0f, 0f, LARGE_PIXELS, LARGE_PIXELS, LARGE_PIXELS, LARGE_PIXELS);
+                    var svg = SvgIconTexture.find(EXPAND_LARGE, ICON_SIZE);
+                    int texels = svg == null ? LARGE_PIXELS : svg.side();
+                    graphics.blit(svg == null ? EXPAND_LARGE : svg.id(), textLeft, headingY, ICON_SIZE, ICON_SIZE,
+                            0f, 0f, texels, texels, texels, texels);
                 }
                 int titleY = headingY + (headingHeight - heading.size() * lineStep()) / 2;
                 drawLines(graphics, heading, textLeft + headingInset, titleY,

@@ -92,15 +92,17 @@ public final class VisualRevealRenderer extends RenderType {
     private static VisualEffectResult drawTextureIsolated(GuiGraphics graphics, ResourceLocation texture, int x, int y,
                                                           int width, int height, RevealProfile profile, float radius,
                                                           RevealDirection direction) {
+        var svg = com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture.find(texture, Math.max(width, height));
+        var sourceId = svg == null ? texture : svg.id();
         if (shader == null) {
             // 归一化纹理范围是整张图，源尺寸与绘制尺寸彼此独立。
-            graphics.blit(texture, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
+            graphics.blit(sourceId, x, y, width, height, 0f, 0f, 1, 1, 1, 1);
             graphics.flush();
             return FALLBACK;
         }
 
         shader.safeGetUniform("Reveal").set(radius, profile.fullBlurUntil(), profile.sharpFrom());
-        AbstractTexture source = Minecraft.getInstance().getTextureManager().getTexture(texture);
+        AbstractTexture source = Minecraft.getInstance().getTextureManager().getTexture(sourceId);
         shader.safeGetUniform("Direction").set(direction.ordinal());
         shader.setSampler("TextureSampler", source);
         try {

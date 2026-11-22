@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface;
 import com.dishanhai.sh_better_ui.client.gui.text.UiHudRichText;
@@ -89,8 +90,10 @@ public final class UiHudPanel {
         int color = palette.color(TEXT);
         int lineY = PADDING + 1;
         for (var row : rows) {
-            graphics.blit(RenderPipelines.GUI_TEXTURED, row.icon(), PADDING, lineY, 0f, 0f,
-                    ICON_SIZE, ICON_SIZE, ICON_SIZE, ICON_SIZE, row.color());
+            var svg = SvgIconTexture.find(row.icon(), ICON_SIZE);
+            int texels = svg == null ? ICON_SIZE : svg.side();
+            graphics.blit(RenderPipelines.GUI_TEXTURED, svg == null ? row.icon() : svg.id(), PADDING, lineY,
+                    0f, 0f, ICON_SIZE, ICON_SIZE, texels, texels, texels, texels, row.color());
             UiHudRichText.draw(graphics, font, row.text().getVisualOrderText(), TEXT_X, lineY, color, preferences, palette);
             lineY += font.lineHeight + 3;
         }

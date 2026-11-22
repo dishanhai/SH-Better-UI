@@ -189,6 +189,10 @@ public final class ElectricLogo implements AutoCloseable {
         if (source == null) {
             return ElectricLogoShape.bolt();
         }
+        String svgName = BuiltInSvgIcons.name(source.getNamespace(), source.getPath());
+        if (BuiltInSvgIcons.hasSource(svgName)) {
+            return ElectricLogoShape.trace(BuiltInSvgIcons.render(svgName, 96));
+        }
         try (var input = Minecraft.getInstance().getResourceManager().open(source)) {
             var image = ImageIO.read(input);
             return image == null ? null : ElectricLogoShape.trace(image);

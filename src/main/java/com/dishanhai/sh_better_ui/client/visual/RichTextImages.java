@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.client.gui.display.BuiltInSvgIcons;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.ImageNode;
 import com.dishanhai.sh_better_ui.kernel.api.richtext.RichDocument;
@@ -222,6 +223,12 @@ final class RichTextImages {
     }
 
     private static RichMediaDecoder.Sheet decodePack(UiId id, ResourceManager resources) throws IOException {
+        String svgName = BuiltInSvgIcons.name(id.namespace(), id.path());
+        if (BuiltInSvgIcons.hasSource(svgName)) {
+            int side = 128;
+            return new RichMediaDecoder.Sheet(BuiltInSvgIcons.render(svgName, side), side, side,
+                    java.util.List.of(new RichMediaDecoder.Frame(0, 0, 0)), 1);
+        }
         var location = ResourceLocation.tryParse(id.toString());
         var resource = resources.getResource(location).orElseThrow(() -> new IOException("Missing inline image"));
         byte[] metadata = null;

@@ -432,8 +432,13 @@ public record GraphicIcon(ResourceLocation texture, GraphicIconShader shader, Gr
                     pose.scale(frame.scale(), frame.scale(), 1f);
                     pose.translate(-centerX, -centerY, 0f);
                 }
-                if (shader == null || !shader.draw(graphics, texture, x, y, size, preferences)) {
-                    graphics.blit(texture, x, y, size, size, 0f, 0f, PIXELS, PIXELS, PIXELS, PIXELS);
+                var matrix = pose.last().pose();
+                double density = Math.max(Math.hypot(matrix.m00(), matrix.m01()), Math.hypot(matrix.m10(), matrix.m11()));
+                var svg = SvgIconTexture.find(texture, size * density);
+                var drawnTexture = svg == null ? texture : svg.id();
+                int texels = svg == null ? PIXELS : svg.side();
+                if (shader == null || !shader.draw(graphics, drawnTexture, x, y, size, preferences)) {
+                    graphics.blit(drawnTexture, x, y, size, size, 0f, 0f, texels, texels, texels, texels);
                 }
             } finally {
                 if (animate) pose.popPose();

@@ -215,6 +215,7 @@ def sharedSources = [
         'kernel/internal/MaterialPresetCodec.java',
         'kernel/internal/NativeModuleSources.java',
         'client/font/LocalFontPack.java',
+        'client/gui/display/BuiltInSvgIcons.java',
         'kernel/internal/NativeTextClusters.java',
         'kernel/internal/TextReadabilityBudget.java'
 ].collect { "${packagePath}/${it}".toString() }.toSet()
@@ -243,6 +244,7 @@ sourceSets.test {
     java {
         srcDir('../src/test/java')
         include('com/muoniumplayer/**')
+        include('com/dishanhai/sh_better_ui/client/gui/display/BuiltInSvgIconsTest.java')
         include("${packagePath}/client/font/Native*.java")
         include("${packagePath}/client/font/LocalFontPackTest.java")
         include("${packagePath}/client/gui/scaled/ConfirmationChoiceTest.java")
@@ -376,6 +378,10 @@ ext.sourceRoot = projectDir.parentFile
 apply from: '../gradle/kernel.gradle'
 
 processResources {
+    from('../artwork/visual-icons') {
+        include('*.svg')
+        into('assets/sh_better_ui/visual_icons')
+    }
     from('../LICENSE')
     from('../src/main/resources') {
         include('cover.png', 'assets/sh_better_ui/lang/**', 'assets/sh_better_ui/textures/gui/display*/**',
@@ -407,6 +413,13 @@ tasks.register('verifyLibraryJar') {
     doLast {
         def archive = tasks.jar.archiveFile.get().asFile
         new java.util.zip.ZipFile(archive).withCloseable { zip ->
+            fileTree('../artwork/visual-icons').matching { include '*.svg' }.files.each { master ->
+                if (zip.getEntry("assets/sh_better_ui/visual_icons/${master.name}") == null)
+                    throw new GradleException("Missing SVG icon source: ${master.name}")
+            }
+            if (zip.getEntry('META-INF/jarjar/jsvg-2.2.0.jar') == null)
+                throw new GradleException('Missing bundled JSVG runtime')
+
             ([
                     'META-INF/licenses/muoniumplayer/LICENSE',
                     'META-INF/licenses/muoniumplayer/NOTICE',
@@ -533,7 +546,7 @@ tasks.register('verifyLibraryJar') {
                         (entry.name.endsWith('.mixins.json') && !portMixinConfigs.contains(entry.name)) ||
                         (entry.name.startsWith('META-INF/jarjar/') && !entry.directory &&
                          !(entry.name in ['META-INF/jarjar/metadata.json', 'META-INF/jarjar/types-0.2.0.jar',
-                                          'META-INF/jarjar/skija-shared-0.143.17.jar'])) || entry.name.startsWith('kotlin/') ||
+                                          'META-INF/jarjar/skija-shared-0.143.17.jar', 'META-INF/jarjar/jsvg-2.2.0.jar'])) || entry.name.startsWith('kotlin/') ||
                         entry.name.startsWith('thedarkcolour/')
             }
             if (!forbidden.isEmpty()) throw new GradleException("Unexpected packaged entries: ${forbidden*.name}")

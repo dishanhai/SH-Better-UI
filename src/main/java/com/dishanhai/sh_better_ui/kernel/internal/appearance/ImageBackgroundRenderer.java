@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.appearance;
 
+import com.dishanhai.sh_better_ui.client.gui.display.BuiltInSvgIcons;
 import com.dishanhai.sh_better_ui.client.api.BackgroundSpec;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
@@ -78,13 +79,19 @@ public final class ImageBackgroundRenderer implements BackgroundSpec.Renderer {
 
     private void load(String value) {
         var client = Minecraft.getInstance();
-        var resource = BackgroundImage.resource(value)
-                ? client.getResourceManager().getResource(ResourceLocation.tryParse(value)).orElse(null) : null;
+        var resourceId = BackgroundImage.resource(value) ? ResourceLocation.tryParse(value) : null;
+        var resource = resourceId == null ? null : client.getResourceManager().getResource(resourceId).orElse(null);
+        var svg = resourceId == null ? null : BuiltInSvgIcons.name(resourceId.getNamespace(), resourceId.getPath());
         Path path = BackgroundImage.resource(value) ? null : Path.of(value);
         if (path != null && !path.isAbsolute()) path = client.gameDirectory.toPath().resolve(path);
         Path local = path;
         pending = CompletableFuture.supplyAsync(() -> {
             try {
+                if (BuiltInSvgIcons.hasSource(svg)) {
+                    var image = BuiltInSvgIcons.render(svg, 128);
+                    return new BackgroundImageLoader.Pixels(128, 128,
+                            image.getRGB(0, 0, 128, 128, null, 0, 128));
+                }
                 if (local == null && resource == null) throw new java.io.IOException("Missing background image");
                 try (var stream = local != null ? Files.newInputStream(local) : resource.open()) {
                     return BackgroundImageLoader.read(stream);

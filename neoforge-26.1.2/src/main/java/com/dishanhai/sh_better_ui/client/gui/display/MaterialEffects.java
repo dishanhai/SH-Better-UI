@@ -47,8 +47,9 @@ public final class MaterialEffects {
     }
 
     public static void drawIcon(GuiGraphicsExtractor graphics, Bounds area, GraphicIcon icon, Effect effect, int phase) {
-        var texture = Minecraft.getInstance().getTextureManager().getTexture(icon.texture());
-        var sampler = RenderSystem.getSamplerCache().getClampToEdge(FilterMode.NEAREST);
+        var svg = SvgIconTexture.find(icon.texture(), Math.max(area.width(), area.height()));
+        var texture = Minecraft.getInstance().getTextureManager().getTexture(svg == null ? icon.texture() : svg.id());
+        var sampler = RenderSystem.getSamplerCache().getClampToEdge(svg == null ? FilterMode.NEAREST : FilterMode.LINEAR);
         submit(graphics, area, TextureSetup.singleTexture(texture.getTextureView(), sampler), effect, 0, phase);
     }
 

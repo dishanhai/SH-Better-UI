@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.layout;
 
+import com.dishanhai.sh_better_ui.client.gui.display.BuiltInSvgIcons;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentFrame.VisualBounds;
 import com.dishanhai.sh_better_ui.client.lyrics.render.LyricGlyphAccess;
@@ -135,6 +136,12 @@ public final class AlignmentAssets {
     }
 
     private Optional<TextureMetrics> load(TextureKey key) {
+        String name = BuiltInSvgIcons.name(key.id().getNamespace(), key.id().getPath());
+        if (BuiltInSvgIcons.hasSource(name)) {
+            var image = BuiltInSvgIcons.render(name, 128);
+            return Optional.of(TextureMetrics.scan(image.getWidth(), image.getHeight(), key.threshold(),
+                    (x, y) -> image.getRGB(x, y) >>> 24));
+        }
         var resource = resources.getResource(key.id());
         if (resource.isEmpty()) return Optional.empty();
         try (var stream = resource.get().open(); var image = NativeImage.read(stream)) {
