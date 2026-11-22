@@ -1,6 +1,11 @@
 <!-- Author: dishanhai -->
 # 待辦
 
+## Skija 一键补库
+
+- [x] Forge 1.20.1 和 NeoForge 26.1.2 的 Windows 隔离客户端已复验 FFmpeg 缺失时的主菜单点击、下载失败后进入世界、重试安装和主菜单继续可用。NeoForge 26.1.2 已复验重新启动后加载伴生包。
+- [ ] 在 GregTech Leisure 整合包及 NeoForge 1.21.1／26.2 的发行客户端复验主菜单输入。补验 Android、Linux 和 macOS 的平台包。
+
 ## MP 白噪音
 
 - [ ] 在 Forge 1.20.1、NeoForge 26.1.2／26.2 客户端复验白噪音页的滚动、音量拖动与取消，并试听音频切换和循环接缝。

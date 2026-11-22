@@ -270,7 +270,7 @@ public final class MuoniumPlayerClient {
         // ffmpeg 提示已经占住界面时，这里读到的当前界面不是主菜单，本 tick 直接跳过 —— 两个提示天然排队。
         GuiUpdateNotice.tickAutoShow(mc);
 
-        // ---- 原生库装好、热启用又失败：模组替用户把游戏关掉再原样打开 ----
+        // ---- MuoniumConfig 更新后的重启调度 ----
         // 只在主菜单（mc.level == null）倒计时；游戏世界里绝不自动关人。ESC 取消；
         // 重启上限、拿不到启动命令等安全阀都在 GameRestart 内部，这里一次布尔判断。
         com.muoniumplayer.core.update.GameRestart.tick(mc::stop, mc.level == null);

@@ -1006,9 +1006,6 @@ public final class SkijaHost {
         if (now < resumeAtNanos) {
             return;
         }
-        // 重启看门狗让路：本会话里自动下载已装好伴生包（Windows 之外的平台）时，必须重启游戏
-        // 才能生效，热加载不再重试——重评每次都要重扫候选、重试 dlopen，手机上白烧 CPU，
-        // 还会把提示层挂着的「必须重启」冲成「正在重试」。
         if (SkijaCompanionDownload.isRestartRequired()) {
             return;
         }
@@ -1020,6 +1017,16 @@ public final class SkijaHost {
         if (resumeAttempts <= 3 || resumeAttempts % 10 == 0) {
             log("第 " + resumeAttempts + " 次重新评估渲染层（上次原因：" + suspendReason + "）");
         }
+    }
+
+    /** Whether a Skija screen can take focus without hiding its controls. */
+    public static boolean canOpenScreen() {
+        return SkijaNatives.status().loaded() && !disabled;
+    }
+
+    /** Probe the native library for the vanilla recovery control. */
+    public static void checkNativeAvailability() {
+        SkijaNatives.ensureLoaded();
     }
 
     /** 渲染层当前是否处于停用状态（供原版 GUI 的提示层判断要不要说话）。 */
