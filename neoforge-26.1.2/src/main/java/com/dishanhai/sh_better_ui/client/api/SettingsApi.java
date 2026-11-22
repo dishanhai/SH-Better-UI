@@ -27,7 +27,7 @@ public final class SettingsApi {
 
     /** Persists the theme without overwriting unrelated control panel settings. */
     public boolean saveTheme(ThemeSettings theme) {
-        return ControlPanelSettings.save(current().withTheme(theme));
+        return ControlPanelSettings.saveTheme(theme);
     }
 
     /** Background IDs rendered by this platform, in selection order. */
