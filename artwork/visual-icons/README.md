@@ -4,6 +4,8 @@ Every built-in catalog icon has an editable 16-unit SVG master. Most use
 a monochrome tint mask; a few gamepad icons retain their identifying accents.
 The platform and brand pictograms are redraws based on this repository’s
 existing icons, not official asset downloads.
+The [33-icon reference sheet](REFERENCE-ICONS.zh-TW.md) links each reworked
+master to its exact pre-migration PNG.
 Keep outlines rounded and use negative space to distinguish status or action icons.
 They contain editable geometry, not embedded images.
 
@@ -56,3 +58,15 @@ After adding, removing, or migrating icons, regenerate and verify the table:
 python scripts/generate-visual-icon-catalog.py
 python scripts/generate-visual-icon-catalog.py --check
 ```
+
+### Developer and license icons
+
+The license badges use original compact legends (MIT, LGPL, GPL, A2, BSD,
+and MPL) for display. They do not determine a project's license or replace
+its license text. The generic `license` and `plugin` icons remain available.
+
+`google` is a project-drawn monochrome identification glyph, visually
+referencing the G silhouette on the
+[Google Identity branding guide](https://developers.google.com/identity/branding-guidelines?hl=en).
+It is not an official Google asset or a Sign in with Google button. Use the
+documented official assets and rules for Google authentication.

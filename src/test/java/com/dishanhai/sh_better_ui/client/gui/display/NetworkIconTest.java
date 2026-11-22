@@ -254,6 +254,15 @@ class NetworkIconTest {
     }
 
     @Test
+    void developerAndLicenseIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.GOOGLE, GraphicIcon.LICENSE_MIT, GraphicIcon.LICENSE_LGPL,
+                GraphicIcon.LICENSE_GPL, GraphicIcon.LICENSE_APACHE_2, GraphicIcon.LICENSE_BSD,
+                GraphicIcon.LICENSE_MPL_2, GraphicIcon.THIRD_PARTY, GraphicIcon.DEPENDENCY,
+                GraphicIcon.LIBRARY, GraphicIcon.FRAMEWORK, GraphicIcon.COMPONENT, GraphicIcon.EXTENSION,
+                GraphicIcon.PLUGIN, GraphicIcon.LICENSE));
+    }
+
+    @Test
     void vectorMastersHaveIndependentlyRenderedTintableTextures() throws IOException {
         try (var sources = Files.list(vectorMasterDirectory())) {
             var masters = sources.filter(source -> source.getFileName().toString().endsWith(".svg")).toList();

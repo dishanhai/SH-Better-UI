@@ -65,6 +65,7 @@ compact_torch	光照
 compact_tps	HUD · 每秒刻數
 compact_world	世界
 compatibility	相容性
+component	元件
 compress	壓縮
 computer	電腦
 concurrency	併行
@@ -87,6 +88,7 @@ decompress	解壓縮
 decrypt	解密
 deepseek	DeepSeek
 delete	刪除
+dependency	依賴項
 description	描述
 details	詳細資料
 development	開發
@@ -106,6 +108,7 @@ equation	方程式
 error	錯誤
 expand	展開
 export	匯出
+extension	擴充功能
 facebook	Facebook
 favorite	收藏
 feedback	回饋
@@ -119,6 +122,7 @@ filter	篩選
 folder	資料夾
 forge	Minecraft Forge
 forward	前進
+framework	框架
 free	免費
 ftb_quests	FTB Quests
 function	函式
@@ -182,6 +186,7 @@ github_release	GitHub 發行版本（Releases）
 github_repo	GitHub 儲存庫
 gmail	Gmail
 goal	目標
+google	Google
 gpu	顯示卡
 gregtech	格雷科技（GregTech）
 grok	Grok
@@ -330,8 +335,15 @@ key_z	Z 鍵
 keyboard	鍵盤
 kuaishou	快手
 kubejs	KubeJS
+library	程式庫
 license	授權條款
+license_apache_2	Apache 2.0 授權
+license_bsd	BSD 授權
 license_closed_source	閉源授權
+license_gpl	GPL 授權
+license_lgpl	LGPL 授權
+license_mit	MIT 授權
+license_mpl_2	MPL 2.0 授權
 license_open_source	開源授權
 light_mode	淺色模式
 link	連結
@@ -478,6 +490,7 @@ template	範本
 test	測試
 text_input	文字輸入
 texture	紋理
+third_party	第三方
 thread	討論串
 tick	遊戲刻
 title	標題
