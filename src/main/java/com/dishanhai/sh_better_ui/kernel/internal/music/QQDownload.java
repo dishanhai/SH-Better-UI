@@ -35,14 +35,7 @@ final class QQDownload {
         if (!track.id().equals(text(song, "mid")) && !track.id().equals(text(song, "songmid")))
             throw new IOException("QQ download metadata belongs to another track");
         var file = object(song, "file");
-        var pay = object(song, "pay");
         String media = text(file, "media_mid");
-        long month = field(pay, "pay_month"), down = field(pay, "pay_down");
-        Access access;
-        if (month > 0) access = Access.MEMBERSHIP;
-        else if (down > 0) access = Access.PURCHASE;
-        else if (month != 0 || down != 0 || !media.matches("[A-Za-z0-9]{1,40}")) access = Access.UNAVAILABLE;
-        else access = signedIn ? Access.AVAILABLE : Access.SIGN_IN;
 
         var options = new ArrayList<Option>();
         for (Quality quality : Quality.values()) {
@@ -54,8 +47,11 @@ final class QQDownload {
             long size = field(file, sizeKey);
             if (size > 0 && size <= MAX_FILE_SIZE) options.add(new Option(quality, size));
         }
-        return new Detail(new Options(options.isEmpty() && access == Access.AVAILABLE ? Access.UNAVAILABLE : access,
-                options), media, number(song, "type"));
+        // Catalog payment flags describe the song. The file grant checks the signed-in account's access.
+        Access access = Access.UNAVAILABLE;
+        if (!options.isEmpty() && media.matches("[A-Za-z0-9]{1,40}"))
+            access = signedIn ? Access.AVAILABLE : Access.SIGN_IN;
+        return new Detail(new Options(access, options), media, number(song, "type"));
     }
 
     static FileGrant resolve(QQMusicSource source, OnlineTrack track, Quality quality) throws Exception {

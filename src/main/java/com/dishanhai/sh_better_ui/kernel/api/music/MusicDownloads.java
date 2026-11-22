@@ -30,7 +30,10 @@ public interface MusicDownloads {
     record LocalFile(Path path, LocalFormat format, long bytes) {}
 
     Path directory();
-    /** The source is queried again when starting a task. Cancelling this lookup interrupts it. */
+    /**
+     * Lists advertised qualities. AVAILABLE allows a request; the task checks authorization for the selected file.
+     * Cancelling this lookup interrupts it.
+     */
     CompletableFuture<Options> options(OnlineTrack track, String cookie);
     /** Reuses an existing live task for the same track and quality. */
     long start(OnlineTrack track, Quality quality, String cookie);

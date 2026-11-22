@@ -30,23 +30,36 @@ class ClientMusicDownloadsTest {
 
     @TempDir Path root;
 
-    @Test void membershipAndPurchaseStopBeforeAnyFileRequest() throws Exception {
+    @Test void paidMetadataDoesNotBlockOfficialAuthorizationForSignedInAccounts() throws Exception {
         for (int month : List.of(0, 1)) {
             var calls = new AtomicInteger();
-            var downloads = service(1, month, calls, (uri, size, stream, progress) -> fail("Protected file transfer"));
+            var downloads = service(1, month, calls, (uri, size, stream, progress) -> stream.write(FLAC));
             var options = downloads.options(TRACK, COOKIE).get(5, TimeUnit.SECONDS);
-            assertEquals(month == 1 ? Access.MEMBERSHIP : Access.PURCHASE, options.access());
-            downloads.start(TRACK, Quality.LOSSLESS, COOKIE);
-            var task = await(downloads, State.FAILED);
-            assertEquals(options.access(), task.access());
+            assertEquals(Access.AVAILABLE, options.access());
+            assertEquals(List.of(new Option(Quality.LOSSLESS, FLAC.length)), options.qualities());
             assertEquals(0, calls.get());
+            downloads.start(TRACK, Quality.LOSSLESS, COOKIE);
+            assertArrayEquals(FLAC, Files.readAllBytes(await(downloads, State.COMPLETE).file()));
+            assertEquals(1, calls.get());
+        }
+    }
+
+    @Test void officialRefusalOrProtectedFileStopsBeforeTransfer() throws Exception {
+        for (String grant : List.of(GRANT.replace("\"result\":0", "\"result\":104003"),
+                GRANT.replace("\"result\":0", "\"result\":0,\"ekey\":\"fixture\""))) {
+            var calls = new AtomicInteger();
+            var downloads = service(1, 1, calls, grant, (uri, size, stream, progress) -> fail("Unexpected transfer"));
+            downloads.start(TRACK, Quality.LOSSLESS, COOKIE);
+            assertEquals(Access.UNAVAILABLE, await(downloads, State.FAILED).access());
+            assertEquals(1, calls.get());
         }
         assertFalse(Files.exists(root.resolve("downloads")));
     }
 
     @Test void loginAndExactQualityAreCheckedBeforeTransfer() throws Exception {
         var calls = new AtomicInteger();
-        var downloads = service(0, 0, calls, (uri, size, stream, progress) -> fail("Unexpected transfer"));
+        var downloads = service(1, 1, calls, (uri, size, stream, progress) -> fail("Unexpected transfer"));
+        assertEquals(Access.SIGN_IN, downloads.options(TRACK, "").get(5, TimeUnit.SECONDS).access());
         downloads.start(TRACK, Quality.LOSSLESS, "");
         assertEquals(Access.SIGN_IN, await(downloads, State.FAILED).access());
         downloads.start(TRACK, Quality.HIGH, COOKIE);
@@ -107,6 +120,11 @@ class ClientMusicDownloadsTest {
 
     private ClientMusicDownloads service(int payDown, int payMonth, AtomicInteger grants,
                                          ClientMusicDownloads.Transfer transfer) {
+        return service(payDown, payMonth, grants, GRANT, transfer);
+    }
+
+    private ClientMusicDownloads service(int payDown, int payMonth, AtomicInteger grants, String grant,
+                                         ClientMusicDownloads.Transfer transfer) {
         String detail = """
                 {"code":0,"data":[{"mid":"Song01","type":0,
                     "pay":{"pay_down":%d,"pay_month":%d},
@@ -116,9 +134,11 @@ class ClientMusicDownloadsTest {
                 (url, body, type, referer, cookie) -> {
                     if (url.contains("fcg_play_single_song")) return JsonParser.parseString(detail).getAsJsonObject();
                     grants.incrementAndGet();
+                    assertEquals("https://u.y.qq.com/cgi-bin/musicu.fcg", url);
+                    assertTrue(cookie.contains("qm_keyst=fixture"));
                     assertTrue(body.contains("F000Media01.flac"));
                     assertTrue(body.contains("UrlGetVkey"));
-                    return JsonParser.parseString("{\"code\":0,\"req\":{\"code\":0,\"data\":" + GRANT + "}}").getAsJsonObject();
+                    return JsonParser.parseString("{\"code\":0,\"req\":{\"code\":0,\"data\":" + grant + "}}").getAsJsonObject();
                 }), transfer);
     }
 
