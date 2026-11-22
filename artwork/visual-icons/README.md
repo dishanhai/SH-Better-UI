@@ -40,3 +40,16 @@ unchanged.
 
 Regenerate the masters with `python scripts/draw-linux-keycaps.py` before
 running the icon exporter.
+
+### Search the built-in icons
+
+See [the Chinese icon reference](CATALOG.zh-TW.md) for names, stable texture IDs,
+SVG masters, and both PNG sizes. It lists PNG-only icons as well as migrated icons.
+
+When adding an icon ID, add its Chinese name in [the TSV](icon-names.zh-TW.tsv).
+After adding, removing, or migrating icons, regenerate and verify the table:
+
+```sh
+python scripts/generate-visual-icon-catalog.py
+python scripts/generate-visual-icon-catalog.py --check
+```

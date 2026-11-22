@@ -1,0 +1,514 @@
+圖示 ID	中文名稱
+access_denied	拒絕存取
+acknowledgments	致謝
+add	新增
+ae2	應用能源 2（Applied Energistics 2）
+ae2_order	AE2 下單
+ae2_orderable	可下單
+ae2_pattern	AE2 樣板
+ae2_pattern_upload	上傳 AE2 樣板
+ae2_stock	AE2 庫存（ME 網路）
+ae_channel	AE2 頻道
+afdian	愛發電（Afdian）
+android	Android
+app	應用程式
+archive	封存
+async	非同步
+attributes	屬性
+audit	稽核
+author	作者
+authorization	授權
+back	返回
+backup	備份
+balance	餘額
+bank	銀行
+bilibili	嗶哩嗶哩（bilibili）
+bill	帳單
+block	方塊
+blur	模糊
+body_text	內文
+bookmark	書籤
+bookmark_favorite	星標書籤
+browser	瀏覽器
+bubble	對話
+buy	購買
+cache	快取
+calculate	計算
+calendar	行事曆
+card	卡片
+category	分類
+channel	頻道
+chatgpt	ChatGPT
+chinese	中文
+claude	Claude
+clipboard	剪貼簿
+clock	時鐘
+close	關閉
+cloud	雲端
+cloud_pattern_library	星律樣板庫
+code	程式碼
+collapse	收合
+collection	收藏集
+command	指令
+compact_biome	生態域
+compact_calendar	日期
+compact_chunk	區塊（精簡）
+compact_clock	時鐘
+compact_cpu	處理器
+compact_disk	磁碟
+compact_gpu	顯示卡
+compact_location	世界座標
+compact_memory	記憶體
+compact_mspt	每刻耗時（精簡 MSPT）
+compact_signal	訊號
+compact_torch	光照
+compact_tps	HUD · 每秒刻數
+compact_world	世界
+compatibility	相容性
+compress	壓縮
+computer	電腦
+concurrency	併行
+config	設定檔
+contributors	貢獻者
+copy	複製
+coupon	優惠券
+cover	封面
+cpu	處理器
+crafting	合成
+critical_cancel	強制取消
+critical_warning	嚴重警告
+currency	貨幣
+custom_theme	自訂主題
+cut	剪下
+dark_mode	深色模式
+data	資料
+database	資料庫
+decompress	解壓縮
+decrypt	解密
+deepseek	DeepSeek
+delete	刪除
+description	描述
+details	詳細資料
+development	開發
+disable	停用
+discord	Discord
+disk	磁碟
+document	文件
+douyin	抖音
+download	下載
+edit	編輯
+email	電子郵件
+emoji	表情
+enable	啟用
+encrypt	加密
+entity	實體
+equation	方程式
+error	錯誤
+expand	展開
+export	匯出
+facebook	Facebook
+favorite	收藏
+feedback	回饋
+file	檔案
+file_exe	執行檔
+file_java	Java 檔案
+file_kt	Kotlin 檔案
+file_md	Markdown 檔案
+fill	填色
+filter	篩選
+folder	資料夾
+forge	Minecraft Forge
+forward	前進
+free	免費
+ftb_quests	FTB Quests
+function	函式
+gamepad	遊戲手把
+gamepad_dpad_down	手把方向鍵（下）
+gamepad_dpad_left	手把方向鍵（左）
+gamepad_dpad_right	手把方向鍵（右）
+gamepad_dpad_up	手把方向鍵（上）
+gamepad_playstation_circle	PlayStation ○ 圓圈鍵
+gamepad_playstation_create	PlayStation 建立鍵（Create）
+gamepad_playstation_cross	PlayStation × 叉形鍵
+gamepad_playstation_l1	PlayStation L1 鍵
+gamepad_playstation_l2	PlayStation L2 鍵
+gamepad_playstation_l3	PlayStation L3 鍵
+gamepad_playstation_mute	PlayStation 靜音鍵
+gamepad_playstation_options	PlayStation 選項鍵（Options）
+gamepad_playstation_ps	PlayStation PS 鍵
+gamepad_playstation_r1	PlayStation R1 鍵
+gamepad_playstation_r2	PlayStation R2 鍵
+gamepad_playstation_r3	PlayStation R3 鍵
+gamepad_playstation_square	PlayStation □ 方塊鍵
+gamepad_playstation_touchpad	PlayStation 觸控板
+gamepad_playstation_triangle	PlayStation △ 三角鍵
+gamepad_switch_a	Nintendo Switch A 鍵
+gamepad_switch_b	Nintendo Switch B 鍵
+gamepad_switch_capture	Nintendo Switch 擷取鍵
+gamepad_switch_home	Nintendo Switch 首頁鍵
+gamepad_switch_l	Nintendo Switch L 鍵
+gamepad_switch_ls	Nintendo Switch 左搖桿按壓鍵
+gamepad_switch_minus	Nintendo Switch − 減號鍵
+gamepad_switch_plus	Nintendo Switch + 加號鍵
+gamepad_switch_r	Nintendo Switch R 鍵
+gamepad_switch_rs	Nintendo Switch 右搖桿按壓鍵
+gamepad_switch_x	Nintendo Switch X 鍵
+gamepad_switch_y	Nintendo Switch Y 鍵
+gamepad_switch_zl	Nintendo Switch ZL 鍵
+gamepad_switch_zr	Nintendo Switch ZR 鍵
+gamepad_xbox_a	Xbox A 鍵
+gamepad_xbox_b	Xbox B 鍵
+gamepad_xbox_guide	Xbox 指南鍵（Guide）
+gamepad_xbox_lb	Xbox LB 鍵
+gamepad_xbox_ls	Xbox LS 鍵
+gamepad_xbox_lt	Xbox LT 鍵
+gamepad_xbox_menu	Xbox 選單鍵（Menu）
+gamepad_xbox_rb	Xbox RB 鍵
+gamepad_xbox_rs	Xbox RS 鍵
+gamepad_xbox_rt	Xbox RT 鍵
+gamepad_xbox_share	Xbox 分享鍵（Share）
+gamepad_xbox_view	Xbox 檢視鍵（View）
+gamepad_xbox_x	Xbox X 鍵
+gamepad_xbox_y	Xbox Y 鍵
+gemini	Gemini
+github	GitHub
+github_actions	GitHub Actions（自動化工作流程）
+github_commits	GitHub 提交（Commits）
+github_discussion	GitHub 討論（Discussions）
+github_issue	GitHub 議題（Issues）
+github_pull_request	GitHub 合併請求（Pull Requests）
+github_readme	GitHub 說明檔（README）
+github_release	GitHub 發行版本（Releases）
+github_repo	GitHub 儲存庫
+gmail	Gmail
+goal	目標
+gpu	顯示卡
+gregtech	格雷科技（GregTech）
+grok	Grok
+gui	圖形介面
+guide	指南
+guideme	GuideME
+headphones	耳機
+hide	隱藏
+history	歷史
+home	首頁
+icloud_mail	iCloud 郵件
+id	識別卡
+info	資訊
+input	輸入
+install	安裝
+instruction	操作說明
+interaction	互動
+ios	iOS
+item	物品
+jei	JEI（Just Enough Items）
+key_0	0 鍵
+key_1	1 鍵
+key_2	2 鍵
+key_3	3 鍵
+key_4	4 鍵
+key_5	5 鍵
+key_6	6 鍵
+key_7	7 鍵
+key_8	8 鍵
+key_9	9 鍵
+key_a	A 鍵
+key_alt	Alt 鍵
+key_arrow_down	向下鍵
+key_arrow_left	向左鍵
+key_arrow_right	向右鍵
+key_arrow_up	向上鍵
+key_b	B 鍵
+key_backspace	退格鍵
+key_c	C 鍵
+key_caps_lock	大寫鎖定鍵
+key_ctrl	Ctrl 鍵
+key_d	D 鍵
+key_delete	刪除鍵
+key_e	E 鍵
+key_end	行尾鍵
+key_enter	Enter 鍵
+key_escape	Esc 鍵
+key_f	F 鍵
+key_f1	F1 鍵
+key_f10	F10 鍵
+key_f11	F11 鍵
+key_f12	F12 鍵
+key_f2	F2 鍵
+key_f3	F3 鍵
+key_f4	F4 鍵
+key_f5	F5 鍵
+key_f6	F6 鍵
+key_f7	F7 鍵
+key_f8	F8 鍵
+key_f9	F9 鍵
+key_g	G 鍵
+key_h	H 鍵
+key_home	行首鍵
+key_i	I 鍵
+key_insert	插入鍵
+key_j	J 鍵
+key_k	K 鍵
+key_l	L 鍵
+key_linux_altgr	Linux AltGr 鍵
+key_linux_compose	Linux 組合鍵（Compose）
+key_linux_menu	Linux 選單鍵
+key_linux_super	Linux Super 鍵（企鵝）
+key_linux_sysrq	Linux 系統請求鍵（SysRq）
+key_lower_a	a 鍵（小寫）
+key_lower_b	b 鍵（小寫）
+key_lower_c	c 鍵（小寫）
+key_lower_d	d 鍵（小寫）
+key_lower_e	e 鍵（小寫）
+key_lower_f	f 鍵（小寫）
+key_lower_g	g 鍵（小寫）
+key_lower_h	h 鍵（小寫）
+key_lower_i	i 鍵（小寫）
+key_lower_j	j 鍵（小寫）
+key_lower_k	k 鍵（小寫）
+key_lower_l	l 鍵（小寫）
+key_lower_m	m 鍵（小寫）
+key_lower_n	n 鍵（小寫）
+key_lower_o	o 鍵（小寫）
+key_lower_p	p 鍵（小寫）
+key_lower_q	q 鍵（小寫）
+key_lower_r	r 鍵（小寫）
+key_lower_s	s 鍵（小寫）
+key_lower_t	t 鍵（小寫）
+key_lower_u	u 鍵（小寫）
+key_lower_v	v 鍵（小寫）
+key_lower_w	w 鍵（小寫）
+key_lower_x	x 鍵（小寫）
+key_lower_y	y 鍵（小寫）
+key_lower_z	z 鍵（小寫）
+key_m	M 鍵
+key_mac_arrow_down	macOS 向下鍵
+key_mac_arrow_left	macOS 向左鍵
+key_mac_arrow_right	macOS 向右鍵
+key_mac_arrow_up	macOS 向上鍵
+key_mac_caps_lock	macOS 大寫鎖定鍵
+key_mac_command	macOS Command 鍵
+key_mac_control	macOS Control 鍵
+key_mac_delete	macOS Delete 退格鍵
+key_mac_eject	macOS 退出鍵（Eject）
+key_mac_end	macOS 行尾鍵
+key_mac_escape	macOS Esc 鍵
+key_mac_fn	macOS Fn 鍵
+key_mac_forward_delete	macOS 向前刪除鍵
+key_mac_globe	macOS 地球鍵
+key_mac_home	macOS 行首鍵
+key_mac_option	macOS Option 鍵
+key_mac_page_down	macOS 向下翻頁鍵
+key_mac_page_up	macOS 向上翻頁鍵
+key_mac_return	macOS Return 鍵
+key_mac_shift	macOS Shift 鍵
+key_mac_tab	macOS Tab 鍵
+key_menu	選單鍵
+key_n	N 鍵
+key_num_lock	數字鎖定鍵
+key_o	O 鍵
+key_p	P 鍵
+key_page_down	向下翻頁鍵
+key_page_up	向上翻頁鍵
+key_pause	暫停鍵
+key_print_screen	螢幕擷取鍵（Print Screen）
+key_q	Q 鍵
+key_r	R 鍵
+key_s	S 鍵
+key_scroll_lock	捲動鎖定鍵
+key_shift	Shift 鍵
+key_space	空白鍵
+key_super	Super 系統鍵
+key_t	T 鍵
+key_tab	Tab 鍵
+key_u	U 鍵
+key_v	V 鍵
+key_w	W 鍵
+key_x	X 鍵
+key_y	Y 鍵
+key_z	Z 鍵
+keyboard	鍵盤
+kuaishou	快手
+kubejs	KubeJS
+license	授權條款
+license_closed_source	閉源授權
+license_open_source	開源授權
+light_mode	淺色模式
+link	連結
+linux	Linux
+list	清單
+location	位置
+lock	上鎖
+log	記錄
+macos	macOS
+management	管理
+map	地圖
+material	材質
+mcmod	MC 百科（MCMod）
+mekanism	通用機械（Mekanism）
+members	成員
+membership	會員
+merge	合併
+microphone	麥克風
+migrate	遷移
+minecraft	Minecraft
+mirror	鏡像翻轉
+mob	生物
+mod	模組
+monitor	監控
+mouse	滑鼠
+move	移動
+mspt	伺服器每刻耗時（MSPT）
+music	音樂
+my_favorites	我的最愛
+my_profile	我的個人資料
+neoforge	NeoForge
+network	網路
+new	新建
+next	下一項
+number_input	數字輸入
+organize	整理
+output	輸出
+paid	已付款
+parallel	並行
+paste	貼上
+pattern_byproduct_off	副產物 · 關
+pattern_byproduct_on	副產物 · 開
+pattern_recipe_id_off	配方 ID · 關
+pattern_recipe_id_on	配方 ID · 開
+pattern_virtual_provider_off	虛擬供應器 · 關
+pattern_virtual_provider_on	虛擬供應器 · 開
+pattern_wrap_auto	封裝 · 自動
+pattern_wrap_off	封裝 · 關
+pattern_wrap_on	封裝 · 開
+pause	暫停
+payment	付款
+performance	效能
+permissions	權限
+phone	手機
+phone_android_back	Android 返回鍵
+phone_android_home	Android 主畫面鍵
+phone_android_recents	Android 最近使用鍵
+phone_gesture_bar	手機手勢條
+phone_ios_action	iPhone 動作按鈕
+phone_ios_camera_control	iPhone 相機控制
+phone_ios_home	iPhone 主畫面鍵
+phone_ios_ring_silent	iPhone 響鈴／靜音切換
+phone_ios_side	iPhone 側邊按鈕
+phone_power	手機電源鍵
+phone_volume_down	手機音量減鍵
+phone_volume_up	手機音量加鍵
+pin	釘選
+plan	計畫
+player	玩家
+plugin	外掛
+points	點數
+polling	輪詢
+power	電源
+previous	上一項
+process	程序
+product	商品
+product_card	商品卡片
+product_input	商品輸入
+product_output	商品輸出
+pull_down	下拉
+qq	QQ
+qq_mail	QQ 郵箱
+quantum	量子
+question	說明
+queue	佇列
+quick	快速操作
+quick_pattern_encode	快速編碼
+recipe	配方
+recipe_id	配方 ID
+recipe_type	配方類型
+redeem	兌換
+refresh	重新整理
+remove	移除
+render	渲染
+repair	修復
+report	報告
+reset	重設
+resource_pack	資源包
+resume	繼續
+reward	獎勵
+rotate	旋轉
+run	執行
+save	儲存
+scale	縮放
+scheduler	排程
+search	搜尋
+security	安全
+select_all	全選
+select_partial	部分選取
+sell	出售
+separate	分離
+server	伺服器
+settings	設定
+settlement	結算
+share	分享
+shbui	SH-Better-UI
+shop	商店
+shopping_cart	購物車
+show	顯示
+sophisticated_backpacks	精妙背包（Sophisticated Backpacks）
+sort	排序
+spark	spark 效能分析器
+statistics	統計
+status_cancelled	狀態：已取消
+status_failed	狀態：失敗
+status_partial	狀態：部分完成
+status_pending	狀態：等待中
+status_ready	狀態：就緒
+status_succeeded	狀態：成功
+status_timed_out	狀態：逾時
+stroke	描邊
+success	成功
+summary	摘要
+support	支援
+supporter	支持者
+switch	切換
+symbol	符號
+symmetry	對稱
+system	系統
+tag	標籤
+task	任務
+telegram	Telegram
+template	範本
+test	測試
+text_input	文字輸入
+texture	紋理
+thread	討論串
+tick	遊戲刻
+title	標題
+todo	待辦清單
+tool	工具
+toolbar	工具列
+tooltip	提示框
+topology	拓撲
+tps	伺服器 TPS
+trade	交易
+transfer	轉帳
+translate	翻譯
+ui	介面元件
+undo	復原
+unlock	解鎖
+upgrade	升級
+upload	上傳
+user	使用者
+virtual	虛擬
+virtual_item	虛擬物品
+virtual_item_provider	虛擬物品供應器
+visit	前往
+warning	警告
+warp	扭曲
+web_search	網頁搜尋
+wechat	微信（WeChat）
+whatsapp	WhatsApp
+wiki	Wiki 百科
+window	視窗
+windows	Windows
+wireless	無線
+withdraw	提領
+x	X（社群平台）
+youtube	YouTube
