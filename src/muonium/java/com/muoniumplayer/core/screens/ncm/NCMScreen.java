@@ -1658,6 +1658,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         }
         this.prevAnimatingPanelAlpha = this.currentPanel == null ? 0f : this.currentPanel.getAlpha();
         this.musicChat.pageHidden(this.currentPanel);
+        if (this.currentPanel != null) this.currentPanel.clearEndKeyboardFocus();
         this.prevAnimatingPanel = this.currentPanel;
         this.currentPanel = panel;
         this.panelTransitionBackward = this.pendingNavigationBackward;
@@ -2257,6 +2258,11 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         if (this.currentPanel != null && this.currentPanel.onKeyTypedReceived(typedChar, keyCode)) {
             return;
         }
+        if (this.currentPanel != null && this.acceptsListEndInput(this.currentPanel)) {
+            if (keyCode == Keyboard.KEY_TAB && this.currentPanel.focusNextEndList(
+                    Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT))) return;
+            if (keyCode == Keyboard.KEY_END && this.currentPanel.handleFocusedListEnd()) return;
+        }
         if (this.activePlaylistScrollbar() != null
                 && (this.playQueuePanel == null || !this.playQueuePanel.isOpen())
                 && this.currentPanel instanceof PlaylistPanel playlist && playlist.songActionKeyPressed(keyCode)) {
@@ -2398,6 +2404,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         this.pendingSearchClick = null;
         if (this.isMusicSearchActive() && !this.hasOtherModalOverlay()
                 && this.playlistsPanel.getSearch().pressInput(mouseX, mouseY, mouseButton)) {
+            if (this.currentPanel != null) this.currentPanel.clearEndKeyboardFocus();
             this.pendingClickActive = false;
             return;
         }
@@ -2417,6 +2424,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         if (mouseButton == 0 && (this.playQueuePanel == null || !this.playQueuePanel.capturesWheel(mouseX, mouseY))) {
             ScrollPanel scrollbar = this.activePlaylistScrollbar();
             if (scrollbar != null && scrollbar.pressScrollbar(mouseX, mouseY)) {
+                if (this.acceptsListEndInput(this.currentPanel)) this.currentPanel.focusEndListAt(mouseX, mouseY);
                 this.playlistScrollbarCapture = scrollbar;
                 this.pendingClickActive = false;
                 return;
@@ -2553,8 +2561,11 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
             }
             this.basePanel.onMouseClickReceived(mouseX, mouseY, mouseButton);
 
-            if (this.currentPanel != null && !this.contentHitStateStale && !this.navigationLoading.isCatalogLoading())
+            if (this.currentPanel != null && !this.contentHitStateStale && !this.navigationLoading.isCatalogLoading()) {
+                if (mouseButton == 0 && this.acceptsListEndInput(this.currentPanel))
+                    this.currentPanel.focusEndListAt(mouseX, mouseY);
                 this.currentPanel.onMouseClickReceived(mouseX, mouseY, mouseButton);
+            }
 
             this.controlsBar.onMouseClickReceived(mouseX, mouseY, mouseButton);
 
