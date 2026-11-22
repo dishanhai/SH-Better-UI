@@ -7,6 +7,7 @@ import com.muoniumplayer.core.rendering.rendersystem.RenderSystem;
 import com.muoniumplayer.core.screens.ncm.FfmpegNoticeOverlay;
 import com.muoniumplayer.core.screens.ncm.WindowAdaptiveScale;
 import com.muoniumplayer.render.skija.SkijaGfx;
+import com.muoniumplayer.render.skija.SkijaHost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 
@@ -55,7 +56,7 @@ public class GuiFfmpegNotice extends GuiScreen {
      * 没能弹的时候才会走到：弹过一次就标记本次启动已提示。</p>
      */
     public static void tickAutoShow(Minecraft mc) {
-        if (mc == null) return;
+        if (mc == null || !SkijaHost.canOpenScreen()) return;
         if (!FfmpegNotice.shouldShow()) return;
 
         net.minecraft.client.gui.screens.Screen current = mc.screen;
@@ -65,6 +66,13 @@ public class GuiFfmpegNotice extends GuiScreen {
 
         FfmpegNotice.markShownThisSession();
         mc.setScreen(new GuiFfmpegNotice(atMainMenu ? current : null));
+    }
+
+    @Override
+    public void updateScreen() {
+        if (!SkijaHost.canOpenScreen()) {
+            dismiss();
+        }
     }
 
     @Override

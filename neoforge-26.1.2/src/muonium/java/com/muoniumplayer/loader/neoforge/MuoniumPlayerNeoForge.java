@@ -1,6 +1,7 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.loader.neoforge;
 
+import com.dishanhai.sh_better_ui.kernel.internal.SkijaRecoveryButton;
 import com.muoniumplayer.MuoniumPlayerClient;
 import com.muoniumplayer.compat.mc.WorldLyricsBridge;
 import com.muoniumplayer.core.screens.TitleMenuAnnouncementButton;
@@ -111,6 +112,7 @@ public final class MuoniumPlayerNeoForge {
     /** 对应 Fabric 的 ScreenEvents.afterRender：界面画完之后叠灵动岛。 */
     private void onScreenRendered(ScreenEvent.Render.Post event) {
         MuoniumPlayerClient.getInstance().onScreenRendered(event.getScreen());
+        SkijaRecoveryButton.update(event.getScreen());
         MuoniumPlayerClient.getInstance().onRenderLayerNotice(event.getGuiGraphics(), true);
     }
 
@@ -141,5 +143,6 @@ public final class MuoniumPlayerNeoForge {
             return;
         }
         event.addListener(TitleMenuAnnouncementButton.create());
+        event.addListener(SkijaRecoveryButton.create(event.getScreen()));
     }
 }
