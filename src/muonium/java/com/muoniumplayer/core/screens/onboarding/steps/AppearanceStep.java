@@ -35,7 +35,7 @@ public final class AppearanceStep implements OnboardingStepView {
                        double x, double y, double width, double height,
                        double mouseX, double mouseY) {
         OnboardingUi.drawHeader("APPEARANCE", "找到你的风格",
-                "主题、字体和动画会实时预览，并使用现有样式配置。", x, y);
+                "主题、字体和动画会实时预览，并使用现有样式配置。", x, y, width);
 
         NCMTheme.ThemePreset[] themes = NCMTheme.ThemePreset.values();
         int start = controller.selectedTheme().ordinal() - 1;
@@ -52,10 +52,9 @@ public final class AppearanceStep implements OnboardingStepView {
         drawSectionTitle(FoliaLucideIcons.TYPOGRAPHY, PartyIcons.TEXT_FORMAT, "字体", x, fontY);
         UiFont font = controller.selectedFont();
         String name = font == null ? "内置字体" : font.getDisplayName();
-        // 字体名放得下才画在段标题右边，放不下就整段收掉——段标题本身已经说了这是「字体」。
+        double nameInset = 34 + OnboardingUi.textWidth(OnboardingUi.metric().labelBold(), "字体");
         OnboardingUi.drawTextReserving(OnboardingUi.metric().bodyFont(), name + " · 点击切换",
-                x + 22 + OnboardingUi.textWidth(OnboardingUi.metric().labelBold(), "字体") + 12, fontY + 2,
-                width - 22, 0, OnboardingUi.textMuted());
+                x + nameInset, fontY + 2, width - nameInset, 0, OnboardingUi.textMuted());
 
         double fontBoxY = fontBoxY(y);
         OnboardingUi.roundedRect(x, fontBoxY, width, FONT_BOX_H, OnboardingUi.CARD_RADIUS - 1,
@@ -117,9 +116,9 @@ public final class AppearanceStep implements OnboardingStepView {
                 OnboardingUi.ellipsize(OnboardingUi.metric().labelBold(), theme.getDisplayName(),
                         width - 36),
                 x + 32, labelY + 2, lockedTheme ? OnboardingUi.textMuted() : OnboardingUi.textPrimary());
-        OnboardingUi.drawText(FontManager.pf10bold,
+        OnboardingUi.drawTextReserving(FontManager.pf10bold,
                 lockedTheme ? "手机不可用" : (selected ? "SELECTED" : "PREVIEW"),
-                x + 12, labelY + 20,
+                x + 12, labelY + 20, width - 24, 0,
                 lockedTheme ? OnboardingUi.textMuted()
                         : (selected ? OnboardingUi.CYAN : OnboardingUi.textMuted()));
     }
@@ -182,9 +181,9 @@ public final class AppearanceStep implements OnboardingStepView {
         OnboardingUi.roundedOutline(x, y, width, STEPPER_H, OnboardingUi.CARD_RADIUS - 1, 1,
                 OnboardingUi.awtColorWithAlpha(OnboardingUi.hairline(), 165));
 
-        double buttonSize = Math.min(STEP_BUTTON_W, Math.max(18, width * .16));
-        double minusX = x + STEP_BUTTON_INSET;
-        double plusX = x + width - STEP_BUTTON_INSET - buttonSize;
+        double buttonSize = stepButtonWidth(width);
+        double minusX = stepButtonX(x, width, false);
+        double plusX = stepButtonX(x, width, true);
 
         // 标签在左、数值在右，两者之间的空隙是「量出来的」：标签宽度实测，数值自己量。
         double labelWidth = OnboardingUi.textWidth(OnboardingUi.metric().labelBold(), setting.getLabel());
@@ -271,6 +270,11 @@ public final class AppearanceStep implements OnboardingStepView {
     /** 步进器卡的 y。 */
     static double stepperY(double y) {
         return animationY(y) + 22 + sectionGap() * .1;
+    }
+
+    @Override
+    public double minimumHeight(double width) {
+        return stepperY(0) + STEPPER_H;
     }
 
     /** 加减按钮的尺寸，随卡宽收放；绘制与命中测试读同一份。 */

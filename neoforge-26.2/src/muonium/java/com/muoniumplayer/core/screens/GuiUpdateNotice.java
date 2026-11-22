@@ -7,6 +7,7 @@ import com.muoniumplayer.core.screens.ncm.UpdateNoticeOverlay;
 import com.muoniumplayer.core.screens.ncm.WindowAdaptiveScale;
 import com.muoniumplayer.core.update.UpdateChecker;
 import com.muoniumplayer.render.skija.SkijaGfx;
+import com.muoniumplayer.render.skija.SkijaHost;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.screens.TitleScreen;
 
@@ -55,7 +56,7 @@ public class GuiUpdateNotice extends GuiScreen {
      * 那个提示回到主菜单再弹 —— 两个提示天然排队，不会互相盖掉。</p>
      */
     public static void tickAutoShow(Minecraft mc) {
-        if (mc == null) return;
+        if (mc == null || !SkijaHost.canOpenScreen()) return;
         if (!UpdateChecker.shouldShow()) return;
 
         net.minecraft.client.gui.screens.Screen current = mc.gui.screen();
@@ -65,6 +66,13 @@ public class GuiUpdateNotice extends GuiScreen {
 
         UpdateChecker.markShownThisSession();
         mc.gui.setScreen(new GuiUpdateNotice(atMainMenu ? current : null));
+    }
+
+    @Override
+    public void updateScreen() {
+        if (!SkijaHost.canOpenScreen()) {
+            dismiss();
+        }
     }
 
     @Override

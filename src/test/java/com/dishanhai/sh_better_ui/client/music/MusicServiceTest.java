@@ -121,8 +121,11 @@ class MusicServiceTest {
 
             Files.writeString(file, "[00:00]修改后");
             service.refreshLyrics();
-            await(() -> service.getCurrentLyrics().state() == MusicService.LyricsState.AVAILABLE
-                    && service.getCurrentLyrics().timeline().line(0).text().equals("修改后"));
+            await(() -> {
+                var lyrics = service.getCurrentLyrics();
+                return lyrics.state() == MusicService.LyricsState.AVAILABLE
+                        && lyrics.timeline().line(0).text().equals("修改后");
+            });
 
             Files.delete(file);
             service.refreshLyrics();

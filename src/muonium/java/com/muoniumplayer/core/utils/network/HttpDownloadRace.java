@@ -143,6 +143,17 @@ public final class HttpDownloadRace {
      */
     public static Winner fetch(List<String> urls, long expectedBytes, String expectedSha256,
                                File target, IntConsumer onProgress) throws IOException {
+        return fetch(urls, expectedBytes, expectedSha256, target, onProgress, true);
+    }
+
+    /** Run both mirror tiers once and return a failure the player can retry. */
+    public static Winner fetchOnce(List<String> urls, long expectedBytes, String expectedSha256,
+                                   File target, IntConsumer onProgress) throws IOException {
+        return fetch(urls, expectedBytes, expectedSha256, target, onProgress, false);
+    }
+
+    private static Winner fetch(List<String> urls, long expectedBytes, String expectedSha256,
+                                File target, IntConsumer onProgress, boolean retryNetwork) throws IOException {
         validate(urls, expectedBytes, expectedSha256, target);
         ACTIVE_DOWNLOADS.incrementAndGet();
         AtomicLong leaderBytes = new AtomicLong(0L);
@@ -154,6 +165,9 @@ public final class HttpDownloadRace {
                     lastNetworkFailure = "";
                     return winner;
                 } catch (RetryableDownloadException transientFailure) {
+                    if (!retryNetwork) {
+                        throw transientFailure;
+                    }
                     if (Thread.currentThread().isInterrupted()) {
                         throw new IOException("下载已停止；已收数据保留供下次继续", transientFailure);
                     }

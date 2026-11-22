@@ -1,8 +1,10 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.rendering.ui.container;
 
-import lombok.Getter;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.ScrollEndPull;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
+import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.rendering.Rect;
 import com.muoniumplayer.core.rendering.ScissorClipManager;
 import com.muoniumplayer.core.rendering.StencilClipManager;
@@ -12,12 +14,16 @@ import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTheme;
 import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTouch;
 import com.dishanhai.sh_better_ui.kernel.api.layout.VerticalScroll;
 import com.muoniumplayer.core.utils.cursor.CursorUtils;
+import lombok.Getter;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.IdentityHashMap;
 import java.util.List;
 import java.util.Set;
+import java.util.function.BooleanSupplier;
+import java.util.function.Supplier;
 
 /**
  * 一个从上至下排列的可以滚动的容器
@@ -123,6 +129,35 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     private VerticalScroll scrollbar;
     private double scrollbarViewport = -1;
     private double scrollbarMaximum = -1;
+    private ScrollEndPull endPull;
+    private BooleanSupplier endInput;
+    private Supplier<EndStatus> endStatus;
+    private Runnable loadNext;
+    private double lastTouchY;
+    private boolean endKeyboardFocused;
+
+    public enum EndStatus { HIDDEN, MORE, LOADING, FAILED, END }
+
+    /** Adds bottom-edge pagination to a vertical list. The owner supplies the request status. */
+    public void setEndPull(BooleanSupplier inputAllowed, Supplier<EndStatus> status, Runnable loadNext) {
+        this.endPull = new ScrollEndPull();
+        this.endInput = inputAllowed;
+        this.endStatus = status;
+        this.loadNext = loadNext;
+    }
+
+    public boolean cancelEndPull() {
+        if (this.endPull == null || !this.touchDragging) return false;
+        this.touchDragging = false;
+        this.endPull.reset();
+        return true;
+    }
+
+    private boolean canLoadNext() {
+        if (this.endPull == null || !this.endInput.getAsBoolean()) return false;
+        EndStatus status = this.endStatus.get();
+        return status == EndStatus.MORE || status == EndStatus.FAILED;
+    }
 
     /**
      * 垂直等高列表的快速路径。歌曲行都是固定高度时，不需要每帧给几千个子项重新排版；
@@ -364,7 +399,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     @Override
     public void onRender(double mouseX, double mouseY) {
         // 触屏拖动滚动（必须在 clamp/推进之前：拖动本身就要写 target 与 actual）。
-        this.advanceTouchDrag();
+        this.advanceTouchDrag(mouseX, mouseY);
 
         // 以前这一帧会为 clamp、actual 再 clamp、align 各自扫描一遍全部子项。
         // 歌单几百/几千行时，滚轮期间这类重复 O(n) 会和可见行绘制叠在一起。
@@ -480,6 +515,26 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         return true;
     }
 
+    public boolean acceptsEndKeyboardFocus() {
+        return this.endPull != null && this.endInput.getAsBoolean();
+    }
+
+    public boolean endKeyboardHit(double x, double y) {
+        return this.testHovered(x, y);
+    }
+
+    public void setEndKeyboardFocused(boolean focused) {
+        this.endKeyboardFocused = focused;
+    }
+
+    public boolean handleFocusedEnd() {
+        if (!canLoadNext()) return false;
+        double end = this.getMaximumScrollOffset();
+        if (this.actualScrollOffset >= end - .5) this.loadNext.run();
+        else this.scrollToOffsetImmediately(end);
+        return true;
+    }
+
     // ──────────────────────── 触屏拖动滚动 ────────────────────────
 
     /** 本轮纵向拖动是否由本容器认领。 */
@@ -509,31 +564,39 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
      * 42ms 的指数平滑是给滚轮/甩动这种「目标突变」用的减速带；拖动要求 1:1 跟手，
      * 平滑会变成橡皮筋。甩动时把惯性距离一次性记进 target，让既有平滑自然接管减速尾。</h2>
      */
-    private void advanceTouchDrag() {
+    private void advanceTouchDrag(double mouseX, double mouseY) {
         if (this.scrollbar != null && this.scrollbar.dragging()) return;
-        if (!canPollTouchInput()) {
+        if (!canPollTouchInput() || this.endPull != null && !this.endInput.getAsBoolean()) {
             // A modal change must not finish an underlying drag with somebody else's release/fling.
             this.touchDragging = false;
+            if (this.endPull != null) this.endPull.reset();
             return;
         }
         WidgetTouch gestures = WidgetTouch.Host.get();
         if (!gestures.enabled()) {
             this.touchDragging = false;
+            if (this.endPull != null && this.endPull.progress() > 0) this.endPull.reset();
             return;
         }
         if (this.touchDragging) {
             if (gestures.verticalDrag() && gestures.claimedBy() == this) {
-                double dy = gestures.dy();
+                double dy = this.endPull == null ? gestures.dy() : mouseY - this.lastTouchY;
+                this.lastTouchY = mouseY;
                 if (dy != 0) {
-                    double maximum = this.maximumOffsetForTouch();
-                    this.targetScrollOffset = Math.max(0, Math.min(this.targetScrollOffset - dy, maximum));
-                    this.actualScrollOffset = this.targetScrollOffset;
-                    this.lastScrollInputNanos = System.nanoTime();
+                    this.dragTouch(dy);
                 }
                 return;
             }
             // 松手（或认领被抢走的异常帧）：结算甩动。
             this.touchDragging = false;
+            if (this.endPull != null) {
+                boolean released = !gestures.pressed() && gestures.lastPressDragged();
+                boolean allowed = released && this.testHovered(mouseX, mouseY) && this.canLoadNext();
+                if (allowed) this.dragTouch(mouseY - this.lastTouchY);
+                boolean pulled = this.endPull.progress() > 0;
+                if (this.endPull.release(allowed, System.nanoTime() / 1_000_000L)) this.loadNext.run();
+                if (!released || pulled) return;
+            }
             if (!gestures.pressed()) {
                 double velocity = gestures.velocityY();
                 if (Math.abs(velocity) > TOUCH_FLING_MIN_VELOCITY) {
@@ -550,10 +613,29 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         if (gestures.verticalDrag()
                 && gestures.claimedBy() == null
                 && this.alignment != Alignment.HORIZONTAL
-                && this.maximumOffsetForTouch() > 0.0
+                && (this.maximumOffsetForTouch() > 0.0 || this.canLoadNext())
                 && this.testHovered(gestures.startX(), gestures.startY())) {
             this.touchDragging = gestures.claim(this);
+            if (this.touchDragging && this.endPull != null) {
+                this.endPull.reset();
+                this.lastTouchY = mouseY;
+                this.targetScrollOffset = this.actualScrollOffset;
+                this.dragTouch(mouseY - gestures.startY());
+            }
         }
+    }
+
+    private void dragTouch(double dy) {
+        if (!Double.isFinite(dy)) return;
+        double maximum = this.maximumOffsetForTouch();
+        if (this.canLoadNext()) {
+            this.targetScrollOffset = this.endPull.drag(this.targetScrollOffset, maximum, -dy);
+        } else {
+            if (this.endPull != null) this.endPull.reset();
+            this.targetScrollOffset = Math.max(0, Math.min(this.targetScrollOffset - dy, maximum));
+        }
+        this.actualScrollOffset = this.targetScrollOffset;
+        this.lastScrollInputNanos = System.nanoTime();
     }
 
     /** 当前内容最大可滚偏移；认领判据与拖动期间都要，直接复用滚轮那条路径的算法。 */
@@ -582,6 +664,11 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     private void performScroll(int dWheel) {
 
         if (dWheel != 0) {
+            if (dWheel < 0 && this.canLoadNext() && !this.touchDragging
+                    && this.actualScrollOffset >= this.getMaximumScrollOffset() - .5) {
+                this.loadNext.run();
+                return;
+            }
 
             double strength = this.scrollStrength;
 
@@ -1019,14 +1106,64 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     @Override
     protected void afterRenderChildren(double mouseX, double mouseY) {
         try {
-            StencilClipManager.endClip();
+            this.renderEndPull(mouseX, mouseY);
         } finally {
-            ScissorClipManager.end();
+            try {
+                StencilClipManager.endClip();
+            } finally {
+                ScissorClipManager.end();
+            }
         }
         // 指示条画在裁剪之后：它属于「视口边缘的提示」，不该被自己的裁剪吃掉 ——
         // 正因如此它才能住在视口外侧的页面留白里（见 INDICATOR_INSET_RIGHT）。
         // 纵向位置仍被 onRender 夹在视口高度内，不会越界。
         this.drawScrollIndicator();
+        if (this.endKeyboardFocused && this.acceptsEndKeyboardFocus()) {
+            double x = this.getX(), y = this.getY(), w = this.getWidth(), h = this.getHeight();
+            int ink = UiPreferences.configured().highContrast() ? 0xFFFFFFFF : 0xFF329DFF;
+            Rect.draw(x, y, w, 1, ink);
+            Rect.draw(x, y + h - 1, w, 1, ink);
+            Rect.draw(x, y, 1, h, ink);
+            Rect.draw(x + w - 1, y, 1, h, ink);
+        }
+    }
+
+    private void renderEndPull(double mouseX, double mouseY) {
+        if (this.endPull == null || FontManager.pf12 == null || this.getHeight() < 18) return;
+        EndStatus status = this.endStatus.get();
+        if (status == EndStatus.HIDDEN || !this.endInput.getAsBoolean()) return;
+        var preferences = UiPreferences.configured();
+        boolean still = preferences.reducedMotion() || preferences.highContrast();
+        float progress = this.endPull.progress();
+        float reveal = this.endPull.reveal(System.nanoTime() / 1_000_000L, still);
+        boolean hovered = this.testHovered(mouseX, mouseY);
+        if (progress > 0 && !hovered) return;
+        boolean atEnd = this.actualScrollOffset >= this.indicatorMaximumOffset - .5;
+        if (reveal == 0 && status != EndStatus.LOADING && (!atEnd || !hovered)) return;
+        String message = switch (status) {
+            case LOADING -> "continuation.loading";
+            case FAILED -> "continuation.retry";
+            case END -> "continuation.end";
+            default -> progress >= 1 ? "continuation.release"
+                    : progress > 0 ? "continuation.pull_further"
+                    : WidgetTouch.Host.get().enabled() ? "continuation.pull_up" : "continuation.scroll_end";
+        };
+        var font = FontManager.pf12;
+        double available = this.getWidth() - 16;
+        if (available < 20) return;
+        String text = Component.translatable("sh_better_ui.online_music." + message).getString();
+        if (font.getStringWidth(text) > available - 12) text = font.fitWidth(text, available - 12)[0];
+        double width = Math.min(available, font.getStringWidthD(text) + 12);
+        double center = this.getX() + this.getWidth() * .5;
+        double x = center - width * .5;
+        double y = this.getY() + this.getHeight() - 18 - (still ? 0 : reveal * 8);
+        y = Math.max(this.getY(), y);
+        float opacity = this.getAlpha();
+        int ink = WidgetTheme.color(WidgetTheme.Role.PRIMARY_TEXT);
+        int fill = WidgetTheme.color(WidgetTheme.Role.INPUT_BACKGROUND);
+        this.roundedRect(x, y, width, 16, 5, reAlpha(fill, opacity));
+        font.drawCenteredString(text, center, y + (16 - font.getFontHeight()) * .5, reAlpha(ink, opacity));
+        if (reveal > 0) Rect.draw(x + 5, y + 14, (width - 10) * reveal, 1, reAlpha(ink, opacity));
     }
 
     /**

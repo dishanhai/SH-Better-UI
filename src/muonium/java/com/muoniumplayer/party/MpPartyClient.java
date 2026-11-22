@@ -136,13 +136,11 @@ public final class MpPartyClient {
     private static volatile String banReason = "";
     private static volatile String banRemaining = "";
 
-    /**
-     * 个人暂停：只静音自己，房间时钟照走，别人不受影响。
-     *
-     * <p>它必须挡住<b>所有</b>开声路径（换歌、恢复、拖进度、心跳对齐），漏一条就会偷偷出声。
-     * 恢复时服务端会单独补一帧 {@code resync} 的 play，那一帧才清掉这个标记。
-     */
-    private static volatile boolean selfPaused;
+    private enum PersonalPlayback { FOLLOWING, PAUSED, RESUMING }
+
+    // Client actions and incoming frames can run on different threads.
+    private static final java.util.concurrent.atomic.AtomicReference<PersonalPlayback> personalPlayback =
+            new java.util.concurrent.atomic.AtomicReference<>(PersonalPlayback.FOLLOWING);
 
     // ── v2：全服态 ───────────────────────────────────────────────────────────
     private static volatile List<MpPresence> presenceList = Collections.emptyList();
@@ -587,7 +585,7 @@ public final class MpPartyClient {
     }
 
     public static boolean selfPaused() {
-        return selfPaused;
+        return personalPlayback.get() != PersonalPlayback.FOLLOWING;
     }
 
     /** 当前在的是不是服务器频道。 */
@@ -787,18 +785,23 @@ public final class MpPartyClient {
      */
     public static void setSelfPause(boolean paused) {
         if (!requireChannel()) return;
-        // 标记只在「进入暂停」这一下置起来；解除交给服务端那帧 play（分发里见 resync 就清），
-        // 否则下一发 S_TIME 心跳会抢在权威位置之前、从本地暂停点开声，进度先跳一下再被纠正。
-        if (paused) selfPaused = true;
+        PersonalPlayback previous = paused ? PersonalPlayback.FOLLOWING : PersonalPlayback.PAUSED;
+        PersonalPlayback next = paused ? PersonalPlayback.PAUSED : PersonalPlayback.RESUMING;
+        // One resume request at a time: the old protocol has no request ID to match duplicate replies.
+        if (!personalPlayback.compareAndSet(previous, next)) return;
         if (paused) MpPlayback.pause(positionMs());
         JsonObject m = MpProto.msg(MpProto.C_SELF_PAUSE);
         m.addProperty("paused", paused);
-        send(m);
+        if (!send(m) && !paused) personalPlayback.compareAndSet(next, previous);
         notifyListeners();
     }
 
     public static void toggleSelfPause() {
-        setSelfPause(!selfPaused);
+        setSelfPause(!selfPaused());
+    }
+
+    private static void finishPersonalResume() {
+        personalPlayback.compareAndSet(PersonalPlayback.RESUMING, PersonalPlayback.FOLLOWING);
     }
 
     /** 发起切歌投票（频道里非管理员按「下一首」走的就是这条）。 */
@@ -1789,53 +1792,57 @@ public final class MpPartyClient {
             MpPlayback.stageNext(MpTrack.fromJson(staged), MpProto.obj(staged, "plan"));
             MpRoomPrefetch.onQueue(queue());
         } else if (MpProto.S_PLAY.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpTrack track = MpTrack.fromJson(MpProto.obj(msg, "track"));
             if (track == null) return;
-            // resync = 服务端单独补给我一份权威位置（个人暂停恢复时用），不是新曲目。
-            // 「立即同步播放进度」就落在这里：见到它就清掉个人暂停并直接跳到那个位置，
-            // 不用等下一发心跳。普通 play（换歌广播）同样把暂停落地 —— 帧里带的就是权威
-            // 位置与权威播放态；留着标记不清，resync 帧万一没来（服务端重启丢了会话）就会
-            // 永久静默卡死，而后果只是「自动恢复播放」，轻得多。
-            if (MpProto.bool(msg, "resync", false) || MpProto.bool(msg, "playing", true))
-                selfPaused = false;
-            long seq = MpProto.num(msg, "seq", 0L);
-            long pos = compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L));
-            startTrack(track, pos, MpProto.bool(msg, "playing", true), seq);
+            // 普通换歌只推进房间时钟。个人暂停由发给本人的恢复帧解除。
+            if (MpProto.bool(msg, "resync", false)) finishPersonalResume();
+            boolean isPlaying = MpProto.bool(msg, "playing", true);
+            startTrack(track, framePosition(msg, 0L, isPlaying), isPlaying, seq);
         } else if (MpProto.S_PAUSE.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpSyncPolicy.markCommand();
-            stamp(MpProto.num(msg, "pos", positionMs()), false, MpProto.num(msg, "seq", 0L));
-            MpPlayback.pause(posBase);
+            stamp(framePosition(msg, positionMs(), false), false, seq);
+            if (!selfPaused()) MpPlayback.pause(posBase);
             notifyListeners();
         } else if (MpProto.S_RESUME.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpSyncPolicy.markCommand();
-            stamp(compensate(MpProto.num(msg, "pos", positionMs()), MpProto.num(msg, "serverTime", 0L)),
-                    true, MpProto.num(msg, "seq", 0L));
-            if (!selfPaused) MpPlayback.resume(posBase);
+            stamp(framePosition(msg, positionMs(), true), true, seq);
+            if (!selfPaused()) MpPlayback.resume(posBase);
             notifyListeners();
         } else if (MpProto.S_SEEK.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             // 房主／管理员拖进度是明确命令：立刻执行，不受软硬阈值和冷却约束。
             MpSyncPolicy.markCommand();
-            stamp(compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L)),
-                    playing, MpProto.num(msg, "seq", 0L));
-            if (!selfPaused) MpPlayback.seek(posBase);
+            stamp(framePosition(msg, 0L, playing), playing, seq);
+            if (!selfPaused()) MpPlayback.seek(posBase);
             notifyListeners();
         } else if (MpProto.S_STOP.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
+            // Legacy servers answer an empty-room resume with an untagged STOP.
+            if (MpProto.bool(msg, "resync", false) || currentTrack == null) finishPersonalResume();
             currentTrack = null;
-            playing = false;
-            posBase = 0L;
-            posStamp = System.currentTimeMillis();
+            stamp(0L, false, seq);
             durationMs = 0L;
+            waitingUrl = false;
             MpPlayback.stop();
             notifyListeners();
         } else if (MpProto.S_TIME.equals(op)) {
+            if (currentTrack == null || stalePlaybackSequence(playbackSequence(msg))) return;
             boolean isPlaying = MpProto.bool(msg, "playing", false);
             long dur = MpProto.num(msg, "duration", durationMs);
-            long pos = compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L));
+            long pos = framePosition(msg, 0L, isPlaying);
             durationMs = dur;
             stampSmooth(pos, isPlaying);
             // 交给播放层的仍是服务端的权威位置（未经平滑）：那边自己有三档判定，
             // 喂它一个被磨过的值只会让判定失真。
-            if (!selfPaused) MpPlayback.time(pos, dur, isPlaying);
+            if (!selfPaused()) MpPlayback.time(pos, dur, isPlaying);
         } else if (MpProto.S_INVITE.equals(op)) {
             inviteCode = MpProto.str(msg, "code", "");
             inviteRoomName = MpProto.str(msg, "roomName", "");
@@ -1952,7 +1959,15 @@ public final class MpPartyClient {
     }
 
     private static void applySnapshot(JsonObject msg) {
+        JsonObject playback = MpProto.obj(msg, "playback");
+        long seq = playbackSequence(playback);
+        if (stalePlaybackSequence(seq)) return;
         MpRoom snapshot = MpRoom.fromJson(MpProto.obj(msg, "room"));
+        if (room == null && snapshot != null) {
+            MpMember member = snapshot.member(selfUuid());
+            personalPlayback.set(member != null && member.selfPaused
+                    ? PersonalPlayback.PAUSED : PersonalPlayback.FOLLOWING);
+        }
         room = snapshot;
         hintContributionOnce();
         // 快照里也带着「下一首」（服务端把它放在 room 对象里）：中途进房与断线重连的人
@@ -1961,7 +1976,6 @@ public final class MpPartyClient {
         MpPlayback.stageNext(MpTrack.fromJson(staged), MpProto.obj(staged, "plan"));
         // 快照是身份的权威来源（房主可能刚转让过），分析权跟着它刷新。
         MpPlayback.refreshRoomRole();
-        JsonObject playback = MpProto.obj(msg, "playback");
         waitingUrl = MpProto.bool(playback, "waitingUrl", false);
 
         if (playback == null) {
@@ -1970,21 +1984,20 @@ public final class MpPartyClient {
         }
         String state = MpProto.str(playback, "state", "idle");
         MpTrack track = MpTrack.fromJson(MpProto.obj(playback, "track"));
-        long seq = MpProto.num(playback, "seq", 0L);
 
         if (track == null || "idle".equals(state)) {
+            stamp(0L, false, seq);
+            durationMs = 0L;
             if (currentTrack != null) {
                 currentTrack = null;
-                playing = false;
-                durationMs = 0L;
                 MpPlayback.stop();
             }
             notifyListeners();
             return;
         }
 
-        long pos = compensate(MpProto.num(playback, "pos", 0L), MpProto.num(playback, "serverTime", 0L));
         boolean isPlaying = "playing".equals(state);
+        long pos = framePosition(playback, 0L, isPlaying);
         // 同一首歌按 source+songId 判：跨平台房间里两个平台的数字 id 会撞车。
         boolean sameTrack = currentTrack != null && currentTrack.key().equals(track.key());
 
@@ -1995,7 +2008,7 @@ public final class MpPartyClient {
             // 与 S_TIME 心跳一致：个人暂停期间不许被房间快照重新开声。这一分支之前漏了守卫，
             // 而 setSelfPause 会让服务端无条件 broadcastState（收听人数变了），于是一按个人暂停
             // 就被下一帧 room_state 当场解除 —— 按钮还亮着却照常出声。
-            if (!selfPaused) MpPlayback.time(pos, durationMs, isPlaying);
+            if (!selfPaused()) MpPlayback.time(pos, durationMs, isPlaying);
             notifyListeners();
         }
     }
@@ -2023,7 +2036,7 @@ public final class MpPartyClient {
     }
 
     private static void startTrack(MpTrack track, long pos, boolean isPlaying, long seq) {
-        if (seq < appliedSeq) return;            // 过期帧：已经有更新的指令生效了
+        if (stalePlaybackSequence(seq)) return;
         currentTrack = track;
         durationMs = track.durationMs;
         stamp(pos, isPlaying, seq);
@@ -2038,12 +2051,12 @@ public final class MpPartyClient {
         MpSyncPolicy.markCommand();
         // 房间内的交叠交接：本机早就把这一首（服务端预告过的那一首）解析、下载、解码完，
         // 交接不该再走一遍起播 —— 那会把刚叠上的尾巴整段掐掉。
-        if (!selfPaused && MpPlayback.handoverToRoomFrame(track, pos, isPlaying)) {
+        if (!selfPaused() && MpPlayback.handoverToRoomFrame(track, pos, isPlaying)) {
             notifyListeners();
             return;
         }
         // 个人暂停期间只更新房间时钟，不开声。界面照常显示曲目和进度，恢复时才真的起播。
-        if (!selfPaused) MpPlayback.play(track, track.url, pos, isPlaying);
+        if (!selfPaused()) MpPlayback.play(track, track.url, pos, isPlaying);
         notifyListeners();
     }
 
@@ -2065,7 +2078,7 @@ public final class MpPartyClient {
     private static void stampSmooth(long pos, boolean isPlaying) {
         long target = Math.max(0L, pos);
         // 播放状态翻转、还没有曲目、或者时钟根本没起来：没有可收敛的基准，直接落地。
-        if (isPlaying != playing || currentTrack == null || posStamp == 0L) {
+        if (!isPlaying || !playing || currentTrack == null || posStamp == 0L) {
             stamp(target, isPlaying, appliedSeq);
             return;
         }
@@ -2079,9 +2092,20 @@ public final class MpPartyClient {
         stamp(own + diff / 4, isPlaying, appliedSeq);
     }
 
-    /** 把服务端报告的位置修正到「现在」，细节见 {@link MpSyncPolicy#compensate}。 */
-    private static long compensate(long pos, long serverTime) {
-        return MpSyncPolicy.compensate(pos, serverTime);
+    private static long playbackSequence(JsonObject frame) {
+        return MpProto.num(frame, "seq", -1L);
+    }
+
+    private static boolean stalePlaybackSequence(long seq) {
+        return seq >= 0L && seq < appliedSeq;
+    }
+
+    /** 把服务端正在播放的位置修正到当前时刻。 */
+    private static long framePosition(JsonObject frame, long fallback, boolean isPlaying) {
+        long pos = MpProto.num(frame, "pos", fallback);
+        // 暂停帧仍可采样时钟偏移，暂停的位置本身保持固定。
+        long compensated = MpSyncPolicy.compensate(pos, MpProto.num(frame, "serverTime", 0L));
+        return isPlaying ? compensated : pos;
     }
 
     /**
@@ -2567,7 +2591,7 @@ public final class MpPartyClient {
         durationMs = 0L;
         appliedSeq = -1L;
         waitingUrl = false;
-        selfPaused = false;
+        personalPlayback.set(PersonalPlayback.FOLLOWING);
         // 邀请横幅刻意不在这里清：S_LEFT（主动离房）也会走到 reset，而「离开了 A 房间」
         // 不等于「不想去 B 房间」——收到过的邀请仍然有效，清掉等于砍掉玩家的一键加入入口
         // （v2 的 pendingInvites 同样不在离房路径清，两条链路口径一致）。真正的清理点是

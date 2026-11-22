@@ -44,8 +44,10 @@ public final class FoliaBackgroundConfig {
      */
     public static int backgroundKind = 2;
 
-    /** Optional cover-color backdrop. Does not replace the remembered Folia/QPlayer selection. */
-    public static boolean appleCoverBackdrop = false;
+    private static final boolean DEFAULT_APPLE_COVER_BACKDROP = true;
+
+    /** Cover-color backdrop with a separate, remembered Folia/QPlayer selection. */
+    public static boolean appleCoverBackdrop = DEFAULT_APPLE_COVER_BACKDROP;
 
     /** 旧的布尔口径：现在「用不用 Folia」等价于「档位不是 QPlayer 那两档」。 */
     public static boolean enabled() {
@@ -170,7 +172,10 @@ public final class FoliaBackgroundConfig {
         try {
             backgroundKind = clampInt(getInt(root, "backgroundKind",
                     getBoolean(root, "enabled", true) ? 2 : 0), 0, 2);
-            appleCoverBackdrop = getBoolean(root, "appleCoverBackdrop", false);
+            // Legacy files stored the active backdrop in this preset, not in the new toggle.
+            boolean hasSavedPreset = root.has("backgroundKind") || root.has("enabled") || root.has("mode");
+            appleCoverBackdrop = getBoolean(root, "appleCoverBackdrop",
+                    DEFAULT_APPLE_COVER_BACKDROP && !hasSavedPreset);
             mode = readMode(root);
             staticMode = getBoolean(root, "staticMode", staticMode);
             audioResponse = clamp(getFloat(root, "audioResponse", audioResponse), 0f, 2f);
@@ -323,7 +328,7 @@ public final class FoliaBackgroundConfig {
     /** 把全部字段恢复出厂（folia 默认）。 */
     public static synchronized void resetAll() {
         backgroundKind = 2;
-        appleCoverBackdrop = false;
+        appleCoverBackdrop = DEFAULT_APPLE_COVER_BACKDROP;
         mode = FoliaBackgroundMode.LATENT.storedId();
         staticMode = false;
         audioResponse = 1.0f;

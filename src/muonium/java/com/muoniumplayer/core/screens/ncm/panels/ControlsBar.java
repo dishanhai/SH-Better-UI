@@ -381,7 +381,7 @@ public class ControlsBar extends NCMPanel {
 
         this.addChild(playPause);
 
-        playPause
+        playPause.enablePressMotion()
                 .setBeforeRenderCallback(() -> {
                     // 镜像态下出声的是外部播放器，player 恒为 null：图标一律问「现在有没有在响」，
                     // 它同时覆盖内部暂停与外部暂停两种情况。
@@ -404,7 +404,7 @@ public class ControlsBar extends NCMPanel {
 
         this.addChild(prev);
 
-        prev
+        prev.enablePressMotion()
                 .setOnClickCallback((x, y, i) -> {
                     // 直播没有上一首：按了只提示，不吞掉点击的反馈。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive()) {
@@ -427,7 +427,7 @@ public class ControlsBar extends NCMPanel {
         IconWidget next = new IconWidget("E", FontManager.icon30, 0, 0, 20, 20);
         this.addChild(next);
 
-        next
+        next.enablePressMotion()
                 .setOnClickCallback((x, y, i) -> {
                     // 直播没有下一首：同上一首，给一句说明而不是静默吞掉。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive()) {
@@ -463,7 +463,7 @@ public class ControlsBar extends NCMPanel {
         playMode.setContentInset((playMode.getHeight()
                 - transportHeight / PlayerIconAssets.PLAY_MODE_INK_HEIGHT_RATIO) * .5);
 
-        playMode
+        playMode.enablePressMotion()
                 .setBeforeRenderCallback(() -> {
                     CloudMusic.PlayMode mode = CloudMusic.playMode;
                     boolean personalFm = CloudMusic.isPersonalFmActive();
@@ -981,7 +981,7 @@ public class ControlsBar extends NCMPanel {
                             ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT)
                             : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
         });
-        viperToggle.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
+        viperToggle.enablePressMotion().setOnClickCallback((relativeX, relativeY, mouseButton) -> {
             if (mouseButton != 0) return false;
             NCMScreen.getInstance().openViperEffects();
             return true;
@@ -1026,7 +1026,7 @@ public class ControlsBar extends NCMPanel {
                 queuePanel.setAnchorRight(queueToggle.getX() + queueToggle.getWidth());
             }
         });
-        queueToggle.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
+        queueToggle.enablePressMotion().setOnClickCallback((relativeX, relativeY, mouseButton) -> {
             if (mouseButton != 0) return false;
             PlayQueuePanel queuePanel = NCMScreen.getInstance().getPlayQueuePanel();
             if (queuePanel != null) queuePanel.toggle();
@@ -1086,7 +1086,7 @@ public class ControlsBar extends NCMPanel {
                             ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT)
                             : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
         });
-        listenTogether.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
+        listenTogether.enablePressMotion().setOnClickCallback((relativeX, relativeY, mouseButton) -> {
             if (mouseButton != 0) return false;
             NCMScreen.getInstance().openListenTogether();
             return true;

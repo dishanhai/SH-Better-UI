@@ -300,6 +300,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
 
     private double cameraY;
     private double cameraVelocity;
+    private double scrollPixels;
     private boolean cameraReady;
     private LyricLine anchorLine;
     private double anchorY;
@@ -319,6 +320,12 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
     private int metricsRetries;
     private static final int METRICS_MAX_RETRIES = 40;
 
+    double takeScrollPixels() {
+        double moved = scrollPixels;
+        scrollPixels = 0.0;
+        return moved;
+    }
+
     protected void onReset() {
         invalidateLyricPointer();
         manualScroll.reset();
@@ -330,6 +337,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         laidOutHeight = -1;
         cameraY = 0;
         cameraVelocity = 0;
+        scrollPixels = 0.0;
         cameraReady = false;
         anchorLine = null;
         anchorY = 0;
@@ -403,6 +411,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             cameraVelocity = 0;
             cameraReady = true;
         } else {
+            double previousY = cameraY;
             // 显式积分的弹簧，而不是每帧乘一个系数：后者的收敛速度会跟着帧率走。
             double dt = Math.min(frameSeconds, FullscreenLyricStage.MAX_FRAME_SECONDS);
             cameraVelocity += (targetY - cameraY) * SPRING_STIFFNESS * dt;
@@ -412,6 +421,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                 cameraY = targetY;
                 cameraVelocity = 0;
             }
+            scrollPixels = cameraY - previousY;
         }
 
         double anchorScreenY = top + height * ANCHOR + (1.0 - opened) * height * .18;

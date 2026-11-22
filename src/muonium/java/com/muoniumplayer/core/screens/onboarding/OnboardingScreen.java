@@ -59,6 +59,7 @@ public final class OnboardingScreen extends ExtensionScreen
             new WelcomeStep(), new AccountStep(), new SourceStep(),
             new AppearanceStep(), new AutomixModelStep(), new FinishStep()
     };
+    private final double[] stepScroll = new double[steps.length];
 
     private int stepIndex;
     private int previousStepIndex = -1;
@@ -146,10 +147,18 @@ public final class OnboardingScreen extends ExtensionScreen
             double hy = overlayBlocks ? -1 : my;
 
             Bands bands = Bands.of(chrome);
+            if (accountOverlay == null) {
+                int wheel = Mouse.getDWheel();
+                if (wheel != 0 && !overlayBlocks && OnboardingUi.inside(mx, my,
+                        bands.x, bands.y, bands.width, bands.height)) {
+                    scrollStep(bands, -wheel / 120.0 * 44);
+                }
+            }
             clipStep(bands.x, bands.y, bands.width, bands.height);
             try {
-                renderStepWithTransition(bands.x, bands.y, bands.width, bands.height, hx, hy);
-                drawContentFade(bands, (float) alpha);
+                if (renderStepWithTransition(bands.x, bands.y, bands.width, bands.height, hx, hy)) {
+                    drawContentFade(bands, (float) alpha);
+                }
             } finally {
                 SkijaClip.endClip();
             }
@@ -180,7 +189,7 @@ public final class OnboardingScreen extends ExtensionScreen
         }
     }
 
-    private void renderStepWithTransition(double contentX, double contentY,
+    private boolean renderStepWithTransition(double contentX, double contentY,
                                           double contentWidth, double contentHeight,
                                           double mouseX, double mouseY) {
         double progress = stepTransitionProgress();
@@ -195,22 +204,21 @@ public final class OnboardingScreen extends ExtensionScreen
             double oldScale = baseScale * (1.0 - 0.035 * eased);
             double newScale = baseScale * (0.965 + 0.035 * eased);
 
-            renderStep(steps[previousStepIndex], contentX, contentY,
+            renderStep(previousStepIndex, contentX, contentY,
                     contentWidth, contentHeight, mouseX, mouseY,
                     oldOffset, oldScale, oldAlpha);
-            renderStep(steps[stepIndex], contentX, contentY,
+            return renderStep(stepIndex, contentX, contentY,
                     contentWidth, contentHeight, mouseX, mouseY,
                     newOffset, newScale, newAlpha);
-            return;
         }
 
         double scale = stepScale(contentWidth, contentHeight);
-        renderStep(steps[stepIndex], contentX, contentY,
+        return renderStep(stepIndex, contentX, contentY,
                 contentWidth, contentHeight, mouseX, mouseY,
                 0.0, scale, 1.0f);
     }
 
-    private void renderStep(OnboardingStepView step,
+    private boolean renderStep(int index,
                             double contentX, double contentY,
                             double contentWidth, double contentHeight,
                             double mouseX, double mouseY,
@@ -234,13 +242,20 @@ public final class OnboardingScreen extends ExtensionScreen
 
         OnboardingUi.beginStep(alpha);
         OnboardingUi.beginMetric(metrics);
+        OnboardingStepView step = steps[index];
+        double height = Math.max(localHeight, step.minimumHeight(columnWidth));
+        double offset = clamp(stepScroll[index], 0, height - localHeight);
         SkijaGfx.pushMatrix();
-        SkijaGfx.translate(contentX + offsetX + columnX * scale, contentY);
+        SkijaGfx.translate(contentX + offsetX + columnX * scale, contentY - offset * scale);
         SkijaGfx.scale(scale, scale);
-        step.render(this, 0.0, 0.0, columnWidth, localHeight, columnMouseX, localMouseY);
-        SkijaGfx.popMatrix();
-        OnboardingUi.endMetric();
-        OnboardingUi.endStep();
+        try {
+            step.render(this, 0.0, 0.0, columnWidth, height, columnMouseX, localMouseY + offset);
+        } finally {
+            SkijaGfx.popMatrix();
+            OnboardingUi.endMetric();
+            OnboardingUi.endStep();
+        }
+        return offset + localHeight + 1 < height;
     }
 
     /**
@@ -251,14 +266,24 @@ public final class OnboardingScreen extends ExtensionScreen
      * 但「一张卡被齐刷刷切掉八像素」看着也像坏了。溶回面板底色之后，它读起来才是「下面还有」。</p>
      */
     private void drawContentFade(Bands bands, float alpha) {
-        double drawn = STEP_DESIGN_HEIGHT * stepScale(bands.width, bands.height);
-        if (drawn <= bands.height + 6.0) {
-            return;
-        }
         double height = Math.min(18.0, bands.height * .16);
         int base = NCMScreen.getColor(NCMScreen.ColorType.GENERIC_BACKGROUND);
         OnboardingUi.verticalFade(bands.x, bands.y + bands.height - height, bands.width, height,
                 RGBA.color(base, 0f), RGBA.color(base, (float) (alpha * .92)));
+    }
+
+    private void scrollStep(Bands bands, double distance) {
+        double scale = stepScale(bands.width, bands.height);
+        double width = bands.width / scale;
+        double height = bands.height / scale;
+        OnboardingMetrics metrics = OnboardingMetrics.of(width, height);
+        OnboardingUi.beginMetric(metrics);
+        try {
+            double limit = Math.max(0, steps[stepIndex].minimumHeight(metrics.columnWidth(width)) - height);
+            stepScroll[stepIndex] = clamp(stepScroll[stepIndex] + distance, 0, limit);
+        } finally {
+            OnboardingUi.endMetric();
+        }
     }
 
     /**
@@ -731,9 +756,11 @@ public final class OnboardingScreen extends ExtensionScreen
         }
         OnboardingUi.beginMetric(metrics);
         try {
-            steps[stepIndex].mouseClicked(this, 0.0, 0.0,
-                    columnWidth, boardHeight,
-                    localMouseX - columnX, localMouseY, mouseButton);
+            OnboardingStepView step = steps[stepIndex];
+            double pageHeight = Math.max(boardHeight, step.minimumHeight(columnWidth));
+            double offset = clamp(stepScroll[stepIndex], 0, pageHeight - boardHeight);
+            step.mouseClicked(this, 0.0, 0.0, columnWidth, pageHeight,
+                    localMouseX - columnX, localMouseY + offset, mouseButton);
         } finally {
             OnboardingUi.endMetric();
         }
@@ -794,6 +821,18 @@ public final class OnboardingScreen extends ExtensionScreen
         }
         if (stepIndex == 0 && !isStepTransitionActive()
                 && ((WelcomeStep) steps[0]).keyTyped(this, typedChar)) return;
+        if (keyCode == Keyboard.KEY_PRIOR || keyCode == Keyboard.KEY_NEXT) {
+            RenderSystem.refreshResolution();
+            WindowAdaptiveScale.beginForced();
+            try {
+                Bands bands = Bands.of(OnboardingChrome.of(RenderSystem.getWidth(), RenderSystem.getHeight()));
+                double page = bands.height / stepScale(bands.width, bands.height);
+                scrollStep(bands, keyCode == Keyboard.KEY_PRIOR ? -page : page);
+            } finally {
+                WindowAdaptiveScale.end();
+            }
+            return;
+        }
         if (keyCode == Keyboard.KEY_ESCAPE) {
             if (stepIndex == 0) {
                 if (skipConfirm) skip();

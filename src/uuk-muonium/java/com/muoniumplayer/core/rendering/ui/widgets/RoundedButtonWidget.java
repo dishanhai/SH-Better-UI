@@ -12,6 +12,7 @@ public class RoundedButtonWidget extends RoundedRectWidget {
     LabelWidget lw;
 
     public RoundedButtonWidget(Supplier<String> label, CFontRenderer fr) {
+        this.enablePressMotion();
         lw = new LabelWidget(label, fr);
 
         this.addChild(lw);

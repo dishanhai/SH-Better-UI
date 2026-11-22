@@ -5,6 +5,19 @@ import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
 class MusicPressMotionTest {
+    @Test void quickActivationsRestartTheReturnWithoutLoweringVisibleCompression() {
+        var motion = new MusicPressMotion();
+        motion.sample(true, 100, false);
+        assertEquals(1f, motion.sample(true, 160, false));
+        motion.pulse(160, false);
+        assertEquals(1f, motion.sample(false, 160, false));
+        assertTrue(motion.sample(false, 280, false) < .38f);
+        motion.pulse(280, false);
+        assertEquals(.38f, motion.sample(false, 280, false));
+        motion.pulse(290, true);
+        assertEquals(0f, motion.sample(false, 290, false));
+    }
+
     @Test void fastTapBetweenFramesLeavesATailThenSettles() {
         var motion = new MusicPressMotion();
         assertTrue(motion.sample(true, 100, false) > 0);

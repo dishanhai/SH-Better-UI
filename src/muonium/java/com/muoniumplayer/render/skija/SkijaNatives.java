@@ -35,9 +35,7 @@ import com.muoniumplayer.core.settings.ConfigPaths;
  *       嵌套 jar，由本类自己解到 {@code <root>/<版本>/extracted/<platform>/} 再指给 Skija。</li>
  * </ol>
  *
- * <p>任何平台连一个磁盘候选都没有时，都会走一次<b>自动下载</b>
- * （{@link SkijaCompanionDownload}）：按本机判定平台从清单仓库拉同名伴生包、校验字节数与
- * sha256 后解到伴生包目录，装好即置「必须重启」的闸。下载全程在后台线程，渲染线程不等它。
+ * <p>缺少候选时，玩家可在原版主菜单请求下载匹配的伴生包。安装在后台进行，下次启动加载。
  *
  * <p>候选的查找、排序与版本校验都在 {@link SkijaNativeCatalog} 里，本类只管「试」与「记状态」。
  *
@@ -96,7 +94,7 @@ public final class SkijaNatives {
     private static Boolean loaded;
     private static String mode = "未尝试";
     private static String failure;
-    private static Status status = new Status(false, SkijaNativeCatalog.mappedPlatform(),
+    private static volatile Status status = new Status(false, SkijaNativeCatalog.mappedPlatform(),
             PINNED_SKIJA_VERSION, null, null, List.of(), List.of(), null, false);
 
     private SkijaNatives() {
@@ -121,6 +119,10 @@ public final class SkijaNatives {
                          String origin, File directory, List<String> attempted,
                          List<String> rejectedOnDisk, String lastError, boolean nativeFound) {
 
+        public boolean companionMissing() {
+            return !loaded && !nativeFound && !attempted.isEmpty();
+        }
+
         /** 期望的伴生包文件名，提示层直接把它打给用户——他只需要搜这个名字。 */
         public String expectedPackageName() {
             return "muonium-skija-" + mappedPlatform.replace('/', '-') + "-" + pinnedVersion + ".zip";
@@ -132,12 +134,36 @@ public final class SkijaNatives {
         }
     }
 
-    public record DownloadSnapshot(String phase, int percent, String detail) {
+    public enum DownloadFailure { DIRECTORY, PACKAGE, INSTALL }
+
+    public record DownloadSnapshot(String phase, int percent, String detail, DownloadFailure failure) {
+        public DownloadSnapshot(String phase, int percent, String detail) {
+            this(phase, percent, detail, null);
+        }
     }
 
     public static DownloadSnapshot companionDownloadSnapshot() {
         SkijaCompanionDownload.State current = SkijaCompanionDownload.state();
-        return new DownloadSnapshot(current.phase().name(), current.percent(), current.detail());
+        DownloadFailure failure = current.phase() != SkijaCompanionDownload.Phase.FAILED ? null
+                : switch (current.failedDuring()) {
+                    case PREPARING -> DownloadFailure.DIRECTORY;
+                    case DOWNLOADING -> DownloadFailure.PACKAGE;
+                    case INSTALLING -> DownloadFailure.INSTALL;
+                    default -> throw new IllegalStateException("Unexpected download failure stage: " + current.failedDuring());
+                };
+        return new DownloadSnapshot(current.phase().name(), current.percent(), current.detail(), failure);
+    }
+
+    public static boolean canDownloadCompanion() {
+        Status current = status;
+        return current.companionMissing() && SkijaCompanionDownload.canStart(current.mappedPlatform());
+    }
+
+    public static void requestCompanionDownload() {
+        Status current = status;
+        if (current.companionMissing()) {
+            SkijaCompanionDownload.request(current.mappedPlatform());
+        }
     }
 
     /** 最近一次（或首次）加载的结果。永远不会为 null。 */
@@ -146,85 +172,10 @@ public final class SkijaNatives {
     }
 
     /**
-     * 是否已到「必须重启才能生效」：伴生包装好了、原生库仍未加载（重启由 GameRestart
-     * 替用户自动完成）。{@code SkijaCompanionDownload} 是包级私有，跨包的询问
-     * （自动重启布防、救援文案）统一走这个门面。加载已生效时恒 false。
+     * 伴生包已安装，原生库将在玩家下次启动时加载。
      */
     public static boolean companionRestartPending() {
         return SkijaCompanionDownload.isRestartRequired();
-    }
-
-    /**
-     * 「一个候选都没有」时提示层要说的整块文案。
-     *
-     * <p>自动下载上线之后这一段不能写死：同样是「缺库」，用户下一步动作差得很远——
-     * 下载中什么都别做、装好了模组自动重启游戏生效、失败了才回手动补包。文案跟 {@link SkijaCompanionDownload} 的状态走；包名 / 下载页 /
-     * 目标目录这三条硬信息在任何「需要用户动手」的分岔里都必须原样给出——静态测试钉着它们，
-     * 那是用户唯一的自救路径。
-     */
-    public static List<String> nativeMissingLines() {
-        Status current = status;
-        List<String> lines = new ArrayList<>();
-        SkijaCompanionDownload.State download = SkijaCompanionDownload.state();
-        switch (download.phase()) {
-            case DOWNLOADING -> {
-                lines.add(download.percent() >= 0
-                        ? "正在自动下载渲染原生库：" + download.percent() + "%"
-                        : "正在自动下载渲染原生库…");
-                lines.add("下载完成后重启游戏生效（通常也会自动重启，没触发就手动重进）");
-            }
-            case INSTALLING -> {
-                lines.add("渲染原生库已下载，正在解压安装…");
-                lines.add("装好后重启游戏生效（通常也会自动重启，没触发就手动重进）");
-            }
-            case DONE -> {
-                // 装好即必须重启。自动重启（GameRestart）在真机上偶发不触发——回到主菜单的
-                // 判定、重启脚本落盘、进程退出任何一环都可能被启动器环境卡住——所以文案以
-                // 手动重启为主、倒计时为辅：两条路殊途同归，谁先到都一样生效。
-                lines.add("渲染原生库已自动装好，需要重启游戏后生效");
-                lines.add("请手动退出游戏并重新进入（自动重启偶尔不会触发）");
-                lines.add("不需要手动放置任何文件");
-                String restartLine = com.muoniumplayer.core.update.GameRestart.statusLine();
-                if (restartLine != null) {
-                    lines.add(restartLine);
-                }
-            }
-            case FAILED -> {
-                lines.add("自动下载失败：" + download.detail());
-                addManualCompanionLines(lines, current);
-            }
-            default -> addManualCompanionLines(lines, current);
-        }
-        return lines;
-    }
-
-    /**
-     * 自动下载过程此刻是否「看得见」：正在下载 / 正在安装 / 已装好待重启，三段都算。
-     * 原版 GUI 提示层据此决定要不要把整块文案与进度条一直挂着——这个过程是「首次启动」
-     * 的必经之路，缩成一行角标会让用户以为卡死了。
-     */
-    public static boolean nativeDownloadVisible() {
-        SkijaCompanionDownload.Phase phase = SkijaCompanionDownload.state().phase();
-        return phase == SkijaCompanionDownload.Phase.DOWNLOADING
-                || phase == SkijaCompanionDownload.Phase.INSTALLING
-                || phase == SkijaCompanionDownload.Phase.DONE;
-    }
-
-    /**
-     * 自动下载进度（0~100）。「下载中但拿不到总长度」时是 -1，提示层画成来回扫的
-     * 不定长动画；安装与完成阶段恒为 100。不可见时读它没有意义。
-     */
-    public static int nativeDownloadPercent() {
-        return SkijaCompanionDownload.state().percent();
-    }
-
-    /** 缺库时的「手动补包」引导：包名、下载页、目标目录与自动重试承诺。 */
-    private static void addManualCompanionLines(List<String> lines, Status current) {
-        lines.add("需要伴生包：" + current.expectedPackageName());
-        lines.add("下载页：" + NATIVE_DOWNLOAD_PAGE);
-        lines.add("把压缩包里的文件夹整个解压到这里：");
-        lines.add(current.expectedDirectory());
-        lines.add("放好约 20 秒内自动重试，不需要重启游戏");
     }
 
     /**
@@ -240,6 +191,10 @@ public final class SkijaNatives {
     public static synchronized boolean ensureLoaded() {
         if (loaded != null) {
             return loaded;
+        }
+        if (SkijaCompanionDownload.state().phase() == SkijaCompanionDownload.Phase.INSTALLING
+                || companionRestartPending()) {
+            return false;
         }
 
         String mapped = SkijaNativeCatalog.mappedPlatform();

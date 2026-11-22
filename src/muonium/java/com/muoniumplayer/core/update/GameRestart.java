@@ -1,8 +1,6 @@
 package com.muoniumplayer.core.update;
 
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
-import com.muoniumplayer.render.skija.SkijaNatives;
-import com.muoniumplayer.render.skija.SkijaNatives;
 
 import java.io.File;
 import java.io.IOException;
@@ -14,13 +12,7 @@ import java.util.List;
 import java.util.Optional;
 
 /**
- * 渲染原生库装好之后的<b>自动重启</b>：模组替用户把游戏关掉、再原样打开。
- *
- * <h2>为什么需要它</h2>
- * 原生库必须在全新的 JVM 里加载才干净可靠（热加载在装到一半的游戏里不可靠，见
- * {@code SkijaCompanionDownload} 的重启看门狗）。而「装好了」和「能用」之间原本隔着
- * 三次手动操作：看懂救援界面、关掉游戏、回启动器再点开始。现在这段路模组自己走完：
- * 等回主菜单 → 优雅关闭本进程 → 看守脚本用<b>捕获到的原启动命令</b>重新拉起。
+ * MuoniumConfig 更新后的自动重启。等回主菜单后关闭当前进程，再用原启动命令重新打开。
  *
  * <h2>命令从哪来</h2>
  * {@code ProcessHandle.current().arguments()} 给出本进程完整的 argv（JVM 参数 +
@@ -57,12 +49,7 @@ import java.util.Optional;
  * ESC 取消也删除（拆雷）。marker 还在 = 上一次重启没把库带活，arm 读到计数已达上限
  * 就不再布防；标记超过两小时视为陈旧，计数重新起算。看守只读标记、从不删标记。
  *
- * <h2>MuoniumConfig 的更新也走这条路</h2>
- * 设置界面是 mod 形式的 jar，装好/更新后同样必须重启才生效，所以
- * {@code MuoniumConfigDownload.isRestartRequired()} 也是布防来源之一。
- * 与渲染层不同的是它<b>永远不致命</b>：更新失败只是少一个设置界面，因此它的会话内重试
- * （{@link com.muoniumplayer.core.screens.hud.MuoniumConfigDownload#tick()}）挂在同一个
- * tick 上，先于布防检查——可能刚好把这一轮跑成功，下一 tick 就正常布防。
+ * MuoniumConfig 更新通过加载器在启动时生效。更新的会话内重试也在这里驱动。
  */
 public final class GameRestart {
 
@@ -113,7 +100,7 @@ public final class GameRestart {
         return stage == Stage.ARMED;
     }
 
-    /** 救援文案的一行状态；不需要说话时返回 null。由 SkijaNatives.nativeMissingLines 拼接。 */
+    /** MuoniumConfig 下载提示的一行状态。 */
     public static String statusLine() {
         switch (stage) {
             case ARMED:
@@ -160,12 +147,8 @@ public final class GameRestart {
      */
     public static void tick(Runnable stop, boolean idle) {
         try {
-            // ① 布防检查：有东西装好了、尚未生效 → 准备替用户重启。
-            //    两处来源：Skija 伴生包（缺了渲染层起不来），以及 MuoniumConfig
-            //    （HUD 设置界面；加载器只在启动阶段扫 mods/，运行中塞进去的 jar 不会被加载）。
             if (stage == Stage.NONE
-                    && (SkijaNatives.companionRestartPending()
-                        || com.muoniumplayer.core.screens.hud.MuoniumConfigDownload.isRestartRequired())) {
+                    && com.muoniumplayer.core.screens.hud.MuoniumConfigDownload.isRestartRequired()) {
                 arm();
             }
 

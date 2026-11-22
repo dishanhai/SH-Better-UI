@@ -23,25 +23,8 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 
 /**
- * Skija 原生库（全平台，含 Windows）的「伴生包」自动下载器。
- *
- * <h2>为什么需要它</h2>
- * 主包不再内置任何平台的原生库（七个平台全塞进一个 jar 会让包体从 58 MB 涨到约 121 MB，
- * 越过 GitHub release 的单文件上限；瘦身轮之后连 Windows 那份 10.6 MB 也改为按需下载）。
- * 原生库以「伴生包」形式托管在公开清单仓库 {@code MuoniumPlayer-updates} 的
- * {@code skija-companion/} 目录，客户端在<b>磁盘上一个候选都没有</b>时自动下载本机平台的那一份、
- * 校验字节数与 sha256、解压到伴生包目录；装好后<b>必须重启游戏</b>才生效（重启看门狗置闸，
- * 见 {@link #isRestartRequired()}）——重启由模组替用户自动完成（{@code GameRestart}：等回主菜单
- * 后优雅关游戏、看守脚本原命令重开），不试热加载。进度条与状态展示由提示层照 {@link #state()} 画。
- *
- * <h2>触发条件（同时满足才下载）</h2>
- * <ol>
- *   <li>{@link SkijaNatives#ensureLoaded()} 以「一个候选都没有」收场——候选找到了却加载不了
- *       的不在此列，那种情况重复下载同一个包没有意义（真机 2026-09-29 的教训）；</li>
- *   <li>本机判定平台在 {@link #PACKS} 里有对应包；</li>
- *   <li>没有被 {@value #PROP_ENABLED} 显式关掉；</li>
- *   <li>不在下载中，且本会话的尝试预算与冷却时间还允许（见 {@link #MAX_ATTEMPTS}）。</li>
- * </ol>
+ * 按玩家请求在后台下载、校验并安装本机平台对应的 Skija 伴生包。
+ * 安装完成后由玩家选择何时重开游戏。
  *
  * <h2>钉死字节数与 sha256</h2>
  * 下载的是「会跑起来变成可执行代码的二进制」，和更新清单一样必须可校验：
@@ -78,17 +61,8 @@ final class SkijaCompanionDownload {
             "https://ghproxy.net/https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/skija-companion/",
             "https://raw.githubusercontent.com/zihe114514/MuoniumPlayer-updates/main/skija-companion/");
 
-    /** 关闭自动下载的开关（默认开，只有显式 {@code =false} 才关）。包级可见：静态测试要读它。 */
-    static final String PROP_ENABLED = "muonium.skija.autoDownload";
-
     /** 开发期替代源：从一个本地目录取包，不经网络。 */
     static final String PROP_LOCAL_DIR = "muonium.skija.companionDir";
-
-    /** 同一会话内最多尝试几次：网络断了不该每 20 秒重评都打一次。 */
-    private static final int MAX_ATTEMPTS = 5;
-
-/** 两次尝试之间的冷却：给网络恢复留时间，也避免频繁重试刷日志。 */
-    private static final long RETRY_COOLDOWN_NANOS = 3L * 60L * 1_000_000_000L;
 
     /** 暂存目录前缀。扫描层对「点开头」的目录一律不看，两边靠这个约定对齐。 */
     private static final String INCOMING_PREFIX = ".incoming-";
@@ -122,15 +96,16 @@ final class SkijaCompanionDownload {
 
     /** 下载状态机；提示层照它决定说什么（「缺库」分四种处境，用户动作完全不同）。 */
     enum Phase {
-        /** 没在下载（没触发、平台无包、或开关关掉）——提示层回到「手动补包」的旧文案。 */
+        /** 等待玩家发起下载。 */
         IDLE,
+        PREPARING,
         /** 正在下载。 */
         DOWNLOADING,
         /** 下载完成，正在解压安装。 */
         INSTALLING,
-        /** 装好了。置重启闸：生效统一走重启（GameRestart 替用户完成）。 */
+        /** 装好了，下一次启动可用。 */
         DONE,
-        /** 本会话内失败（重试预算没用完时冷却到了会再试）。 */
+        /** 下载或安装失败，玩家可重试。 */
         FAILED
     }
 
@@ -140,42 +115,19 @@ final class SkijaCompanionDownload {
      * @param percent 0~100；-1 表示总长度未知（拿不到 Content-Length）
      * @param detail  仅 FAILED 用：一句人话的失败原因
      */
-    record State(Phase phase, int percent, String detail) {
+    record State(Phase phase, int percent, String detail, Phase failedDuring) {
+        State(Phase phase, int percent, String detail) {
+            this(phase, percent, detail, null);
+        }
     }
 
-    private static final Object LOCK = new Object();
     private static volatile State state = new State(Phase.IDLE, 0, null);
-    private static boolean inFlight;
-    private static int attempts;
-    private static long nextAttemptAtNanos;
-
-    /**
-     * 重启看门狗的闸：本会话里自动下载装好了伴生包、<b>必须重启游戏才能生效</b>。
-     *
-     * <p>装完不试热加载：救援改由 {@code GameRestart} 替用户把「关掉再打开」整段走完
-     * （等主菜单 → 优雅 stop → 看守原命令重开），玩家只需要看着。本闸的效果与旧版一致：
-     * {@code SkijaHost} 的重评窗口对它让路（不再白烧 CPU 反复重试 dlopen），提示层挂出重启
-     * 倒计时。重启后是全新的 JVM，文件已在磁盘上，加载走首次启动的正常路径，本闸自然不存在。</p>
-     *
-     * <p>手动放置伴生包的用户不受本闸影响——那条路没有「装好」信号，重评窗口照常每 20 秒
-     * 重试；真热载成功时 {@code SkijaNatives} 的 FALSE→TRUE 跃迁钩子会重建文字渲染器
-     * （当年「UI 活了文字全空」的焊死点已修），界面当帧复活。</p>
-     */
-    private static volatile boolean restartRequired;
 
     private SkijaCompanionDownload() {
     }
 
-    /**
-     * 本会话是否已进入「装好了、必须重启」状态。提示层、重评窗口与自动重启都读它。
-     * 万一库其实已经加载成功（比如手动放包后重评抢先热载了），不再要求重启。
-     */
     static boolean isRestartRequired() {
-        if (!restartRequired) {
-            return false;
-        }
-        SkijaNatives.Status current = SkijaNatives.status();
-        return current == null || !current.loaded();
+        return state.phase() == Phase.DONE && !SkijaNatives.status().loaded();
     }
 
     /** 当前（或最近一次）的下载状态；提示层每帧读它，永远不会为 null。 */
@@ -197,80 +149,56 @@ final class SkijaCompanionDownload {
         return null;
     }
 
-    /** 自动下载是否启用：默认启用，只有显式设成 false 才关。 */
-    static boolean enabled() {
-        String value = System.getProperty(PROP_ENABLED);
-        return value == null || value.isBlank() || !"false".equalsIgnoreCase(value.trim());
+    static boolean canStart(String mappedPlatform) {
+        return isIdle() && packFor(mappedPlatform) != null;
     }
 
-    /**
-     * {@link SkijaNatives#ensureLoaded()} 以「磁盘上一个候选都没有」收场时进来；
-     * 决定要不要起一次后台下载。
-     *
-     * <p>渲染线程（重评路径）与下载线程（装完后的立刻重试）都可能调到本方法，
-     * 但真正干活的那次一定在后台线程上——渲染线程只做一次判断就走，绝不在这里等网络。
-     */
-    static void onNoCandidates(String mappedPlatform) {
-        if (!enabled()) {
-            return;
-        }
+    private static boolean isIdle() {
+        Phase phase = state.phase();
+        return phase == Phase.IDLE || phase == Phase.FAILED;
+    }
+
+    static synchronized void request(String mappedPlatform) {
         Pack pack = packFor(mappedPlatform);
-        if (pack == null) {
+        if (pack == null || !isIdle()) {
             return;
-        }
-        synchronized (LOCK) {
-            if (inFlight || attempts >= MAX_ATTEMPTS) {
-                return;
-            }
-            long now = System.nanoTime();
-            if (now < nextAttemptAtNanos) {
-                return;
-            }
-            attempts++;
-            inFlight = true;
-            nextAttemptAtNanos = now + RETRY_COOLDOWN_NANOS;
         }
         Thread worker = new Thread(() -> run(pack), "MuoniumPlayer-SkijaCompanion");
         worker.setDaemon(true);
+        state = new State(Phase.PREPARING, 0, null);
         worker.start();
     }
 
-    /**
-     * 下载 → 校验 → 解压 → 校验 → 并入伴生包目录 → 置重启闸。
-     *
-     * <p>全程在后台线程。装好即置位 {@link #restartRequired}：不试热加载，直接等
-     * {@code GameRestart} 在主菜单布防、倒计时、优雅关游戏、看守原命令重开。</p>
-     */
     private static void run(Pack pack) {
         try {
             File root = SkijaNatives.nativeRoot();
             Files.createDirectories(root.toPath());
-            state = new State(Phase.DOWNLOADING, 0, null);
-            log("开始自动下载 " + pack.fileName() + "（镜像链 " + MIRRORS.size() + " 条）");
+            log("开始下载 " + pack.fileName() + "（镜像链 " + MIRRORS.size() + " 条）");
             File archive = new File(root, pack.fileName() + ".part");
+            state = new State(Phase.DOWNLOADING, 0, null);
             fetch(pack, archive);
 
             state = new State(Phase.INSTALLING, 100, null);
             deleteStaleIncoming(root);
             File incoming = new File(root, INCOMING_PREFIX + Long.toHexString(System.nanoTime()));
-            unzip(archive, incoming);
-            verifyExtracted(incoming, pack);
-            copyTree(incoming, root);
-            deleteRecursively(incoming);
-            Files.deleteIfExists(archive.toPath());
+            try {
+                unzip(archive, incoming);
+                verifyExtracted(incoming, pack);
+                synchronized (SkijaNatives.class) {
+                    if (!SkijaNatives.status().loaded()) {
+                        copyTree(incoming, root);
+                    }
+                }
+            } finally {
+                deleteRecursively(incoming);
+            }
+            archive.delete();
 
             state = new State(Phase.DONE, 100, null);
-            // 重启看门狗：置闸、不试热加载。GameRestart 等回主菜单后倒计时关游戏、看守原命令重开。
-            restartRequired = true;
-            log("已自动装好 " + pack.fileName() + " → " + root.getAbsolutePath()
-                    + "；等待自动重启（回主菜单后 15 秒倒计时，ESC 可取消）");
+            log("已安装 " + pack.fileName() + " → " + root.getAbsolutePath() + "；下次启动时生效");
         } catch (Throwable failure) {
-            state = new State(Phase.FAILED, 0, safeMessage(failure));
-            log("自动下载失败：" + describe(failure));
-        } finally {
-            synchronized (LOCK) {
-                inFlight = false;
-            }
+            state = new State(Phase.FAILED, 0, safeMessage(failure), state.phase());
+            log("下载或安装失败：" + describe(failure));
         }
     }
 
@@ -294,7 +222,7 @@ final class SkijaCompanionDownload {
             for (String mirror : MIRRORS) {
                 urls.add(mirror + pack.fileName());
             }
-            HttpDownloadRace.fetch(urls, pack.bytes(), pack.sha256(), archive, percent ->
+            HttpDownloadRace.fetchOnce(urls, pack.bytes(), pack.sha256(), archive, percent ->
                     state = new State(Phase.DOWNLOADING, percent, null));
             verify(archive, pack);
             return;
@@ -346,49 +274,33 @@ final class SkijaCompanionDownload {
             code = connection.getResponseCode();
             already = 0L;
         }
-        if (code < 200 || code >= 300) {
-            throw new IOException("HTTP " + code);
-        }
-        if (already > 0L && code != 206) {
-            throw new IOException("续传未生效：HTTP " + code);
-        }
-        long total = connection.getContentLengthLong();
-        MessageDigest digest = MessageDigest.getInstance("SHA-256");
-        long done = 0L;
-        int shown = -1;
-        try (InputStream input = new BufferedInputStream(connection.getInputStream());
-             FileOutputStream output = new FileOutputStream(archive, already > 0L)) {
-            // 已收的前缀在续传时不再过哈希：整包 sha256 校验在收完后照做，
-            // 前缀损坏（极小概率）会在那里被抓住、换下一路重来。
-            digestSkip(input, already);
-            byte[] buffer = new byte[64 * 1024];
-            int read;
-            while ((read = input.read(buffer)) >= 0) {
-                output.write(buffer, 0, read);
-                digest.update(buffer, 0, read);
-                done += read;
-                if (already + done > pack.bytes()) {
-                    throw new IOException("下超了：已收 " + (already + done) + " 字节，应为 " + pack.bytes());
-                }
-                int percent = (int) Math.min(100L, (already + done) * 100L / pack.bytes());
-                if (percent != shown) {
-                    shown = percent;
-                    state = new State(Phase.DOWNLOADING, percent, null);
+        try {
+            if (code < 200 || code >= 300 || (already > 0L && code != 206)) {
+                throw new IOException("HTTP " + code);
+            }
+            long done = already;
+            int shown = -1;
+            try (InputStream input = new BufferedInputStream(connection.getInputStream());
+                 FileOutputStream output = new FileOutputStream(archive, already > 0L)) {
+                byte[] buffer = new byte[64 * 1024];
+                int read;
+                while ((read = input.read(buffer)) >= 0) {
+                    done += read;
+                    if (done > pack.bytes()) {
+                        throw new IOException("下超了：已收 " + done + " 字节，应为 " + pack.bytes());
+                    }
+                    output.write(buffer, 0, read);
+                    int percent = (int) (done * 100L / pack.bytes());
+                    if (percent != shown) {
+                        shown = percent;
+                        state = new State(Phase.DOWNLOADING, percent, null);
+                    }
                 }
             }
+        } finally {
+            connection.disconnect();
         }
-        checkAgainst(pack, archive.length(), hex(digest.digest()));
-    }
-
-    /** 续传时跳过已收前缀（服务端已按 Range 从该字节开始发）。 */
-    private static void digestSkip(InputStream input, long skip) throws IOException {
-        while (skip > 0) {
-            long jumped = input.skip(skip);
-            if (jumped <= 0) {
-                throw new IOException("续传前缀跳读失败：还剩 " + skip + " 字节");
-            }
-            skip -= jumped;
-        }
+        verify(archive, pack);
     }
 
     /** 重定向自己跟（镜像会 30x 到 CDN），最多 6 跳，与 Folia 的下载器同款。rangeFrom &gt; 0 时挂 Range 续传头。 */

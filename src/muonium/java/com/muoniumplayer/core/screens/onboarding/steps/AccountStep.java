@@ -35,7 +35,7 @@ public final class AccountStep implements OnboardingStepView {
                        double x, double y, double width, double height,
                        double mouseX, double mouseY) {
         OnboardingUi.drawHeader("ACCOUNT", "连接账号",
-                "登录是可选的。我们会继续使用现有的本地账号系统。", x, y);
+                "登录是可选的。我们会继续使用现有的本地账号系统。", x, y, width);
 
         boolean anyLogged = OnboardingUi.anyAccountLoggedIn();
         double statusY = statusY(y);
@@ -114,7 +114,8 @@ public final class AccountStep implements OnboardingStepView {
     }
 
     /** 这一页要占多高（从内容带顶算起），给版式测试和「放不下先收装饰」用。 */
-    static double contentHeight() {
+    @Override
+    public double minimumHeight(double width) {
         return OnboardingUi.metric().bodyOffset + STATUS_H + ROWS_TOP_GAP
                 + PLATFORMS.length * rowHeight() + (PLATFORMS.length - 1) * ROW_GAP;
     }

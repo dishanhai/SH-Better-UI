@@ -1,7 +1,10 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.rendering.ui;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTheme;
+import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTouch;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicPressMotion;
 
 import lombok.Getter;
 
@@ -116,6 +119,7 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
      * 点击回调
      */
     protected OnClickCallback clickCallback = null;
+    private MusicPressMotion pressMotion;
 
     /**
      * 键盘输入回调
@@ -194,6 +198,46 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
 
         this.beforeRenderCallback.onRender();
 
+        double scale = 1.0;
+        boolean staticPress = false;
+        if (this.pressMotion != null) {
+            if (!this.clickable) this.pressMotion.reset();
+            WidgetTouch pointer = WidgetTouch.Host.get();
+            boolean held = this.clickable && this.clickCallback != null && this.isHovering()
+                    && this.testHovered(mouseX, mouseY) && pointer.tapCandidate()
+                    && this.testHovered(pointer.startX(), pointer.startY());
+            var preferences = UiPreferences.configured();
+            boolean still = preferences.reducedMotion() || preferences.highContrast();
+            staticPress = held && still;
+            float press = this.pressMotion.sample(held, System.nanoTime() / 1_000_000L, still);
+            scale -= .12 * press;
+        }
+        boolean compress = scale < 1.0;
+        if (compress) {
+            double x = this.getX() + this.getWidth() * .5;
+            double y = this.getY() + this.getHeight() * .5;
+            api.getGLStateManager().pushMatrix();
+            api.getGLStateManager().translate(x, y, 0);
+            api.getGLStateManager().scale(scale, scale, 1);
+            api.getGLStateManager().translate(-x, -y, 0);
+        }
+        try {
+            this.renderContents(mouseX, mouseY, dWheel);
+            if (staticPress && this.getWidth() >= 4 && this.getHeight() >= 4) {
+                int ink = reAlpha(WidgetTheme.color(WidgetTheme.Role.PRIMARY_TEXT), this.getAlpha());
+                this.roundedOutline(this.getX() + 1, this.getY() + 1, this.getWidth() - 2,
+                        this.getHeight() - 2, 4, 1, new Color(ink, true));
+            }
+        } finally {
+            if (compress) api.getGLStateManager().popMatrix();
+            if (shouldResetMatrixState) api.getGLStateManager().popMatrix();
+        }
+
+        if (dWheel != 0)
+            this.onDWheelReceived(mouseX, mouseY, dWheel);
+    }
+
+    private void renderContents(double mouseX, double mouseY, int dWheel) {
         this.onRender(mouseX, mouseY);
 
         boolean debug = WidgetTheme.showBounds();
@@ -256,9 +300,6 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
             this.renderDebugLayout();
         }
 
-        if (shouldResetMatrixState)
-            api.getGLStateManager().popMatrix();
-
         // 更新组件悬停状态
         // 如果所有的子组件都没有被选中, 且这个组件被选中, 才设置这个组件的 hovering 为 true.
         this.hovering = !childHovering && this.testHovered(mouseX, mouseY);
@@ -266,9 +307,6 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
         if (this.hovering && this.isShouldOverrideMouseCursor()) {
             CursorUtils.setOverride(this.getHoveringCursorType());
         }
-
-        if (dWheel != 0)
-            this.onDWheelReceived(mouseX, mouseY, dWheel);
     }
 
     public SELF setShouldOverrideMouseCursor(boolean shouldOverrideMouseCursor) {
@@ -381,6 +419,7 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
     public final void clearViewportHover() {
         this.hovering = false;
         this.tooltipHoverSince = 0L;
+        if (this.pressMotion != null) this.pressMotion.reset();
         for (AbstractWidget<?> child : this.getChildren()) {
             child.clearViewportHover();
         }
@@ -613,7 +652,21 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
      * @return 是否接收点击事件
      */
     public boolean onMouseClicked(double relativeX, double relativeY, int mouseButton) {
-        return this.clickCallback != null && this.isClickable() && this.clickCallback.onClick(relativeX, relativeY, mouseButton);
+        if (this.clickCallback == null || !this.isClickable()
+                || !this.clickCallback.onClick(relativeX, relativeY, mouseButton)) return false;
+        if (mouseButton == 0 && this.pressMotion != null) {
+            var preferences = UiPreferences.configured();
+            long now = System.nanoTime() / 1_000_000L;
+            boolean still = preferences.reducedMotion() || preferences.highContrast();
+            this.pressMotion.pulse(now, still);
+        }
+        return true;
+    }
+
+    /** Opt in to paint-only feedback for accepted primary activations. */
+    public SELF enablePressMotion() {
+        if (this.pressMotion == null) this.pressMotion = new MusicPressMotion();
+        return (SELF) this;
     }
 
     protected boolean iterateChildrenKeyType(List<AbstractWidget<?>> children, char typedChar, int keyCode) {
@@ -730,6 +783,7 @@ public abstract class AbstractWidget<SELF extends AbstractWidget<SELF>> implemen
 
     public SELF setHidden(boolean hidden) {
         this.hidden = hidden;
+        if (hidden && this.pressMotion != null) this.pressMotion.reset();
         return (SELF) this;
     }
 

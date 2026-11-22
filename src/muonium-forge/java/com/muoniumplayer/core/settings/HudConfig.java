@@ -133,7 +133,7 @@ public final class HudConfig {
     /** QPlayer 的省电静态背景模式；默认保持完整动态与音频响应。 */
     public static boolean fullscreenLyricFluidStatic = false;
     /** 全屏歌词页「未到歌词模糊」：未唱到的行带外渐进高斯模糊，正在唱的行保持清晰（移植 qplayer edgeBlur）。 */
-    public static boolean fullscreenLyricEdgeBlur = false;
+    public static boolean fullscreenLyricEdgeBlur = true;
     /**
      * QPlayer 流体（含 folia 移植风格）的音频律动跟随强度，0 = 完全无视音频。
      *
@@ -773,7 +773,7 @@ public final class HudConfig {
         fullscreenLyricFluidStyle = 0;
         fullscreenLyricFluidSaturation = 100.0f;
         fullscreenLyricFluidStatic = false;
-        fullscreenLyricEdgeBlur = false;
+        fullscreenLyricEdgeBlur = true;
         fullscreenLyricFluidAudio = 100.0f;
         fullscreenLyricBackgroundLayers = 0;
         fullscreenLyricLayerLatentDither = 55.0f;
