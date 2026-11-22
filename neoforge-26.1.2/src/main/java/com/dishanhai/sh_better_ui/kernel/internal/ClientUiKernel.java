@@ -213,11 +213,13 @@ public final class ClientUiKernel {
             text.discardScreen();
             if (dock != null && Minecraft.getInstance().isWindowActive() && !NativePort.hasOverlay(Minecraft.getInstance()))
                 dock.draw(event.getScreen(), event.getGuiGraphics(), event.getMouseX(), event.getMouseY(), event.getPartialTick());
+            WelcomeShortcutNoticeRenderer.draw(event.getGuiGraphics(), event.getScreen(), event.getMouseX(), event.getMouseY());
         }
     }
 
     @SubscribeEvent
     public static void screenClosed(ScreenEvent.Closing event) {
+        WelcomeShortcutNotice.screenClosing(event.getScreen());
         if (dock != null) dock.suspend();
         if (screens != null) screens.closing(event.getScreen());
     }
@@ -234,6 +236,7 @@ public final class ClientUiKernel {
 
     @SubscribeEvent
     public static void logout(ClientPlayerNetworkEvent.LoggingOut event) {
+        WelcomeShortcutNotice.dismiss();
         if (musicHud != null && musicActivity != null) musicHud.suspend(musicActivity);
         if (liveActivities != null) liveActivities.invalidateArtwork();
         if (dock != null) dock.closeAll();
@@ -250,6 +253,7 @@ public final class ClientUiKernel {
             hud.draw(event.getGuiGraphics(), event.getPartialTick().getGameTimeDeltaPartialTick(false), client.level);
             if (musicHud != null) musicHud.draw(event.getGuiGraphics());
             if (liveActivities != null) liveActivities.drawHud(event.getGuiGraphics());
+            if (!NativePort.hudHidden(client)) WelcomeShortcutNoticeRenderer.draw(event.getGuiGraphics(), null, -1, -1);
         }
     }
 
@@ -280,12 +284,14 @@ public final class ClientUiKernel {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void dockPressed(ScreenEvent.MouseButtonPressed.Pre event) {
-        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.PRESS,
+        if (WelcomeShortcutNotice.press(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())
+                || dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.PRESS,
                 event.getMouseX(), event.getMouseY(), event.getButton(), 0, 0))) event.setCanceled(true);
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void dockReleased(ScreenEvent.MouseButtonReleased.Pre event) {
-        if (dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.RELEASE,
+        if (WelcomeShortcutNotice.release(event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())
+                || dockInput(event.getScreen(), new NativeInput.Pointer(NativeInput.PointerAction.RELEASE,
                 event.getMouseX(), event.getMouseY(), event.getButton(), 0, 0))) event.setCanceled(true);
     }
     @SubscribeEvent(priority = EventPriority.HIGHEST)

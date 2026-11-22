@@ -3,7 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 
 /** Shared skeleton sweep and compositing, independent of the native graphics backend. */
-final class UiSkeletonMotion {
+public final class UiSkeletonMotion {
     private static final long PERIOD_MS = 1800L;
     private static final float HIGHLIGHT_SPREAD = 0.4f;
 
@@ -14,7 +14,8 @@ final class UiSkeletonMotion {
                 && block.bottom() > viewport.y() && block.x() < viewport.right() && block.y() < viewport.bottom();
     }
 
-    static int fill(Bounds viewport, Bounds block, long nowMs, boolean reducedMotion, int base, int peak, float opacity) {
+    /** Samples a block's ARGB color for a renderer using the shared skeleton sweep. */
+    public static int fill(Bounds viewport, Bounds block, long nowMs, boolean reducedMotion, int base, int peak, float opacity) {
         int color = GuiMotion.lerpColor(base, peak, highlight(viewport, block, nowMs, reducedMotion));
         return GuiMotion.lerpColor(color & 0xFFFFFF, color, opacity);
     }

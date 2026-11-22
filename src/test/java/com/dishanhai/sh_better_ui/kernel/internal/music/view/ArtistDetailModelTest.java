@@ -26,6 +26,7 @@ class ArtistDetailModelTest {
         final OnlineMusicPlayer player=(OnlineMusicPlayer)Proxy.newProxyInstance(getClass().getClassLoader(),new Class[]{OnlineMusicPlayer.class},(o,m,a)->{
             switch(m.getName()){
                 case "supportsArtistTracks":return supported;
+                case "supportsArtistOverview":return false;
                 case "sources":return sources;
                 case "artistTracks":var f=new CompletableFuture<OnlineArtistTracks>();requests.add(f);pages.add((Integer)a[1]);return f;
                 case "queue":return queue;

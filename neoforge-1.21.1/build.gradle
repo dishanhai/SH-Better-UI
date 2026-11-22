@@ -7,6 +7,7 @@ plugins {
     id 'com.gradleup.shadow' version '8.3.11'
 }
 
+apply from: '../gradle/apple-music.gradle'
 group = 'com.dishanhai'
 version = mod_version
 base { archivesName = "${mod_id}-neoforge-${minecraft_version}" }

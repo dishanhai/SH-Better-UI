@@ -1,5 +1,7 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.LyricVocalist;
+import com.dishanhai.sh_better_ui.kernel.api.music.LyricLineWrap;
 import lombok.Getter;
 import lombok.NonNull;
 import lombok.Setter;
@@ -45,6 +47,10 @@ public class LyricLine {
     public boolean renderEmphasizes = true;
     public boolean isBreakLine = false;
 
+    /** TTML 的行级声部。缺少平台标记时为空。 */
+    public LyricVocalist vocalist;
+    public boolean showVocalistLabel;
+
     /**
      * 对唱组编号，{@code -1} 表示独唱行。由 {@link LyricDuetGroups#mark(java.util.List)} 在歌词
      * 提交时写入一次：同组的行时间轴真正重叠，渲染层要把它们当作同一个当前行整块点亮。
@@ -52,8 +58,7 @@ public class LyricLine {
     public int duetGroup = -1;
 
     /**
-     * 行在对唱组内的序号，{@code -1} 表示独唱行。渲染层据此决定这一行排在左列还是右列
-     * （偶数序号靠左、奇数序号靠右），从而让同时演唱的两位歌手左右分开显示。
+     * 声部的排版序号。偶数靠左，奇数靠右，{@code -1} 使用普通布局。
      */
     public int duetSlot = -1;
 
@@ -178,7 +183,7 @@ public class LyricLine {
             this.fontRevision = font.metricsRevision();
             this.text = text;
             this.width = width;
-            this.rows = font.fitWidth(text, width);
+            this.rows = LyricLineWrap.plain(font, text, width);
         }
     }
 
@@ -192,6 +197,26 @@ public class LyricLine {
         wrappedRows[nextWrappedRow] = entry;
         nextWrappedRow = (nextWrappedRow + 1) % wrappedRows.length;
         return entry.rows;
+    }
+
+    record WordRows(double[] widths, int[] rows, int count) {}
+    private WordRows wordRows;
+    private CFontRenderer wordFont;
+    private long wordFontRevision, wordLayoutRevision;
+    private double wordColumnWidth;
+
+    WordRows wordRows(CFontRenderer font, double width) {
+        if (wordRows != null && wordFont == font && wordFontRevision == font.metricsRevision()
+                && wordLayoutRevision == layoutRevision && wordRows.widths.length == words.size()
+                && Math.abs(wordColumnWidth - width) < .5) return wordRows;
+        var units = words.stream().map(word -> word.word).toList();
+        double[] widths = units.stream().mapToDouble(font::getStringWidthD).toArray();
+        int[] rows = LyricLineWrap.rows(units, widths, width);
+        wordFont = font;
+        wordFontRevision = font.metricsRevision();
+        wordLayoutRevision = layoutRevision;
+        wordColumnWidth = width;
+        return wordRows = new WordRows(widths, rows, rows.length == 0 ? 0 : rows[rows.length - 1] + 1);
     }
 
     public void computeHeight(double width) {
@@ -208,45 +233,33 @@ public class LyricLine {
 
         boolean canSetComputed = true;
 
+        int rowCount;
         if (!this.words.isEmpty()) {
-            double height = fr.getHeight();
-
-            double w = 0;
+            WordRows measured = wordRows(fr, width);
             for (Word word : words) {
-
                 if (!fr.areGlyphsLoaded(word.word)) {
                     canSetComputed = false;
+                    break;
                 }
-
-                double wordWidth = fr.getStringWidthD(word.word);
-
-                if (w + wordWidth > width) {
-                    w = wordWidth;
-                    height += fr.getHeight() * .85 + 4;
-                } else {
-                    w += wordWidth;
-                }
-
             }
-
-            this.height = height;
+            rowCount = measured.count;
         } else {
 
             if (!fr.areGlyphsLoaded(lyric)) {
                 canSetComputed = false;
             }
 
-            int length = wrappedRows(fr, lyric, width).length;
-            this.height = length * fr.getHeight() * .85 + length * 4;
+            rowCount = wrappedRows(fr, lyric, width).length;
         }
-
-        if (translationText != null) {
-            if (!fr.areGlyphsLoaded(translationText)) {
+        this.height = rowCount * fr.getHeight();
+        if (translationText != null && !translationText.isBlank()) {
+            if (!frTranslation.areGlyphsLoaded(translationText)) {
                 canSetComputed = false;
             }
 
             String[] strings = wrappedRows(frTranslation, translationText, width);
-            height += frTranslation.getHeight() * strings.length + 4 * (strings.length - 1) + 8;
+            double translationTop = Math.max(0, rowCount - 1) * fr.getHeight() + fr.getHeight() * .85 + 8;
+            height = Math.max(height, translationTop + frTranslation.getHeight() * strings.length + 4 * (strings.length - 1));
         }
 
         heightComputed = canSetComputed;

@@ -5,6 +5,9 @@ import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
 import com.dishanhai.sh_better_ui.kernel.api.music.OnlineMusicSource.LoginRequired;
 import com.google.gson.*;
 import java.io.IOException;
+import java.util.LinkedHashMap;
+import java.util.List;
+import java.util.Map;
 import java.util.concurrent.locks.ReentrantLock;
 
 /** One mutation at a time across credential snapshots; every phase remains interruptible. */
@@ -56,12 +59,31 @@ final class QQFavorites {
         } finally { mutations.unlock(); }
     }
     private static boolean status(Rpc rpc, String mid) throws IOException {
-        var mids = new JsonArray(); mids.add(mid);
+        Boolean value = statuses(rpc, List.of(mid)).get(mid);
+        if (value == null) throw new IOException("QQ favorite status missing");
+        return value;
+    }
+
+    Map<String, Boolean> statuses(List<String> tracks, String uin, String key) throws IOException {
+        Rpc rpc = override == null
+                ? (module, method, param, write) -> QQWebProtocol.request(uin, key, module, method, param, write)
+                : override;
+        return statuses(rpc, tracks);
+    }
+
+    private static Map<String, Boolean> statuses(Rpc rpc, List<String> tracks) throws IOException {
+        var mids = new JsonArray();
+        tracks.forEach(mids::add);
         var parameters = new JsonObject(); parameters.add("v_songMid", mids);
         var data = rpc.call("music.musicasset.SongFavRead", "IsSongFanByMid", parameters, false);
-        var value = SourceJson.object(data, "m_fan").get(mid);
-        if (value == null || !value.isJsonPrimitive() || !value.getAsJsonPrimitive().isBoolean())
-            throw new IOException("QQ favorite status missing");
-        return value.getAsBoolean();
+        var fan = SourceJson.object(data, "m_fan");
+        Map<String, Boolean> result = new LinkedHashMap<>();
+        for (String mid : tracks) {
+            var value = fan.get(mid);
+            if (value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()) {
+                result.put(mid, value.getAsBoolean());
+            }
+        }
+        return result;
     }
 }

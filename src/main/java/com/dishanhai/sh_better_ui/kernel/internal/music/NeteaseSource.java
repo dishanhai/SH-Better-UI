@@ -22,8 +22,33 @@ final class NeteaseSource implements OnlineMusicSource {
         var snapshot = new NeteaseSource(http); snapshot.cookie = cookie; return snapshot;
     }
     @Override public boolean supportsArtistTracks() { return true; }
+    @Override public boolean supportsAlbumDetail() { return true; }
+    OnlineTrack catalogTrack(String id) throws Exception {
+        if (!id.matches("[1-9][0-9]{0,23}")) throw new IllegalArgumentException("Invalid NetEase track ID");
+        var tracks = songDetails(List.of(id), "");
+        if (tracks.isEmpty()) throw new IOException("NetEase track is unavailable");
+        return tracks.get(0);
+    }
+    @Override public OnlineAlbumDetail albumDetail(OnlineAlbum album) throws Exception {
+        if (!album.id().matches("[1-9][0-9]{0,23}")) throw new IllegalArgumentException("Invalid NetEase album ID");
+        var data = call("/weapi/v1/album/" + album.id(), Map.of());
+        var info = object(data, "album");
+        var release = neteaseAlbum(info);
+        if (release == null || !album.id().equals(release.id())) throw new IOException("NetEase album identity changed");
+        requireArray(data, "songs");
+        return new OnlineAlbumDetail(release, neteaseArtists(array(info, "artists")), text(info, "description"),
+                parseSongs(array(data, "songs"), Integer.MAX_VALUE));
+    }
     @Override public boolean supportsLikes() { return true; }
     @Override public String id() { return "netease"; }
+    @Override public List<OnlineMusicComments.Order> commentOrders() { return MusicCommentFeeds.SORTED; }
+    @Override public OnlineMusicComments comments(OnlineTrack track, OnlineMusicComments.Order order, int page, int limit) {
+        return MusicCommentFeeds.netease(track, order, page, limit, (path, parameters) -> call(path, parameters, ""));
+    }
+    @Override public OnlineMusicComments.ReplyPage commentReplies(OnlineTrack track, OnlineMusicComments.Entry parent,
+                                                                  String cursor, int limit) {
+        return MusicCommentFeeds.neteaseReplies(track, parent, cursor, limit, (path, parameters) -> call(path, parameters, ""));
+    }
     @Override public QrChallenge qrLogin() throws Exception { return new NeteaseQrLogin(); }
     @Override public List<String> suggest(String query, int limit) throws Exception {
         var data = call("/weapi/search/suggest/keyword", Map.of("s", query));
@@ -218,7 +243,9 @@ final class NeteaseSource implements OnlineMusicSource {
             for (var track : tracks) {
                 String cover = track.artworkUrl().isBlank() ? covers.get(track.id()) : null;
                 completed.add(cover == null ? track : new OnlineTrack(track.source(), track.id(), track.mediaId(),
-                        track.title(), track.artist(), track.album(), track.durationMs(), cover, track.artists()));
+                        track.title(), track.artist(), track.album(), track.durationMs(), cover, track.artists(),
+                        track.release() == null ? null : new OnlineAlbum(track.source(), track.release().id(),
+                                track.release().name(), cover, track.release().releaseDate())));
             }
             return List.copyOf(completed);
         } catch (java.util.concurrent.CancellationException cancelled) {
@@ -241,8 +268,25 @@ final class NeteaseSource implements OnlineMusicSource {
     }
 
     static List<OnlineTrack> parseSearch(JsonObject data, int limit) {
+        return parseSongs(array(object(data, "result"), "songs"), limit);
+    }
+    private static OnlineAlbum neteaseAlbum(JsonObject album) {
+        String id = text(album, "id"), name = text(album, "name");
+        if (!id.matches("[1-9][0-9]{0,23}") || name.isBlank()) return null;
+        long published = number(album, "publishTime");
+        String date = published <= 0 ? "" : java.time.Instant.ofEpochMilli(published)
+                .atZone(java.time.ZoneId.of("Asia/Shanghai")).toLocalDate().toString();
+        return new OnlineAlbum("netease", id, name, artworkUrl(text(album, "picUrl")), date);
+    }
+    private static List<OnlineArtist> neteaseArtists(JsonArray singers) {
+        return artistIdentities(singers, "netease", artist -> {
+            String id = text(artist, "id");
+            return id.matches("[1-9][0-9]{0,23}") ? id : "";
+        });
+    }
+    private static List<OnlineTrack> parseSongs(JsonArray entries, int limit) {
         var result = new ArrayList<OnlineTrack>();
-        for (var element : array(object(data, "result"), "songs")) {
+        for (var element : entries) {
             if (!element.isJsonObject() || result.size() >= limit) continue;
             var song = element.getAsJsonObject();
             String id = text(song, "id");
@@ -251,10 +295,7 @@ final class NeteaseSource implements OnlineMusicSource {
             var singers = song.has("ar") ? array(song, "ar") : array(song, "artists");
             result.add(new OnlineTrack("netease", id, id, text(song, "name"), artists(singers), text(album, "name"),
                     song.has("dt") ? number(song, "dt") : number(song, "duration"), artworkUrl(text(album, "picUrl")),
-                    artistIdentities(singers, "netease", artist -> {
-                        String artistId = text(artist, "id");
-                        return artistId.matches("[1-9][0-9]{0,23}") ? artistId : "";
-                    })));
+                    neteaseArtists(singers), neteaseAlbum(album)));
         }
         return List.copyOf(result);
     }

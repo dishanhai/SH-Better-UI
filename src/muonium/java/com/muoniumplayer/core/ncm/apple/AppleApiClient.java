@@ -104,7 +104,7 @@ public final class AppleApiClient {
         return get("GET", AMP_API_BASE + path, false, 0);
     }
 
-    /** 账号能力 GET（{@code /v1/me/...}）。media-user-token 失效抛 {@code reauthRequired} 异常。 */
+    /** 账号能力 GET（资料库和目录歌词）。media-user-token 失效抛 {@code reauthRequired} 异常。 */
     public static JsonObject getAccount(String pathWithQuery) throws IOException {
         return get("GET", AMP_API_BASE + pathWithQuery, true, 0);
     }

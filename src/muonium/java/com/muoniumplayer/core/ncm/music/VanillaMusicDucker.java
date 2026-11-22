@@ -1,5 +1,7 @@
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer;
+
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
@@ -51,6 +53,8 @@ public final class VanillaMusicDucker {
 
     /** 本 mod 正在出声：原版音乐该让路。 */
     public static boolean shouldDuck() {
+        if (AmbientSoundPlayer.mode() == AmbientSoundPlayer.Mode.SOLO
+                && AmbientSoundPlayer.status() == AmbientSoundPlayer.Status.PLAYING) return true;
         try {
             // 直播流不经 AudioPlayer（独立 SourceDataLine 通道）：照原样只看引擎会让
             // 广播收听期间原版音乐照常满音量放，两边打架。直播在响就算。

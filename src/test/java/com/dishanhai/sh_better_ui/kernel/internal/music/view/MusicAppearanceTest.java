@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.config.ThemeSettings.Mode;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.RainbowMusicPalette;
 import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -19,5 +20,13 @@ class MusicAppearanceTest {
         assertFalse(MusicAppearance.liquidGlass("classic", Mode.DARK, false));
         assertFalse(MusicAppearance.liquidGlass("CLASSIC", Mode.LIQUID_GLASS, true));
         assertTrue(MusicAppearance.liquidGlass("typo", Mode.DARK, false));
+    }
+
+    @Test void rainbowLoopsAndRespectsReducedMotion() {
+        var beginning = RainbowMusicPalette.sample(0, false, false);
+        assertNotEquals(beginning, RainbowMusicPalette.sample(9_000, false, false));
+        assertEquals(beginning, RainbowMusicPalette.sample(36_000, false, false));
+        assertEquals(beginning, RainbowMusicPalette.sample(9_000, true, false));
+        assertNotEquals(beginning, RainbowMusicPalette.sample(0, true, true));
     }
 }

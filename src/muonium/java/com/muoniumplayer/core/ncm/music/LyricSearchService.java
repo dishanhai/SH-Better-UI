@@ -1,9 +1,12 @@
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.AppleMusicLyrics;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.muoniumplayer.core.ncm.api.CloudMusicApi;
+import com.muoniumplayer.core.ncm.apple.AppleConfigStore;
+import com.muoniumplayer.core.ncm.apple.AppleMusicService;
 import com.muoniumplayer.core.ncm.kugou.KuGouMusicApi;
 import com.muoniumplayer.core.ncm.kugou.KrcLyrics;
 import com.muoniumplayer.core.ncm.music.dto.Music;
@@ -20,14 +23,13 @@ import java.util.Locale;
 import java.util.Set;
 
 /**
- * 手动歌词搜索：四源检索候选 + 按候选精确取词。
+ * 手动歌词搜索：检索候选并按选中的版本精确取词。
  *
- * <p>界面层（{@code LyricSearchOverlay}）只认这一个类。四家的接口差异、打分、翻页、限流全在这里
+ * <p>界面层（{@code LyricSearchOverlay}）只认这一个类。各家的接口差异、打分、翻页、限流全在这里
  * 收住，产出的 {@link LyricSearchHit} 是一份「够画一张候选卡片、也够把这条歌词原样取回来」的中性
  * 结构，界面不需要知道酷狗的 {@code accesskey} 是什么。</p>
  *
- * <h3>四个标签页各自搜什么</h3>
- * <p>来源清单与上游参考实现逐条一致：</p>
+ * <h3>标签页各自搜什么</h3>
  * <ul>
  *   <li><b>网易云音乐</b>：{@code /api/cloudsearch/pc} 单曲 50 条，只排序不筛分；</li>
  *   <li><b>AMLLDB</b>：词库本身不接受自由检索词，所以这一档是「拿用户输入去网易云 + QQ 各搜 5 条
@@ -38,9 +40,10 @@ import java.util.Set;
  *   <li><b>酷狗音乐</b>：走<b>歌曲</b>搜索而不是歌词搜索。歌词接口那些候选只有 {@code id + accesskey}
  *       和时长，摊给人看认不出是哪一首；歌搜能给出专辑与封面，而 {@code hash} 本身就精确锁定某一个
  *       录音版本，取词时按 hash 走，等价于「钉住了这一条」。</li>
+ *   <li><b>Apple Music</b>：按地区搜索目录，用 catalog id 和地区精确重取 TTML。</li>
  * </ul>
  *
- * <p><b>除了 AMLLDB，其余三档都不按分数过滤。</b>这是有意的：自动链路必须「宁可没有歌词也不给错的」，
+ * <p><b>除了 AMLLDB，其余来源都不按分数过滤。</b>这是有意的：自动链路必须「宁可没有歌词也不给错的」，
  * 所以 {@link LyricMatchScore#MIN_ACCEPT_SCORE} 那道 75 分的门槛在那边是硬规矩；而这里<b>人是判断
  * 者</b>，分数只是卡片右上角那个参考值。把 74 分的候选藏起来，用户想救的那首冷门歌就永远救不回来。</p>
  *
@@ -89,8 +92,15 @@ public final class LyricSearchService {
      * <p>用户可以在框里改，改完就是他的判断；这一档默认值只是为了「进来就能直接回车」。</p>
      */
     public static String defaultQuery(Music music) {
+        return defaultQuery(music, LyricSearchSource.NETEASE);
+    }
+
+    public static String defaultQuery(Music music, LyricSearchSource source) {
         if (music == null) return "";
         LyricMatchScore.Target target = targetOf(music);
+        if (source == LyricSearchSource.APPLE) {
+            return LyricMatchText.buildStructuredQuery(target.title, target.artist, "").replace(" - ", " ");
+        }
         return LyricMatchText.buildStructuredQuery(target.title, target.artist, target.album);
     }
 
@@ -131,13 +141,16 @@ public final class LyricSearchService {
         }
         LyricMatchScore.Target goal = target == null ? new LyricMatchScore.Target("", "", "", 0L) : target;
         // AMLL 那一档用的是当前这首歌自己拼出来的检索词，与框里写了什么无关（见下面分支的注释），
-        // 所以它不能和其余三档共用「框里空的就不搜」这道闸。
+        // 所以它不能和手动检索共用「框里空的就不搜」这道闸。
         if (source != LyricSearchSource.AMLL && keyword.isEmpty()) {
             return Collections.emptyList();
         }
 
         List<LyricSearchHit> hits;
         switch (source) {
+            case APPLE:
+                hits = searchApple(keyword, goal);
+                break;
             case QQ:
                 hits = searchQQ(keyword, goal);
                 break;
@@ -153,6 +166,21 @@ public final class LyricSearchService {
                 break;
         }
         sortByScoreDesc(hits);
+        return hits;
+    }
+
+    private static List<LyricSearchHit> searchApple(String keyword, LyricMatchScore.Target target) {
+        String storefront = AppleConfigStore.storefront();
+        List<LyricSearchHit> hits = new ArrayList<>();
+        for (AppleMusicService.Track track : AppleMusicService.search(keyword,
+                AppleMusicService.SEARCH_LIMIT_MAX, storefront)) {
+            if (!track.mayHaveLyrics || !AppleMusicLyrics.isCatalogSongId(track.id)) continue;
+            List<String> artists = List.of(track.artist.split(" / "));
+            hits.add(new LyricSearchHit(LyricSearchSource.APPLE, track.id, storefront, track.name,
+                    track.artist, track.album, track.durationMillis, track.coverUrl,
+                    scoreOf(target, track.name, artists, track.album, track.durationMillis),
+                    durationMatched(target, track.durationMillis), null));
+        }
         return hits;
     }
 
@@ -384,6 +412,10 @@ public final class LyricSearchService {
         if (source == null || interrupted()) return Collections.emptyList();
         try {
             switch (source) {
+                case APPLE:
+                    List<LyricLine> lines = new ArrayList<>();
+                    LyricParser.parseTtml(AppleMusicService.ttml(trackId, platform), lines);
+                    return lines;
                 case QQ:
                     return QQQrcLyricService.manualResolve(payload);
                 case KUGOU:

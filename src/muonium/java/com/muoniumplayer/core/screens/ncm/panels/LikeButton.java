@@ -1,13 +1,18 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQTrackFavorites.State;
+import com.dishanhai.sh_better_ui.kernel.internal.music.SessionMusicOperations;
 import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.ncm.music.BilibiliFavoriteService;
 import com.muoniumplayer.core.ncm.music.BilibiliMusicService;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.KuGouLikedCache;
 import com.muoniumplayer.core.ncm.music.KuGouMusicService;
+import com.muoniumplayer.core.ncm.music.MusicPlatform;
+import com.muoniumplayer.core.ncm.music.NeteaseMusicService;
 import com.muoniumplayer.core.ncm.music.QishuiMusicService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
+import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
 import com.muoniumplayer.core.rendering.svg.AnimatedIcons;
 import com.muoniumplayer.core.rendering.ui.AbstractWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.AnimatedSvgWidget;
@@ -15,6 +20,7 @@ import com.muoniumplayer.core.rendering.ui.widgets.ThemedTextureIconWidget;
 import com.muoniumplayer.core.screens.ncm.NCMScreen;
 import com.muoniumplayer.core.screens.ncm.PlayerIconAssets;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
+import net.minecraft.network.chat.Component;
 
 import java.util.HashMap;
 import java.util.Map;
@@ -43,23 +49,26 @@ import java.util.function.DoubleSupplier;
 public final class LikeButton {
 
     /** 描边那枚的边长。宿主排自己那一排时按这个宽度算间距。 */
-    static final double BOX = 20.0;
+    public static final double BOX = 20.0;
     /** 实心那枚相对描边的放大倍率，见类注释最后一条。 */
     private static final double SOLID_SCALE = 1.15;
 
     private final ThemedTextureIconWidget outline;
     private final AnimatedSvgWidget solid;
     private final boolean likeable;
+    private final Music music;
 
     /**
      * 两枚都挂在 {@code host} 上，所以它们跟着宿主一起被裁进列表行或 hero 卡里。
      *
      * @param leftX 每帧报一次这一颗的左边缘 —— 由宿主决定它排在哪，红心自己只管两态与同心。
      */
-    LikeButton(AbstractWidget<?> host, Music music, DoubleSupplier leftX) {
-        this.likeable = canFavourite(music);
+    public LikeButton(AbstractWidget<?> host, Music music, DoubleSupplier leftX) {
+        this.music = music;
+        boolean qq = supportsQQ(music);
+        this.likeable = canRenderFor(music);
 
-        this.outline = new ThemedTextureIconWidget(PlayerIconAssets.FAVORITE, "☆", FontManager.pf16bold,
+        this.outline = new ThemedTextureIconWidget(PlayerIconAssets.FAVORITE, "♡", FontManager.pf16bold,
                 0, 0, (int) BOX, (int) BOX);
         host.addChild(outline);
         outline.setShouldOverrideMouseCursor(true);
@@ -75,16 +84,19 @@ public final class LikeButton {
         solid.setHidden(true);
         solid.setPlayback(AnimatedIcons.likeSolid());
 
-        final AbstractWidget.OnClickCallback click = (x, y, mouseButton) ->
-                mouseButton == 0 && likeable && toggleLiked(music, solid);
+        final AbstractWidget.OnClickCallback click = (x, y, mouseButton) -> mouseButton == 0 && activate();
         // 同一份处理挂在两枚图标上：未喜欢点静态那枚，已喜欢点动画那枚，行为完全一致
         // （取消收藏仍要走二次确认）。
         outline.setOnClickCallback(click);
         solid.setOnClickCallback(click);
+        outline.setTooltip(this::tooltip);
+        solid.setTooltip(this::tooltip);
 
         outline.setBeforeRenderCallback(() -> {
-            boolean liked = isLiked(music);
+            State state = qq ? qqState(music) : null;
+            boolean liked = qq ? state == State.LIKED || state == State.REMOVING : isLiked(music);
             outline.setAlpha(liked ? 0f : 1f);
+            outline.setClickable(likeable && !liked);
             outline.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
             outline.centerVertically();
             outline.setPosition(leftX.getAsDouble(), outline.getRelativeY());
@@ -111,6 +123,115 @@ public final class LikeButton {
         return likeable;
     }
 
+    public static boolean canRenderFor(Music music) {
+        return supportsQQ(music) || canFavourite(music);
+    }
+
+    public boolean activate() {
+        if (!likeable) return false;
+        return supportsQQ(music) ? toggleQQ(music, solid) : toggleLiked(music, solid);
+    }
+
+    public Component narration() {
+        return Component.literal(tooltip() + " · " + music.getName());
+    }
+
+    private String tooltip() {
+        if (supportsQQ(music)) return qqTooltip(music);
+        if (PENDING.isPending(music.getStableKey())) return text("library.updating");
+        return text(isLiked(music) ? "operations.kind.unlike" : "operations.kind.like");
+    }
+
+    static boolean supportsQQ(Music music) {
+        return music != null && music.isQQ() && music.getSourceMid() != null
+                && music.getSourceMid().matches("[A-Za-z0-9]{1,40}");
+    }
+
+    private static State qqState(Music music) {
+        return NeteaseMusicService.qqTrackFavorites().state(music.getSourceMid());
+    }
+
+    private static String qqTooltip(Music music) {
+        return text(switch (qqState(music)) {
+            case SIGNED_OUT -> "library.sign_in";
+            case LOADING -> "library.loading";
+            case UNAVAILABLE -> "library.like_unconfirmed";
+            case ADDING, REMOVING -> "library.updating";
+            case LIKED -> "operations.kind.unlike";
+            case UNLIKED -> "operations.kind.like";
+        });
+    }
+
+    boolean activateQQ(Music music) {
+        return toggleQQ(music, solid);
+    }
+
+    double getRelativeY() {
+        return outline.getRelativeY();
+    }
+
+    Component qqNarration(Music music) {
+        return Component.literal(qqTooltip(music) + " · " + music.getName());
+    }
+
+    private static boolean toggleQQ(Music music, AnimatedSvgWidget solid) {
+        NeteaseMusicService.syncQQFavoriteAccount();
+        State state = qqState(music);
+        return applyQQState(music, state != State.LIKED, state, solid);
+    }
+
+    private static boolean applyQQState(Music music, boolean liked, State state, AnimatedSvgWidget solid) {
+        switch (state) {
+            case SIGNED_OUT -> NCMScreen.getInstance().openAccountManager(MusicPlatform.QQ);
+            case UNLIKED -> {
+                if (liked) changeQQ(music, true, solid);
+            }
+            case LIKED -> {
+                if (liked) return true;
+                String account = NeteaseMusicService.qqFavoriteAccount();
+                NCMScreen.getInstance().openConfirmation(text("library.unlike_confirm"),
+                        text("library.unlike_track", music.getName()), text("operations.kind.unlike"),
+                        () -> {
+                            NeteaseMusicService.syncQQFavoriteAccount();
+                            if (account.equals(NeteaseMusicService.qqFavoriteAccount()) && qqState(music) == State.LIKED) {
+                                changeQQ(music, false, solid);
+                            }
+                        });
+            }
+            case UNAVAILABLE -> DownloadDynamicIsland.showModelOperationResult(
+                    text("operations.kind.like"), text("library.like_unconfirmed"), false);
+            case LOADING, ADDING, REMOVING -> { }
+        }
+        return true;
+    }
+
+    private static void changeQQ(Music music, boolean liked, AnimatedSvgWidget solid) {
+        String account = NeteaseMusicService.qqFavoriteAccount();
+        var kind = liked ? SessionMusicOperations.Kind.LIKE : SessionMusicOperations.Kind.UNLIKE;
+        NeteaseMusicService.qqTrackFavorites().set(music.getSourceMid(), liked)
+                .whenComplete((unused, failure) -> MultiThreadingUtil.runOnMainThread(() -> {
+                    if (!account.equals(NeteaseMusicService.qqFavoriteAccount())) return;
+                    String message;
+                    if (failure == null) {
+                        if (liked && solid != null) solid.setPlayback(AnimatedIcons.likeBurst());
+                        message = "library.updated";
+                    } else {
+                        message = switch (SessionMusicOperations.classify(kind, failure)) {
+                            case LOGIN_REQUIRED -> "library.login_required";
+                            case REJECTED -> "library.like_rejected";
+                            case UNKNOWN -> "library.like_unconfirmed";
+                            default -> "library.failed";
+                        };
+                    }
+                    DownloadDynamicIsland.showModelOperationResult(
+                            text(liked ? "operations.kind.like" : "operations.kind.unlike"), text(message), failure == null);
+                }));
+    }
+
+    private static String text(String key, Object... arguments) {
+        return Component.translatable("sh_better_ui.online_music." + key, arguments).getString();
+    }
+
     /** 同一首歌的曲行、FM 与灵动岛共用请求占位和确认票据。 */
     private static final PendingLikes PENDING = new PendingLikes();
 
@@ -133,9 +254,14 @@ public final class LikeButton {
      */
     public static boolean toggleLiked(Music music, Runnable onLiked, ConfirmationHost confirmation) {
         if (!canFavourite(music)) return false;
+        return applyLikedState(music, !isLiked(music), onLiked, confirmation);
+    }
+
+    private static boolean applyLikedState(Music music, boolean liked, Runnable onLiked, ConfirmationHost confirmation) {
         String key = music.getStableKey();
         if (PENDING.isPending(key)) return true;
-        if (!isLiked(music)) {
+        if (isLiked(music) == liked) return true;
+        if (liked) {
             Object request = PENDING.begin(key, null);
             if (request != null) changeLiked(music, key, request, true, onLiked);
             return true;
@@ -156,6 +282,15 @@ public final class LikeButton {
                     if (request != null) changeLiked(music, key, request, false, null);
                 });
         return true;
+    }
+
+    /** Apply an explicit favorite state through the same account and confirmation flow as the button. */
+    public static boolean setLiked(Music music, boolean liked, ConfirmationHost confirmation) {
+        if (supportsQQ(music)) {
+            NeteaseMusicService.syncQQFavoriteAccount();
+            return applyQQState(music, liked, qqState(music), null);
+        }
+        return canFavourite(music) && applyLikedState(music, liked, null, confirmation);
     }
 
     private static void changeLiked(Music music, String key, Object request, boolean liked, Runnable onLiked) {

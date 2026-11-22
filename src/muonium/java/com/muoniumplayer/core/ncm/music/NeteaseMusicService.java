@@ -4,6 +4,8 @@ import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQMusicPlaylists;
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQTrackFavorites;
 import com.muoniumplayer.core.music.source.AudioQuality;
 import com.muoniumplayer.core.music.source.Lyric;
 import com.muoniumplayer.core.music.source.MusicPlaylist;
@@ -27,6 +29,7 @@ import com.muoniumplayer.core.screens.ncm.NCMPlayerConfig;
 import com.muoniumplayer.core.settings.ConfigPaths;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.Tuple;
+import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
@@ -41,6 +44,54 @@ import java.util.function.Consumer;
  * UI/播放器不直接持有 内置音源层登录态与凭证文件。
  */
 public final class NeteaseMusicService {
+    private static final com.dishanhai.sh_better_ui.kernel.api.music.MusicDownloads SONG_DOWNLOADS =
+            com.dishanhai.sh_better_ui.kernel.api.music.MusicDownloads.create(java.nio.file.Path.of("music", "downloads"));
+    private static final QQTrackFavorites QQ_TRACK_FAVORITES = QQTrackFavorites.create(MultiThreadingUtil::runAsync);
+
+    public static synchronized void syncQQFavoriteAccount() {
+        initializeIfNeeded();
+        QQ_TRACK_FAVORITES.credentials(qqDownloadCookie());
+    }
+
+    public static QQTrackFavorites qqTrackFavorites() {
+        return QQ_TRACK_FAVORITES;
+    }
+
+    public static QQMusicPlaylists openQQPlaylists() {
+        initializeIfNeeded();
+        return QQMusicPlaylists.open(
+                NeteaseMusicService::qqPlaylistCookie, MultiThreadingUtil::runAsync);
+    }
+
+    private static synchronized String qqPlaylistCookie() {
+        return qqDownloadCookie();
+    }
+
+    public static synchronized String qqFavoriteAccount() {
+        var qq = SERVICE.getQq();
+        return qq.getLoggedIn() ? qq.getMusicid() : "";
+    }
+
+    public static com.dishanhai.sh_better_ui.kernel.api.music.MusicDownloads songDownloads() {
+        return SONG_DOWNLOADS;
+    }
+
+    public static synchronized java.util.concurrent.CompletableFuture<com.dishanhai.sh_better_ui.kernel.api.music.MusicDownloads.Options>
+    downloadOptions(com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack track) {
+        initializeIfNeeded();
+        return SONG_DOWNLOADS.options(track, qqDownloadCookie());
+    }
+
+    public static synchronized void downloadSong(com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack track,
+                                                 com.dishanhai.sh_better_ui.kernel.api.music.MusicDownloads.Quality quality) {
+        initializeIfNeeded();
+        SONG_DOWNLOADS.start(track, quality, qqDownloadCookie());
+    }
+
+    private static String qqDownloadCookie() {
+        var qq = SERVICE.getQq();
+        return qq.getLoggedIn() ? "qqmusic_uin=" + qq.getMusicid() + "; qm_keyst=" + qq.getMusicKey() : "";
+    }
 
     private static final MuMusicApi SERVICE = new MuMusicApi();
     private static final MuCredentialStore CREDENTIALS = new MuCredentialStore(
@@ -78,6 +129,7 @@ public final class NeteaseMusicService {
         String cookie = !isBlank(legacyNeteaseCookie)
                 ? legacyNeteaseCookie
                 : CREDENTIALS.getNeteaseCookie();
+        if (!nonNull(cookie).equals(SERVICE.getNetease().getCookie())) MusicAudioCache.invalidateReplay();
         SERVICE.getNetease().setCookie(nonNull(cookie));
         if (!isBlank(cookie)) {
             OptionsUtil.setCookie(cookie);
@@ -728,6 +780,8 @@ public final class NeteaseMusicService {
             com.muoniumplayer.core.ncm.qq.QQWechatLogin.Credential credential =
                     com.muoniumplayer.core.ncm.qq.QQWechatLogin.exchange(poll.code);
             synchronized (NeteaseMusicService.class) {
+                SONG_DOWNLOADS.cancelActive();
+                MusicAudioCache.invalidateReplay();
                 SERVICE.getQq().setMusicid(credential.musicId);
                 SERVICE.getQq().setMusicKey(credential.musicKey);
                 CREDENTIALS.setQq(credential.musicId, credential.musicKey);
@@ -808,7 +862,9 @@ public final class NeteaseMusicService {
             // 酷狗的 token 在扫码成功那一刻已由 KuGouDevice 落盘，这里无需二次写入。
             return;
         }
+        MusicAudioCache.invalidateReplay();
         if (platform == MusicPlatform.QQ) {
+            SONG_DOWNLOADS.cancelActive();
             CREDENTIALS.setQq(SERVICE.getQq().getMusicid(), SERVICE.getQq().getMusicKey());
             // 扫码响应里的续期材料随登录落盘（refresh_key 等）；QQLogin 响应不带这些
             // 字段时落空串，续期链路对空材料有保护（探针已确认刷新端点形状被接受）。
@@ -861,11 +917,14 @@ public final class NeteaseMusicService {
         }
         initialize(OptionsUtil.getCookie());
         if (platform == MusicPlatform.QQ) {
+            SONG_DOWNLOADS.cancelActive();
+            MusicAudioCache.invalidateReplay();
             SERVICE.getQq().clearLogin();
             CREDENTIALS.clearQq();
             qqUserInfo = null;
             clearQQPlaylistCache();
         } else {
+            MusicAudioCache.invalidateReplay();
             SERVICE.getNetease().clearLogin();
             CREDENTIALS.clearNetease();
             OptionsUtil.setCookie("");
@@ -1083,6 +1142,7 @@ public final class NeteaseMusicService {
                     return;
                 }
                 synchronized (NeteaseMusicService.class) {
+                    MusicAudioCache.invalidateReplay();
                     SERVICE.getQq().setMusicid(result.musicid);
                     SERVICE.getQq().setMusicKey(result.musicKey);
                     CREDENTIALS.setQq(result.musicid, result.musicKey);

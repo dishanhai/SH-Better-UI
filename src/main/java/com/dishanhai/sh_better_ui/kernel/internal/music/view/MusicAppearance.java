@@ -32,7 +32,7 @@ final class MusicAppearance {
     static boolean liquidGlass(String override, Preference preference, ThemeSettings.Mode mode, boolean glassPalette) {
         if (locked(override)) return false;
         return switch (preference) {
-            case CLASSIC -> false;
+            case CLASSIC, RAINBOW -> false;
             case LIQUID_GLASS -> true;
             case AUTOMATIC -> mode == ThemeSettings.Mode.DARK || mode.fixedThemeId() != null || glassPalette;
         };

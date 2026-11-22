@@ -1,6 +1,7 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer;
 import com.mojang.blaze3d.platform.InputConstants;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.MuoniumPlayerExtension;
@@ -28,6 +29,8 @@ import com.muoniumplayer.render.skija.SkijaHost;
 import com.muoniumplayer.render.skija.SkijaNatives;
 import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.sounds.SoundEvent;
 import net.minecraft.client.gui.screens.Screen;
 import com.muoniumplayer.api.OpenAPI;
 import com.muoniumplayer.api.events.EventRender2D;
@@ -319,6 +322,8 @@ public final class MuoniumPlayerClient {
         // 时是一次布尔判断。采样只有十几次方块读 + 一次实体盒查询,与声学射线同量级。
         com.muoniumplayer.core.ncm.music.ambient.AmbientMusicController.onClientTick(
                 com.muoniumplayer.compat.mc.AmbientProbe.captureOrNull(mc));
+        AmbientSoundPlayer.tick(mc, CloudMusic::isAudibleNow, path -> SoundEvent.createVariableRangeEvent(
+                ResourceLocation.fromNamespaceAndPath(AmbientSoundPlayer.RESOURCE_NAMESPACE, path)));
 
         // ---- ModernUI 控制中心的页签注册 ----
         // 每 tick 问一次、闸门在桥里（没装 / 本树没面板 / 已挂过 都是一次布尔比较）：

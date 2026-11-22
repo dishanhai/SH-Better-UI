@@ -1,11 +1,11 @@
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicSearchRecommendations;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.muoniumplayer.core.ncm.RequestUtil;
 import com.muoniumplayer.core.ncm.api.CloudMusicApi;
-import com.muoniumplayer.core.ncm.music.MusicPlatform;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 
 import java.util.ArrayList;
@@ -19,7 +19,7 @@ import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
- * 网易云搜索建议（联想词）。
+ * 播放器按音源缓存的搜索联想词。
  *
  * <p>端点见 {@link CloudMusicApi#searchSuggest(String, boolean)} —— 严格对应 api-enhanced 的
  * {@code module/search_suggest.js}，它有 {@code keyword} 与 {@code web} 两个变体。这里<b>先</b>用
@@ -86,7 +86,7 @@ public final class NeteaseSearchSuggestService {
      * @return 已缓存的建议；没缓存过或已过期时返回空列表
      */
     public static List<Suggestion> peek(String keyword) {
-        String key = cacheKey(keyword);
+        String key = cacheKey(NeteaseMusicService.getCurrentPlatform(), keyword);
         if (key.isEmpty()) return Collections.emptyList();
         Entry entry = CACHE.get(key);
         if (entry == null) return Collections.emptyList();
@@ -104,28 +104,33 @@ public final class NeteaseSearchSuggestService {
      * 酷狗走 {@code KuGouMusicService.searchSuggest}），只按关键词做键的话，切一次音源就会
      * 拿另一个源的结果当己方的联想词显示。</p>
      */
-    private static String cacheKey(String keyword) {
-        return NeteaseMusicService.getCurrentPlatform() + "\u0000" + normalize(keyword);
+    private static String cacheKey(MusicPlatform platform, String keyword) {
+        String query = normalize(keyword);
+        return query.isEmpty() ? "" : platform + "\u0000" + query;
     }
 
     /** 这个关键词是否已经有结论（含"确认没有建议"），用来避免重复发请求。 */
     public static boolean isResolved(String keyword) {
-        String key = cacheKey(keyword);
+        return isResolved(cacheKey(NeteaseMusicService.getCurrentPlatform(), keyword), System.currentTimeMillis());
+    }
+
+    private static boolean isResolved(String key, long now) {
         if (key.isEmpty()) return true;
         Entry entry = CACHE.get(key);
-        return entry != null && entry.expiresAt > System.currentTimeMillis();
+        return entry != null && entry.expiresAt > now;
     }
 
     /** 异步取一次并落缓存。已有结论或正在飞时直接返回，调用方可以放心每帧调。 */
     public static void prefetch(final String keyword) {
-        final String key = cacheKey(keyword);
-        if (key.isEmpty() || isResolved(keyword)) return;
+        final MusicPlatform platform = NeteaseMusicService.getCurrentPlatform();
+        final String key = cacheKey(platform, keyword);
+        if (isResolved(key, System.currentTimeMillis())) return;
         if (!IN_FLIGHT.add(key)) return;
         MultiThreadingUtil.runAsync(new Runnable() {
             @Override
             public void run() {
                 try {
-                    store(key, fetch(keyword));
+                    store(key, fetch(platform, keyword));
                 } catch (Throwable ignored) {
                     // 联想词是纯装饰：取不到就记一次空结果，不要把异常抬到 UI。
                     store(key, Collections.<Suggestion>emptyList());
@@ -162,17 +167,20 @@ public final class NeteaseSearchSuggestService {
      * <b>他只是参与演唱</b>的歌，歌手条目排在第五，专辑还给出了蔡依林的两张。对搜索框来说
      * {@code keyword} 明显更对，所以它是主路径。</p>
      */
-    private static List<Suggestion> fetch(String keyword) {
-        if (NeteaseMusicService.getCurrentPlatform() == MusicPlatform.KUGOU) {
+    private static List<Suggestion> fetch(MusicPlatform platform, String keyword) throws Exception {
+        if (platform == MusicPlatform.QQ) {
+            return MusicSearchRecommendations.qqSuggestions(keyword, MAX_SUGGESTIONS).stream()
+                    .map(term -> new Suggestion(term, "", "")).toList();
+        }
+        if (platform == MusicPlatform.KUGOU) {
             return fetchKuGou(keyword);
         }
-        if (NeteaseMusicService.getCurrentPlatform() == MusicPlatform.QISHUI) {
+        if (platform == MusicPlatform.QISHUI) {
             // 汽水：/luna/pc/sug 签名代理优先、免签移动端兜底，解析在服务层（见那边的注释）。
             return QishuiMusicService.searchSuggest(keyword);
         }
-        if (NeteaseMusicService.getCurrentPlatform() == MusicPlatform.APPLE) {
-            // Apple 没有可用的公开联想端点：返回空让搜索框不出联想（而不是拿 apple 关键词
-            // 去查网易云的联想词，联想出完全不相干的内容）。
+        if (platform != MusicPlatform.NETEASE) {
+            // 其余音源没有接入联想服务。
             return Collections.emptyList();
         }
         List<Suggestion> keywords = parseKeyword(read(keyword, true));

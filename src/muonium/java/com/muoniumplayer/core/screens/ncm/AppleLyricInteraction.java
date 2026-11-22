@@ -5,7 +5,6 @@ import java.util.List;
 
 /** Press ownership follows the visible lyric at the start of the gesture, not the moving row at release. */
 final class AppleLyricInteraction {
-    private static final double BLUR_APPROACH_MS = 700.0;
 
     record Bounds(double left, double top, double right, double bottom) {
         boolean contains(double x, double y) {
@@ -50,6 +49,10 @@ final class AppleLyricInteraction {
 
     boolean isPressed(Object row) {
         return pressed != null && pressed.identity == row;
+    }
+
+    Object pressedIdentity() {
+        return pressed == null ? null : pressed.identity;
     }
 
     boolean canHit(double x, double y) {
@@ -116,9 +119,4 @@ final class AppleLyricInteraction {
         return dx * dx + dy * dy <= pressSlop * pressSlop;
     }
 
-    static double blurWeight(double positionMs, long timestamp, boolean activeOrPassed, boolean inspecting) {
-        if (activeOrPassed || inspecting || !Double.isFinite(positionMs)) return 0.0;
-        double t = Math.max(0.0, Math.min(1.0, (timestamp - positionMs) / BLUR_APPROACH_MS));
-        return t * t * (3.0 - 2.0 * t);
-    }
 }

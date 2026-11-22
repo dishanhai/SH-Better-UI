@@ -484,6 +484,14 @@ public final class MuoniumHudProviders {
      * {@code ExtensionModule.isEnabled()}，两边要一起改，否则会出现「配置里关掉了、
      * 画面上还画着」这种自相矛盾的状态。</p>
      */
+    public static void setLyricsVisible(boolean enabled) {
+        setHudVisible(true, enabled);
+    }
+
+    public static void setMusicInfoVisible(boolean enabled) {
+        setHudVisible(false, enabled);
+    }
+
     private static void setHudVisible(boolean lyrics, boolean enabled) {
         if (lyrics) {
             HudConfig.musicLyricsEnabled = enabled;

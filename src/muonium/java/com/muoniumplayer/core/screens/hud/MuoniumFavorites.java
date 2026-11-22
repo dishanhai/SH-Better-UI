@@ -29,7 +29,7 @@ public final class MuoniumFavorites {
     private static boolean warned;
 
     enum QuickToggle {
-        LYRICS("lyrics", () -> HudConfig.musicLyricsEnabled, MuoniumFavorites::setLyrics),
+        LYRICS("lyrics", () -> HudConfig.musicLyricsEnabled, MuoniumHudProviders::setLyricsVisible),
         INFO("info", () -> HudConfig.musicInfoEnabled, MuoniumFavorites::setInfo),
         ISLAND("island", () -> HudConfig.dynamicIslandEnabled, value -> {
             HudConfig.dynamicIslandEnabled = value;
@@ -122,17 +122,6 @@ public final class MuoniumFavorites {
     public static void ensureRegistered() {
         if (registered) return;
         register();
-    }
-
-    private static void setLyrics(boolean enabled) {
-        HudConfig.musicLyricsEnabled = enabled;
-        try {
-            com.muoniumplayer.core.MuoniumPlayerExtension ext =
-                    com.muoniumplayer.core.MuoniumPlayerExtension.getInstance();
-            if (ext != null) ext.musicLyrics.setEnabled(enabled);
-        } catch (Throwable ignored) {
-        }
-        HudConfig.save();
     }
 
     private static void setInfo(boolean enabled) {

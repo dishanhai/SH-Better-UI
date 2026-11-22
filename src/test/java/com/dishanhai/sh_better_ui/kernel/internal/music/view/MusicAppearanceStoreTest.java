@@ -18,8 +18,7 @@ class MusicAppearanceStoreTest {
         var file = dir.resolve("config/sh_better_ui/music-appearance.txt");
         var store = new MusicAppearanceStore(file);
         assertEquals(Preference.AUTOMATIC, store.value());
-        for (var expected : new Preference[]{Preference.CLASSIC, Preference.LIQUID_GLASS, Preference.AUTOMATIC}) {
-            assertEquals(expected, store.value().next());
+        for (var expected : new Preference[]{Preference.CLASSIC, Preference.LIQUID_GLASS, Preference.RAINBOW, Preference.AUTOMATIC}) {
             assertTrue(store.select(expected));
             assertEquals(expected, store.value());
             assertEquals(expected, new MusicAppearanceStore(file).value());
@@ -50,6 +49,7 @@ class MusicAppearanceStoreTest {
         assertFalse(MusicAppearance.liquidGlass("", Preference.AUTOMATIC, Mode.LIGHT, false));
         assertTrue(MusicAppearance.liquidGlass("", Preference.LIQUID_GLASS, Mode.LIGHT, false));
         assertFalse(MusicAppearance.liquidGlass("", Preference.CLASSIC, Mode.DARK, true));
+        assertFalse(MusicAppearance.liquidGlass("", Preference.RAINBOW, Mode.DARK, true));
         assertFalse(MusicAppearance.liquidGlass("CLASSIC", Preference.LIQUID_GLASS, Mode.LIGHT, false));
         assertFalse(MusicAppearance.locked("mistyped"));
     }

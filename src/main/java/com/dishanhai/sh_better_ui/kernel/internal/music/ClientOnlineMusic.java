@@ -117,7 +117,12 @@ public final class ClientOnlineMusic implements OnlineMusicService, MusicOperati
         if (bridge != null) { bridge.close(); bridge = null; }
         if (background != null) { background.close(); background = null; }
     }
-    @Override public OnlineMusicPlayer open() { return open(List.of(new NeteaseSource(), new QQMusicSource())); }
+    private static List<OnlineMusicSource> builtInSources() {
+        return List.of(new NeteaseSource(), new QQMusicSource(), new KugouCommentSource());
+    }
+    @Override public OnlineMusicPlayer open() { return open(builtInSources()); }
+    /** A guest session owned by the embedded player's comment view. */
+    public static OnlineMusicPlayer openCommentReader() { return new OnlinePlayerSession(builtInSources()); }
     @Override public OnlineMusicPlayer open(List<OnlineMusicSource> sources) {
         var player = new OnlinePlayerSession(sources, Mp3Output::new, new MusicHttp()::audio,
                 new MusicCredentialStore(java.nio.file.Path.of("config", "sh_better_ui", "music-accounts")),

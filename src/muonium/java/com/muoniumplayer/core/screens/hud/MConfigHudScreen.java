@@ -129,8 +129,6 @@ public class MConfigHudScreen extends GuiScreen {
     private static final int SEARCH_W = 150;
     private static final int SEARCH_H = 24;
 
-    private static final int INFO_BASE_W = 230;
-    private static final int INFO_BASE_H = 56;
     private static final int WIDGET_POPOVER_W = 200;
 
     /** 下拉浮层进场时长。 */
@@ -334,6 +332,7 @@ public class MConfigHudScreen extends GuiScreen {
 
     @Override
     public void initGui() {
+        stage.cancelGesture();
         Keyboard.enableRepeatEvents(true);
         if (scrollByCategory == null || scrollByCategory.length != HudCenterSections.moduleTabs().length + HudCenterSections.Section.values().length) {
             scrollByCategory = new int[HudCenterSections.moduleTabs().length + HudCenterSections.Section.values().length];
@@ -354,6 +353,7 @@ public class MConfigHudScreen extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        stage.cancelGesture();
         if (settingsDirty) {
             HudConfig.save();
             settingsDirty = false;
@@ -421,39 +421,28 @@ public class MConfigHudScreen extends GuiScreen {
             int wheel = Mouse.getDWheel();
             if (modeBusy) wheel = 0;
 
-            // ==== 两块 HUD 的实时预览与舞台（始终在跑，配置态下被面板挡住输入而已） ====
+            // 编辑态只让可见控件拦截舞台输入。已经按住的 HUD 始终跟随鼠标。
             int hudSpaceWidth = (int) RenderSystem.getLayoutWidth();
             int hudSpaceHeight = (int) RenderSystem.getLayoutHeight();
-
-            int infoW = (int) (INFO_BASE_W * HudConfig.infoScale);
-            int infoH = (int) (INFO_BASE_H * HudConfig.infoScale);
-            int infoX = (int) (HudConfig.infoX * (hudSpaceWidth - infoW));
-            int infoY = (int) (HudConfig.infoY * (hudSpaceHeight - infoH));
-            int lyricW = (int) (HudConfig.lyricWidth * HudConfig.lyricScale);
-            int lyricH = (int) (HudConfig.lyricHeight * HudConfig.lyricScale);
-            int lyricX = (int) (HudConfig.lyricX * (hudSpaceWidth - lyricW));
-            int lyricY = (int) (HudConfig.lyricY * (hudSpaceHeight - lyricH));
-            int[] infoRect = { infoX, infoY, infoW, infoH };
-            int[] lyricRect = { lyricX, lyricY, lyricW, lyricH };
+            if (!mc.isWindowActive()) {
+                stage.cancelGesture();
+            } else if (editing && !modeBusy) {
+                if (Mouse.isButtonDown(0)) stage.drag(mouseX, mouseY, hudSpaceWidth, hudSpaceHeight);
+                if (wheel != 0 && !overEditControls(mouseX, mouseY)
+                        && stage.scroll(wheel, mouseX, mouseY, hudSpaceWidth, hudSpaceHeight)) {
+                    HudConfig.save();
+                }
+            }
+            int[] infoRect = widgetRect(HudOverlayStage.Kind.INFO);
+            int[] lyricRect = widgetRect(HudOverlayStage.Kind.LYRICS);
 
             int[] panel = panelBounds();
             boolean overPanel = isInside(mouseX, mouseY, panel[0], panel[1], panel[2], panel[3]);
-            boolean overPicker = editingColor != HudSettingsModel.ColorTarget.NONE
-                    && isInside(mouseX, mouseY, pickerX(panel), pickerY(panel), PICKER_W, PICKER_H);
-            boolean overPopover = stage.hasSelection() && editing
-                    && isInside(mouseX, mouseY, widgetPopoverX(), widgetPopoverY(),
-                            WIDGET_POPOVER_W, widgetPopoverH());
-            boolean uiBusy = modeBusy || overPanel || overPicker || overPopover;
-            boolean lmb = !modeBusy && Mouse.isButtonDown(0);
 
             if (!modeBusy) {
                 updateSliderWhileDragging(mouseX);
                 updateColorPickerWhileDragging(mouseX, mouseY, panel);
             }
-
-            boolean stageDirty = stage.update(lmb && !uiBusy, uiBusy ? 0 : wheel, mouseX, mouseY,
-                    infoRect, lyricRect, new int[] { INFO_BASE_W, INFO_BASE_H }, hudSpaceWidth, hudSpaceHeight);
-            if (stageDirty) HudConfig.save();
 
             if (hasLiveInfoPreview()) {
                 renderLiveInfoPreview(info);
@@ -461,7 +450,7 @@ public class MConfigHudScreen extends GuiScreen {
                 drawInfoPlaceholder(fr, infoRect, Math.max(editGate, 1f - editGate * 0.4f));
             }
             if (hasLiveLyricsPreview()) {
-                renderLiveLyricsPreview(lyrics, lyricX, lyricY);
+                renderLiveLyricsPreview(lyrics, lyricRect[0], lyricRect[1]);
             } else {
                 drawLyricsPlaceholder(fr, lyricRect, Math.max(editGate, 1f - editGate * 0.4f));
             }
@@ -509,6 +498,7 @@ public class MConfigHudScreen extends GuiScreen {
                 float outer = pushAlpha(editGate);
                 try {
                     drawStageOverlays(fr, infoRect, lyricRect, mouseX, mouseY);
+                    drawDoneButton(mouseX, mouseY);
                 } finally {
                     layerAlpha = outer;
                 }
@@ -1956,7 +1946,7 @@ public class MConfigHudScreen extends GuiScreen {
         int[] panel = panelBounds();
 
         if (editing) {
-            mouseClickedEditing(mouseX, mouseY, button);
+            mouseClickedEditing(mouseX, mouseY);
             return;
         }
 
@@ -2095,22 +2085,34 @@ public class MConfigHudScreen extends GuiScreen {
         return Math.max(64, Math.min(150, textWidth + 40));
     }
 
-    private void mouseClickedEditing(int mouseX, int mouseY, int button) {
-        // 快捷小窗最顶层。
-        if (stage.hasSelection() || popGate > 0.01f) {
+    private void mouseClickedEditing(int mouseX, int mouseY) {
+        int[] done = doneButtonBounds();
+        if (isInside(mouseX, mouseY, done[0], done[1], done[2], done[3])) {
+            editing = false;
+            stage.clearSelection();
+            return;
+        }
+        if (stage.hasSelection() && popGate > 0.01f) {
             int[] pop = widgetPopoverBounds();
             if (isInside(mouseX, mouseY, pop[0], pop[1], pop[2], pop[3])) {
                 handleWidgetPopoverClick(mouseX, mouseY, pop);
                 return;
             }
         }
-        // 完成胶囊：返回配置页。
-        int[] done = doneButtonBounds();
-        if (isInside(mouseX, mouseY, done[0], done[1], done[2], done[3])) {
-            editing = false;
-            return;
+        CFontRenderer font = FontManager.pf12;
+        if (font != null && mc.isWindowActive()) {
+            stage.press(mouseX, mouseY, (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight(),
+                    font.getStringWidth(titleOf(HudOverlayStage.Kind.INFO)),
+                    font.getStringWidth(titleOf(HudOverlayStage.Kind.LYRICS)));
         }
-        // 其余落点（含右键）交给舞台：stage.update 在 drawScreen 里按 lmb 推进点选/拖动/缩放。
+    }
+
+    private boolean overEditControls(int mouseX, int mouseY) {
+        int[] done = doneButtonBounds();
+        if (isInside(mouseX, mouseY, done[0], done[1], done[2], done[3])) return true;
+        if (!stage.hasSelection() || popGate <= 0.01f) return false;
+        int[] pop = widgetPopoverBounds();
+        return isInside(mouseX, mouseY, pop[0], pop[1], pop[2], pop[3]);
     }
 
     private void enterEditMode() {
@@ -2247,7 +2249,10 @@ public class MConfigHudScreen extends GuiScreen {
             mouseY = WindowAdaptiveScale.toLayoutYForced(mouseY);
         }
         try {
-            if (state == 0 && (draggingSaturationBrightness || draggingHue
+            if (!mc.isWindowActive()) stage.cancelGesture();
+            boolean stageDirty = state == 0 && stage.release(mouseX, mouseY,
+                    (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight());
+            if (state == 0 && (stageDirty || draggingSaturationBrightness || draggingHue
                     || draggingSlider != null || settingsDirty || draggingPopoverScale)) {
                 HudConfig.save();
                 settingsDirty = false;
@@ -2371,7 +2376,7 @@ public class MConfigHudScreen extends GuiScreen {
             return;
         }
         if (editing) {
-            if (keyCode == Keyboard.KEY_ESCAPE) {
+            if (keyCode == Keyboard.KEY_ESCAPE && !stage.cancelGesture()) {
                 editing = false;
                 stage.clearSelection();
             }
@@ -2711,28 +2716,11 @@ public class MConfigHudScreen extends GuiScreen {
     }
 
     private int[] widgetRect(HudOverlayStage.Kind kind) {
-        if (kind == HudOverlayStage.Kind.INFO) {
-            int w = (int) (INFO_BASE_W * HudConfig.infoScale);
-            int h = (int) (INFO_BASE_H * HudConfig.infoScale);
-            return new int[] { (int) (HudConfig.infoX * (RenderSystem.getLayoutWidth() - w)),
-                    (int) (HudConfig.infoY * (RenderSystem.getLayoutHeight() - h)), w, h };
-        }
-        int w = (int) (HudConfig.lyricWidth * HudConfig.lyricScale);
-        int h = (int) (HudConfig.lyricHeight * HudConfig.lyricScale);
-        return new int[] { (int) (HudConfig.lyricX * (RenderSystem.getLayoutWidth() - w)),
-                (int) (HudConfig.lyricY * (RenderSystem.getLayoutHeight() - h)), w, h };
+        return HudOverlayStage.widgetRect(kind, (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight());
     }
 
     private int widgetPopoverH() {
         return stage.selected() == HudOverlayStage.Kind.INFO ? 118 : 150;
-    }
-
-    private int widgetPopoverX() {
-        return widgetPopoverBounds()[0];
-    }
-
-    private int widgetPopoverY() {
-        return widgetPopoverBounds()[1];
     }
 
     private int[] widgetPopoverBounds() {
@@ -2748,10 +2736,8 @@ public class MConfigHudScreen extends GuiScreen {
      */
     private void drawStageOverlays(CFontRenderer fr, int[] infoRect, int[] lyricRect,
                                    int mouseX, int mouseY) {
-        drawHudFrame(fr, "歌曲信息", infoRect,
-                stage.selected() == HudOverlayStage.Kind.INFO, MConfigTheme.INFO_ACCENT, mouseX, mouseY);
-        drawHudFrame(fr, "桌面歌词", lyricRect,
-                stage.selected() == HudOverlayStage.Kind.LYRICS, MConfigTheme.LYRICS_ACCENT, mouseX, mouseY);
+        drawHudFrame(fr, HudOverlayStage.Kind.INFO, infoRect);
+        drawHudFrame(fr, HudOverlayStage.Kind.LYRICS, lyricRect);
 
         if (!stage.hasSelection()) return;
         int[] r = widgetRect(stage.selected());
@@ -2789,8 +2775,9 @@ public class MConfigHudScreen extends GuiScreen {
         }
 
         drawWidgetPopover(fr, mouseX, mouseY);
+    }
 
-        // 完成胶囊：编辑态的固定出口。
+    private void drawDoneButton(int mouseX, int mouseY) {
         int[] done = doneButtonBounds();
         float dhp = named("edit.done", isInside(mouseX, mouseY, done[0], done[1], done[2], done[3]));
         drawSoftShadow(done[0], done[1], done[2], done[3], 8);
@@ -2802,13 +2789,13 @@ public class MConfigHudScreen extends GuiScreen {
     }
 
     /** 单块 HUD 的编辑态框：未选中白 40% 实线 + 名称；选中由调用方补填充与把手。 */
-    private void drawHudFrame(CFontRenderer fr, String title, int[] r, boolean selected,
-                              int accent, int mouseX, int mouseY) {
-        drawRectBorder(r[0], r[1], r[2], r[3], 1, selected ? 0xFFFFFFFF : 0x66FFFFFF);
-        int labelY = Math.max(14, r[1] - 6);
+    private void drawHudFrame(CFontRenderer fr, HudOverlayStage.Kind kind, int[] r) {
+        boolean active = stage.selected() == kind || stage.isEngaged(kind);
+        drawRectBorder(r[0], r[1], r[2], r[3], 1, active ? 0xFFFFFFFF : 0x66FFFFFF);
+        int labelY = HudOverlayStage.labelY(r);
         drawIcon(FontManager.settingsIcon24, HudSettingsIcons.MOVE, r[0] + 12, labelY + 4,
-                selected ? accent : MConfigTheme.WHITE_60);
-        drawText(fr, title, r[0] + 21, labelY, selected ? MConfigTheme.TEXT_PRIMARY : MConfigTheme.WHITE_60);
+                active ? accentOf(kind) : MConfigTheme.WHITE_60);
+        drawText(fr, titleOf(kind), r[0] + 21, labelY, active ? MConfigTheme.TEXT_PRIMARY : MConfigTheme.WHITE_60);
     }
 
     private void drawWidgetPopover(CFontRenderer fr, int mouseX, int mouseY) {

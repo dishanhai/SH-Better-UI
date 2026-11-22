@@ -16,7 +16,7 @@ const labels = {
   AUTHORIZED: 'Apple Music 已授权。',
   SIGNED_OUT: '已断开 Apple Music 授权。',
   CANCELLED: '本次授权已取消。请关闭 Apple 弹窗；若它仍完成授权，会立即尝试撤销。',
-  FAILED: '授权未完成。请检查弹窗权限、开发者配置或稍后重试；不会显示敏感错误详情。'
+  FAILED: '授权未完成。请允许浏览器打开弹窗，或稍后重试。'
 };
 async function request(url, options) {
   const controller = new AbortController();
@@ -151,7 +151,7 @@ try {
   addEventListener('pagehide', () => { clearInterval(heartbeat); clearInterval(ratePoll); rateBridge.close(); catalogView.close(); playback.close(); }, { once: true });
 } catch {
   if (configuredBridge) report('FAILED');
-  accountStatus = '无法初始化官方 MusicKit。请检查项目开发者令牌、网页来源和浏览器，再从游戏重试。';
+  accountStatus = '无法打开 Apple Music 登录，请从游戏重试。';
   paintAccountStatus();
   connect.disabled = true;
 }

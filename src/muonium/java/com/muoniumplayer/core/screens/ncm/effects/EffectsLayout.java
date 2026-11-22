@@ -68,6 +68,10 @@ public final class EffectsLayout {
     }
 
     public static EffectsLayout calculate(double width, double height, double entranceOffset) {
+        return calculate(width, height, entranceOffset, 100);
+    }
+
+    static EffectsLayout calculate(double width, double height, double entranceOffset, double preferredToolbarHeight) {
         if (!Double.isFinite(width) || !Double.isFinite(height) || !Double.isFinite(entranceOffset)) {
             throw new IllegalArgumentException("工作台尺寸必须是有限数值");
         }
@@ -90,7 +94,7 @@ public final class EffectsLayout {
         double contentWidth = Math.max(0, w - navWidth - 44);
         double top = surface.y + header + navHeight;
         double footerHeight = Math.min(44, Math.max(0, surface.bottom() - top));
-        double toolbarHeight = Math.min(100, Math.max(0, surface.bottom() - footerHeight - top));
+        double toolbarHeight = Math.min(preferredToolbarHeight, Math.max(0, surface.bottom() - footerHeight - top));
         Box toolbar = new Box(contentX, top, contentWidth, toolbarHeight);
         Box viewport = new Box(contentX, toolbar.bottom(), contentWidth,
                 Math.max(0, surface.bottom() - footerHeight - 8 - toolbar.bottom()));

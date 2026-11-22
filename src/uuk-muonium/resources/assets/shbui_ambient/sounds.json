@@ -1,0 +1,13 @@
+{
+  "pink_noise": { "sounds": [{ "name": "shbui_ambient:pink_noise", "stream": true }] },
+  "white_noise": { "sounds": [{ "name": "shbui_ambient:white_noise", "stream": true }] },
+  "brown_noise": { "sounds": [{ "name": "shbui_ambient:brown_noise", "stream": true }] },
+  "waves": { "sounds": [{ "name": "shbui_ambient:waves", "stream": true }] },
+  "rain": { "sounds": [{ "name": "shbui_ambient:rain", "stream": true }] },
+  "stream": { "sounds": [{ "name": "shbui_ambient:stream", "stream": true }] },
+  "summer_night": { "sounds": [{ "name": "shbui_ambient:summer_night", "stream": true }] },
+  "fireplace": { "sounds": [{ "name": "shbui_ambient:fireplace", "stream": true }] },
+  "city": { "sounds": [{ "name": "shbui_ambient:city", "stream": true }] },
+  "airplane": { "sounds": [{ "name": "shbui_ambient:airplane", "stream": true }] },
+  "boat": { "sounds": [{ "name": "shbui_ambient:boat", "stream": true }] }
+}

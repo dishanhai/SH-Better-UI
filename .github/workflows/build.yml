@@ -74,6 +74,7 @@ jobs:
         env:
           GRADLE_VERSION: ${{ matrix.gradle }}
           PROJECT_DIR: ${{ matrix.project }}
+          SHBUI_APPLE_MUSIC_TOKEN_URL: ${{ vars.SHBUI_APPLE_MUSIC_TOKEN_URL }}
         run: bash scripts/ci-build.sh "$GRADLE_VERSION" "$PROJECT_DIR"
 
       - name: Upload verified mod JAR

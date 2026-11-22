@@ -1,9 +1,13 @@
+// Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineArtist;
+import com.muoniumplayer.core.music.source.MusicSource;
+import com.muoniumplayer.core.music.source.Track;
+import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.google.gson.JsonParser;
 import com.muoniumplayer.core.ncm.apple.AppleMusicService;
 import com.muoniumplayer.core.ncm.music.MusicPlatform;
-import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.ncm.spotify.SpotifyMusicService;
 import org.junit.jupiter.api.Test;
@@ -71,5 +75,20 @@ class PlayingTrackPagesTest {
         origin.setPlatformPlaylistId("15");
         origin.setSearchMode(true);
         assertNull(PlayingTrackPages.originFor(song, origin));
+    }
+
+    @Test
+    void keepsDistinctArtistCreditsInDisplayOrder() {
+        var track = Music.fromMuSourceTrack(new Track(MusicSource.QQ, "123", "songMid", "Duet",
+                "Jay Chou, A-Mei, jay chou, Unknown", "Album", 240_000, "", false));
+        assertEquals(List.of("Jay Chou", "A-Mei"), PlayingTrackPages.artistNames(track));
+    }
+
+    @Test
+    void opensTheSelectedArtistByTheirCatalogIdentityEvenWhenListedSecond() {
+        var first = new OnlineArtist("qq", "firstMid", "Jay Chou");
+        var second = new OnlineArtist("qq", "secondMid", "A-Mei");
+        assertSame(second, PlayingTrackPages.matchingArtist(List.of(first, second), " a-mei "));
+        assertNull(PlayingTrackPages.matchingArtist(List.of(first, second), "Other Artist"));
     }
 }

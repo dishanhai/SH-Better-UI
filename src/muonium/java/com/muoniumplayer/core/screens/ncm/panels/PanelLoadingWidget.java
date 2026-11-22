@@ -1,19 +1,20 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.rendering.rendersystem.RenderSystem;
 import com.muoniumplayer.core.rendering.svg.SmilSvg;
 import com.muoniumplayer.core.rendering.svg.SvgPlayback;
 import com.muoniumplayer.core.rendering.ui.AbstractWidget;
 import com.muoniumplayer.core.screens.ncm.NCMScreen;
+import com.muoniumplayer.render.skija.SkijaEffects;
 
 import java.util.function.Supplier;
 
 /**
  * 播放器内容区通用的「正在加载」指示：12 段 iOS/macOS 风格转子 + 一行说明文字。
  *
- * <p>刻意<b>不画底板</b>：内容区背后是主题背景与液态玻璃，压一层半透明底板会让它看起来像个
- * 阻塞式对话框，而这里想要的是"页面自己在忙"。</p>
+ * <p>页内加载直接绘制转子。导航等待覆在已有内容上，使用 {@link #paintCard} 提供可读的底板。</p>
  *
  * <p>这份实现原来是 {@code PlaylistPanel} 的私有内部类，只服务歌单页。主页、发现页、
  * 以及导航栏那几个"点了要等网络"的入口都需要同一个东西，所以提到这里 —— 三处各画一份转子，
@@ -111,10 +112,37 @@ public final class PanelLoadingWidget extends AbstractWidget<PanelLoadingWidget>
      */
     public void paint(double x, double y, double width, double height, float alpha, boolean spinning) {
         if (alpha <= .015f) return;
+        paint(x, y, width, height, alpha, spinning, false, RenderSystem.getFrameDeltaTime() * 5.0, text.get());
+    }
 
+    /** 在仍然可见的页面上绘制一个居中的磨砂状态卡。 */
+    void paintCard(double x, double y, double width, double height, float alpha, boolean spinning,
+                   double frameMillis, UiPreferences preferences) {
+        if (alpha <= .015f || width <= 24 || height <= 0) return;
+
+        var font = FontManager.pf14;
+        String label = font.trim(text.get(), Math.min(width - 24, 260));
+        double cardWidth = Math.min(width, Math.max(88, font.getStringWidthD(label) + 24));
+        double cardHeight = Math.min(height, spinning ? 54 : 32);
+        double cardX = x + (width - cardWidth) * .5;
+        double cardY = y + (height - cardHeight) * .5;
+        boolean blur = preferences.useBackdropBlur();
+        if (blur) {
+            SkijaEffects.backdropBlurRounded(cardX, cardY, cardWidth, cardHeight, 9, 8f, alpha);
+        }
+        roundedRect(cardX, cardY, cardWidth, cardHeight, 9,
+                RenderSystem.reAlpha(NCMScreen.getColor(NCMScreen.ColorType.GENERIC_BACKGROUND),
+                        alpha * (blur ? .86f : 1f)));
+        paint(x, y, width, height, alpha, spinning, true,
+                preferences.reducedMotion() ? 0.0 : frameMillis * .5, label);
+    }
+
+    private void paint(double x, double y, double width, double height, float alpha, boolean spinning,
+                       boolean card, double rotorStep, String label) {
         double centerX = x + width * .5;
         double centerY = y + height * .5 - SPINNER_CENTER_LIFT;
-        double textBaseline = centerY + TEXT_BASELINE_DROP;
+        double textBaseline = card && !spinning ? y + (height - FontManager.pf14.getFontHeight()) * .5
+                : centerY + TEXT_BASELINE_DROP;
 
         if (spinning) {
             int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT);
@@ -124,15 +152,15 @@ public final class PanelLoadingWidget extends AbstractWidget<PanelLoadingWidget>
                 // 插画占的是整块中央，文字得落在它的下沿之外，不然两样叠在一起。
                 textBaseline = y + height * .5 + ANIMATED_ICON_BOX * .5 + TEXT_DROP_BELOW_ICON;
             } else {
-                drawRotor(centerX, centerY, alpha, accent);
+                drawRotor(centerX, centerY, alpha, accent, rotorStep);
             }
         }
 
-        String label = text.get();
         if (label == null || label.isEmpty()) return;
         double textWidth = FontManager.pf14.getStringWidthD(label);
         FontManager.pf14.drawString(label, centerX - textWidth * .5, textBaseline,
-                RenderSystem.reAlpha(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT), alpha));
+                RenderSystem.reAlpha(NCMScreen.getColor(card ? NCMScreen.ColorType.PRIMARY_TEXT
+                        : NCMScreen.ColorType.SECONDARY_TEXT), alpha));
     }
 
     /** @return 真的画了才 true；没设图标或画不出来都 false，交给转子兜底。 */
@@ -145,8 +173,8 @@ public final class PanelLoadingWidget extends AbstractWidget<PanelLoadingWidget>
     }
 
     /** 那圈 12 段 iOS/macOS 风格转子。角度存在实例上，所以掉帧时走大步而不是变慢。 */
-    private void drawRotor(double centerX, double centerY, float alpha, int accent) {
-        rotation = (float) ((rotation + RenderSystem.getFrameDeltaTime() * 5.0) % 360.0);
+    private void drawRotor(double centerX, double centerY, float alpha, int accent, double stepDegrees) {
+        rotation = (float) ((rotation + stepDegrees) % 360.0);
         for (int segment = 0; segment < SEGMENT_COUNT; segment++) {
             // 尾迹：越靠后的段越淡，平方一下让"头部"更集中，转起来才有方向感。
             float trail = 1f - segment / (float) SEGMENT_COUNT;

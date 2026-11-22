@@ -1,4 +1,5 @@
 // Author: dishanhai
+apply from: '../gradle/apple-music.gradle'
 def modProperties = new Properties()
 file('../gradle.properties').withInputStream { modProperties.load(it) }
 def modId = modProperties.getProperty('mod_id')
@@ -233,7 +234,9 @@ sourceSets.main.java {
 }
 kotlin.sourceSets.main.kotlin {
     srcDir('../src/main/kotlin')
-    include("${packagePath}/kernel/api/page/PageDsl.kt", "${packagePath}/client/glass/GlassGeometry.kt")
+    include("${packagePath}/kernel/api/page/PageDsl.kt", "${packagePath}/client/glass/GlassGeometry.kt",
+            "${packagePath}/kernel/api/music/OnlineMusicComments.kt",
+            "${packagePath}/kernel/internal/music/**/*.kt", '**/*.java')
 }
 sourceSets.test {
     resources.srcDir('../src/test/resources')
@@ -291,7 +294,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/panel/DeveloperPreviewRegistryTest.java")
         include("${packagePath}/client/api/preview/PreviewRegistryTest.java")
         include("${packagePath}/kernel/api/music/control/TransportGlyphMotionTest.java")
-        include("${packagePath}/kernel/api/music/control/TransportPressMotionTest.java")
+        include("${packagePath}/kernel/api/music/control/MusicPressMotionTest.java")
         include("${packagePath}/kernel/internal/music/**")
         include("${packagePath}/client/music/MusicServiceTest.java")
         include("${packagePath}/client/music/MusicOpenShortcutTest.java")

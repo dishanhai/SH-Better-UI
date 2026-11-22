@@ -19,7 +19,8 @@ final class QQMusicSource implements OnlineMusicSource {
     }
     private final Transport http;
     private final QQFavorites favorites;
-    QQMusicSource() { this(new QQFavorites()); }
+    private static final QQFavorites SHARED_FAVORITES = new QQFavorites();
+    QQMusicSource() { this(SHARED_FAVORITES); }
     QQMusicSource(QQFavorites favorites) { this(favorites, new MusicHttp()::json); }
     QQMusicSource(QQFavorites favorites, Transport http) {
         this.favorites = Objects.requireNonNull(favorites); this.http = Objects.requireNonNull(http);
@@ -175,6 +176,11 @@ final class QQMusicSource implements OnlineMusicSource {
         return parseSongList(data, limit);
     }
     @Override public boolean supportsLikes() { return true; }
+    Map<String, Boolean> favoriteStatuses(List<String> mids) throws IOException {
+        var current = credentialsSnapshot();
+        return favorites.statuses(mids, current.id(), current.key());
+    }
+
     @Override public void like(OnlineTrack track, boolean liked) throws Exception {
         if (track == null || !id().equals(track.source()) || !track.id().matches("[A-Za-z0-9]{1,40}"))
             throw new IllegalArgumentException("Invalid QQ track");
@@ -221,7 +227,105 @@ final class QQMusicSource implements OnlineMusicSource {
         }
         return null;
     }
+    @Override public List<OnlineMusicComments.Order> commentOrders() { return MusicCommentFeeds.SORTED; }
+    @Override public OnlineMusicComments comments(OnlineTrack track, OnlineMusicComments.Order order, int page, int limit) {
+        return MusicCommentFeeds.qq(track, order, page, limit, (url, referer) -> http.json(url, null, null, referer));
+    }
+    @Override public OnlineMusicComments.ReplyPage commentReplies(OnlineTrack track, OnlineMusicComments.Entry parent,
+                                                                  String cursor, int limit) {
+        return MusicCommentFeeds.qqReplies(track, parent, cursor, limit, (url, referer) -> http.json(url, null, null, referer));
+    }
     @Override public boolean supportsArtistTracks() { return true; }
+    @Override public boolean supportsArtistOverview() { return true; }
+    @Override public boolean supportsAlbumDetail() { return true; }
+    private static final Map<String, ?> CATALOG_CHANNEL = Map.of("ct", 24, "cv", 10000);
+
+    @Override public OnlineArtistTracks artistTracks(OnlineArtist artist, int page, int limit) throws Exception {
+        if (!validMid(artist.id())) throw new IllegalArgumentException("Invalid QQ singer MID");
+        int begin = (page - 1) * limit;
+        var data = rpc("musichall.song_list_server", "GetSingerSongList",
+                Map.of("singerMid", artist.id(), "begin", begin, "num", limit, "order", 1), CATALOG_CHANNEL);
+        if (!artist.id().equals(text(data, "singerMid"))) throw new IOException("QQ singer identity changed");
+        var songs = requireArray(data, "songList");
+        long total = number(data, "totalNum");
+        return new OnlineArtistTracks(parseSongs(songs, limit), !songs.isEmpty() && begin + songs.size() < total, total);
+    }
+
+    @Override public OnlineArtistOverview artistOverview(OnlineArtist artist, int page, int limit) throws Exception {
+        if (!validMid(artist.id())) throw new IllegalArgumentException("Invalid QQ singer MID");
+        int begin = (page - 1) * limit;
+        var data = rpc("music.musichallAlbum.AlbumListServer", "GetAlbumList",
+                Map.of("singerMid", artist.id(), "begin", begin, "number", limit, "order", 0), CATALOG_CHANNEL);
+        if (!artist.id().equals(text(data, "singerMid"))) throw new IOException("QQ singer identity changed");
+        var entries = requireArray(data, "albumList");
+        var albums = new ArrayList<OnlineAlbum>();
+        for (var entry : entries) {
+            if (entry.isJsonObject()) {
+                var release = qqAlbum(entry.getAsJsonObject(), "", "");
+                if (release != null) albums.add(release);
+            }
+        }
+        String description = "";
+        long followers = 0;
+        if (page == 1) {
+            try {
+                var profile = rpc("music.web_singer_info_svr", "get_singer_detail_info",
+                        Map.of("singermid", artist.id(), "sort", 5, "sin", 0, "num", 1), CATALOG_CHANNEL);
+                var info = object(profile, "singer_info");
+                if (artist.id().equals(text(info, "mid"))) {
+                    description = text(profile, "singer_brief");
+                    followers = number(info, "fans");
+                }
+            } catch (IOException ignored) { /* The release list remains available. */ }
+        }
+        long total = number(data, "total");
+        return new OnlineArtistOverview(singerCover(artist.id()), followers, description, albums, total,
+                !entries.isEmpty() && begin + entries.size() < total);
+    }
+
+    @Override public OnlineAlbumDetail albumDetail(OnlineAlbum album) throws Exception {
+        if (!validMid(album.id())) throw new IllegalArgumentException("Invalid QQ album MID");
+        var detail = rpc("music.musichallAlbum.AlbumInfoServer", "GetAlbumDetail",
+                Map.of("albumMId", album.id()), CATALOG_CHANNEL);
+        var info = object(detail, "basicInfo");
+        var release = qqAlbum(info, "", "");
+        if (release == null || !album.id().equals(release.id())) throw new IOException("QQ album identity changed");
+        var credits = qqArtists(array(object(detail, "singer"), "singerList"));
+        var tracks = new ArrayList<OnlineTrack>();
+        long total;
+        do {
+            var data = rpc("music.musichallAlbum.AlbumSongList", "GetAlbumSongList",
+                    Map.of("albumMid", album.id(), "begin", tracks.size(), "num", 100, "order", 2), CATALOG_CHANNEL);
+            if (!album.id().equals(text(data, "albumMid"))) throw new IOException("QQ album identity changed");
+            var entries = requireArray(data, "songList");
+            total = number(data, "totalNum");
+            var page = parseSongs(entries, 100);
+            if (total > 1000 || page.size() != entries.size() || (page.isEmpty() && tracks.size() < total))
+                throw new IOException("QQ album track list is incomplete");
+            tracks.addAll(page);
+        } while (tracks.size() < total);
+        return new OnlineAlbumDetail(release, credits, text(info, "desc"), tracks);
+    }
+
+    private static String singerCover(String mid) {
+        return validMid(mid) ? "https://y.gtimg.cn/music/photo_new/T001R300x300M000" + mid + ".jpg" : "";
+    }
+
+    private static boolean validMid(String mid) { return mid.matches("[A-Za-z0-9]{1,40}") && !mid.equals("0"); }
+    private static OnlineAlbum qqAlbum(JsonObject fields, String fallbackId, String fallbackName) {
+        String mid = first(fields, "albumMid", "mid"), name = first(fields, "albumName", "name", "title");
+        if (mid.isBlank()) mid = fallbackId;
+        if (name.isBlank()) name = fallbackName;
+        return validMid(mid) && !name.isBlank() ? new OnlineAlbum("qq", mid, name,
+                "https://y.gtimg.cn/music/photo_new/T002R300x300M000" + mid + ".jpg",
+                first(fields, "publishDate", "time_public")) : null;
+    }
+    private static List<OnlineArtist> qqArtists(JsonArray singers) {
+        return artistIdentities(singers, "qq", artist -> {
+            String mid = first(artist, "mid", "singermid");
+            return validMid(mid) ? mid : "";
+        });
+    }
     @Override public List<OnlineTrack> search(String query, int page, int limit) throws Exception {
         try {
             var data = rpc("music.search.SearchCgiService", "DoSearchForQQMusicDesktop",
@@ -237,25 +341,27 @@ final class QQMusicSource implements OnlineMusicSource {
         return parseSearch(json, limit);
     }
     static List<OnlineTrack> parseSearch(JsonObject data, int limit) {
-        var out = new ArrayList<OnlineTrack>();
         var root = data.has("body") ? object(data, "body") : object(data, "data");
-        for (var entry : array(object(root, "song"), "list")) {
+        return parseSongs(array(object(root, "song"), "list"), limit);
+    }
+    private static List<OnlineTrack> parseSongs(JsonArray entries, int limit) {
+        var out = new ArrayList<OnlineTrack>();
+        for (var entry : entries) {
             if (!entry.isJsonObject() || out.size() >= limit) continue;
             var song = entry.getAsJsonObject();
+            if (song.has("songInfo")) song = object(song, "songInfo");
             String mid = text(song, "mid");
             if (mid.isBlank()) mid = text(song, "songmid");
             if (!mid.matches("[A-Za-z0-9]{1,40}")) continue;
             String media = text(object(song, "file"), "media_mid");
             if (media.isBlank()) media = text(song, "strMediaMid");
             var singers = array(song, "singer");
+            var album = qqAlbum(object(song, "album"), text(song, "albummid"), text(song, "albumname"));
             out.add(new OnlineTrack("qq", mid, media.isBlank() ? mid : media,
                     first(song, "title", "name", "songname"), artists(singers),
                     song.has("album") ? text(object(song, "album"), "name") : text(song, "albumname"),
                     number(song, "interval") * 1000, albumCover(song),
-                    artistIdentities(singers, "qq", artist -> {
-                        String artistMid = first(artist, "mid", "singermid");
-                        return artistMid.matches("[A-Za-z0-9]{1,40}") && !artistMid.equals("0") ? artistMid : "";
-                    })));
+                    qqArtists(singers), album, first(song, "id", "songid"), number(object(song, "pay"), "pay_play") == 1));
         }
         return List.copyOf(out);
     }
@@ -264,10 +370,63 @@ final class QQMusicSource implements OnlineMusicSource {
         return mid.matches("[A-Za-z0-9]{1,40}") ? "https://y.gtimg.cn/music/photo_new/T002R500x500M000" + mid + ".jpg" : "";
     }
 
-    @Override public Stream resolve(OnlineTrack track) throws Exception {
-        var detail = http.json("https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?" +
+    QQDownload.Detail downloadDetail(OnlineTrack track) throws Exception {
+        if (!id().equals(track.source()) || !track.id().matches("[A-Za-z0-9]{1,40}"))
+            throw new IllegalArgumentException("Invalid QQ download track");
+        var detail = singleSong(track);
+        checkStatus(detail, "download detail");
+        var songs = array(detail, "data");
+        if (songs.size() != 1 || !songs.get(0).isJsonObject()) throw new IOException("Missing QQ song detail");
+        return QQDownload.detail(songs.get(0).getAsJsonObject(), track, !account.key().isEmpty());
+    }
+
+    JsonObject downloadGrant(Map<String, ?> file) throws Exception {
+        var fields = new LinkedHashMap<String, Object>(file);
+        fields.put("guid", guid);
+        fields.put("uin", credentialsSnapshot().id());
+        fields.put("ctx", 0);
+        return rpc("music.vkey.GetVkey", "UrlGetVkey", fields, Map.of("ct", "24", "cv", "0"));
+    }
+
+    private JsonObject singleSong(OnlineTrack track) throws IOException {
+        return http.json("https://c.y.qq.com/v8/fcg-bin/fcg_play_single_song.fcg?" +
                 MusicHttp.form(Map.of("songmid", track.id(), "platform", "yqq", "format", "json")),
                 null, null, "https://y.qq.com/", cookies());
+    }
+
+    SongEncyclopedia encyclopedia(String mid) throws Exception {
+        if (mid == null || !validMid(mid)) throw new IllegalArgumentException("Invalid QQ track MID");
+        var data = rpc("music.pf_song_detail_svr", "get_song_detail_yqq", Map.of("song_mid", mid),
+                Map.of("ct", 24, "cv", 0));
+        var song = object(data, "track_info");
+        if (!mid.equals(text(song, "mid"))) throw new IOException("QQ track identity changed");
+        var info = object(data, "info");
+        String date = infoValues(info, "pub_time");
+        return new SongEncyclopedia(date.isEmpty() ? text(song, "time_public") : date, infoValues(info, "genre"),
+                infoValues(info, "lan"), infoValues(info, "company"), infoValues(info, "intro"), "", "");
+    }
+
+    private static String infoValues(JsonObject info, String field) {
+        var values = new LinkedHashSet<String>();
+        for (var item : array(object(info, field), "content")) {
+            if (!item.isJsonObject()) continue;
+            String value = text(item.getAsJsonObject(), "value").strip();
+            if (!value.isEmpty()) values.add(value);
+            if (values.size() == 16) break;
+        }
+        return String.join(" / ", values);
+    }
+
+    OnlineTrack catalogTrack(String mid) throws IOException {
+        if (!validMid(mid)) throw new IllegalArgumentException("Invalid QQ track MID");
+        var data = singleSong(new OnlineTrack(id(), mid, mid, "", "", "", 0));
+        var tracks = parseSongs(requireArray(data, "data"), 1);
+        if (tracks.size() != 1 || !mid.equals(tracks.get(0).id())) throw new IOException("QQ track identity changed");
+        return tracks.get(0);
+    }
+
+    @Override public Stream resolve(OnlineTrack track) throws Exception {
+        var detail = singleSong(track);
         var songs = array(detail, "data");
         var song = songs.isEmpty() || !songs.get(0).isJsonObject() ? new JsonObject() : songs.get(0).getAsJsonObject();
         String media = text(object(song, "file"), "media_mid");

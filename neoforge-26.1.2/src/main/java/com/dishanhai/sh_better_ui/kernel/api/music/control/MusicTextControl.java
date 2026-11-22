@@ -17,7 +17,11 @@ import java.util.Objects;
 
 /** Quiet reusable music text action, navigation item or list row. No vanilla button/slider skin. */
 public final class MusicTextControl extends AbstractWidget {
-    public enum Variant { ACTION, NAVIGATION, ROW, STACKED_NAVIGATION }
+    public enum Variant { ACTION, NAVIGATION, ROW, STACKED_NAVIGATION, LINK, UNDERLINED_TAB, ARTWORK_CARD }
+    private int textInset;
+
+    /** Reserves space for artwork drawn by the owner, within the same hit area. */
+    public void setTextInset(int inset) { textInset = Math.max(0, inset); }
     private Variant variant=Variant.ACTION;
     private UiPreferences preferences;
     private final Runnable action,feedback;
@@ -121,12 +125,41 @@ public final class MusicTextControl extends AbstractWidget {
         int ink=mainInk==null?theme.text():mainInk;
         int outlineInk=ink;
         int muted=secondaryInk==null?(preferences.highContrast() ? 0xFFFFFFFF : GuiMotion.lerpColor(theme.text(), theme.background() | 0xFF000000, .33f)):secondaryInk;
-        if(!active){ink=alpha(ink,.4f);muted=alpha(muted,.4f);}
+        if(variant==Variant.LINK&&!active)ink=muted;
+        else if(!active){ink=alpha(ink,.4f);muted=alpha(muted,.4f);}
         boolean contrast=preferences.highContrast();
+        if (variant == Variant.UNDERLINED_TAB) {
+            var title = MusicTextLayout.ellipsize(font, getMessage(), Math.max(0, width - 6), MusicTypography.font());
+            int titleWidth = font.width(title);
+            int x = getX() + (width - titleWidth) / 2;
+            if (isFocused() || isArmed())
+                RoundedCorners.draw(g, getX(), getY(), width, height, 5, isFocused() ? 1 : 0,
+                        ink, alpha(ink, isArmed() ? .16f : 0));
+            g.text(font, title, x, getY() + (height - MusicTypography.LINE_HEIGHT) / 2 - 2,
+                    selected || isHovered() || isFocused() ? ink : muted, false);
+            if (selected && titleWidth > 0) {
+                int marker = Math.min(22, titleWidth);
+                int left = getX() + (width - marker) / 2;
+                g.fill(left, getY() + height - 3, left + marker, getY() + height - 1,
+                        contrast ? ink : theme.accent());
+            }
+            return;
+        }
         float surface=selected?.15f:pointerPressed||pressedKey!=-1?.12f:isHovered()?.07f:0;
         if(surface>0||isFocused()||contrast&&selected)
             RoundedCorners.draw(g,getX(),getY(),width,height,variant==Variant.ACTION?5:7,
                     isFocused()||contrast&&selected?1:0,ink,alpha(ink,surface));
+        if (variant == Variant.ARTWORK_CARD) {
+            int captionWidth = Math.max(0, width - 4);
+            int top = getY() + width + 4;
+            var title = MusicTextLayout.ellipsize(font, getMessage(), captionWidth, MusicTypography.font());
+            g.text(font, title, getX() + 2, top, ink, false);
+            if (secondaryPresent) {
+                var details = MusicTextLayout.ellipsize(font, secondary, captionWidth, MusicTypography.font());
+                g.text(font, details, getX() + 2, top + MusicTypography.LINE_HEIGHT + 2, muted, false);
+            }
+            return;
+        }
         if(iconOnly&&outline!=null){
             MusicControlRenderer.icon(g,new Bounds(getX(),getY(),width,height),outline,isArmed(),active,outlineInk,preferences);
             return;
@@ -143,8 +176,8 @@ public final class MusicTextControl extends AbstractWidget {
                     getY()+height-MusicTypography.LINE_HEIGHT-1,ink,false);
             return;
         }
-        int padding=variant==Variant.ACTION?6:10;
-        int left=getX()+padding,right=getX()+width-padding;
+        int padding=variant==Variant.LINK?4:variant==Variant.ACTION?6:10;
+        int left=getX()+padding+textInset,right=getX()+width-padding;
         if(outline!=null&&right-left>=48){
             MusicControlRenderer.icon(g,new Bounds(left,getY()+(height-22)/2,22,22),outline,isArmed(),active,outlineInk,preferences);left+=26;
         }else if(leading!=null&&right-left>=48){glyph(g,leading,left,ink);left+=26;}
@@ -152,7 +185,9 @@ public final class MusicTextControl extends AbstractWidget {
         boolean twoLines=secondaryVisible();
         int line=MusicTypography.LINE_HEIGHT;
         int top=getY()+(height-(twoLines?line*2+2:line))/2;
-        var primary=MusicTextLayout.ellipsize(font,getMessage(),Math.max(0,right-left),MusicTypography.font());
+        var caption=variant==Variant.LINK&&active&&(isHovered()||isFocused())
+                ?getMessage().copy().withStyle(net.minecraft.ChatFormatting.UNDERLINE):getMessage();
+        var primary=MusicTextLayout.ellipsize(font,caption,Math.max(0,right-left),MusicTypography.font());
         int x=variant==Variant.ACTION?left+Math.max(0,(right-left-font.width(primary))/2):left;
         g.text(font,primary,x,top,ink,false);
         if(twoLines)g.text(font,MusicTextLayout.ellipsize(font,secondary,Math.max(0,right-left),MusicTypography.font()),left,top+line+2,muted,false);

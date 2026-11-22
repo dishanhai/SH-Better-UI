@@ -4,6 +4,8 @@ package com.muoniumplayer.core.ncm.music;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.muoniumplayer.core.ncm.api.CloudMusicApi;
+import com.muoniumplayer.core.ncm.apple.AppleConfigStore;
+import com.muoniumplayer.core.ncm.apple.AppleMusicService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.screens.ncm.LyricLine;
 import com.muoniumplayer.core.screens.ncm.LyricParser;
@@ -82,7 +84,8 @@ final class LyricLoadService {
      */
     static LyricLoadResult load(Music music, long songId, long profileId, File embeddedLyricFile) {
         final String trackKey = music.getStableKey();
-        final String cacheKey = cacheKey(trackKey);
+        final LyricManualMemory.Pin pin = firstReadablePin(music, trackKey);
+        final String cacheKey = cacheKeyFor(trackKey, LyricSourceMemory.read(trackKey), manualSuffix(pin));
 
         List<LyricLine> cached = LyricCacheStore.load(cacheKey);
         if (!cached.isEmpty()) {
@@ -90,10 +93,14 @@ final class LyricLoadService {
             return new LyricLoadResult(new JsonObject(), cached);
         }
 
-        LyricLoadResult result = resolve(music, songId, profileId, embeddedLyricFile);
+        LyricLoadResult manual = resolveManual(pin, trackKey);
+        LyricLoadResult result = manual != null ? manual : resolve(music, songId, profileId, embeddedLyricFile);
         if (result.lines != null && !result.lines.isEmpty()) {
             markChorus(music, songId, result.lines);
-            LyricCacheStore.store(cacheKey, result.lines);
+            // Apple 账号恢复后，仍需重试用户选中的版本。
+            if (manual != null || pin == null || pin.source != LyricSearchSource.APPLE) {
+                LyricCacheStore.store(cacheKey, result.lines);
+            }
         }
         return result;
     }
@@ -104,13 +111,15 @@ final class LyricLoadService {
     }
 
     private static String cacheKeyFor(String trackKey, int source) {
-        return cacheKeyFor(trackKey, source, manualSuffix(trackKey));
+        return cacheKeyFor(trackKey, source, manualSuffix(LyricManualMemory.read(trackKey)));
     }
 
     private static String cacheKeyFor(String trackKey, int source, String manualSuffix) {
+        String apple = trackKey.startsWith("apple_") && AppleMusicService.lyricsAccountAvailable()
+                ? "|apple-voices:" + AppleConfigStore.storefront() : "";
         return trackKey + "|a" + (AmllTtmlLyricService.isEnabled() ? 1 : 0)
                 + "q" + (QQQrcLyricService.isEnabled() ? 1 : 0)
-                + "s" + source + manualSuffix;
+                + "s" + source + manualSuffix + apple;
     }
 
     /**
@@ -120,9 +129,10 @@ final class LyricLoadService {
      * 下一次播放命中的还是上一轮自动匹配留在盘上的结果——界面上看就是「改了没生效」。带上它之后，
      * 换一条候选就是一个新键，自动那份原样留在原地，取消钉住时不必重新联网。</p>
      */
-    private static String manualSuffix(String trackKey) {
-        LyricManualMemory.Pin pin = LyricManualMemory.read(trackKey);
-        return pin == null ? "" : "|m" + pin.source.id + ':' + pin.trackId;
+    private static String manualSuffix(LyricManualMemory.Pin pin) {
+        if (pin == null) return "";
+        String id = "|m" + pin.source.id + ':' + pin.trackId;
+        return pin.source == LyricSearchSource.APPLE ? id + ':' + pin.platform + ":voices" : id;
     }
 
     /**
@@ -143,7 +153,7 @@ final class LyricLoadService {
     static void invalidateAll(Music music) {
         if (music == null) return;
         final String trackKey = music.getStableKey();
-        final String manual = manualSuffix(trackKey);
+        final String manual = manualSuffix(firstReadablePin(music, trackKey));
         for (int source : ALL_SOURCES) {
             // 钉住与未钉住两种键各清一遍:只清当前的那一种,取消钉住后就会命中另一份留在盘上的旧结果。
             LyricCacheStore.invalidate(cacheKeyFor(trackKey, source, ""));
@@ -171,16 +181,15 @@ final class LyricLoadService {
     }
 
     /**
-     * 手动搜索用的那四个源，映射到界面「这一首用的是什么来源」显示的那套编号。
+     * 将手动匹配的来源映射到歌词状态栏使用的编号。
      *
-     * <p>网易云那一档就是平台自带的行级歌词，对应 {@link LyricSourceMemory#PLATFORM}；其余三个
-     * 与自动链路的同名源是同一批数据，直接复用。两套编号迟早该合并成一套，但在合并之前
-     * 这里必须显式写清楚，省得日后加源时漏掉一项。</p>
+     * <p>网易云对应 {@link LyricSourceMemory#PLATFORM}。</p>
      */
     private static int servedSourceOf(LyricSearchSource source) {
         if (source == LyricSearchSource.AMLL) return LyricSourceMemory.AMLL;
         if (source == LyricSearchSource.QQ) return LyricSourceMemory.QQ;
         if (source == LyricSearchSource.KUGOU) return LyricSourceMemory.KUGOU;
+        if (source == LyricSearchSource.APPLE) return LyricSourceMemory.APPLE;
         return LyricSourceMemory.PLATFORM;
     }
 
@@ -250,29 +259,24 @@ final class LyricLoadService {
         return null;
     }
 
+    private static LyricLoadResult resolveManual(LyricManualMemory.Pin pin, String trackKey) {
+        if (pin == null) return null;
+        List<LyricLine> lines = LyricSearchService.fetchLyrics(pin);
+        if (lines.isEmpty()) {
+            System.out.println("[Music/Manual] 钉住的那一条这次取不回来,回落正常链路: "
+                    + pin.describe() + " / " + trackKey);
+            return null;
+        }
+        System.out.println("[Music/Manual] 使用手动钉住的歌词 " + pin.describe() + " for " + trackKey);
+        SERVED.put(trackKey, servedSourceOf(pin.source));
+        return new LyricLoadResult(new JsonObject(), lines);
+    }
+
     private static LyricLoadResult resolve(Music music, long songId, long profileId, File embeddedLyricFile) {
         final String trackKey = music.getStableKey();
         JsonObject rawJson = new JsonObject();
         List<LyricLine> parsed = Collections.emptyList();
         boolean cloudLyricsLoaded = false;
-
-        // ── 0) 用户手动选定的那一条 ────────────────────────────────────────────
-        // 人工确认过的结果压过一切自动判断:按钉住的源与候选 id 精确重取,不再走匹配、不再看别的源。
-        // 取不回来(候选下架、凭据过期)时才落回下面的正常链路,并留一行日志说明发生了什么。
-        // 换源兜底：正在播替身而用户当初从原曲行钉的词（本会话内 key 对不上）时，
-        // 沿配对键找到原曲那份钉词 —— 用户视角「我钉过的词」不该因自动换源失灵。
-        final LyricManualMemory.Pin manualPin = firstReadablePin(music, trackKey);
-        if (manualPin != null) {
-            List<LyricLine> pinnedLyrics = LyricSearchService.fetchLyrics(manualPin);
-            if (pinnedLyrics != null && !pinnedLyrics.isEmpty()) {
-                System.out.println("[Music/Manual] 使用手动钉住的歌词 " + manualPin.describe()
-                        + " for " + trackKey);
-                SERVED.put(trackKey, servedSourceOf(manualPin.source));
-                return new LyricLoadResult(rawJson, pinnedLyrics);
-            }
-            System.out.println("[Music/Manual] 钉住的那一条这次取不回来,回落正常链路: "
-                    + manualPin.describe() + " / " + trackKey);
-        }
 
         // ── 1) 用户给这首歌指定的来源 ──────────────────────────────────────────
         // 「指定」是偏好而非硬绑定：那一个源这次没有逐字结果时，记一行日志然后照常走自动链路。
@@ -304,11 +308,11 @@ final class LyricLoadService {
         // ── 1.7) Apple 自己的 TTML 歌词 ────────────────────────────────────────
         // 与 YouTube 早段同一哲学：Apple 行的 catalog id 精确对应一条官方逐词时间轴，
         // 拿 id 取词不存在「匹配错版本」的问题；AMLL 的按标题匹配只该给它兜空。
-        // 账号态（media-user-token）在时拿到的是逐词/逐音节版，游客态经常为空 ——
-        // 空串按「这一源没有结果」处理，照常落到 AMLL 兜底，不挡链路。
+        // 逐词、逐音节或逐行的时间轴都来自同一目录曲目。未授权或无同步歌词时继续匹配其他来源。
         if (music.isApple()) {
             LyricLoadResult apple = appleTtmlLyrics(music);
             if (apple != null) {
+                SERVED.put(trackKey, LyricSourceMemory.APPLE);
                 return apple;
             }
         }
@@ -563,23 +567,16 @@ final class LyricLoadService {
         }
     }
 
-    /**
-     * Apple 官方 TTML → 共享时间轴。
-     *
-     * <p>解析走 {@code LyricParser.parseTtml}（AMLL 同一条路），返回前用
-     * {@code hasWordByWordTiming} 自检：Apple 游客态经常只给行级甚至空串，行级 TTML
-     * 不算数 —— 按 null 处理，照常落到 AMLL 兜底，绝不拿一份没有逐字的时间轴去喂
-     * 逐词渲染器。缓存 JSON 直接包 TTML 原文，与内嵌歌词同一形态。</p>
-     */
+    /** Apple 目录曲目的 TTML 走与手动匹配、AMLL 相同的解析器。 */
     private static LyricLoadResult appleTtmlLyrics(Music music) {
-        String songId = music.getSourceId();
-        if (songId == null || songId.trim().isEmpty()) return null;
+        String songId = music.getAppleCatalogId();
+        if (songId.isEmpty()) return null;
         try {
-            String ttml = com.muoniumplayer.core.ncm.apple.AppleMusicService.ttml(songId);
-            if (ttml == null || ttml.trim().isEmpty()) return null;
+            String ttml = AppleMusicService.ttml(songId);
+            if (ttml.isEmpty()) return null;
             List<LyricLine> parsed = new ArrayList<>();
             LyricParser.parseTtml(ttml, parsed);
-            if (!LyricParser.hasWordByWordTiming(parsed)) return null;
+            if (parsed.isEmpty()) return null;
             System.out.println("[Music/Apple] 官方 TTML 歌词 " + parsed.size() + " 行 for "
                     + music.getStableKey());
             return new LyricLoadResult(createEmbeddedLyricJson(ttml), parsed);

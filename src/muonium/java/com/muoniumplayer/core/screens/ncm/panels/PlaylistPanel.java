@@ -1,9 +1,12 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.internal.PlaylistArtwork;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.KuGouMusicService;
+import com.muoniumplayer.core.ncm.music.Listen1PlaylistImport;
 import com.muoniumplayer.core.ncm.music.MusicPlatform;
 import com.muoniumplayer.core.ncm.music.PlaybackPresentation;
 import com.muoniumplayer.core.ncm.music.QishuiMusicService;
@@ -31,6 +34,7 @@ import com.muoniumplayer.core.utils.KeyboardUtils;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.MpPartyClient;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
 import java.util.List;
@@ -43,6 +47,26 @@ public class PlaylistPanel extends NCMPanel {
     public PlayList playList;
     private final boolean showBackButton;
     private final boolean orderedPlayback;
+    private Panel trackListContainer;
+    private double catalogTracksOffset;
+
+    /** Optional header for read-only catalogue pages that reuse the playlist's song rows. */
+    protected java.util.function.DoubleSupplier catalogHeader() { return null; }
+
+    protected void setCatalogTracksPresentation(boolean visible, float alpha, double offsetY) {
+        catalogTracksOffset = offsetY;
+        if (trackListContainer != null) trackListContainer.setHidden(!visible).setAlpha(alpha);
+    }
+
+    protected void appendCatalogTracks(List<Music> tracks) {
+        if (tracks.isEmpty()) return;
+        if (pendingMusicBuild == null) {
+            pendingMusicBuild = new ArrayList<>(playList.getMusics());
+            pendingMusicIndex = pendingMusicBuild.size();
+        }
+        playList.getMusics().addAll(tracks);
+        pendingMusicBuild.addAll(tracks);
+    }
 
     public PlaylistPanel(PlayList playlist) {
         this(playlist, true);
@@ -70,38 +94,15 @@ public class PlaylistPanel extends NCMPanel {
 
     /** 左上角那张大封面。返回时要问它现在在屏幕上的哪儿，好把接力交回主页卡片。 */
     private RoundedImageWidget heroCover;
-    /** 「定位到正在播放」按钮；图标在面板 onRender 尾部手画（见 onRender 尾注）。 */
-    private RoundedButtonWidget btnLocate;
 
     @Override
     public void onRender(double mouseX, double mouseY) {
         this.revealQueue.beginFrame();
-        this.revealQueue.setAnimationsSuppressed(this.musicsPanel != null && this.musicsPanel.isScrollActive());
+        this.revealQueue.setAnimationsSuppressed(UiPreferences.configured().reducedMotion()
+                || (this.musicsPanel != null && this.musicsPanel.isScrollActive()));
         this.buildPendingMusicWidgets();
         this.autoScrollToPlayingIfNeeded();
         super.onRender(mouseX, mouseY);
-        drawLocateIcon();
-    }
-
-    /**
-     * 「定位到正在播放」的 lucide 字形。必须在 {@code super.onRender} <b>之后</b>画：
-     * 那时按钮矩形已由它自己的回调写定、Skija 帧必然活跃，坐标取 {@code getX/getY}
-     * （屏幕坐标，递归父链）才是真位置。曾经放在 beforeRender 回调里用
-     * {@code getRelativeX}（相对面板偏移）当屏幕坐标用，字形被甩出面板原点一份——
-     * 就是「图标与按钮底板错位」的那张截图。
-     */
-    private void drawLocateIcon() {
-        RoundedButtonWidget button = this.btnLocate;
-        if (button == null || button.isHidden()) return;
-        float alpha = button.getWidgetAlpha();
-        if (alpha <= .02f) return;
-        int ink = button.isHovering()
-                ? NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT)
-                : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT);
-        FoliaLucideIcons.draw(FoliaLucideIcons.LOCATE,
-                button.getX() + button.getWidth() * .5,
-                button.getY() + button.getHeight() * .5,
-                14.0, RenderSystem.reAlpha(ink, alpha));
     }
 
     /**
@@ -126,6 +127,82 @@ public class PlaylistPanel extends NCMPanel {
     private static final int MUSIC_WIDGET_BUILD_BATCH = 32;
     private static final long MUSIC_WIDGET_BUILD_BUDGET_NANOS = 750_000L;
     private ScrollPanel musicsPanel;
+    private MusicWidget focusedActionRow;
+    private RowAction focusedAction;
+    private enum RowAction { FAVORITE, ADD, ARTIST, ALBUM }
+    private static final RowAction[] ROW_ACTIONS = RowAction.values();
+
+    public ScrollPanel songListScrollPanel() {
+        return trackListContainer != null && trackListContainer.isHidden() ? null : this.musicsPanel;
+    }
+
+    public boolean songActionKeyPressed(int keyCode) {
+        if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER || keyCode == Keyboard.KEY_SPACE) {
+            return focusedActionRow != null && switch (focusedAction) {
+                case FAVORITE -> focusedActionRow.activateFocusedFavorite();
+                case ADD -> focusedActionRow.activateFocusedPlaylistAdd();
+                case ARTIST, ALBUM -> focusedActionRow.activateFocusedCredit(focusedAction == RowAction.ALBUM);
+            };
+        }
+        if (keyCode != Keyboard.KEY_TAB || this.musicsPanel == null) return false;
+        List<AbstractWidget<?>> rows = this.musicsPanel.getChildren();
+        boolean backwards = Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT);
+        int step = backwards ? -1 : 1;
+        int previous = focusedActionRow == null ? -1 : rows.indexOf(focusedActionRow);
+        int previousAction = focusedAction == null ? -1 : focusedAction.ordinal();
+        clearSongActionFocus();
+        int index = previous < 0 ? (backwards ? rows.size() - 1 : 0) : previous;
+        for (; index >= 0 && index < rows.size(); index += step) {
+            if (!(rows.get(index) instanceof MusicWidget row)) continue;
+            int firstAction = index == previous ? previousAction + step : backwards ? ROW_ACTIONS.length - 1 : 0;
+            RowAction available = null;
+            for (int slot = firstAction; slot >= 0 && slot < ROW_ACTIONS.length; slot += step) {
+                var candidate = ROW_ACTIONS[slot];
+                if (switch (candidate) {
+                    case FAVORITE -> row.canFocusFavorite();
+                    case ADD -> row.canFocusPlaylistAdd();
+                    case ARTIST, ALBUM -> row.canFocusCredit(candidate == RowAction.ALBUM);
+                }) { available = candidate; break; }
+            }
+            if (available == null) continue;
+            focusedActionRow = row;
+            focusedAction = available;
+            switch (available) {
+                case FAVORITE -> row.focusFavorite(true);
+                case ADD -> row.focusPlaylistAdd(true);
+                case ARTIST, ALBUM -> row.focusCredit(available == RowAction.ALBUM, true);
+            }
+            double top = 0;
+            for (int i = 0; i < index; i++) {
+                AbstractWidget<?> preceding = rows.get(i);
+                if (!preceding.isHidden()) top += preceding.getHeight() + this.musicsPanel.getSpacing();
+            }
+            double offset = this.musicsPanel.actualScrollOffset;
+            double bottom = top + row.getHeight();
+            if (top < offset) this.musicsPanel.scrollToOffsetImmediately(top);
+            else if (bottom > offset + this.musicsPanel.getHeight()) {
+                this.musicsPanel.scrollToOffsetImmediately(bottom - this.musicsPanel.getHeight());
+            }
+            return true;
+        }
+        return false;
+    }
+
+    private void clearSongActionFocus() {
+        if (focusedActionRow == null) return;
+        focusedActionRow.focusFavorite(false);
+        focusedActionRow.focusPlaylistAdd(false);
+        focusedActionRow.focusCredit(false, false);
+        focusedActionRow.focusCredit(true, false);
+        focusedActionRow = null;
+        focusedAction = null;
+    }
+
+    @Override
+    public void onMouseClickReceived(double x, double y, int button) {
+        clearSongActionFocus();
+        super.onMouseClickReceived(x, y, button);
+    }
     private List<Music> pendingMusicBuild;
     private int pendingMusicIndex;
     private String musicFilterText = "";
@@ -150,6 +227,7 @@ public class PlaylistPanel extends NCMPanel {
         // onInit 也会在账户元数据（包括云盘 ID）
         // 异步到达时被调用。使其具备幂等性，以便刷新时替换
         // 旧行，而不是在第一份之上再叠加第二份。
+        clearSongActionFocus();
         this.getChildren().clear();
         this.musicsLoading = true;
         this.musicsPanel = null;
@@ -157,9 +235,7 @@ public class PlaylistPanel extends NCMPanel {
         this.pendingMusicIndex = 0;
         this.musicFilterText = "";
         this.emptyMusicMessageAdded = false;
-        // onInit 会在账户元数据异步到达时重建整页：字段指着的旧按钮已随 getChildren().clear()
-        // 脱树，不置空的话搜索模式页（不建按钮）会把字形画到脱离树的旧按钮坐标上。
-        this.btnLocate = null;
+        this.heroCover = null;
 
         // 搜索结果页不放返回按钮：搜索是从左侧导航栏的搜索框直接进入的，右上角这枚返回键在那里
         // 没有对应的"上一页"，只会把内容区右上角挤掉一块。歌单详情、发现页曲目列表照旧保留。
@@ -190,6 +266,7 @@ public class PlaylistPanel extends NCMPanel {
         // 搜索模式建页时定格 18。列表容器按它让位。
         final double[] headerHeight = new double[1];
         headerHeight[0] = 176.0;
+        var catalogHeader = catalogHeader();
 
         // 头部按钮排的窄窗折行槽：[0] 下一颗按钮的 x 锚点、[1] 下一颗按钮的 y。
         // 由链上前一颗按钮的回调写入、下一颗读（渲染顺序 = addChild 顺序）。
@@ -203,8 +280,24 @@ public class PlaylistPanel extends NCMPanel {
         // 阈值 400：按钮链四颗 57×4 + 3×8 + 起点 164 = 424，内容区 < 400 时必然折行，
         // 与其让按钮跳到第二行占掉列表，不如整头一起收。
 
-        if (!playList.isSearchMode()) {
-            RoundedImageWidget cover = new RoundedImageWidget(this.playList.getCoverLocation(), 0, 0, 0, 0);
+        PlaylistArtwork artwork = playList.isSearchMode() ? null : new PlaylistArtwork(playList);
+        if (artwork != null) {
+            RoundedImageWidget cover = new RoundedImageWidget(
+                    () -> PlaylistCoverHero.coversYield(this) ? null : artwork.loadedLocation(), 0, 0, 0, 0) {
+                @Override
+                public void onRender(double mouseX, double mouseY) {
+                    if (!PlaylistCoverHero.coversYield(PlaylistPanel.this)
+                            && (getWidgetAlpha() < 1.0f || artwork.loadedLocation() == null)) {
+                        float alpha = PlaylistPanel.this.getAlpha();
+                        roundedRect(getX(), getY(), getWidth(), getHeight(), getRadius(), RenderSystem.reAlpha(
+                                NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND), alpha));
+                        FoliaLucideIcons.draw(FoliaLucideIcons.MUSIC, getX() + getWidth() * .5,
+                                getY() + getHeight() * .5, getWidth() * .36, RenderSystem.reAlpha(
+                                        NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT), alpha));
+                    }
+                    super.onRender(mouseX, mouseY);
+                }
+            };
 
             cover.setPosition(24, 24);
             cover.setBounds(128, 128);
@@ -213,7 +306,6 @@ public class PlaylistPanel extends NCMPanel {
 
             this.addChild(cover);
             this.heroCover = cover;
-            this.loadCover();
 
             cover.setBeforeRenderCallback(() -> {
                 if (PlaylistCoverHero.consumeHandoff(this)) {
@@ -229,7 +321,6 @@ public class PlaylistPanel extends NCMPanel {
                 PlaylistCoverHero.setTarget(this, this.playList, cover.getX(), cover.getY(),
                         cover.getWidth(), cover.getRadius(), null);
             });
-            cover.setLocImg(() -> PlaylistCoverHero.coversYield(this) ? null : this.playList.getCoverLocation());
 
 //        LabelWidget lblPlaylistName = new LabelWidget(playList.name, FontManager.pf);
             RoundedButtonWidget btnPlay = new RoundedButtonWidget("播放歌单", FontManager.pf16bold);
@@ -549,43 +640,41 @@ public class PlaylistPanel extends NCMPanel {
                 return false;
             });
 
-            // 「定位到正在播放」：当前歌属于这张歌单时才出现（搜索结果页没有这个概念，
-            // 走 else 分支整颗不建）。用图标按钮而不是文字按钮：它要贴着搜索框右侧，
-            // 文字版的「定位歌曲」会把整条按钮排挤出窄窗。
-            // 图标不能走 RoundedButtonWidget 的文字标签——那会用 fontello 字体渲染
-            // "locate-fixed" 这个字符串，fontello 里没有这个字形，画出来是空白。
-            // 正确画法（NavigateBar 的 SidebarActionButton 同款）：按钮只当圆角底，
-            // lucide 路径由 FoliaLucideIcons.draw 在回调里按中心点手画。
-            if (!playList.isSearchMode()) {
-                btnLocate = new RoundedButtonWidget("", FontManager.pf12);
-                btnLocate.setGlassPlate(GlassLook.Surface.PLAYER)
-                        .setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f));
-                this.addChild(btnLocate);
-                final RoundedButtonWidget btnLocateRef = btnLocate;
-                btnLocate.setBeforeRenderCallback(() -> {
-                    // 每帧现判（当前歌可能切走），但只在「有/没有」跨越时才改可见性：
-                    // 用 alpha 渐变而不是 setHidden——hidden 的控件回调整帧不跑，
-                    // 一旦在起播前一帧藏掉就永远没有机会自己回来（与「排进房间」同一教训）。
-                    boolean relevant = playlistContainsCurrentTrack();
-                    float targetAlpha = relevant ? 1.0f : 0.0f;
-                    float alpha = Interpolations.interpolate(btnLocate.getWidgetAlpha(), targetAlpha, .3f);
-                    btnLocate.setAlpha(alpha);
-                    btnLocate.setClickable(alpha > .5f);
-                    btnLocate.setBounds(28, 22);
-                    btnLocate.setPosition(Math.max(8, getWidth() - btnLocate.getWidth() - 48),
-                            btnCoverflow.getRelativeY() + (btnCoverflow.getHeight() - 22) * .5);
-                    btnLocate.setRadius(6);
-                    btnLocate.setColor(btnLocate.isHovering()
-                            ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
-                            : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND));
-                    // 字形不在这里画：beforeRender 阶段只改属性，画留在面板 onRender 尾部。
-                });
-                btnLocate.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
-                    if (mouseButton != 0 || !playlistContainsCurrentTrack()) return false;
-                    scrollToPlayingTrack();
-                    return true;
-                });
-            }
+            RoundedRectWidget btnLocate = new RoundedRectWidget().setRadius(6);
+            btnLocate.setBounds(28, 22).setAlpha(0f).setClickable(false)
+                    .setGlassPlate(GlassLook.Surface.PLAYER)
+                    .setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f))
+                    .setTooltip(() -> btnLocate.isClickable()
+                            ? Component.translatable("sh_better_ui.online_music.queue.locate").getString() : null);
+            this.addChild(btnLocate);
+
+            // 子控件在底板之后绘制，并继承按钮与页面的透明度。
+            var locateIcon = new DrawableIconWidget<>((x, y, width, height, color) ->
+                    FoliaLucideIcons.draw(FoliaLucideIcons.LOCATE, x + width * .5, y + height * .5, width, color),
+                    14, 14);
+            locateIcon.setPosition(7, 4).setClickable(false);
+            btnLocate.addChild(locateIcon);
+            btnLocate.setBeforeRenderCallback(() -> {
+                boolean relevant = playlistContainsCurrentTrack();
+                float targetAlpha = relevant ? 1.0f : 0.0f;
+                float alpha = UiPreferences.configured().reducedMotion() ? targetAlpha
+                        : Interpolations.interpolate(btnLocate.getWidgetAlpha(), targetAlpha, .3f);
+                if (Math.abs(alpha - targetAlpha) < .01f) alpha = targetAlpha;
+                boolean clickable = relevant && alpha > .5f;
+                btnLocate.setAlpha(alpha).setClickable(clickable).setShouldOverrideMouseCursor(clickable);
+                btnLocate.setPosition(Math.max(8, getWidth() - btnLocate.getWidth() - 48),
+                        btnCoverflow.getRelativeY() + (btnCoverflow.getHeight() - btnLocate.getHeight()) * .5);
+                btnLocate.setColor(NCMScreen.getColor(btnLocate.isHovering()
+                        ? NCMScreen.ColorType.ELEMENT_HOVER : NCMScreen.ColorType.ELEMENT_BACKGROUND));
+                locateIcon.setHidden(alpha == 0f);
+                locateIcon.setColor(NCMScreen.getColor(btnLocate.isHovering()
+                        ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
+            });
+            btnLocate.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
+                if (mouseButton != 0 || !playlistContainsCurrentTrack()) return false;
+                scrollToPlayingTrack();
+                return true;
+            });
 
             tfSearch.setBeforeRenderCallback(() -> {
                 tfSearch.drawUnderline(false);
@@ -620,7 +709,9 @@ public class PlaylistPanel extends NCMPanel {
             // 没有创建者时退到「这张单来自哪个平台」。本地单不能这么退：它的 platform 字段顶着
             // NETEASE（那只是它被造出来时所处的世界），照抄就会在本机自建的单子上写「网易云」。
             String creatorName;
-            if (playList.isLocalPlaylist()) {
+            if (Listen1PlaylistImport.hasSavedTracks(playList)) {
+                creatorName = Component.translatable("sh_better_ui.online_music.source.listen1").getString();
+            } else if (playList.isLocalPlaylist()) {
                 creatorName = "Mu本地";
             } else {
                 creatorName = creator == null || creator.getName() == null || creator.getName().trim().isEmpty()
@@ -673,7 +764,7 @@ public class PlaylistPanel extends NCMPanel {
             // 非搜索模式的让位由 headerHeight 槽逐帧承载（封面回调写入），这里不再定格。
         } else {
             headerHeight[0] = 18.0;
-            if (playList.getName() != null && !playList.getName().isBlank() && !playList.isSearchResultList()) {
+            if (catalogHeader == null && playList.getName() != null && !playList.getName().isBlank() && !playList.isSearchResultList()) {
                 headerHeight[0] = 36.0;
                 LabelWidget heading = new LabelWidget(playList.getName(), FontManager.pf18bold);
                 this.addChild(heading);
@@ -687,6 +778,7 @@ public class PlaylistPanel extends NCMPanel {
         }
 
         Panel rwMusicsContainer = new Panel();
+        trackListContainer = rwMusicsContainer;
         final double bottomSafeInset = 8.0;
         final boolean searchLayout = playList.isSearchMode();
 
@@ -697,13 +789,13 @@ public class PlaylistPanel extends NCMPanel {
             // 将歌曲行裁剪到这个缩小后的视口，而不是让文字贴边。
             // 非搜索模式读 headerHeight 槽（宽档 176 / 窄档 144 随内容区宽切换），
             // 搜索模式恒 18。
-            double offsetY = headerHeight[0];
+            double offsetY = catalogHeader == null ? headerHeight[0] : catalogHeader.getAsDouble();
             rwMusicsContainer.setBounds(
                     Math.max(0.0, this.getWidth() - 36),
                     Math.max(0.0, this.getHeight() - offsetY - bottomSafeInset)
             );
             rwMusicsContainer.centerHorizontally();
-            rwMusicsContainer.setPosition(rwMusicsContainer.getRelativeX(), offsetY);
+            rwMusicsContainer.setPosition(rwMusicsContainer.getRelativeX(), offsetY + catalogTracksOffset);
         });
 
         final ScrollPanel musicsPanel = new ScrollPanel();
@@ -711,6 +803,8 @@ public class PlaylistPanel extends NCMPanel {
 
         rwMusicsContainer.addChild(musicsPanel);
         musicsPanel.setSpacing(0)
+                .enableScrollbarDrag()
+                .setIndexedVerticalLayout()
                 .setUniformVerticalItemHeight(30.0);
         // 行与行挨着，就按<em>一块</em>玻璃收尾：这一组里每行登记自己的轮廓，画完子控件之后
         // 由一趟着色器按整张距离场画边（设置里「玻璃融合半径」推到十几才看得见变化，0 就是
@@ -746,6 +840,7 @@ public class PlaylistPanel extends NCMPanel {
             // 不在网络回调里一次性构建整张歌单。先复制快照，再由 onRender 每帧补一小批，
             // 让首屏先出来，滚动和播放器其它动画不被几百个控件的构造阻塞。
             this.pendingMusicBuild = musics == null ? new ArrayList<>() : new ArrayList<>(musics);
+            if (artwork != null) artwork.requestTrackFallback(this.pendingMusicBuild);
             this.pendingMusicIndex = 0;
             this.playingRowMusicCount = -1;
             this.revealQueue.restart();
@@ -791,7 +886,7 @@ public class PlaylistPanel extends NCMPanel {
 
         if (this.pendingMusicIndex >= total) {
             this.pendingMusicBuild = null;
-            if (total == 0 && this.playList.isLocalPlaylist()) {
+            if (total == 0 && (this.playList.isLocalPlaylist() || Listen1PlaylistImport.hasSavedTracks(this.playList))) {
                 addEmptyMusicMessage();
             }
         }
@@ -801,8 +896,12 @@ public class PlaylistPanel extends NCMPanel {
         if (this.emptyMusicMessageAdded || this.musicsPanel == null) return;
         this.musicsPanel.setUniformVerticalItemHeight(-1.0);
         this.emptyMusicMessageAdded = true;
-        LabelWidget empty = new LabelWidget("这张单还是空的 · 到任意列表点歌曲行右侧的「＋」，选它就能收进来",
+        String message = Listen1PlaylistImport.hasSavedTracks(playList)
+                ? Component.translatable("sh_better_ui.muonium.listen1.empty_tracks").getString()
+                : "这张单还是空的 · 到任意列表点歌曲行右侧的「＋」，选它就能收进来";
+        LabelWidget empty = new LabelWidget(message,
                 FontManager.pf14bold);
+        empty.setBounds(1, 28);
         empty.setClickable(false);
         empty.setBeforeRenderCallback(() -> {
             empty.setBounds(Math.max(1, this.musicsPanel.getWidth()), 28);
@@ -814,8 +913,8 @@ public class PlaylistPanel extends NCMPanel {
 
     private void applyMusicFilter() {
         if (this.musicsPanel == null) return;
-        // 无筛选时歌曲行恒为 30px，恢复等高快速路径；筛选会隐藏行，必须回到通用排版。
-        this.musicsPanel.setUniformVerticalItemHeight(this.musicFilterText.isEmpty() ? 30.0 : -1.0);
+        // 筛选后的可见行由滚动容器重建一次索引，滚动时只访问视口内的匹配行。
+        this.musicsPanel.setUniformVerticalItemHeight(this.musicFilterText.isEmpty() && !emptyMusicMessageAdded ? 30.0 : -1.0);
         for (AbstractWidget<?> child : this.musicsPanel.getChildren()) {
             if (child instanceof MusicWidget) {
                 MusicWidget widget = (MusicWidget) child;
@@ -847,7 +946,7 @@ public class PlaylistPanel extends NCMPanel {
         if (playList == null) return false;
         // 本地单没有「收藏」这个动作可以对上游做：它的 platform 字段顶着 NETEASE（那只是它被造出来时
         // 所处的世界），拿一个负数 id 去调 /weapi/playlist/subscribe 是一次发给网易云的垃圾写请求。
-        if (playList.isLocalPlaylist()) return false;
+        if (playList.isLocalPlaylist() || Listen1PlaylistImport.hasSavedTracks(playList)) return false;
         if (playList.getPlatform() == MusicPlatform.KUGOU) {
             // 酷狗要登录才能收藏；而且「自己的歌单」不该显示收藏按钮——那边收藏会复制一份新歌单，
             // 点自己的歌单复制它没有意义。用户歌单在 platformPlaylistId 里带 #listid，用这个区分。
@@ -918,25 +1017,6 @@ public class PlaylistPanel extends NCMPanel {
         }
 
         return cached;
-    }
-
-    private void loadCover() {
-        String coverUrl = this.playList.getCoverUrl();
-        if (coverUrl == null || coverUrl.trim().isEmpty()) {
-            return;
-        }
-
-        TextureManager textureManager = TextureManager.getInstance();
-        Location coverLoc = this.playList.getCoverLocation();
-        if (textureManager.getTexture(coverLoc) != null) {
-            return;
-        }
-
-        String secureUrl = coverUrl.replace("http://", "https://");
-        String requestUrl = this.playList.getPlatform() == MusicPlatform.QQ
-                ? secureUrl
-                : secureUrl + "?param=256y256";
-        Textures.downloadTextureAndLoadAsync(requestUrl, coverLoc);
     }
 
     private void loadAvatar() {

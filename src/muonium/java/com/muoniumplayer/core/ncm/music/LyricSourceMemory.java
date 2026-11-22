@@ -44,6 +44,8 @@ public final class LyricSourceMemory {
     public static final int QISHUI = 4;
     /** 平台官方歌词：跳过全部逐字源，直接走云盘 / 内嵌 / 统一提供方 / 网易云官方。 */
     public static final int PLATFORM = 5;
+    /** Apple Music 实际供词标记，用于展示自动取词与手动匹配的结果。 */
+    public static final int APPLE = 6;
 
     /** 可选项个数，{@link #next(int)} / {@link #previous(int)} 绕它取模。 */
     private static final int COUNT = 6;
@@ -101,6 +103,7 @@ public final class LyricSourceMemory {
 
     /** 界面上显示的名字。 */
     public static String displayName(int source) {
+        if (source == APPLE) return LyricSearchSource.APPLE.displayLabel();
         switch (clamp(source)) {
             case AMLL:
                 return "AMLL";

@@ -22,8 +22,34 @@ public interface OnlineMusicSource {
     default OnlineMusicSource requestSnapshot() { return this; }
     String id();
     List<OnlineTrack> search(String query, int page, int limit) throws Exception;
+    /** A catalog may offer comment browsing without offering playback. */
+    default boolean supportsPlayback() { return true; }
+    /** Orders provided by the source, with the initial order first. Empty means no comments. */
+    default List<OnlineMusicComments.Order> commentOrders() { return List.of(); }
+    /** Public comments for the exact source track, using one-based pages. */
+    default OnlineMusicComments comments(OnlineTrack track, OnlineMusicComments.Order order, int page, int limit) throws Exception {
+        throw new UnsupportedOperationException("Music comments unavailable");
+    }
+    default OnlineMusicComments.ReplyPage commentReplies(
+            OnlineTrack track, OnlineMusicComments.Entry parent, String cursor, int limit) throws Exception {
+        throw new UnsupportedOperationException("Music comment replies unavailable");
+    }
     /** Whether search results carry reliable source-owned artist IDs. */
     default boolean supportsArtistTracks() { return false; }
+    default OnlineArtistTracks artistTracks(OnlineArtist artist, int page, int limit) throws Exception {
+        var raw = List.copyOf(search(artist.name(), page, limit));
+        var matches = raw.stream().limit(limit)
+                .filter(song -> artist.source().equals(song.source()) && song.artists().stream()
+                        .anyMatch(contributor -> artist.id().equals(contributor.id())))
+                .toList();
+        return new OnlineArtistTracks(matches, page < 1000 && raw.size() >= limit);
+    }
+    default boolean supportsArtistOverview() { return false; }
+    default OnlineArtistOverview artistOverview(OnlineArtist artist, int page, int limit) throws Exception {
+        throw new UnsupportedOperationException();
+    }
+    default boolean supportsAlbumDetail() { return false; }
+    default OnlineAlbumDetail albumDetail(OnlineAlbum album) throws Exception { throw new UnsupportedOperationException(); }
     /** Remote search completions for the supplied text, in provider order. */
     default List<String> suggest(String query, int limit) throws Exception { throw new UnsupportedOperationException("Search suggestions unavailable"); }
     /** Account operations require credentials and run on the caller's worker. */

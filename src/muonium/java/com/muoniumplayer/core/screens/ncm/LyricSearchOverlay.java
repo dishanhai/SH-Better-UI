@@ -2,6 +2,7 @@ package com.muoniumplayer.core.screens.ncm;
 
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.management.FontManager;
+import com.muoniumplayer.core.ncm.apple.AppleMusicService;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.LyricSearchHit;
 import com.muoniumplayer.core.ncm.music.LyricSearchService;
@@ -29,6 +30,7 @@ import com.muoniumplayer.core.utils.network.HttpUtils;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.PartyIcons;
 import com.muoniumplayer.render.skija.SkijaGfx;
+import net.minecraft.network.chat.Component;
 
 import java.awt.Color;
 import java.awt.image.BufferedImage;
@@ -46,7 +48,7 @@ import java.util.function.IntSupplier;
  * 歌词搜索弹窗：给正在放的这首歌手动挑一份歌词。
  *
  * <p>版式逐条照参考实现的搜索匹配弹窗（1 单位 = 1 CSS 像素），右下角
- * 那一块预览照参考实现的歌词预览面板。四张标签是网易云音乐 / AMLLDB / QQ 音乐 / 酷狗音乐，
+ * 那一块预览照参考实现的歌词预览面板。来源标签按左栏宽度换行，
  * 左栏选候选、右栏预览，底部「取消 / 保存」；保存写进 {@code LyricManualMemory} 之后由加载链的
  * 第 0 级精确重取。打开即自动搜一次并选中第一条，这一点也和 folia 一致。</p>
  *
@@ -101,6 +103,7 @@ public final class LyricSearchOverlay extends NcmSheet {
     private static final double TAB_TEXT_H = LH_BODY, TAB_PB = 5.0, TAB_BORDER = 2.0;
     private static final double TAB_ROW_H = TAB_TEXT_H + TAB_PB + TAB_BORDER + TAB_PB + 1.0;
     private static final double TAB_GAP = 16.0, TAB_PAD_X = 4.0;
+    private static final LyricSearchSource[] SOURCES = LyricSearchSource.values();
     /** 搜索行：22 的行盒上下各 9，圆角 16，右侧 {@code gap-3} 接搜索键。 */
     private static final double SEARCH_H = 40.0, SEARCH_GAP = 12.0, SEARCH_PAD_X = 16.0;
     /** 候选卡：{@code space-y-3} 一排，滚动容器自身 {@code pr-1}。 */
@@ -153,6 +156,11 @@ public final class LyricSearchOverlay extends NcmSheet {
     /** 重建时保住输入框的焦点与内容，否则每次搜索回来光标就没了。 */
     private boolean inputHadFocus = true;
     private TextFieldWidget input;
+    private final double[] tabWidths = new double[SOURCES.length];
+    private final TabPosition[] tabPositions = new TabPosition[SOURCES.length];
+    private double tabsLayoutWidth = -1;
+
+    private record TabPosition(double x, double y, double width) {}
     /** 弹窗高度单独补间，换标签页时高度会变（AMLL 那一档少一行）。遮罩与弹窗的入场进度用基类那一条时钟。 */
     private double shownHeight;
     /** 结构版本号：只有它变了才重搭组件树。 */
@@ -443,8 +451,7 @@ public final class LyricSearchOverlay extends NcmSheet {
      * 都不是定值，所以每帧现算。</p>
      */
     private double dialogHeight() {
-        double left = HEADER_H + FOOTER_H + COL_PAD * 2 + TAB_ROW_H + COL_GAP
-                + (source.supportsManualSearch() ? SEARCH_H + COL_GAP : 0.0)
+        double left = HEADER_H + FOOTER_H + COL_PAD + listTop()
                 + resultsContentHeight();
         double right = HEADER_H + FOOTER_H + COL_PAD * 2 + RIGHT_COVER + RIGHT_INFO_MT
                 + infoHeight() + PREVIEW_MT + PREVIEW_H;
@@ -525,8 +532,12 @@ public final class LyricSearchOverlay extends NcmSheet {
 
     /** 候选区顶部：标签行下面，有搜索框的那一档再多让一行。 */
     private double listTop() {
-        return COL_PAD + TAB_ROW_H + COL_GAP
+        return searchTop()
                 + (source.supportsManualSearch() ? SEARCH_H + COL_GAP : 0.0);
+    }
+
+    private double searchTop() {
+        return tabPosition(SOURCES[SOURCES.length - 1]).y() + TAB_ROW_H + COL_GAP;
     }
 
     /** 候选区可用高：内容高减去顶部那一叠，底部留 {@code p-6}。 */
@@ -643,7 +654,7 @@ public final class LyricSearchOverlay extends NcmSheet {
     // ──────────────────────────── 左栏 ────────────────────────────
 
     private void leftColumn() {
-        final Panel column = clip(dialog, ZERO, bodyTop(), this::leftW, this::bodyH);
+        final Panel column = clip(dialog, ZERO, this::bodyTop, this::leftW, this::bodyH);
 
         final RectWidget edge = new RectWidget();
         column.addChild(edge);
@@ -654,35 +665,55 @@ public final class LyricSearchOverlay extends NcmSheet {
             edge.setColor(borderStrong());
         });
 
-        tabRow(column, COL_PAD);
+        tabRow(column);
         if (source.supportsManualSearch()) {
-            searchRow(column, COL_PAD + TAB_ROW_H + COL_GAP);
+            searchRow(column);
+        } else {
+            input = null;
         }
         listArea(column);
     }
 
-    /** {@code flex border-b pb-2 gap-4}：四个标签 + 一条压在 pb-2 下面的分隔线。 */
-    private void tabRow(final Panel host, final double top) {
-        double x = COL_PAD;
-        for (LyricSearchSource value : LyricSearchSource.values()) {
-            x += tab(host, top, x, value) + TAB_GAP;
+    private void tabRow(final Panel host) {
+        tabsLayoutWidth = -1;
+        for (LyricSearchSource value : SOURCES) {
+            tab(host, value);
         }
         final RectWidget rule = new RectWidget();
         host.addChild(rule);
         rule.setClickable(false);
         rule.setBeforeRenderCallback(() -> {
             rule.setBounds(Math.max(1, leftContentW()), 1);
-            rule.setPosition(COL_PAD, top + TAB_ROW_H - 1);
+            rule.setPosition(COL_PAD, searchTop() - COL_GAP - 1);
             rule.setColor(borderStrong());
         });
     }
 
-    /** 一枚标签；返回它自己的宽度（{@code px-1} 让下一个标签接着排）。 */
-    private double tab(final Panel host, final double top, final double x, final LyricSearchSource value) {
+    private TabPosition tabPosition(LyricSearchSource value) {
+        double width = leftContentW();
+        if (tabsLayoutWidth != width) {
+            tabsLayoutWidth = width;
+            double x = 0;
+            double y = COL_PAD;
+            for (int index = 0; index < SOURCES.length; index++) {
+                double tabWidth = Math.min(tabWidths[index], width);
+                if (x > 0 && x + tabWidth > width) {
+                    x = 0;
+                    y += TAB_ROW_H;
+                }
+                tabPositions[index] = new TabPosition(COL_PAD + x, y, tabWidth);
+                x += tabWidth + TAB_GAP;
+            }
+        }
+        return tabPositions[value.ordinal()];
+    }
+
+    private void tab(final Panel host, final LyricSearchSource value) {
         final boolean activeNow = source == value;
         final CFontRenderer font = activeNow ? FontManager.pf18bold : FontManager.pf18;
-        final double textW = Math.max(1, font.getStringWidthD(value.label));
-        final double buttonW = textW + TAB_PAD_X * 2;
+        final String title = value.displayLabel();
+        tabWidths[value.ordinal()] = Math.max(FontManager.pf18bold.getStringWidthD(title),
+                FontManager.pf18.getStringWidthD(title)) + TAB_PAD_X * 2;
 
         final RoundedRectWidget hit = new RoundedRectWidget();
         host.addChild(hit);
@@ -693,36 +724,40 @@ public final class LyricSearchOverlay extends NcmSheet {
             return true;
         });
         hit.setBeforeRenderCallback(() -> {
-            hit.setBounds(buttonW, TAB_TEXT_H + TAB_PB + TAB_BORDER);
-            hit.setPosition(x, top);
+            TabPosition tab = tabPosition(value);
+            hit.setBounds(tab.width(), TAB_TEXT_H + TAB_PB + TAB_BORDER);
+            hit.setPosition(tab.x(), tab.y());
             // 静止与悬停都没有底色；用面板色画一块看不见的挡板，图标才不会被 setAlpha(0) 一起抹掉。
             hit.setColor(surfaceColor());
         });
         // 非活跃标签的悬停色：深色 {@code hover:text-zinc-200}，浅色改按 zinc-500 收 ——
         // folia 那一份浅色写的也是 zinc-200，落在白底上等于扫过去字直接消失。
-        final LabelWidget caption = label(host, value.label, font);
+        final LabelWidget caption = label(host, title, font);
+        caption.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
         caption.setBeforeRenderCallback(() -> {
             int ink;
             if (source == value) ink = accentText();
             else ink = hit.isHovering() ? (isLight() ? ZINC_500 : ZINC_200) : ZINC_400;
             caption.setColor(ink);
-            caption.setPosition(x + TAB_PAD_X, textY(caption, top, TAB_TEXT_H));
+            TabPosition tab = tabPosition(value);
+            caption.setMaxWidth(Math.max(1, tab.width() - TAB_PAD_X * 2));
+            caption.setPosition(tab.x() + TAB_PAD_X, textY(caption, tab.y(), TAB_TEXT_H));
         });
         if (activeNow) {
             final RectWidget underline = new RectWidget();
             host.addChild(underline);
             underline.setClickable(false);
             underline.setBeforeRenderCallback(() -> {
-                underline.setBounds(Math.max(1, buttonW), TAB_BORDER);
-                underline.setPosition(x, top + TAB_TEXT_H + TAB_PB);
+                TabPosition tab = tabPosition(value);
+                underline.setBounds(tab.width(), TAB_BORDER);
+                underline.setPosition(tab.x(), tab.y() + TAB_TEXT_H + TAB_PB);
                 underline.setColor(accentLine());
             });
         }
-        return buttonW;
     }
 
     /** {@code flex gap-3}：一只输入盘 + 一颗搜索键，两样都是 {@link #SEARCH_H} 高。 */
-    private void searchRow(final Panel host, final double top) {
+    private void searchRow(final Panel host) {
         final CFontRenderer bodyBold = FontManager.pf18bold;
 
         final RoundedRectWidget plate = new RoundedRectWidget();
@@ -730,7 +765,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         plate.setClickable(false).setRadius(R_PLATE);
         plate.setBeforeRenderCallback(() -> {
             plate.setBounds(searchPlateW(), SEARCH_H);
-            plate.setPosition(COL_PAD, top);
+            plate.setPosition(COL_PAD, searchTop());
             plate.setColor(inputPlate());
         });
         stroke(plate, R_PLATE, this::inputBorder, () -> 1.0);
@@ -756,7 +791,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         input.drawUnderline(false);
         input.setBeforeRenderCallback(() -> {
             input.setBounds(Math.max(10, searchPlateW() - 16 - 18 - 12), LH_BODY);
-            input.setPosition(COL_PAD + 16 + 18 + 12, top + (SEARCH_H - LH_BODY) * .5);
+            input.setPosition(COL_PAD + 16 + 18 + 12, searchTop() + (SEARCH_H - LH_BODY) * .5);
             input.setColor(textPrimary());
             input.setDisabledTextColor(textSecondary());
         });
@@ -771,7 +806,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         host.addChild(button);
         button.setBeforeRenderCallback(() -> {
             button.setBounds(searchButtonW(), SEARCH_H);
-            button.setPosition(COL_PAD + searchPlateW() + SEARCH_GAP, top);
+            button.setPosition(COL_PAD + searchPlateW() + SEARCH_GAP, searchTop());
             // 深色 {@code bg-blue-500/20 hover:/30}，浅色 {@code /10 → /20}；<b>没有</b>禁用态。
             button.setColor(blueButton(button.isHovering()));
         });
@@ -813,7 +848,7 @@ public final class LyricSearchOverlay extends NcmSheet {
 
     /** 候选区：{@code min-h-0 flex-1 overflow-y-auto space-y-3 pr-1}。 */
     private void listArea(final Panel host) {
-        final Panel viewport = clip(host, () -> COL_PAD, listTop(), this::listW, this::listH);
+        final Panel viewport = clip(host, () -> COL_PAD, this::listTop, this::listW, this::listH);
         final ScrollPanel list = new ScrollPanel();
         viewport.addChild(list);
         list.setSpacing(CARD_GAP).setScrollStrength(36)
@@ -981,7 +1016,7 @@ public final class LyricSearchOverlay extends NcmSheet {
     // ──────────────────────────── 右栏 ────────────────────────────
 
     private void rightColumn() {
-        final Panel column = clip(dialog, this::leftW, bodyTop(), this::rightW, this::bodyH);
+        final Panel column = clip(dialog, this::leftW, this::bodyTop, this::rightW, this::bodyH);
 
         final RectWidget edge = new RectWidget();
         column.addChild(edge);
@@ -993,7 +1028,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         });
 
         // 上面那一段（封面 + 信息）自己可滚：{@code flex-1 min-h-0 overflow-y-auto pr-1}。
-        final Panel upper = clip(column, () -> COL_PAD, COL_PAD, this::rightContentW, this::rightUpperH);
+        final Panel upper = clip(column, () -> COL_PAD, () -> COL_PAD, this::rightContentW, this::rightUpperH);
         final ScrollPanel list = new ScrollPanel();
         upper.addChild(list);
         list.setSpacing(0).setScrollStrength(28).setAlignment(ScrollPanel.Alignment.VERTICAL);
@@ -1225,13 +1260,16 @@ public final class LyricSearchOverlay extends NcmSheet {
         results = Collections.emptyList();
         selected = null;
         clearPreview();
-        runSearch(LyricSearchService.defaultQuery(track));
+        String query = LyricSearchService.defaultQuery(track, value);
+        if (input != null) input.setText(query);
+        runSearch(query);
     }
 
     private void runSearch(String query) {
         final LyricSearchSource at = source;
         final int seq = ++searchSeq;
-        queryDraft = query == null ? "" : query;
+        final String keyword = query == null ? "" : query;
+        queryDraft = keyword;
         perfSearchStartedAt = System.nanoTime();
         searching = true;
         results = Collections.emptyList();
@@ -1241,7 +1279,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         MultiThreadingUtil.runAsync(() -> {
             List<LyricSearchHit> hits = Collections.emptyList();
             try {
-                hits = LyricSearchService.search(at, queryDraft, track);
+                hits = LyricSearchService.search(at, keyword, track);
             } catch (Throwable failure) {
                 System.err.println("[Music/LyricSearch] 检索失败: " + failure);
             }
@@ -1251,7 +1289,7 @@ public final class LyricSearchOverlay extends NcmSheet {
     }
 
     private void finishSearch(int seq, List<LyricSearchHit> hits) {
-        if (seq != searchSeq) return;
+        if (closing || seq != searchSeq) return;
         if (perfSearchStartedAt > 0) {
             perfSearchMs = (System.nanoTime() - perfSearchStartedAt) / 1e6;
             perfSearchStartedAt = 0;
@@ -1326,10 +1364,11 @@ public final class LyricSearchOverlay extends NcmSheet {
             final List<LyricLine> done = lines;
             final String why = reason;
             MultiThreadingUtil.runOnMainThread(() -> {
-                if (seq != previewSeq) return;
+                if (closing || seq != previewSeq) return;
                 previewLoading = false;
                 if (done == null || done.isEmpty()) {
-                    previewError = why == null || why.trim().isEmpty() ? "无可用歌词" : why.trim();
+                    previewError = previewFailure(hit, why == null || why.trim().isEmpty()
+                            ? "无可用歌词" : why.trim());
                     return;
                 }
                 previewLines = done;
@@ -1352,8 +1391,9 @@ public final class LyricSearchOverlay extends NcmSheet {
             final boolean ok = lines != null && !lines.isEmpty();
             MultiThreadingUtil.runOnMainThread(() -> {
                 matching = false;
+                if (closing || selected != hit) return;
                 if (!ok) {
-                    previewError = "获取歌词失败";
+                    previewError = previewFailure(hit, "获取歌词失败");
                     previewLines = null;
                     return;
                 }
@@ -1363,6 +1403,13 @@ public final class LyricSearchOverlay extends NcmSheet {
         });
     }
 
+    private static String previewFailure(LyricSearchHit hit, String fallback) {
+        if (hit.source == LyricSearchSource.APPLE && !AppleMusicService.lyricsAccountAvailable()) {
+            return Component.translatable("sh_better_ui.muonium.lyric_match.apple_sign_in").getString();
+        }
+        return fallback;
+    }
+
     // ════════════════════════════ 小工具 ════════════════════════════
 
     /**
@@ -1370,9 +1417,9 @@ public final class LyricSearchOverlay extends NcmSheet {
      *
      * <p>左上的 x 与宽高都是供应器而不是数值 —— 刚 {@code new} 出来的面板还没被自己的回调定过
      * 尺寸，在搭建时量它必然是 0，而右栏的起点又要跟着弹窗这一帧的宽走（两栏是按百分比分的）。
-     * y 只有常量，就留成数值。</p>
+     * 候选区的 y 随标签换行更新。</p>
      */
-    private Panel clip(final AbstractWidget<?> host, final DoubleSupplier x, final double y,
+    private Panel clip(final AbstractWidget<?> host, final DoubleSupplier x, final DoubleSupplier y,
                        final DoubleSupplier width, final DoubleSupplier height) {
         final Panel panel = new Panel() {
             @Override
@@ -1387,7 +1434,7 @@ public final class LyricSearchOverlay extends NcmSheet {
         };
         host.addChild(panel);
         panel.setClickable(false);
-        panel.setBeforeRenderCallback(() -> panel.setBounds(Math.max(0, x.getAsDouble()), y,
+        panel.setBeforeRenderCallback(() -> panel.setBounds(Math.max(0, x.getAsDouble()), y.getAsDouble(),
                 Math.max(1, width.getAsDouble()), Math.max(1, height.getAsDouble())));
         return panel;
     }
@@ -1802,21 +1849,23 @@ public final class LyricSearchOverlay extends NcmSheet {
         /** {@code text-xs mb-2} 的错误行 + {@code px-3 py-1.5 rounded-lg} 的重试键。 */
         private void errorState(double width, double height, double mouseX, double mouseY) {
             CFontRenderer font = FontManager.pf16;
-            String message = previewError;
-            String trimmed = font.trim(message, width - 24);
-            double total = font.getStringWidthD(trimmed);
+            String[] message = font.fitWidth(previewError, Math.max(1, width - 24));
+            int lines = Math.min(3, message.length);
             CFontRenderer buttonFont = FontManager.pf16bold;
             reloadW = Math.max(56, buttonFont.getStringWidthD("重新加载") + 24);
             reloadH = 24;
             // 错误行 + 8 + 重试键，整块在框里垂直居中。那一行的带高就是它自己的行盒，
             // 所以画在带顶上等于画在带里，不用再居中一次。
             double lineH = font.getFontHeight();
-            double textTop = getY() + (height - lineH - 8 - reloadH) * .5;
-            font.drawString(trimmed, getX() + (width - total) * .5, textTop,
-                    reAlpha(textSecondary(), getAlpha()));
+            double textTop = getY() + (height - lines * lineH - 8 - reloadH) * .5;
+            for (int index = 0; index < lines; index++) {
+                String line = message[index];
+                font.drawString(line, getX() + (width - font.getStringWidthD(line)) * .5,
+                        textTop + index * lineH, reAlpha(textSecondary(), getAlpha()));
+            }
 
             reloadX = getX() + (width - reloadW) * .5;
-            reloadY = textTop + lineH + 8;
+            reloadY = textTop + lines * lineH + 8;
             reloadHover = mouseX >= reloadX && mouseX <= reloadX + reloadW
                     && mouseY >= reloadY && mouseY <= reloadY + reloadH;
             roundedRect(reloadX, reloadY, reloadW, reloadH, R_BUTTON, blueButton(reloadHover));

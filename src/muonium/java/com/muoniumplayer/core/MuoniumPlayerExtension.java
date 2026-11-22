@@ -15,7 +15,6 @@ import com.muoniumplayer.core.ncm.music.GdStudioSourceSettings;
 import com.muoniumplayer.core.ncm.music.NeteaseUnblockSettings;
 import com.muoniumplayer.core.ncm.music.SwitchSourceSettings;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
-import com.muoniumplayer.core.update.SponsorNotice;
 import com.muoniumplayer.core.widget.impl.MusicInfoWidget;
 import com.muoniumplayer.core.widget.impl.MusicLyricsWidget;
 
@@ -88,7 +87,6 @@ public class MuoniumPlayerExtension {
         });
         api.registerEvent(MuoniumPlayerEventHandler.getInstance());
         com.muoniumplayer.core.download.DownloadCatalog.beginSession();
-        SponsorNotice.beginSession();
 
         // 在异步账号引导可能创建 AudioPlayer 之前，先恢复所有播放器偏好。
         // 这包括 mod 自有的持久化音量。

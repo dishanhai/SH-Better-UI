@@ -2,6 +2,7 @@ package com.muoniumplayer.core.screens.ncm;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicGradient;
 import com.muoniumplayer.core.settings.PlayerAppearance;
 
 import com.google.gson.Gson;
@@ -141,7 +142,7 @@ public final class NCMTheme {
     }
 
     public static synchronized int getColor(NCMScreen.ColorType colorType) {
-        if (PlayerAppearance.useShbuiTheme()) return hostColor(UiTheme.current(), colorType);
+        if (useHostTheme()) return hostColor(UiTheme.current(), colorType);
         load();
         long now = System.nanoTime();
         syncDynamicThemeLocked(true);
@@ -150,7 +151,7 @@ public final class NCMTheme {
 
     /** 液态玻璃材质权重；切入和切出主题时同样平滑变化。 */
     public static synchronized float getLiquidGlassAmount() {
-        if (PlayerAppearance.useShbuiTheme()) return UiTheme.current().liquidGlass() ? 1f : 0f;
+        if (useHostTheme()) return UiTheme.current().liquidGlass() ? 1f : 0f;
         load();
         return getLiquidGlassAmountLocked(System.nanoTime());
     }
@@ -167,7 +168,7 @@ public final class NCMTheme {
      * 一次纹理拷贝都不会发生。</p>
      */
     public static synchronized boolean isTrueGlass() {
-        if (PlayerAppearance.useShbuiTheme()) return UiTheme.current().liquidGlass()
+        if (useHostTheme()) return UiTheme.current().liquidGlass()
                 && !com.muoniumplayer.core.rendering.GlassMobileTier.hardDisabled();
         load();
         return current.isTrueGlass();
@@ -181,7 +182,7 @@ public final class NCMTheme {
      * 读这个数就能让「淡出」和「继续采」同时成立。</p>
      */
     public static synchronized float getTrueGlassAmount() {
-        if (PlayerAppearance.useShbuiTheme()) return isTrueGlass() ? 1f : 0f;
+        if (useHostTheme()) return isTrueGlass() ? 1f : 0f;
         load();
         return getTrueGlassAmountLocked(System.nanoTime());
     }
@@ -194,7 +195,7 @@ public final class NCMTheme {
 
     /** 颜色的最终目标值：存在用户调色时返回调色结果，否则返回预设色。 */
     public static synchronized int getTargetColor(NCMScreen.ColorType colorType) {
-        if (PlayerAppearance.useShbuiTheme()) return hostColor(UiTheme.current(), colorType);
+        if (useHostTheme()) return hostColor(UiTheme.current(), colorType);
         load();
         syncDynamicThemeLocked(true);
         return targetColorLocked(colorType);
@@ -446,7 +447,7 @@ public final class NCMTheme {
     }
 
     private static void syncDynamicThemeLocked(boolean captureTransition) {
-        if (ThemeColorSource.current() != ThemeColorSource.COVER) {
+        if (current.gradient() != null || ThemeColorSource.current() != ThemeColorSource.COVER) {
             dynamicThemeColors = null;
             dynamicThemeVersion = -1;
             return;
@@ -466,14 +467,18 @@ public final class NCMTheme {
 
     /** 当前主题是不是浅色（按背景亮度判定）。HUD 设置界面用它挑暗/日两套表面 token。 */
     public static boolean isLightPreset() {
-        if (PlayerAppearance.useShbuiTheme()) return UiTheme.current().light();
+        if (useHostTheme()) return UiTheme.current().light();
         int background = current.getColor(NCMScreen.ColorType.GENERIC_BACKGROUND);
         return Color.RGBtoHSB((background >>> 16) & 0xFF, (background >>> 8) & 0xFF,
                 background & 0xFF, null)[2] > .62f;
     }
 
+    private static boolean useHostTheme() {
+        return PlayerAppearance.useShbuiTheme() && getCurrent().gradient() == null;
+    }
+
     private static int targetColorLocked(NCMScreen.ColorType colorType) {
-        if (ThemeColorSource.current() == ThemeColorSource.COVER
+        if (current.gradient() == null && ThemeColorSource.current() == ThemeColorSource.COVER
                 && dynamicThemeColors != null
                 && colorType != null
                 && colorType.ordinal() < dynamicThemeColors.length) {
@@ -566,6 +571,7 @@ public final class NCMTheme {
         OBSIDIAN_RED("obsidian_red", "曜石红", 0x1E1E1E, 0x252525, 0x383838, 0xFFFFFF, 0x9B9B9B, 0xD60017, 0xF04455, 0x292727, 0x191919, 0x454545, false),
         AURORA_TIDE("aurora_tide", "极光海", 0x0D1720, 0x142631, 0x203D4A, 0xEFFBFF, 0x91AAB5, 0x54D6C1, 0x7DE8D6, 0x10212B, 0x091118, 0x2B5160, false),
         VELVET_ROSE("velvet_rose", "丝绒玫瑰", 0x211821, 0x30212C, 0x493342, 0xFFF7FB, 0xC2AAB7, 0xE48AAB, 0xF4A9C4, 0x2A1D27, 0x1A1219, 0x604252, false),
+        DYNAMIC_RAINBOW("dynamic_rainbow", "rainbow", 0x17202D, 0x242D3B, 0x374553, 0xF5FAFF, 0xCBD7DF, 0x58E0AC, 0x92F0CA, 0x192732, 0x141D2A, 0x587070, false, MusicGradient.RAINBOW),
         PORCELAIN_INK("porcelain_ink", "瓷白墨", 0xF4F0EA, 0xFFFCF7, 0xE7DDD1, 0x2A2723, 0x817970, 0xB85C38, 0xD37B54, 0xEEE7DF, 0xE7DED5, 0xD4C6B8, false),
         LIQUID_GLASS("liquid_glass", "液态玻璃", 0x182331, 0x26384B, 0x49637C, 0xF7FBFF, 0xB7C6D8, 0x64A8FF, 0x8BC1FF, 0x203044, 0x111C2A, 0x91A8C2, true),
         AURORA_FROST("aurora_frost", "极光霜蓝", 0x101827, 0x17263A, 0x2C4660, 0xF3F8FF, 0xAAB9CF, 0x7B9CFF, 0xA6B8FF, 0x1B2C44, 0x0C1423, 0x5576A6, true),
@@ -579,16 +585,27 @@ public final class NCMTheme {
         MEIGUI_YUEBAI("meigui_yuebai", "玫瑰月白", 0xE8F0F2, 0xF6FAFB, 0xDCE7EA, 0x262E31, 0x6B7A7F, 0xB44E60, 0xD87888, 0xE1EBEE, 0xDEE9EC, 0xC3D3D7, false),
         QINGLAN_YUNZHI("qinglan_yunzhi", "青岚云脂", 0xFBF1D7, 0xFFFAEA, 0xF0E4C4, 0x232A1D, 0x6F7A60, 0x4E7C36, 0x73AE52, 0xF6ECD0, 0xF4EACD, 0xDCD0AE, false),
         /** Real lens material with a cool palette; crystal id is retained for saved themes. */
-        CRYSTAL("crystal", "琉璃", 0x141E2B, 0x1F2E42, 0x3A5570, 0xF5FAFF, 0xA9BCD2, 0x7FC4FF, 0xA8DAFF, 0x18293C, 0x0E1825, 0x9DB8D6, true);
+        CRYSTAL("crystal", "琉璃", 0x141E2B, 0x1F2E42, 0x3A5570, 0xF5FAFF, 0xA9BCD2, 0x7FC4FF, 0xA8DAFF, 0x18293C, 0x0E1825, 0x9DB8D6, true),
+        AURORA_NIGHT("aurora_night", "aurora_night", 0x14232D, 0x1D3540, 0x2B4A53, 0xF0FCFA, 0xB9D4D5, 0x6CE4BE, 0xA5F6D8, 0x192F3B, 0x101F2B, 0x63858E, false, MusicGradient.AURORA),
+        EMBER_AFTERGLOW("ember_afterglow", "ember_afterglow", 0x2E1B29, 0x432736, 0x5A3948, 0xFFF5EE, 0xE0C3C2, 0xFFB28B, 0xFFD0AE, 0x382230, 0x241823, 0x946A70, false, MusicGradient.AFTERGLOW),
+        MOONLIT_TIDE("moonlit_tide", "moonlit_tide", 0x151F3A, 0x223452, 0x314B68, 0xF2F8FF, 0xBED2E6, 0x92DEFA, 0xBAEFFF, 0x1D2E49, 0x131D33, 0x6388AA, false, MusicGradient.MOONLIT_TIDE);
 
         private final String id, displayName;
         private final int genericBackground, elementBackground, elementHover, primaryText, secondaryText;
         private final int accent, accentHover, inputBackground, navigationBackground, border;
         private final boolean liquidGlass;
+        private final MusicGradient gradient;
 
         ThemePreset(String id, String displayName, int genericBackground, int elementBackground, int elementHover,
                     int primaryText, int secondaryText, int accent, int accentHover, int inputBackground,
                     int navigationBackground, int border, boolean liquidGlass) {
+            this(id, displayName, genericBackground, elementBackground, elementHover, primaryText,
+                    secondaryText, accent, accentHover, inputBackground, navigationBackground, border, liquidGlass, null);
+        }
+
+        ThemePreset(String id, String displayName, int genericBackground, int elementBackground, int elementHover,
+                    int primaryText, int secondaryText, int accent, int accentHover, int inputBackground,
+                    int navigationBackground, int border, boolean liquidGlass, MusicGradient gradient) {
             this.id = id;
             this.displayName = displayName;
             this.genericBackground = genericBackground;
@@ -602,10 +619,16 @@ public final class NCMTheme {
             this.navigationBackground = navigationBackground;
             this.border = border;
             this.liquidGlass = liquidGlass;
+            this.gradient = gradient;
         }
 
         public String getId() { return id; }
-        public String getDisplayName() { return displayName; }
+        public String getDisplayName() {
+            return gradient != null
+                    ? net.minecraft.network.chat.Component.translatable("sh_better_ui.online_music.appearance." + displayName).getString()
+                    : displayName;
+        }
+        public MusicGradient gradient() { return gradient; }
         public boolean isLiquidGlass() { return liquidGlass; }
 
         /**

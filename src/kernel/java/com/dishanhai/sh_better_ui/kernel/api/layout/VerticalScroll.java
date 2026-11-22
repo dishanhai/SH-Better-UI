@@ -38,7 +38,8 @@ public final class VerticalScroll {
         dragging = true;
         dragOffset = offset;
         int top = thumbTop(trackHeight), height = thumbHeight(trackHeight);
-        grab = y >= top && y < top + height ? y - top : height / 2.0;
+        double exactTop = Math.max(0, trackHeight - height) * offset / maxOffset();
+        grab = y >= top && y < top + height ? y - exactTop : height / 2.0;
         dragTo(y, trackHeight);
         return true;
     }

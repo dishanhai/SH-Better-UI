@@ -4,12 +4,6 @@ package com.muoniumplayer.core.screens.ncm;
 final class AppleLyricEffects {
     private AppleLyricEffects() {}
 
-    static float upcomingBlur(boolean upcoming, double untilStartMs, float active, float hover) {
-        if (!upcoming || !(untilStartMs > 0)) return 0;
-        double t = Math.min(1, untilStartMs / 480);
-        return (float) (t * t * (3 - 2 * t) * (1 - clamp(active)) * (1 - clamp(hover)));
-    }
-
     static int backdropColor(int[] cover, int index) {
         if (cover == null || cover.length == 0) {
             return switch (index) {

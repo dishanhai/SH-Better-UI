@@ -109,7 +109,7 @@ final class MusicFrontendAccountPanel {
         primary.setWidth(width);
         primary.setVisible((browser || detail) && body.height() >= 24);
         primary.setAvailable(browser ? apple.primaryAvailable(webLinks.getAsBoolean()) : nextAction != null);
-        var caption = browser ? apple(apple.running() ? "close" : "open") : label(
+        var caption = browser ? apple(apple.actionKey()) : label(
                 nextAction == null ? "login.refresh" : switch (nextAction.action()) {
                     case START -> "login.refresh";
                     case CANCEL -> "cancel";
@@ -141,9 +141,11 @@ final class MusicFrontendAccountPanel {
         if (isAppleDetail()) {
             var state = apple(apple.stateKey(webLinks.getAsBoolean()));
             if (apple.authorized()) state = state.copy().append("\n").append(appleSummary());
-            var hint = apple(apple.running() ? "close_hint" : "instructions");
-            primary.setPreview(state.copy().append("\n").append(hint));
-            paragraph(ui, state.copy().append("\n").append(hint), body.width(), 30, muted);
+            if (apple.running() || apple.available() && webLinks.getAsBoolean()) {
+                state = state.copy().append("\n").append(apple(apple.running() ? "close_hint" : "instructions"));
+            }
+            primary.setPreview(state);
+            paragraph(ui, state, body.width(), 30, muted);
             return;
         }
         boolean available = nativeAccount.available(route.provider());

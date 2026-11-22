@@ -18,6 +18,7 @@ final class LyricTimelineSupport {
 
     private static final long LONG_BREAK_DURATION_MILLIS = 3000L;
     private static final float JUMP_TO_NEXT_MILLIS = 300.0f;
+    private static final String NO_LYRICS = "暂无歌词";
 
     /** 间奏行的文本，与 Folia 的 {@code INTERLUDE_FULL_TEXT} 一致。 */
     static final String INTERLUDE_TEXT = "......";
@@ -31,7 +32,7 @@ final class LyricTimelineSupport {
         List<LyricLine> timeline = new ArrayList<>();
         timeline.addAll(parsedLyrics);
         if (timeline.isEmpty()) {
-            timeline.add(new LyricLine(0L, "暂无歌词"));
+            timeline.add(new LyricLine(0L, NO_LYRICS));
         }
 
         boolean haveNoWords = hasNoWords(timeline);
@@ -43,27 +44,27 @@ final class LyricTimelineSupport {
     }
 
     static LyricLine findCurrentLyric(List<LyricLine> timeline, boolean haveNoWords, double songProgress) {
-        for (int index = 0; index < timeline.size(); index++) {
-            LyricLine lyric = timeline.get(index);
-            LyricLine previous = index > 0 ? timeline.get(index - 1) : null;
-
-            if (!haveNoWords
-                    && !lyric.isBreakLine
-                    && lyric.getTimestamp() > songProgress
-                    && lyric.getTimestamp() - songProgress <= JUMP_TO_NEXT_MILLIS
-                    && canJumpToNextEarly(previous)) {
-                return lyric;
-            }
-
-            if (lyric.getTimestamp() > songProgress) {
-                return index > 0 ? timeline.get(index - 1) : timeline.get(0);
-            }
-
-            if (index == timeline.size() - 1) {
-                return lyric;
-            }
+        int size = timeline.size();
+        if (size == 0) return null;
+        int low = 0, high = size;
+        while (low < high) {
+            int mid = (low + high) >>> 1;
+            if (timeline.get(mid).getTimestamp() > songProgress) high = mid;
+            else low = mid + 1;
         }
-        return timeline.isEmpty() ? null : timeline.get(0);
+        LyricLine previous = timeline.get(Math.max(0, low - 1));
+        if (!haveNoWords && low > 0 && low < size && canJumpToNextEarly(previous)) {
+            LyricLine next = timeline.get(low);
+            if (!next.isBreakLine && next.getTimestamp() - songProgress <= JUMP_TO_NEXT_MILLIS) return next;
+        }
+        return previous;
+    }
+
+    static LyricLine findDisplayLyric(List<LyricLine> timeline, boolean haveNoWords, double positionMs) {
+        if (timeline.isEmpty() || positionMs < timeline.get(0).timestamp) return null;
+        LyricLine line = findCurrentLyric(timeline, haveNoWords, positionMs);
+        if (line.isBreakLine || line.lyric.isBlank() || NO_LYRICS.equals(line.lyric)) return null;
+        return timeline.size() == 1 && LyricContentCheck.isPlaceholderLine(line.lyric) ? null : line;
     }
 
     private static boolean hasNoWords(List<LyricLine> timeline) {
@@ -77,6 +78,7 @@ final class LyricTimelineSupport {
 
     private static void addLongBreaks(List<LyricLine> timeline, boolean haveNoWords) {
         if (haveNoWords) {
+            timeline.sort(Comparator.comparingLong(LyricLine::getTimestamp));
             addInitialBreakIfNeeded(timeline, LONG_BREAK_DURATION_MILLIS);
             return;
         }
@@ -86,8 +88,7 @@ final class LyricTimelineSupport {
     private static void addInitialBreakIfNeeded(List<LyricLine> timeline, long duration) {
         long firstTimestamp = timeline.get(0).getTimestamp();
         if (firstTimestamp >= duration) {
-            timeline.add(createBreakLine(0L, firstTimestamp));
-            timeline.sort(Comparator.comparingLong(LyricLine::getTimestamp));
+            timeline.add(0, createBreakLine(0L, firstTimestamp));
         }
     }
 
@@ -100,7 +101,7 @@ final class LyricTimelineSupport {
             if (gap >= duration) {
                 breaksToAdd.add(createBreakLine(lastTimestamp, gap));
             }
-            lastTimestamp = line.getTimestamp() + lineDuration;
+            lastTimestamp = Math.max(lastTimestamp, line.getTimestamp() + lineDuration);
         }
         timeline.addAll(breaksToAdd);
         timeline.sort(Comparator.comparingLong(LyricLine::getTimestamp));

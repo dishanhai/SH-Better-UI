@@ -182,6 +182,16 @@ public final class OneConfigHudBridge {
         return available;
     }
 
+    /** Opens the same last-session screen as the companion mod's welcome notice. */
+    public static void openLastSession() {
+        try {
+            Class<?> screen = Class.forName("org.polyfrost.oneconfig.internal.ui.compose.impls.OneConfigUIScreen");
+            screen.getMethod("openLastSession").invoke(null);
+        } catch (ReflectiveOperationException | LinkageError failure) {
+            open();
+        }
+    }
+
     /** 按需注册树，并在 MuoniumPlayer 的 HUD 页面上直接打开 OneConfig。 */
     public static boolean open() {
         if (!isAvailable()) {

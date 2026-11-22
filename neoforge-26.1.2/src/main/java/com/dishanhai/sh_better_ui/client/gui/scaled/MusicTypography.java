@@ -18,6 +18,7 @@ public final class MusicTypography {
     public static final int LINE_HEIGHT = 12;
     private static final SelectionCache SELECTION = new SelectionCache();
     private MusicTypography() {}
+    public static void narrate(Component message) { Minecraft.getInstance().getNarrator().saySystemNow(message); }
     public static void resourcesReloaded() {
         SELECTION.invalidate();
         com.dishanhai.sh_better_ui.kernel.api.music.MusicLyricsView.invalidateFontMetrics();

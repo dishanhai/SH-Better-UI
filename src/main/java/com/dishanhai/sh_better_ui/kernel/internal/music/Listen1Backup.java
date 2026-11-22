@@ -21,8 +21,16 @@ public final class Listen1Backup {
     static final int MAX_BYTES = 4 * 1024 * 1024;
     static final int MAX_PLAYLISTS = 200, MAX_TRACKS_PER_PLAYLIST = 1000;
     private static final Pattern PLAYLIST_ID = Pattern.compile("myplaylist_[A-Za-z0-9_-]{1,80}");
-    private static final Pattern NETEASE_ID = Pattern.compile("netrack_([1-9][0-9]{0,18})");
-    private static final Pattern QQ_ID = Pattern.compile("qqtrack_([A-Za-z0-9]{1,64})");
+    private static final Pattern NUMERIC_ID = Pattern.compile("[1-9][0-9]{0,18}");
+    private static final Pattern ALPHANUMERIC_ID = Pattern.compile("[A-Za-z0-9]{1,64}");
+    private static final Pattern KUGOU_HASH = Pattern.compile("[A-Fa-f0-9]{32}");
+    private static final Pattern BILIBILI_VIDEO = Pattern.compile("(BV[A-Za-z0-9]{10})(?:-([1-9][0-9]{0,18}))?");
+    private static final Map<String, String> TRACK_SOURCES = Map.of(
+            "netrack", "netease", "qqtrack", "qq", "kgtrack", "kugou", "bitrack", "bilibili",
+            "kwtrack", "kuwo", "mgtrack", "migu");
+    private static final Map<String, String> FAVORITE_SOURCES = Map.of(
+            "neplaylist", "netease", "qqplaylist", "qq", "kgplaylist", "kugou");
+    private static final Set<String> LEGACY_SOURCES = Set.of("netease", "qq");
 
     private Listen1Backup() {}
 
@@ -51,8 +59,43 @@ public final class Listen1Backup {
         }
     }
 
+    public record Library(Imported saved, List<OnlinePlaylist> favorites, int skippedFavorites) {
+        public Library {
+            favorites = List.copyOf(favorites);
+        }
+    }
+
     /** Reads a single bounded file. Never imports backup URLs, artwork, cookies, tokens or other settings. */
     public static Imported read(Path path, Set<String> availableSources) throws IOException {
+        return parse(readFile(path), availableSources);
+    }
+
+    public static Library readLibrary(Path path) throws IOException {
+        JsonObject root = parseRoot(readFile(path));
+        var saved = parseSaved(root, TRACK_SOURCES.values());
+        var favorites = new ArrayList<OnlinePlaylist>();
+        var ids = index(root, "favoriteplayerlists");
+        var seen = new HashSet<String>();
+        int skipped = 0;
+        for (var entry : ids) {
+            String key = string(entry);
+            if (!seen.add(key)) continue;
+            int separator = key.indexOf('_');
+            String source = separator < 0 ? null : FAVORITE_SOURCES.get(key.substring(0, separator));
+            String id = key.substring(separator + 1);
+            if (source == null || !numeric(id)
+                    || !(root.get(key) instanceof JsonObject playlist)
+                    || !(playlist.get("info") instanceof JsonObject info) || !key.equals(string(info.get("id")))) {
+                skipped++;
+                continue;
+            }
+            String name = label(info.get("title"));
+            favorites.add(new OnlinePlaylist(source, id, name.isEmpty() ? key : name, 0));
+        }
+        return new Library(saved, favorites, skipped);
+    }
+
+    private static String readFile(Path path) throws IOException {
         String rawPath = path.toString();
         if (!path.isAbsolute() || rawPath.startsWith("//") || rawPath.startsWith("\\\\")
                 || path.getFileName() == null
@@ -63,29 +106,40 @@ public final class Listen1Backup {
             bytes = input.readNBytes(MAX_BYTES + 1);
         }
         if (bytes.length > MAX_BYTES) throw invalid();
-        String text = StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
-        return parse(text, availableSources);
+        return StandardCharsets.UTF_8.newDecoder().decode(ByteBuffer.wrap(bytes)).toString();
     }
 
     static Imported parse(String text, Set<String> availableSources) throws IOException {
+        var sources = new HashSet<>(availableSources);
+        sources.retainAll(LEGACY_SOURCES);
+        return parseSaved(parseRoot(text), sources);
+    }
+
+    private static JsonObject parseRoot(String text) throws IOException {
         verifyDepth(text);
-        JsonObject backup;
         try (var reader = new JsonReader(new StringReader(text))) {
             reader.setLenient(false);
             JsonElement value = new Gson().getAdapter(JsonElement.class).read(reader);
             if (!(value instanceof JsonObject object) || reader.peek() != JsonToken.END_DOCUMENT) throw invalid();
-            backup = object;
+            if (!object.has("playerlists") && !(object.get("favoriteplayerlists") instanceof JsonArray)) {
+                throw invalid();
+            }
+            return object;
         } catch (IOException | JsonParseException | IllegalStateException malformed) {
             // Avoid carrying caller-controlled values or backup data into exceptions.
             throw invalid();
         }
-        var index = backup.get("playerlists");
-        if (index == null) {
-            if (backup.get("favoriteplayerlists") instanceof JsonArray) return new Imported(List.of(), Map.of(), 0, 0);
-            throw invalid();
-        }
-        if (!(index instanceof JsonArray ids) || ids.size() > MAX_PLAYLISTS) throw invalid();
+    }
 
+    private static JsonArray index(JsonObject root, String key) throws IOException {
+        var value = root.get(key);
+        if (value == null) return new JsonArray();
+        if (value instanceof JsonArray ids && ids.size() <= MAX_PLAYLISTS) return ids;
+        throw invalid();
+    }
+
+    private static Imported parseSaved(JsonObject backup, Collection<String> availableSources) throws IOException {
+        var ids = index(backup, "playerlists");
         var playlists = new ArrayList<OnlinePlaylist>();
         var byId = new LinkedHashMap<String, List<OnlineTrack>>();
         int skipped = 0, imported = 0;
@@ -112,20 +166,49 @@ public final class Listen1Backup {
         return new Imported(playlists, byId, imported, skipped);
     }
 
-    private static OnlineTrack track(JsonElement value, Set<String> sources) {
+    private static OnlineTrack track(JsonElement value, Collection<String> sources) {
         if (!(value instanceof JsonObject row)) return null;
         String id = string(row.get("id"));
-        var qq = QQ_ID.matcher(id);
-        var netease = NETEASE_ID.matcher(id);
-        String source, providerId;
-        if (qq.matches()) { source = "qq"; providerId = qq.group(1); }
-        else if (netease.matches()) { source = "netease"; providerId = netease.group(1); }
-        else return null;
+        int separator = id.indexOf('_');
+        if (separator < 0) return null;
+        String source = TRACK_SOURCES.get(id.substring(0, separator));
+        if (source == null || !sources.contains(source)) return null;
+        String providerId = id.substring(separator + 1);
         String declared = string(row.get("source"));
-        if (!sources.contains(source) || (!declared.isEmpty() && !source.equals(declared))) return null;
+        if (!declared.isEmpty() && !source.equals(declared)) return null;
+        switch (source) {
+            case "netease" -> { if (!numeric(providerId)) return null; }
+            case "qq", "migu" -> { if (!ALPHANUMERIC_ID.matcher(providerId).matches()) return null; }
+            case "kuwo" -> {
+                if (providerId.startsWith("MUSIC_")) providerId = providerId.substring("MUSIC_".length());
+                if (!numeric(providerId)) return null;
+            }
+            case "kugou" -> {
+                if (!KUGOU_HASH.matcher(providerId).matches()) return null;
+                providerId = providerId.toLowerCase(Locale.ROOT);
+            }
+            case "bilibili" -> {
+                if (!providerId.startsWith("v_")) return null;
+                var video = BILIBILI_VIDEO.matcher(providerId.substring(2));
+                if (!video.matches()) return null;
+                String cid = video.group(2);
+                providerId = cid == null ? video.group(1) : video.group(1) + "_c" + cid;
+            }
+            default -> throw new IllegalStateException("Unknown Listen 1 provider");
+        }
         String title = label(row.get("title"));
-        return new OnlineTrack(source, providerId, providerId, title.isEmpty() ? providerId : title,
+        String mediaId = providerId;
+        if ("migu".equals(source) && row.get("song_id") instanceof JsonPrimitive songId
+                && ALPHANUMERIC_ID.matcher(songId.getAsString()).matches()) {
+            mediaId = songId.getAsString();
+        }
+        return new OnlineTrack(source, providerId, mediaId, title.isEmpty() ? providerId : title,
                 label(row.get("artist")), label(row.get("album")), 0);
+    }
+
+    private static boolean numeric(String value) {
+        return NUMERIC_ID.matcher(value).matches() && (value.length() < 19
+                || value.compareTo(Long.toString(Long.MAX_VALUE)) <= 0);
     }
 
     private static String string(JsonElement value) {

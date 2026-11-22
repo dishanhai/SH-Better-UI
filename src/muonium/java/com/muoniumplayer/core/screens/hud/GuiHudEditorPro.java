@@ -119,9 +119,6 @@ public class GuiHudEditorPro extends GuiScreen {
     /** 搜索结果跳转后目标行的高亮脉冲时长。 */
     private static final long FLASH_MS = 900L;
 
-    private static final int INFO_BASE_W = 230;
-    private static final int INFO_BASE_H = 56;
-
     /** 入场时面板从「低 10 像素」升上来。位移量刻意小：大幅度滑入在只有半秒的界面里显得拖沓。 */
     private static final int INTRO_RISE = 10;
     /** 切分类时内容从行进方向那一侧滑入的幅度。只作用于绘制，不动命中矩形。 */
@@ -422,6 +419,7 @@ public class GuiHudEditorPro extends GuiScreen {
 
     @Override
     public void initGui() {
+        stage.cancelGesture();
         Keyboard.enableRepeatEvents(true);
         if (scrollByCategory == null || scrollByCategory.length != HudSettingsModel.categories().length) {
             scrollByCategory = new int[HudSettingsModel.categories().length];
@@ -441,6 +439,7 @@ public class GuiHudEditorPro extends GuiScreen {
 
     @Override
     public void onGuiClosed() {
+        stage.cancelGesture();
         if (settingsDirty) {
             HudConfig.save();
             settingsDirty = false;
@@ -534,8 +533,6 @@ public class GuiHudEditorPro extends GuiScreen {
                 updateSliderWhileDragging(mouseX);
             }
 
-            boolean lmb = !retiring && !resetConfirmationVisible && !draggingPanel && Mouse.isButtonDown(0);
-
             // ==== 两块 HUD 的实时预览与舞台交互（面板之外的区域） ====
             //
             // HUD 预览段与真实渲染同轴：widget 的位置/尺寸走布局轴（getLayoutWidth/Height，
@@ -545,31 +542,24 @@ public class GuiHudEditorPro extends GuiScreen {
             int hudSpaceWidth = (int) RenderSystem.getLayoutWidth();
             int hudSpaceHeight = (int) RenderSystem.getLayoutHeight();
 
-            int infoW = (int) (INFO_BASE_W * HudConfig.infoScale);
-            int infoH = (int) (INFO_BASE_H * HudConfig.infoScale);
-            int infoX = (int) (HudConfig.infoX * (hudSpaceWidth - infoW));
-            int infoY = (int) (HudConfig.infoY * (hudSpaceHeight - infoH));
-            int lyricW = (int) (HudConfig.lyricWidth * HudConfig.lyricScale);
-            int lyricH = (int) (HudConfig.lyricHeight * HudConfig.lyricScale);
-            int lyricX = (int) (HudConfig.lyricX * (hudSpaceWidth - lyricW));
-            int lyricY = (int) (HudConfig.lyricY * (hudSpaceHeight - lyricH));
-            int[] infoRect = { infoX, infoY, infoW, infoH };
-            int[] lyricRect = { lyricX, lyricY, lyricW, lyricH };
-            // 舞台自己判定点选/拖动/缩放并写回 HudConfig；松手有改动时才落一次盘。
-            // 鼠标坐标已在上面的 adaptive 分支换算成布局轴，与 rect 同轴。
-            boolean stageDirty = stage.update(lmb && !uiBusy, uiBusy ? 0 : wheel, mouseX, mouseY,
-                    infoRect, lyricRect, new int[] { INFO_BASE_W, INFO_BASE_H }, hudSpaceWidth, hudSpaceHeight);
-            if (stageDirty) HudConfig.save();
+            if (!mc.isWindowActive() || retiring) {
+                stage.cancelGesture();
+            } else {
+                if (Mouse.isButtonDown(0)) stage.drag(mouseX, mouseY, hudSpaceWidth, hudSpaceHeight);
+                if (!uiBusy && stage.scroll(wheel, mouseX, mouseY, hudSpaceWidth, hudSpaceHeight)) HudConfig.save();
+            }
+            int[] infoRect = widgetRect(HudOverlayStage.Kind.INFO);
+            int[] lyricRect = widgetRect(HudOverlayStage.Kind.LYRICS);
 
             if (hasLiveInfoPreview()) {
                 renderLiveInfoPreview(info);
             } else {
-                drawInfoPlaceholder(fr, infoX, infoY, infoW, infoH);
+                drawInfoPlaceholder(fr, infoRect[0], infoRect[1], infoRect[2], infoRect[3]);
             }
             if (hasLiveLyricsPreview()) {
-                renderLiveLyricsPreview(lyrics, lyricX, lyricY);
+                renderLiveLyricsPreview(lyrics, lyricRect[0], lyricRect[1]);
             } else {
-                drawLyricsPlaceholder(fr, lyricX, lyricY, lyricW, lyricH);
+                drawLyricsPlaceholder(fr, lyricRect[0], lyricRect[1], lyricRect[2], lyricRect[3]);
             }
             drawStageOverlays(fr, infoRect, lyricRect, mouseX, mouseY);
 
@@ -1818,10 +1808,16 @@ public class GuiHudEditorPro extends GuiScreen {
         }
 
         if (!isInside(mouseX, mouseY, panelX, panelY, panelW, panelH)) {
-            // 点击面板之外：关掉取色器与搜索焦点，剩下的交给 HUD 舞台（在 drawScreen 里按鼠标状态处理）。
+            // 点击面板之外：关掉取色器与搜索焦点，再把本次按下交给 HUD 舞台。
             editingColor = HudSettingsModel.ColorTarget.NONE;
             openChoice = null;
             if (searchInput != null) searchInput.setFocused(false);
+            CFontRenderer font = FontManager.pf12;
+            if (font != null && mc.isWindowActive()) {
+                stage.press(mouseX, mouseY, (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight(),
+                        font.getStringWidth(titleOf(HudOverlayStage.Kind.INFO)),
+                        font.getStringWidth(titleOf(HudOverlayStage.Kind.LYRICS)));
+            }
             return;
         }
 
@@ -2329,7 +2325,10 @@ public class GuiHudEditorPro extends GuiScreen {
     }
 
     private void mouseReleasedImpl(int mouseX, int mouseY, int state) {
-        if (state == 0 && (draggingSaturationBrightness || draggingHue
+        if (!mc.isWindowActive()) stage.cancelGesture();
+        boolean stageDirty = state == 0 && stage.release(mouseX, mouseY,
+                (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight());
+        if (state == 0 && (stageDirty || draggingSaturationBrightness || draggingHue
                 || draggingSlider != null || settingsDirty)) {
             HudConfig.save();
             settingsDirty = false;
@@ -2439,6 +2438,7 @@ public class GuiHudEditorPro extends GuiScreen {
             openChoice = null;
             return;
         }
+        if (keyCode == Keyboard.KEY_ESCAPE && stage.cancelGesture()) return;
         // 其次是叠加层选中态：ESC = 只退出「编辑这一块」，再按一次才退整个界面。
         if (stage.hasSelection() && keyCode == Keyboard.KEY_ESCAPE) {
             stage.clearSelection();
@@ -2682,16 +2682,7 @@ public class GuiHudEditorPro extends GuiScreen {
 
     /** 从配置算某块叠加层当前的屏幕矩形（布局轴，与 drawScreen 的 HUD 段同一套公式）。 */
     private int[] widgetRect(HudOverlayStage.Kind kind) {
-        if (kind == HudOverlayStage.Kind.INFO) {
-            int w = (int) (INFO_BASE_W * HudConfig.infoScale);
-            int h = (int) (INFO_BASE_H * HudConfig.infoScale);
-            return new int[] { (int) (HudConfig.infoX * (RenderSystem.getLayoutWidth() - w)),
-                    (int) (HudConfig.infoY * (RenderSystem.getLayoutHeight() - h)), w, h };
-        }
-        int w = (int) (HudConfig.lyricWidth * HudConfig.lyricScale);
-        int h = (int) (HudConfig.lyricHeight * HudConfig.lyricScale);
-        return new int[] { (int) (HudConfig.lyricX * (RenderSystem.getLayoutWidth() - w)),
-                (int) (HudConfig.lyricY * (RenderSystem.getLayoutHeight() - h)), w, h };
+        return HudOverlayStage.widgetRect(kind, (int) RenderSystem.getLayoutWidth(), (int) RenderSystem.getLayoutHeight());
     }
 
     private int widgetPopoverH() {
@@ -2720,10 +2711,8 @@ public class GuiHudEditorPro extends GuiScreen {
      * 几何全部来自舞台，这里只负责像素。
      */
     private void drawStageOverlays(CFontRenderer fr, int[] infoRect, int[] lyricRect, int mouseX, int mouseY) {
-        drawHudSelection(fr, "歌曲信息", infoRect[0], infoRect[1], infoRect[2], infoRect[3],
-                stage.selected() == HudOverlayStage.Kind.INFO ? INFO_ACCENT : 0x667DD3FC);
-        drawHudSelection(fr, "桌面歌词", lyricRect[0], lyricRect[1], lyricRect[2], lyricRect[3],
-                stage.selected() == HudOverlayStage.Kind.LYRICS ? LYRICS_ACCENT : 0x66A78BFA);
+        drawHudSelection(fr, HudOverlayStage.Kind.INFO, infoRect, 0x667DD3FC);
+        drawHudSelection(fr, HudOverlayStage.Kind.LYRICS, lyricRect, 0x66A78BFA);
 
         if (!stage.hasSelection()) return;
         int[] r = stage.selected() == HudOverlayStage.Kind.INFO ? infoRect : lyricRect;
@@ -2883,11 +2872,13 @@ public class GuiHudEditorPro extends GuiScreen {
         drawCenteredText(fr, "平滑动画与逐字染色预览", center, y + Math.max(23, h / 2 + 3), 0xFF9C91B8);
     }
 
-    private void drawHudSelection(CFontRenderer fr, String title, int x, int y, int w, int h, int accent) {
-        drawDashedBorder(x, y, w, h, accent);
-        int labelY = Math.max(14, y - 5);
+    private void drawHudSelection(CFontRenderer fr, HudOverlayStage.Kind kind, int[] rect, int inactiveAccent) {
+        int x = rect[0];
+        int accent = stage.selected() == kind || stage.isEngaged(kind) ? accentOf(kind) : inactiveAccent;
+        drawDashedBorder(x, rect[1], rect[2], rect[3], accent);
+        int labelY = HudOverlayStage.labelY(rect);
         drawIcon(FontManager.settingsIcon24, HudSettingsIcons.MOVE, x + 13, labelY + 4, accent);
-        drawText(fr, title, x + 21, labelY, 0xFFE8EDF6);
+        drawText(fr, titleOf(kind), x + 21, labelY, 0xFFE8EDF6);
     }
 
     // ==================== 外部界面切换 ====================

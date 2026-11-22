@@ -54,6 +54,23 @@ class SpectrumTransformTest {
         for(float value:result) assertEquals(0f,value,.0001);
     }
     @Test
+    void stereoPowerIsIndependentOfChannelOrderAndPolarity() {
+        var transform = new SpectrumTransform();
+        float[] left = tone(774, 48000, .35);
+        float[] right = tone(3000, 48000, .15);
+        for (int i = 0; i < right.length; i++) {
+            right[i] += (float) (.2 * Math.cos(2 * Math.PI * 774 * i / 48000));
+        }
+        float[] reference = new float[SpectrumTransform.BANDS];
+        float[] actual = new float[SpectrumTransform.BANDS];
+        transform.analyze(left, right, 48000, reference);
+        transform.analyze(right, left, 48000, actual);
+        assertArrayEquals(reference, actual, .00001f);
+        for (int i = 0; i < right.length; i++) right[i] = -right[i];
+        transform.analyze(left, right, 48000, actual);
+        assertArrayEquals(reference, actual, .00001f);
+    }
+    @Test
     void changingSampleRateStillMapsFrequencyRatherThanSampleIndex() {
         for(int rate:new int[]{32000,44100,48000,96000}) {
             SpectrumTransform transform=new SpectrumTransform();

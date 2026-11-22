@@ -47,6 +47,7 @@ public final class ConfigPaths {
     public static final File HUD = new File(CONFIG_DIRECTORY, "hud.json");
     public static final File PLAYER = new File(CONFIG_DIRECTORY, "player.json");
     public static final File THEME = new File(CONFIG_DIRECTORY, "theme.json");
+    public static final Path SEARCH_HISTORY = DATA_ROOT.toPath().resolve("search-history.json");
 
     /**
      * 触屏手势层（拖动滚动 / 松手触发）的旋钮。
@@ -452,9 +453,6 @@ public final class ConfigPaths {
      * 把 {@code enabled} 改成 {@code false} 就是彻底关掉更新检查（连网络都不会打）。</p>
      */
     public static final File UPDATE_NOTICE = new File(CONFIG_DIRECTORY, "update_notice.json");
-
-    /** Local startup sponsorship reminder count and suppression; never part of the remote manifest. */
-    public static final File SPONSOR_NOTICE = new File(CONFIG_DIRECTORY, "sponsor_notice.json");
 
     /**
      * 公告中心的已读记账与清单缓存。

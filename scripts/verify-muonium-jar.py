@@ -14,6 +14,12 @@ PORTS = {
     "neoforge-26.1.2": "neoforge-26.1.2/src/muonium",
     "neoforge-26.2": "neoforge-26.2/src/muonium",
 }
+REMOVED_SPONSORSHIP_CLASSES = {
+    "com/muoniumplayer/core/screens/ncm/SponsorNoticeOverlay",
+    "com/muoniumplayer/core/update/SponsorNotice",
+    "com/muoniumplayer/core/update/AnnouncementImageCache",
+}
+SPONSORSHIP_RESOURCE_DIR = "assets/muonium/textures/sponsor/"
 
 
 def expected_entries(port):
@@ -44,6 +50,12 @@ def upstream_classes(checkout, port):
     apple = "com/muoniumplayer/core/ncm/apple/"
     replaced = {apple + name + ".class" for name in
                 ("AppleNativeEngine", "media/AppleCencDecryptor", "media/AppleSongAssembler", "protocol/AppleWidevineCdm")}
+    replaced.update({
+        "com/muoniumplayer/core/screens/GuiAnnouncements.class",
+        "com/muoniumplayer/core/screens/ncm/AnnouncementMotion.class",
+        "com/muoniumplayer/core/screens/ncm/AnnouncementOverlay.class",
+        "com/muoniumplayer/core/update/AnnouncementChecker.class",
+    })
     classes = set()
     for root in roots:
         if not root.is_dir():
@@ -51,7 +63,7 @@ def upstream_classes(checkout, port):
         for file in root.rglob("*.java"):
             if file.name != "package-info.java":
                 classes.add(file.relative_to(root).with_suffix(".class").as_posix())
-    return classes - replaced
+    return classes - replaced - {name + ".class" for name in REMOVED_SPONSORSHIP_CLASSES}
 
 
 def upstream_resources(checkout, port):
@@ -61,12 +73,13 @@ def upstream_resources(checkout, port):
     excluded = {"muonium/fonts/" + font for font in
                 ("sfregular.otf", "sfbold.otf", "pf_normal.ttf", "pf_middleblack.ttf")}
     excluded.add("muonium/apple/widevine_device.wvd")
-    user_assets = ("muonium/yrc/", "com/muoniumplayer/viper/kernels/", "com/muoniumplayer/viper/vhe/")
+    excluded_dirs = ("muonium/yrc/", "com/muoniumplayer/viper/kernels/",
+                     "com/muoniumplayer/viper/vhe/", SPONSORSHIP_RESOURCE_DIR)
     for root in [checkout / "muonium-common/src/main/resources", tree / "src/main/resources",
                  tree / loader / "src/main/resources"]:
         for file in root.rglob("*"):
             path = file.relative_to(root).as_posix()
-            if file.is_file() and path not in host_files | excluded and not path.startswith(user_assets):
+            if file.is_file() and path not in host_files | excluded and not path.startswith(excluded_dirs):
                 yield path
 
 
@@ -111,6 +124,9 @@ def main():
                         for mixin in mixins["client"])
         missing = sorted(expected - names)
         unexpected = sorted(name for name in names if name == "muonium/apple/widevine_device.wvd"
+                            or (name.startswith(SPONSORSHIP_RESOURCE_DIR) and not name.endswith("/"))
+                            or (name.endswith(".class")
+                                and name.removesuffix(".class").partition("$")[0] in REMOVED_SPONSORSHIP_CLASSES)
                             or (name.startswith("com/muoniumplayer/viper/kernels/") and name.endswith(".irs"))
                             or (name.startswith("com/muoniumplayer/viper/vhe/") and name.endswith(".f32"))
                             or name.startswith(("com/dishanhai/sh_better_ui/smoke/", "com/muoniumplayer/qa/"))

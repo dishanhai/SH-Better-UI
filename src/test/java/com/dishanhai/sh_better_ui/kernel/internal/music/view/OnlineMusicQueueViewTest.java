@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextControl;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTransportControl;
+import com.dishanhai.sh_better_ui.kernel.api.music.presentation.MusicArtworkGrid;
 import com.dishanhai.sh_better_ui.client.lyrics.core.lyric.LyricTimeline;
 import org.junit.jupiter.api.Test;
 import java.lang.reflect.*;
@@ -14,6 +15,9 @@ class OnlineMusicQueueViewTest {
     private static class Fixture {
         OnlineTrack playing;
         final List<java.util.concurrent.CompletableFuture<OnlineArtistTracks>> artistRequests=new ArrayList<>();
+        java.util.concurrent.CompletableFuture<OnlineArtistOverview> overviewRequest;
+        OnlineAlbum requestedAlbum;
+        java.util.concurrent.CompletableFuture<OnlineAlbumDetail> albumRequest;
         final List<Integer> searchPages = new ArrayList<>(), playlistPages = new ArrayList<>();
         OnlineMusicQueue persistent;
         List<String> providers=List.of("netease","qq");
@@ -22,6 +26,13 @@ class OnlineMusicQueueViewTest {
         OnlineMusicPlayer.Snapshot snapshotOverride;
         final OnlineMusicPlayer player = (OnlineMusicPlayer) Proxy.newProxyInstance(getClass().getClassLoader(), new Class[]{OnlineMusicPlayer.class}, (proxy, method, args) -> switch(method.getName()) {
             case "supportsArtistTracks" -> true;
+            case "supportsArtistOverview" -> overviewRequest != null;
+            case "artistOverview" -> overviewRequest;
+            case "supportsAlbumDetail" -> true;
+            case "albumDetail" -> {
+                requestedAlbum = (OnlineAlbum) args[0];
+                yield albumRequest = new java.util.concurrent.CompletableFuture<>();
+            }
             case "artistTracks" -> {var request=new java.util.concurrent.CompletableFuture<OnlineArtistTracks>();artistRequests.add(request);yield request;}
             case "search" -> { searchPages.add((Integer) args[2]); yield new java.util.concurrent.CompletableFuture<List<OnlineTrack>>(); }
             case "playlists" -> { playlistPages.add((Integer) args[1]); yield new java.util.concurrent.CompletableFuture<List<OnlinePlaylist>>(); }
@@ -45,7 +56,7 @@ class OnlineMusicQueueViewTest {
                 if(args==null)yield this.crossfade;
                 this.crossfade=(int)args[0];this.crossfadeCommits++;yield null;
             }
-            default -> null;
+            default -> method.isDefault() ? java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args) : null;
         });
         int crossfade,crossfadeCommits;
         boolean nativeCrossfade, signedIn;
@@ -821,7 +832,7 @@ class OnlineMusicQueueViewTest {
             case "playlists"->List.of(new OnlinePlaylist("qq","new","New account list",1));
             case "supportsLikes"->false;
             case "credentials"->null;
-            default->null;
+            default->method.isDefault() ? java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args) : null;
         }));
         var constructor=Class.forName("com.dishanhai.sh_better_ui.kernel.internal.music.OnlinePlayerSession").getDeclaredConstructor(List.class);
         constructor.setAccessible(true);return (OnlineMusicPlayer)constructor.newInstance(providers);
@@ -1222,6 +1233,99 @@ class OnlineMusicQueueViewTest {
         assertEquals("edited draft", field(other,"query"));
         assertEquals(List.of(), field(other,"results"));
     }
+    @Test void trackCreditsOpenTheirOwnDetailsAndReturnToSearch() throws Exception {
+        var f = new Fixture();
+        f.view.layout(new Host());
+        var singer = new OnlineArtist("qq", "singer1", "Artist");
+        var album = new OnlineAlbum("qq", "album1", "Release", "", "2020-01-01");
+        var song = new OnlineTrack("qq", "song1", "song1", "Song", singer.name(), album.name(), 1000, "",
+                List.of(singer), album);
+        var results = new ArrayList<>(Collections.nCopies(30, A));
+        results.set(1, song);
+        setField(f.view, "results", List.copyOf(results));
+        setField(f.view, "first", 1);
+        call(f.view, "updateRows", new Class<?>[0]);
+        Object credits = ((List<?>) field(f.view, "searchCredits")).get(0);
+        var artistLink = (MusicTextControl) field(credits, "artist");
+        var albumLink = (MusicTextControl) field(credits, "album");
+        var playRow = (MusicTextControl) ((List<?>) field(f.view, "resultRows")).get(0);
+        assertTrue(artistLink.visible && artistLink.active && albumLink.visible && albumLink.active);
+        assertTrue(artistLink.getX() + artistLink.getWidth() <= albumLink.getX());
+        assertTrue(playRow.getY() + playRow.getHeight() <= albumLink.getY());
+
+        albumLink.onPress();
+        assertEquals(album, f.requestedAlbum);
+        var detail = (ArtistDetailPanel) field(f.view, "artistDetail");
+        assertEquals(album.name(), detail.heading().getString());
+        f.albumRequest.complete(new OnlineAlbumDetail(album, List.of(singer), "", List.of(song)));
+        var model = (ArtistDetailModel) field(field(detail, "entry"), "model");
+        model.poll();
+        call(detail, "refresh", new Class<?>[0]);
+        ((MusicTextControl) field(detail, "credit")).onPress();
+        assertEquals(singer.name(), detail.heading().getString());
+        assertFalse(f.view.permitsScreenClose());
+        assertEquals(album.name(), detail.heading().getString());
+        assertTrue(f.artistRequests.get(0).isCancelled());
+        assertFalse(f.view.permitsScreenClose());
+        assertEquals("SEARCH", field(f.view, "page").toString());
+        assertEquals(1, field(f.view, "first"));
+
+        artistLink.onPress();
+        assertEquals(2, f.artistRequests.size());
+        assertEquals(singer.name(), detail.heading().getString());
+        assertFalse(f.view.permitsScreenClose());
+        assertTrue(f.artistRequests.get(1).isCancelled());
+        assertNull(f.playing);
+    }
+
+    @Test void albumGridOpensScrolledReleaseAndRestoresTheAlbumRow() throws Exception {
+        var f = new Fixture();
+        f.overviewRequest = new java.util.concurrent.CompletableFuture<>();
+        var detail = new ArtistDetailPanel(f.player);
+        var host = new Host();
+        detail.build(host, host.viewport());
+        detail.open(new OnlineArtist("qq", "singer1", "Artist"));
+        var albums = java.util.stream.IntStream.range(0, 13)
+                .mapToObj(i -> new OnlineAlbum("qq", "album" + i, "Release " + i, "", "2020-01-01")).toList();
+        f.overviewRequest.complete(new OnlineArtistOverview("", 0, "", albums, albums.size(), false));
+        ((ArtistDetailModel) field(field(detail, "entry"), "model")).poll();
+        call(detail, "refresh", new Class<?>[0]);
+        var tabs = (List<?>) field(detail, "tabs");
+        ((MusicTextControl) tabs.get(2)).onPress();
+        var grid = (MusicArtworkGrid) field(detail, "albumGrid");
+        assertEquals(4, grid.columns());
+        var scroll = (OnlineMusicScrollRegion) field(detail, "scroll");
+        scroll.setFocused(true);
+        assertTrue(scroll.keyPressed(org.lwjgl.glfw.GLFW.GLFW_KEY_END, 0, 0));
+        int firstRow = (int) field(detail, "first");
+        assertTrue(firstRow > 0);
+        var cards = (List<?>) field(detail, "albumCards");
+        var firstCard = (MusicTextControl) cards.get(0);
+        var expected = albums.get(firstRow * grid.columns());
+        assertEquals(expected.name(), firstCard.getMessage().getString());
+        firstCard.onPress();
+        assertEquals(expected, f.requestedAlbum);
+        assertTrue(detail.back());
+        assertEquals(firstRow, field(detail, "first"));
+        assertEquals(expected.name(), firstCard.getMessage().getString());
+    }
+
+    @Test void stockAppearanceRouteOpensFromAccountsAndReturnsFocus() throws Exception {
+        var f = new Fixture();
+        var host = new Host();
+        f.view.layout(host);
+        var pages = f.view.getClass().getDeclaredField("page").getType();
+        var accounts = Arrays.stream(pages.getEnumConstants()).filter(page -> page.toString().equals("ACCOUNTS"))
+                .findFirst().orElseThrow();
+        call(f.view, "show", new Class<?>[]{pages}, accounts);
+        var entry = (MusicTextControl) field(f.view, "musicAppearanceButton");
+        entry.onPress();
+        assertEquals("APPEARANCE", field(f.view, "page").toString());
+        assertFalse(f.view.permitsScreenClose());
+        assertEquals(accounts, field(f.view, "page"));
+        assertSame(entry, host.screen().getFocused());
+    }
+
     @Test void artistEscCancelsAndReturnsToOriginalArtworkStage() throws Exception {
         var f=new Fixture();var host=new Host();f.view.layout(host);
         var stageField=f.view.getClass().getDeclaredField("stagePage");stageField.setAccessible(true);

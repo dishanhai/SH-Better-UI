@@ -63,8 +63,11 @@ public final class PlayerIconAssets {
             case Sequential:
                 return PLAY_MODE_SEQUENTIAL;
             case Random:
+            case ShuffleOnce:
+            case ShuffleAll:
                 return PLAY_MODE_RANDOM;
             case LoopSingle:
+            case ShuffleOne:
                 return PLAY_MODE_SINGLE_LOOP;
             case LoopInList:
             default:

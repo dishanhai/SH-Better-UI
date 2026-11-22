@@ -17,6 +17,7 @@ public final class MusicTypography {
     public static final int LINE_HEIGHT = 12;
     private static final SelectionCache SELECTION = new SelectionCache();
     private MusicTypography() {}
+    public static void narrate(Component message) { Minecraft.getInstance().getNarrator().sayNow(message); }
     public static void resourcesReloaded() { SELECTION.invalidate(); }
     static final class SelectionCache {
         private Object manager; private String pack; private boolean legacy;

@@ -33,6 +33,8 @@ import java.util.concurrent.CopyOnWriteArrayList;
  */
 public final class LocalPlaylistStore {
 
+    public enum AddResult { ADDED, ALREADY_PRESENT, UNAVAILABLE, SAVE_FAILED }
+
     private static final Object LOCK = new Object();
     private static final Gson GSON = new GsonBuilder().disableHtmlEscaping().create();
 
@@ -44,28 +46,34 @@ public final class LocalPlaylistStore {
 
     /** 建一张空的本地歌单并立刻落盘。重名不拦：用户想要两张都叫「跑步」的单子是合理需求。 */
     public static PlayList create(String name) {
+        return create(name, null);
+    }
+
+    /** 用一次持久化操作创建歌单，可同时保存第一首歌。 */
+    public static PlayList create(String name, Music firstTrack) {
         String title = name == null ? "" : name.trim();
         if (title.isEmpty()) {
             throw new IllegalArgumentException("歌单名不能为空");
         }
         load();
-        long id = nextId();
-        // 8 个参数是 PlayList 的 @RequiredArgsConstructor：id、名字、封面、曲目数、播放数、
-        // 创建者、描述、创建时间。本地单没有封面（用第一首歌的专辑封面顶上），也没有创建者。
-        PlayList playlist = new PlayList(id, title, "", 0, 0L, null, "", System.currentTimeMillis());
-        playlist.setPlatform(MusicPlatform.NETEASE);
-        playlist.setPlatformPlaylistId("local:" + id);
-        playlist.setLocalPlaylist(true);
-        playlist.musics = new CopyOnWriteArrayList<>();
-        // 这两个标志位是仓库里现成的「曲目已经在手上，别再回上游拉」的写法（见 searchMode 那条路径）：
-        // getMusics / loadMusicsWithCallback 会在它们面前早返回，queryMusics 整条链根本不会被调到。
-        playlist.musicsQueried = true;
-        playlist.musicsLoaded = true;
         synchronized (LOCK) {
+            long id = nextId();
+            PlayList playlist = new PlayList(id, title, "", firstTrack == null ? 0 : 1,
+                    0L, null, "", System.currentTimeMillis());
+            playlist.setPlatform(MusicPlatform.NETEASE);
+            playlist.setPlatformPlaylistId("local:" + id);
+            playlist.setLocalPlaylist(true);
+            playlist.musics = new CopyOnWriteArrayList<>();
+            if (firstTrack != null) playlist.musics.add(firstTrack);
+            playlist.musicsQueried = true;
+            playlist.musicsLoaded = true;
             PLAYLISTS.put(id, playlist);
-            save();
+            if (!save()) {
+                PLAYLISTS.remove(id);
+                throw new java.io.UncheckedIOException(new java.io.IOException("Local playlist write failed"));
+            }
+            return playlist;
         }
-        return playlist;
     }
 
     /**
@@ -137,17 +145,23 @@ public final class LocalPlaylistStore {
      * @return 真的加进去了返回 true；这一首本来就在、或目标不是本地单，返回 false
      */
     public static boolean addTrack(PlayList playlist, Music music) {
-        if (playlist == null || music == null || !playlist.isLocalPlaylist()) return false;
+        return addTrackWithResult(playlist, music) == AddResult.ADDED;
+    }
+
+    public static AddResult addTrackWithResult(PlayList playlist, Music music) {
+        if (!isLocal(playlist) || music == null) return AddResult.UNAVAILABLE;
         load();
-        boolean added;
         synchronized (LOCK) {
-            if (!PLAYLISTS.containsKey(playlist.getId())) return false;
-            if (indexOf(playlist.getMusics(), music) >= 0) return false;
-            playlist.getMusics().add(music);
-            added = true;
-            save();
+            PlayList current = PLAYLISTS.get(playlist.getId());
+            if (current == null) return AddResult.UNAVAILABLE;
+            var tracks = current.getMusics();
+            if (indexOf(tracks, music) >= 0) return AddResult.ALREADY_PRESENT;
+            int index = tracks.size();
+            tracks.add(music);
+            if (save()) return AddResult.ADDED;
+            tracks.remove(index);
+            return AddResult.SAVE_FAILED;
         }
-        return added;
     }
 
     /** 从本地歌单里移除一首。只动本机，不碰任何上游。 */
@@ -231,7 +245,7 @@ public final class LocalPlaylistStore {
         }
     }
 
-    private static void save() {
+    private static boolean save() {
         try {
             JsonArray items = new JsonArray();
             for (PlayList playlist : PLAYLISTS.values()) {
@@ -240,8 +254,9 @@ public final class LocalPlaylistStore {
             JsonObject root = new JsonObject();
             root.add("playlists", items);
             JsonConfigStorage.writeObject(ConfigPaths.LOCAL_PLAYLISTS, GSON, root);
-        } catch (Throwable ignored) {
-            // 写失败只影响下次启动还记不记得，不该让「加这首歌」这件事当场失败。
+            return true;
+        } catch (java.io.IOException | RuntimeException ignored) {
+            return false;
         }
     }
 

@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.kernel.internal.PlayingTrackPages;
 
 import java.awt.Color;
@@ -13,12 +14,22 @@ import com.muoniumplayer.core.ncm.music.QishuiBackend;
 import com.muoniumplayer.core.ncm.music.QishuiMusicService;
 import com.muoniumplayer.core.ncm.music.Quality;
 import com.muoniumplayer.core.ncm.music.dto.Music;
+import com.muoniumplayer.core.rendering.FoliaLucideIcons;
+import com.muoniumplayer.core.rendering.HudSettingsIcons;
 import com.muoniumplayer.core.rendering.RGBA;
 import com.muoniumplayer.core.rendering.entities.impl.ScrollText;
 import com.muoniumplayer.core.rendering.font.CFontRenderer;
 import com.muoniumplayer.core.rendering.font.GlyphInkMetrics;
+import com.muoniumplayer.core.rendering.ui.container.Panel;
+import com.muoniumplayer.core.rendering.ui.widgets.IconWidget;
+import com.muoniumplayer.core.rendering.ui.widgets.LucideIconWidget;
+import com.muoniumplayer.core.screens.hud.MuoniumHudProviders;
+import com.muoniumplayer.core.screens.ncm.panels.LikeButton;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
+import com.muoniumplayer.core.settings.HudConfig;
 import com.muoniumplayer.core.utils.timing.Timer;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
 
 /**
  * 全屏播放页封面下方的曲目信息块。
@@ -44,7 +55,13 @@ import com.muoniumplayer.party.ui.PartyIcons;
  */
 final class NowPlayingInfo implements SharedRenderingConstants {
 
-    enum Action { EFFECTS, ARTIST, ALBUM, PLAYLIST }
+    enum Action {
+        FAVORITE, FLOATING_LYRICS, MORE, EFFECTS, ARTIST, ALBUM, PLAYLIST;
+
+        boolean isTitleAction() {
+            return this == FAVORITE || this == FLOATING_LYRICS || this == MORE;
+        }
+    }
 
     private record Hit(Action action, double x, double y, double width, double height) {
         boolean contains(double px, double py) {
@@ -52,15 +69,48 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         }
     }
 
-    private final List<Hit> hits = new ArrayList<>(3);
+    private final List<Hit> hits = new ArrayList<>(6);
+    private final Panel titleActions = new Panel();
+    private final Panel favoriteSlot = new Panel();
+    private final LucideIconWidget floatingLyrics = new LucideIconWidget(() -> FoliaLucideIcons.CAPTION,
+            () -> HudSettingsIcons.CAPTION, FontManager.settingsIcon32, 0, 0, LikeButton.BOX, LikeButton.BOX);
+    private final IconWidget more = new IconWidget("⋯", FontManager.pf18bold, 0, 0, LikeButton.BOX, LikeButton.BOX);
+    private Music favoriteTrack;
+    private LikeButton favorite;
     private Action focused;
     private boolean pointerDown;
     private double mouseX;
     private double mouseY;
 
+    NowPlayingInfo() {
+        titleActions.addChild(favoriteSlot, floatingLyrics, more);
+        more.setTooltip(() -> moreLabel().getString());
+        floatingLyrics.setTooltip(() -> floatingLyricsLabel().getString());
+        floatingLyrics.setOnClickCallback((x, y, button) -> {
+            if (button != 0) return false;
+            boolean enabled = !HudConfig.musicLyricsEnabled;
+            MuoniumHudProviders.setLyricsVisible(enabled);
+            MusicTypography.narrate(Component.translatable(
+                    enabled ? "sh_better_ui.muonium.fullscreen.lyrics.enabled"
+                            : "sh_better_ui.muonium.fullscreen.lyrics.disabled"));
+            return true;
+        });
+    }
+
     Action hitAt(double x, double y) {
         for (Hit hit : hits) {
             if (hit.contains(x, y)) return hit.action();
+        }
+        return null;
+    }
+
+    Box menuAnchor() {
+        return anchor(Action.MORE);
+    }
+
+    Box anchor(Action action) {
+        for (Hit hit : hits) {
+            if (hit.action() == action) return new Box(hit.x(), hit.y(), hit.width(), hit.height());
         }
         return null;
     }
@@ -83,7 +133,26 @@ final class NowPlayingInfo implements SharedRenderingConstants {
             return false;
         }
         focused = hits.get(Math.floorMod(next, hits.size())).action();
+        switch (focused) {
+            case FAVORITE -> MusicTypography.narrate(favorite.narration());
+            case FLOATING_LYRICS -> MusicTypography.narrate(floatingLyricsLabel());
+            case MORE -> MusicTypography.narrate(moreLabel());
+            case ARTIST -> MusicTypography.narrate(Component.translatable("sh_better_ui.online_music.artist.choose"));
+            default -> { }
+        }
         return true;
+    }
+
+    void activateTitleAction(Action action) {
+        focused = action;
+        switch (action) {
+            case FAVORITE -> {
+                if (favorite != null) favorite.activate();
+            }
+            case FLOATING_LYRICS -> floatingLyrics.onMouseClicked(floatingLyrics.getWidth() * .5,
+                    floatingLyrics.getHeight() * .5, 0);
+            default -> { }
+        }
     }
 
     Action focusedAction() {
@@ -106,6 +175,8 @@ final class NowPlayingInfo implements SharedRenderingConstants {
      */
     private static final double ICON_BOX = 12.0;
     private static final double ICON_TEXT_GAP = 6.0;
+    private static final double TITLE_ACTION_GAP = 6.0;
+    private static final double MIN_TITLE_WIDTH = 16.0;
 
     /** 各行之上的间距。副标题贴着曲名，其余三行各自成组。 */
     private static final double GAP_SUBTITLE = 4.0;
@@ -164,10 +235,19 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         boolean showAlbum = !album.isEmpty();
         boolean showPlaylist = !playlist.isEmpty();
         boolean showPills = !pills.isEmpty();
+        String name = nonNull(music == null ? null : music.getName());
+        double actionSpace = LikeButton.BOX + TITLE_ACTION_GAP;
+        boolean showMore = music != null && width >= MIN_TITLE_WIDTH + actionSpace;
+        boolean showFloatingLyrics = showMore && width >= MIN_TITLE_WIDTH + 2 * actionSpace;
+        boolean showFavorite = showFloatingLyrics && width >= MIN_TITLE_WIDTH + 3 * actionSpace
+                && LikeButton.canRenderFor(music);
+        int actionCount = (showMore ? 1 : 0) + (showFloatingLyrics ? 1 : 0) + (showFavorite ? 1 : 0);
+        double titleWidth = width - actionCount * actionSpace;
+        double titleHeight = showMore ? Math.max(title.getHeight(), LikeButton.BOX) : title.getHeight();
 
         double bottom;
         while (true) {
-            bottom = y + title.getHeight();
+            bottom = y + titleHeight;
             if (showSubtitle) bottom += GAP_SUBTITLE + subFont.getHeight();
             if (showPills) bottom += GAP_PILLS + PILL_H;
             if (!artist.isEmpty()) bottom += GAP_ARTIST + rowFont.getHeight();
@@ -183,9 +263,14 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         }
 
         double cursor = y;
-        stTitle.render(title, nonNull(music == null ? null : music.getName()), x, cursor, width,
+        stTitle.render(title, name, x, cursor + (titleHeight - title.getHeight()) * .5, titleWidth,
                 RGBA.white(alpha));
-        cursor += title.getHeight();
+        updateFavorite(showFavorite ? music : null);
+        if (showMore) {
+            double buttonX = Math.min(titleWidth, Math.ceil(title.getStringWidthD(name))) + TITLE_ACTION_GAP;
+            renderTitleActions(x, cursor, width, titleHeight, buttonX, showFavorite, showFloatingLyrics, alpha);
+        }
+        cursor += titleHeight;
 
         if (showSubtitle) {
             cursor += GAP_SUBTITLE;
@@ -218,6 +303,53 @@ final class NowPlayingInfo implements SharedRenderingConstants {
             renderIconRow(PartyIcons.QUEUE_MUSIC, stPlaylist, playlist, x, cursor, width, alpha * .82f, Action.PLAYLIST);
         }
         return bottom;
+    }
+
+    private void updateFavorite(Music track) {
+        if (favoriteTrack == track) return;
+        favoriteTrack = track;
+        favoriteSlot.getChildren().clear();
+        favorite = track == null ? null : new LikeButton(favoriteSlot, track, () -> 0);
+    }
+
+    private void renderTitleActions(double x, double y, double width, double height,
+                                    double buttonX, boolean showFavorite, boolean showFloatingLyrics, float alpha) {
+        double box = LikeButton.BOX;
+        double buttonY = (height - box) * .5;
+        titleActions.setBounds(x, y, width, height).setAlpha(alpha);
+        favoriteSlot.setHidden(!showFavorite);
+        if (showFavorite) {
+            favoriteSlot.setBounds(buttonX, buttonY, box, box);
+            drawAction(Action.FAVORITE, x + buttonX, y + buttonY, box, box, alpha);
+            buttonX += box + TITLE_ACTION_GAP;
+        }
+        int secondary = NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT);
+        floatingLyrics.setHidden(!showFloatingLyrics);
+        if (showFloatingLyrics) {
+            boolean active = HudConfig.musicLyricsEnabled;
+            int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT);
+            floatingLyrics.setPosition(buttonX, buttonY);
+            floatingLyrics.setColor(active ? accent : secondary);
+            drawAction(Action.FLOATING_LYRICS, x + buttonX, y + buttonY, box, box, alpha);
+            buttonX += box + TITLE_ACTION_GAP;
+        }
+        more.setPosition(buttonX, buttonY);
+        more.setColor(secondary);
+        drawAction(Action.MORE, x + buttonX, y + buttonY, box, box, alpha);
+        titleActions.renderWidget(mouseX, mouseY, 0);
+    }
+
+    private static Component moreLabel() {
+        return Component.translatable("sh_better_ui.online_music.menu.title");
+    }
+
+    void focusMenuButton() {
+        focused = Action.MORE;
+    }
+
+    private static Component floatingLyricsLabel() {
+        return Component.translatable(HudConfig.musicLyricsEnabled
+                ? "sh_better_ui.muonium.fullscreen.lyrics.hide" : "sh_better_ui.muonium.fullscreen.lyrics.show");
     }
 
     // ──────────────────────────── 取值 ────────────────────────────
@@ -430,9 +562,10 @@ final class NowPlayingInfo implements SharedRenderingConstants {
             // 放不下就整枚不画。画半枚被裁掉的胶囊比少一枚难看得多。
             if (cursor + pillWidth > x + width) break;
 
-            // 一层极淡的底 + 一圈描边。只描边的话，浅色封面会把细线整条吃掉。
-            roundedRect(cursor, y, pillWidth, PILL_H, PILL_RADIUS,
-                    RGBA.color(pill.rgb, alpha * .07f));
+            if (pill.action != Action.EFFECTS) {
+                roundedRect(cursor, y, pillWidth, PILL_H, PILL_RADIUS,
+                        RGBA.color(pill.rgb, alpha * .07f));
+            }
             roundedOutline(cursor, y, pillWidth, PILL_H, PILL_RADIUS, 1.0,
                     awt(pill.rgb, alpha * .32f));
             drawAction(pill.action, cursor, y, pillWidth, PILL_H, alpha);
@@ -475,11 +608,10 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         var hit = new Hit(action, x, y, width, height);
         hits.add(hit);
         boolean hover = hit.contains(mouseX, mouseY);
-        int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT) & 0xFFFFFF;
-        float fill = hover && pointerDown ? .34f : hover || focused == action ? .20f : .08f;
-        roundedRect(x, y, width, height, PILL_RADIUS, RGBA.color(accent, alpha * fill));
-        if (focused == action || hover) {
-            roundedOutline(x, y, width, height, PILL_RADIUS, 1.0, awt(accent, alpha * .82f));
+        boolean selected = focused == action || (action == Action.FLOATING_LYRICS && HudConfig.musicLyricsEnabled);
+        if (selected || hover) {
+            float fill = hover && pointerDown ? .23f : selected ? .16f : .10f;
+            roundedRect(x, y, width, height, PILL_RADIUS, RGBA.white(alpha * fill));
         }
     }
 

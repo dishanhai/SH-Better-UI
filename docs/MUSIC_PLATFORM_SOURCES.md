@@ -102,7 +102,7 @@ var login = new AppleMusicBrowserLogin(projectDeveloperToken, configuredPort);
 - Web 自动管理用户 token：https://developer.apple.com/documentation/applemusicapi/user-authentication-for-musickit
 - 授权账户的地区：https://developer.apple.com/documentation/applemusicapi/get-a-user%27s-storefront
 
-Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, configuredPort)` 使用已配置端口；端口被占用时失败，不悄悄更换 origin。随机端口构造器仅适合 token/授权配置明确支持该来源的测试，不建议为了让它工作而移除 origin 安全限制。Apple 官方开发者论坛 DTS 回复也指出文档没有保证 local origin 是否可接受，并有 Windows Chrome/Edge 授权失败调查，因此仍以真实配置与账号验证为门禁：https://developer.apple.com/forums/thread/853567 。
+游戏会按下节配置绑定固定本地端口。端口被占用时，会显示端口冲突并等待重试。Apple 官方开发者论坛 DTS 回复指出，目前文档未保证 MusicKit 接受本地 origin，Windows Chrome 和 Edge 的授权失败报告仍在调查。实际支持情况以项目令牌和真实账号联调为准。[Apple 开发者论坛](https://developer.apple.com/forums/thread/853567)
 
 ### 游戏客户端账户控件接入
 
@@ -110,7 +110,24 @@ Origin 受限的 developer token 可调用 `new AppleMusicBrowserLogin(token, co
 
 游戏内的个人歌单仍使用已有的「旧版 Cookie 登录」。官方授权后的音乐浏览和播放可在浏览器伴侣中使用。
 
-客户端读取项目维护者部署的短期令牌和端口：环境变量 `SHBUI_APPLE_MUSIC_DEVELOPER_TOKEN`、`SHBUI_APPLE_MUSIC_LOOPBACK_PORT`，或同名用途的 JVM 属性 `shbui.appleMusic.developerToken`、`shbui.appleMusic.loopbackPort`（优先）。推荐从本机受控环境注入，不要把私钥或凭证写进 JAR、整合包、公开配置、日志或工单。端口须匹配项目的授权 origin；仅在项目明确允许随机 origin 的测试环境中设置为 `0`。未配置时应显示说明，不能让玩家用个人 Apple 账号代替。
+启用项目登录服务的发布版会在点击「使用 Apple 账号登录」时向 SHBUI 申请短期应用令牌，然后打开浏览器。玩家只需在 Apple 官方弹窗授权。项目服务收到的是普通令牌请求，Apple 账号凭据和 Music User Token 由浏览器中的 MusicKit 管理。[Apple 用户授权说明](https://developer.apple.com/documentation/applemusicapi/user-authentication-for-musickit)
+
+#### 发布方启用登录
+
+1. 用项目的 Apple Developer 团队建立启用了 MusicKit 的 Media ID 和签名密钥。[Apple 令牌签发说明](https://developer.apple.com/documentation/applemusicapi/generating-developer-tokens)
+2. 在项目服务端设置 `SHBUI_APPLE_MUSIC_TEAM_ID`、`SHBUI_APPLE_MUSIC_KEY_ID` 与 `SHBUI_APPLE_MUSIC_PRIVATE_KEY_FILE`，运行 `node web/scripts/apple-music-token-service.mjs`。服务监听服务器自身的 `127.0.0.1:17833`。通过项目的 HTTPS 反向代理公开 `GET /apple-music/token`，直接返回签名 JWT。服务签发 15 分钟令牌，`origin` 固定为播放器的 `http://127.0.0.1:17832`。
+3. 将完整公开 HTTPS 接口地址写入 GitHub Actions 仓库变量 `SHBUI_APPLE_MUSIC_TOKEN_URL`。本地打包可用同名环境变量。各加载器会把地址打进资源文件，发布后客户端可自动领取和更新令牌。签名私钥保存在服务端。
+
+#### 本地联调覆盖项
+
+维护者也可在 Minecraft 实例的 `config/sh_better_ui-apple-music.properties` 配置预先签好的令牌进行联调。保存后点击「使用 Apple 账号登录」重新读取配置。
+
+```properties
+developerToken=<项目签发的 MusicKit JWT>
+# loopbackPort=17832
+```
+
+客户端按 JVM 属性、环境变量、实例文件的优先顺序读取本地设置。JVM 属性为 `shbui.appleMusic.developerToken` 和 `shbui.appleMusic.loopbackPort`，环境变量为 `SHBUI_APPLE_MUSIC_DEVELOPER_TOKEN` 和 `SHBUI_APPLE_MUSIC_LOOPBACK_PORT`。有效的本地令牌优先。省略端口时采用令牌 `origin` 中首个 `http://127.0.0.1:<端口>`，无 `origin` 时使用 `17832`。显式端口须匹配令牌中的本地 `origin`，`0` 仅用于接受随机端口的测试令牌。
 
 ### 授权原型验证结果（历史记录）
 

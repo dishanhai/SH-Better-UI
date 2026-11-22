@@ -1,8 +1,9 @@
 package com.muoniumplayer.core.ncm.music;
 
+import net.minecraft.network.chat.Component;
+
 /**
- * 歌词检索的四个来源，顺序与标签文案都按
- * {@code LYRIC_MATCH_SOURCES = ['netease', 'amll', 'qq', 'kugou']}。
+ * 手动歌词检索来源。保存的来源标识独立于 {@link LyricSourceMemory} 的自动匹配偏好。
  *
  * <p>为什么用枚举而不是复用 {@link LyricSourceMemory} 的那套 int：两者钉的东西不同。
  * {@code LyricSourceMemory} 钉的是「去哪个<b>库</b>拿」，这里钉的是「拿这一<b>首</b>」，
@@ -16,26 +17,31 @@ package com.muoniumplayer.core.ncm.music;
  */
 public enum LyricSearchSource {
 
-    NETEASE("netease", "网易云音乐", true),
-    AMLL("amll", "AMLLDB", false),
-    QQ("qq", "QQ 音乐", true),
-    KUGOU("kugou", "酷狗音乐", true);
+    NETEASE("netease", "sh_better_ui.online_music.source.netease", true),
+    AMLL("amll", "sh_better_ui.muonium.lyric_match.amll", false),
+    QQ("qq", "sh_better_ui.online_music.source.qq", true),
+    KUGOU("kugou", "sh_better_ui.online_music.source.kugou", true),
+    APPLE("apple", "sh_better_ui.muonium.lyric_match.apple", true);
 
     /** 配置文件里用的稳定 id。改名会让已有的手动钉词全部失效，所以只能是常量。 */
     public final String id;
     /** 界面上标签页显示的名字。 */
-    public final String label;
+    private final String labelKey;
     /** 是否允许用户改写检索词（见类注释里 AMLL 的例外）。 */
     private final boolean manualSearch;
 
-    LyricSearchSource(String id, String label, boolean manualSearch) {
+    LyricSearchSource(String id, String labelKey, boolean manualSearch) {
         this.id = id;
-        this.label = label;
+        this.labelKey = labelKey;
         this.manualSearch = manualSearch;
     }
 
     public boolean supportsManualSearch() {
         return manualSearch;
+    }
+
+    public String displayLabel() {
+        return Component.translatable(labelKey).getString();
     }
 
     /** 未知 id 折回 {@link #NETEASE}，与 {@code LyricSourceMemory.clamp} 同样的「宁可回到默认」立场。 */

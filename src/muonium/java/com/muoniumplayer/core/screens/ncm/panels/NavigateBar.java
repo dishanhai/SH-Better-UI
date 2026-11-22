@@ -6,7 +6,6 @@ import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import lombok.Getter;
 import lombok.Setter;
-import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.interfaces.SharedConstants;
 import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.ncm.api.CloudMusicApi;
@@ -23,7 +22,8 @@ import com.muoniumplayer.core.ncm.music.QishuiMusicService;
 import com.muoniumplayer.core.ncm.music.ImportedPlaylistStore;
 import com.muoniumplayer.core.ncm.music.LocalPlaylistStore;
 import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
-import com.muoniumplayer.core.ncm.music.NeteaseSearchSuggestService;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicChatEntry;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicSearchOverlay;
 import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.download.DownloadCatalog;
@@ -51,7 +51,6 @@ import com.muoniumplayer.core.screens.ncm.SegmentControl;
 import com.muoniumplayer.core.screens.ncm.SheetClock;
 import com.muoniumplayer.core.screens.ncm.SheetHeroRelay;
 import com.muoniumplayer.core.screens.ncm.TransitionCurveCache;
-import com.muoniumplayer.core.utils.KeyboardUtils;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.json.JsonUtils;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
@@ -72,8 +71,8 @@ import java.util.function.Supplier;
  */
 public class NavigateBar extends NCMPanel {
 
-    // 同一播放器重建时复用输入控件，文字、光标、选区、横向滚动与焦点一起保留。
-    final TextFieldWidget searchField;
+    @Getter
+    private final MusicSearchOverlay search;
     private final String sourceIdentity;
     private final boolean sourceChanged;
     private final Map<String, SidebarLayoutMotion.Snapshot> previousGeometry;
@@ -92,24 +91,7 @@ public class NavigateBar extends NCMPanel {
             ScissorClipManager.end();
         }
     };
-    /**
-     * 网易云搜索同时支持单曲和歌单；QQ 内置音源层 目前只提供单曲。
-     */
-    private boolean playlistSearchMode;
     ScrollPanel playlistPanel = new ScrollPanel();
-
-    /**
-     * 这个来源有没有「歌单」这一档搜索。
-     *
-     * <p>这件事原来被写了三遍而且互相对不上：决定可见性的名单含 BILIBILI，决定可点击的那份不含
-     * （于是 B 站下这颗控件看着能点、点了没反应，而 B 站歌单搜索的分支其实早就写好了），
-     * 输入框让宽那一份又只认网易云与酷狗（于是汽水和 B 站下它直接压在输入框文字上）。
-     * 现在只有这一份，可见、可点、让宽三处全部从它推。</p>
-     */
-    private static boolean supportsPlaylistSearch(final MusicPlatform platform) {
-        return platform == MusicPlatform.NETEASE || platform == MusicPlatform.KUGOU
-                || platform == MusicPlatform.QISHUI || platform == MusicPlatform.BILIBILI;
-    }
 
     /**
      * 高亮条从一栏跳到另一栏的基准时长。默认动画速度档（3.0，即最快那一档）下实际走约 300ms。
@@ -154,6 +136,7 @@ public class NavigateBar extends NCMPanel {
     /** 上一帧的时刻，用来把进度换算成真实毫秒。 */
     private long indicatorLastNanos;
     private PlaylistItem homeItem;
+    private PlaylistItem chatItem;
     /**
      * 选中项缓存：高亮条每帧都要问「谁被选中」，原来每次全列表扫描。
      * 选中态只在离散时刻变化，写点必须调 {@link #invalidateSelectionCache()}。
@@ -162,7 +145,6 @@ public class NavigateBar extends NCMPanel {
     private boolean selectionCacheDirty = true;
     /** 快捷操作条上那颗公告按钮。让位判断挂在父组件的渲染里，见 {@link #onRender}。 */
     private SidebarActionButton announcementButton;
-    private SidebarActionButton downloadButton;
     private final List<PlaylistItem> playlistItems = new CopyOnWriteArrayList<>();
 
     /**
@@ -263,50 +245,6 @@ public class NavigateBar extends NCMPanel {
      */
     private long columnHandoffStartedAt;
 
-    // ── 搜索联想 ────────────────────────────────────────────────────────────
-    /** 一条联想行的行高。 */
-    private static final double SUGGEST_ROW_HEIGHT = 17.0;
-    /** 面板上下的内边距。 */
-    private static final double SUGGEST_PADDING = 3.0;
-    /**
-     * 面板左右距侧栏边缘的距离。
-     *
-     * <p>必须小于歌单条目的 4：条目占 x=4 到 width-4，面板窄了就盖不住它，鼠标停在面板上时
-     * 下面那一行的强调色高亮会从两侧露出来。</p>
-     */
-    private static final double SUGGEST_INSET = 3.0;
-    /**
-     * 停止输入多久之后才发请求。
-     *
-     * <p>没有这段静默就会「打一个字发一次请求」：打完「周杰伦」等于三次请求，前两次的结果还没回来
-     * 就已经过期了。180ms 是连续打字的自然间隔之上、又不至于让人觉得卡的一档。</p>
-     */
-    private static final long SUGGEST_DEBOUNCE_MILLIS = 180L;
-
-    private final Panel suggestionPanel = new Panel();
-    /**
-     * 面板打开时铺在搜索栏下方的"点空白处收起"层。
-     *
-     * <p>它的点击回调<b>返回 true 把这一下吃掉</b>。原先返回 false 想做成"顺手收起、点击照常落到
-     * 下面的条目上"，但那正是点击穿透：明明是想关掉联想面板，结果连带切了歌单、开了音乐来源弹窗。
-     * 项目里 {@code ControlsBar#consumeQualityMenuClick} 与 {@code PlayQueuePanel#consumeClick}
-     * 处理同类遮挡时也都是整块吃掉，这里保持一致。</p>
-     */
-    private final Panel suggestionDismissLayer = new Panel();
-    private final List<SuggestionRow> suggestionRows = new ArrayList<>();
-    /** 当前展示的联想结果。只在渲染线程里换引用，异步结果统一经由服务的缓存读回来。 */
-    private List<NeteaseSearchSuggestService.Suggestion> suggestions = Collections.emptyList();
-    private String suggestQuery = "";
-    private long suggestQueryChangedAt;
-    /** 用户主动收起（Esc / 已提交搜索）之后，同一个关键词不再自动弹回来。 */
-    private String suggestDismissedFor;
-    private int suggestHighlight = -1;
-    /** 0 → 1 的展开进度，只用于淡入与轻微下滑。 */
-    private float suggestReveal;
-    private boolean suggestionsVisible;
-    /** 搜索框底边（相对侧栏），联想面板挂在它下面。由搜索框自己的回调写入。 */
-    private double searchBarBottom = 24.0;
-
     public NavigateBar() {
         this(null);
     }
@@ -316,8 +254,6 @@ public class NavigateBar extends NCMPanel {
         this.silentBuild = silentNextBuild;
         silentNextBuild = false;
         this.sourceChanged = previous != null && !this.sourceIdentity.equals(previous.sourceIdentity);
-        this.searchField = previous == null ? new TextFieldWidget(FontManager.pf14bold) : previous.searchField;
-        this.playlistSearchMode = previous != null && previous.playlistSearchMode;
         this.previousGeometry = previous == null ? Collections.emptyMap() : previous.captureGeometry();
         this.previousSections = previous == null ? new LinkedHashMap<>()
                 : new LinkedHashMap<>(previous.sidebarSections);
@@ -327,9 +263,12 @@ public class NavigateBar extends NCMPanel {
         if (previous != null && !this.sourceChanged) {
             this.playlistPanel.actualScrollOffset = previous.playlistPanel.actualScrollOffset;
             this.playlistPanel.targetScrollOffset = previous.playlistPanel.targetScrollOffset;
-            this.suggestDismissedFor = previous.suggestDismissedFor;
         }
         this.layout();
+        this.search = previous != null && !this.sourceChanged
+                ? previous.search.attach(this, this::submitSearch)
+                : new MusicSearchOverlay(this, this.sourceIdentity, previous == null ? null : previous.search,
+                        this::submitSearch);
         // 行级动画整趟静默（silentBuild），换代的故事由这两个整块讲：旧列滑出淡出、
         // 新列滑入。必须排在 layout() 之后——retirementLayer 的视口回调要在装配完成后
         // 才有正确的 top。
@@ -714,8 +653,9 @@ public class NavigateBar extends NCMPanel {
             // 侧栏这块底是<em>压在面板根底之上</em>的第二张底，走玻璃的内层那一档：
             // 它自己那套「液态玻璃减 0.22」只把 0.9 压到 0.68，叠上根底之后仍然是一块不透的黑斑，
             // 而且完全不理设置里的「玻璃浓度」滑块——玩家说的「页面内部有暗色部分」就是这么来的。
-            bg.setAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER,
-                    0.9f - NCMTheme.getLiquidGlassAmount() * 0.22f));
+            bg.setAlpha(NCMScreen.getInstance().hasThemeBackdrop() ? .35f : GlassLook.washAlpha(GlassLook.Surface.PLAYER,
+                    com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient.active()
+                            ? .46f : 0.9f - NCMTheme.getLiquidGlassAmount() * 0.22f));
 
             // 高亮条的布局必须由侧栏来跑，不能挂在高亮条自己的 beforeRenderCallback 上：
             // AbstractWidget#renderWidget 在调用 beforeRenderCallback 之前就会因为 isHidden()
@@ -723,178 +663,19 @@ public class NavigateBar extends NCMPanel {
             // 就在那个回调里。于是首帧一旦因为列表还没完成布局而被判定为不可见，就会永久卡在隐藏
             // 状态——选中项的强调色高亮框再也不会出现。
             this.layoutSelectionIndicator();
-            // 联想面板同理必须由侧栏驱动：它在没有建议时要把自己隐藏起来，而隐藏之后自己的回调就不会
-            // 再被调用，只有父组件的回调能把它显示回来。
-            this.layoutSuggestions();
             // 退场中的旧行同理：它们已经不属于任何列表，没人推进就会永远停在半透明上。
             // 退场由裁剪层自己的布局回调推进，确保这一帧的视口坐标已经就位。
             // 整块幽灵列（音源切换）同一条道理：层坐标就位后才重钉幽灵的位置。
             this.advanceColumnHandoff();
         });
 
-        this.setOnKeyTypedCallback((character, keyCode) -> {
-
-            if (KeyboardUtils.isKeyComboCtrl(keyCode, Keyboard.KEY_F)) {
-                this.searchField.setFocused(true);
-                this.searchField.getTextField().selectAll();
-                return true;
-            }
-
-            return false;
-        });
-
-        RoundedRectWidget searchBar = new RoundedRectWidget();
-        RoundedRectWidget searchBarFocusAnimation = new RoundedRectWidget();
-
-        this.addChild(searchBarFocusAnimation);
-        this.addChild(searchBar);
-
-        searchBarFocusAnimation.setBeforeRenderCallback(() -> {
-            if (!searchField.isFocused()) {
-                searchBarFocusAnimation.setAlpha(0);
-            } else {
-                searchBarFocusAnimation.setAlpha(Interpolations.interpolate(searchBarFocusAnimation.getAlpha(), 1f, .3f));
-                searchBarFocusAnimation.setRadius(4);
-                searchBarFocusAnimation.setColor(NCMScreen.getColor(NCMScreen.ColorType.ACCENT));
-                searchBarFocusAnimation.setBounds(searchBar.getRelativeX(), searchBar.getRelativeY(), searchBar.getWidth(), searchBar.getHeight());
-                searchBarFocusAnimation.expand(1 + 5 * (1 - searchBarFocusAnimation.getAlpha()));
-            }
-        });
-
-        searchBar
-//            .setShouldSetMouseCursor(true)
-                .setBeforeRenderCallback(() -> {
-                    searchBar.setAlpha(1f);
-                    searchBar.setColor(NCMScreen.getColor(NCMScreen.ColorType.BORDER));
-                    searchBar.setMargin(8);
-                    searchBar.setHeight(16);
-                    this.searchBarBottom = searchBar.getRelativeY() + searchBar.getHeight();
-                    searchBar.setRadius(3.5);
-                });
-
-        RoundedRectWidget searchBarBg = new RoundedRectWidget();
-        searchBar.addChild(searchBarBg);
-
-        searchBarBg.setBeforeRenderCallback(() -> {
-            searchBarBg.setMargin(.5);
-            // 压的是这一层自己的底（setFillAlpha 不传给子控件），搜索图标与输入文字保持原样。
-            searchBarBg.setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, .6f));
-            // 再往前一步：这一格本身就是一块小玻璃（贴背景 + 薄折射 + 一道边缘高光）。
-            searchBarBg.setGlassPlate(GlassLook.Surface.PLAYER);
-            searchBarBg.setColor(NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
-            searchBarBg.setRadius(searchBar.getRadius() - .5);
-        });
-
-        LabelWidget lblSearchIcon = new LabelWidget("K", FontManager.music14);
-        searchBar.addChild(lblSearchIcon);
-
-        lblSearchIcon.setBeforeRenderCallback(() -> {
-            lblSearchIcon.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
-            lblSearchIcon.centerVertically();
-            lblSearchIcon.setPosition(lblSearchIcon.getRelativeY(), lblSearchIcon.getRelativeY());
-        });
-
-        // 「歌曲 / 歌单」两半常驻可读，滑块从一侧滑到另一侧。原来那颗 pill 只写着当前这一头，
-        // 要点下去才知道另一头是什么，而且文字、底色、占位提示三处各跳各的。
-        final SegmentControl.Spec modeSpec = new SegmentControl.Spec();
-        modeSpec.y = 1.0;
-        modeSpec.height = 14;
-        modeSpec.radius = 3.5;
-        modeSpec.inset = 2.0;
-        modeSpec.durationMs = 240.0;
-        modeSpec.font = FontManager.pf10bold;
-        // 两半等宽是滑块能滑的前提，所以宽度按两个词里较宽的那个算；只按「歌单」算的话，
-        // 哪天「歌曲」比它宽就会溢出自己那一半。
-        final double modeLabel = Math.max(FontManager.pf10bold.getStringWidthD("歌曲"),
-                FontManager.pf10bold.getStringWidthD("歌单"));
-        final double modeWidth = 2 * (modeLabel + 7.0) + modeSpec.inset * 2;
-        final SegmentControl searchMode = SegmentControl.attach(searchBar, () -> {
-            modeSpec.width = modeWidth;
-            modeSpec.x = Math.max(0, searchBar.getWidth() - modeWidth - 1);
-            return modeSpec;
-        }, () -> playlistSearchMode ? 1 : 0,
-                () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT),
-                () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT),
-                new String[]{"", ""}, new String[]{"歌曲", "歌单"},
-                index -> {
-                    playlistSearchMode = index == 1;
-                    return true;
-                });
-
-        searchBar.addChild(searchField);
-
-        this.searchField.setPlaceholder("搜索歌曲...");
-
-        this.searchField.setOnKeyTypedCallback((character, keyCode) -> {
-            if (this.searchField.isFocused()) {
-                if (keyCode == Keyboard.KEY_ESCAPE) {
-                    // 联想面板开着时，第一次 Esc 只收起面板，第二次才真正退出搜索框。
-                    if (this.suggestionsVisible) {
-                        this.dismissSuggestions();
-                    } else {
-                        this.searchField.setFocused(false);
-                    }
-                    return true;
-                }
-
-                if (keyCode == Keyboard.KEY_DOWN || keyCode == Keyboard.KEY_UP) {
-                    if (this.moveSuggestionHighlight(keyCode == Keyboard.KEY_DOWN ? 1 : -1)) {
-                        return true;
-                    }
-                }
-
-                if (keyCode == Keyboard.KEY_TAB) {
-                    // Tab 只把高亮的联想词填进输入框，不直接搜 —— 方便在联想词基础上继续改。
-                    String completion = this.highlightedSuggestionText();
-                    if (!completion.isEmpty()) {
-                        this.searchField.setText(completion);
-                        this.searchField.getTextField().setCursorPositionEnd();
-                        this.suggestHighlight = -1;
-                        return true;
-                    }
-                }
-
-                if (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER) {
-                    // 有高亮的联想词就用它，否则用输入框里的原文。
-                    String highlighted = this.highlightedSuggestionText();
-                    if (!highlighted.isEmpty()) {
-                        this.searchField.setText(highlighted);
-                    }
-                    final String keyword = this.searchField.getText() == null ? "" : this.searchField.getText().trim();
-                    this.submitSearch(keyword);
-                }
-
-                return true;
-            }
-
-            return false;
-        });
-
-        searchField.setBeforeRenderCallback(() -> {
-            searchField.drawUnderline(false);
-            searchField.setMargin(2);
-            double xSpacing = lblSearchIcon.getRelativeX() + lblSearchIcon.getWidth() + 4;
-            searchMode.setEnabled(supportsPlaylistSearch(NeteaseMusicService.getCurrentPlatform()));
-            // 让宽跟着淡出程度走：这一格淡出去的同时输入框就长回来，不会留下「控件没了、框还是窄的」。
-            // 只让出轨道自己那一格（内缩是轨道内部的留白，本来就画在输入框那 8 像素边距里），
-            // 再多让 2 像素就够：这一列只有 74 逻辑像素宽，多让 3 像素占位提示就要被切成「搜索歌」。
-            double typeToggleReserve = modeWidth * searchMode.presence() + 2.0;
-            searchField.setBounds(xSpacing, searchField.getRelativeY(),
-                    Math.max(1.0, searchBar.getWidth() - xSpacing - typeToggleReserve), searchField.getHeight());
-            // 占位提示里的词跟着滑块走、过半才换：在点击那一刻就改会出现「词换了、滑块还在半路」。
-            searchField.setPlaceholder(supportsPlaylistSearch(NeteaseMusicService.getCurrentPlatform())
-                    && searchMode.progress() > .5 ? "搜索歌单..." : "搜索歌曲...");
-            searchField.setColor(this.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
-            searchField.setDisabledTextColor(RenderSystem.reAlpha(this.getColor(NCMScreen.ColorType.PRIMARY_TEXT), .4f));
-//            Rect.draw(searchField.getX(), searchField.getY(), searchField.getWidth(), searchField.getHeight(), 0x800090ff);
-        });
         // 单个二级入口取代了旧的“网易云/QQ 双按钮切换器”，同时还
         // 在不挤占这条导航栏空间的情况下接入了 GD Studio 聚合平台。
         Panel sourceSwitcher = new Panel();
         this.addChild(sourceSwitcher);
         sourceSwitcher.setBeforeRenderCallback(() -> {
             sourceSwitcher.setBounds(Math.max(1, this.getWidth() - 16), 24);
-            sourceSwitcher.setPosition(8, searchBar.getRelativeY() + searchBar.getHeight() + 5);
+            sourceSwitcher.setPosition(8, MusicSearchOverlay.SIDEBAR_INSET + MusicSearchOverlay.SIDEBAR_HEIGHT + 5);
         });
 
         RoundedButtonWidget sourceMenu = new RoundedButtonWidget(() -> {
@@ -969,7 +750,7 @@ public class NavigateBar extends NCMPanel {
         {
             // 已经在默认主页时点「主页」不重建：新实例与当前页视觉完全一样，走一次换页只会把同一屏
             // 内容淡出再淡入，读起来就是一次「闪」。固定结果页（榜单/搜索/电台）仍照常切页。
-            PlaylistItem item = new PlaylistItem("A", () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT),
+            PlaylistItem item = new PlaylistItem(PlaylistItem.HOME_ICON, () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT),
                     () -> "主页", () -> {
                         NCMScreen screen = NCMScreen.getInstance();
                         NCMPanel current = screen.getCurrentPanel();
@@ -984,6 +765,11 @@ public class NavigateBar extends NCMPanel {
 
             this.addSidebarRow("nav:home", item);
         }
+
+        this.chatItem = new PlaylistItem("✧", FontManager.pf12bold, null, FoliaLucideIcons.SPARKLE,
+                () -> NCMScreen.getColor(NCMScreen.ColorType.ACCENT),
+                MusicChatEntry::label, () -> NCMScreen.getInstance().getMusicChat().open());
+        this.addSidebarRow("nav:ai-chat", this.chatItem);
 
         boolean qqMode = NeteaseMusicService.getCurrentPlatform() == MusicPlatform.QQ;
         boolean kugouMode = NeteaseMusicService.getCurrentPlatform() == MusicPlatform.KUGOU;
@@ -1433,8 +1219,7 @@ public class NavigateBar extends NCMPanel {
         SidebarActionButton btnAnnouncement = new SidebarActionButton(SidebarActionIcon.ANNOUNCEMENT);
         this.announcementButton = btnAnnouncement;
         SidebarActionButton btnDownloads = new SidebarActionButton(SidebarActionIcon.DOWNLOADS);
-        btnDownloads.setUnreadBadge(() -> DownloadCatalog.activeTasks() > 0 || DownloadCatalog.waitingTasks() > 0);
-        this.downloadButton = btnDownloads;
+        btnDownloads.setUnreadBadge(() -> NeteaseMusicService.songDownloads().active());
         quickActionsSurface.addChild(btnTheme, btnFont, btnPlayerSize, btnRefresh, btnAnnouncement, btnDownloads);
 
         btnFont.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
@@ -1537,15 +1322,16 @@ public class NavigateBar extends NCMPanel {
                     : NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
         });
         btnDownloads.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
-            if (mouseButton != 0) return mouseButton == 1;
-            NCMScreen.getInstance().openDownloadManager();
+            if (mouseButton == 0) NCMScreen.getInstance().openMusicDownloads();
+            else if (mouseButton == 1 && DownloadCatalog.shouldShowEntry()) NCMScreen.getInstance().openDownloadManager();
+            else if (mouseButton == 1) NCMScreen.getInstance().openProjectNews();
+            else return false;
             return true;
         });
         btnDownloads.setBeforeRenderCallback(() -> {
             double actionWidth = railSlotWidth(Math.max(1, this.getWidth() - 16));
             btnDownloads.setBounds(actionWidth, 24);
-            btnDownloads.setPosition(railSlotX(DownloadCatalog.shouldShowEntry()
-                    && railFitsDownloads(Math.max(1, this.getWidth() - 16)) ? 5 : 4, actionWidth), 2);
+            btnDownloads.setPosition(railSlotX(railSlotCount(Math.max(1, this.getWidth() - 16)) - 1, actionWidth), 2);
             btnDownloads.setRadius(6);
             btnDownloads.setColor(btnDownloads.isHovering()
                     ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
@@ -1633,56 +1419,6 @@ public class NavigateBar extends NCMPanel {
         announcedRows = Collections.unmodifiableMap(new LinkedHashMap<>(this.sidebarRows));
         rowsAnnounced = true;
 
-        // 联想面板最后加入：渲染顺序即层次，而 iterateChildrenMouseClick 是倒序遍历子组件的，
-        // 所以最后加入的既画在最上面、也最先拿到点击。否则它下面的歌单条目会把点击抢走。
-        this.buildSuggestionPanel();
-    }
-
-    /**
-     * 搜索联想的下拉面板。
-     *
-     * <p>行是<b>预先建好的固定几个</b>，文案走 supplier 从 {@link #suggestions} 里按下标取 ——
-     * 每帧按结果重建子组件会在渲染途中改动子列表，而且会让悬停/动画状态每帧丢一次。</p>
-     */
-    private void buildSuggestionPanel() {
-        // 收起层先加入、面板后加入：倒序遍历时面板（连同它的行）先拿到点击，落在别处的点击才交给收起层。
-        this.addChild(this.suggestionDismissLayer);
-        this.suggestionDismissLayer.setHidden(true);
-        this.suggestionDismissLayer.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
-            this.dismissSuggestions();
-            // 吃掉这一下：这次点击的意图是"关掉联想面板"，不能同时触发它盖住的条目。
-            return true;
-        });
-
-        this.addChild(this.suggestionPanel);
-        this.suggestionPanel.setHidden(true);
-
-        RoundedRectWidget surface = new RoundedRectWidget();
-        this.suggestionPanel.addChild(surface);
-        surface.setClickable(false);
-        surface.setBeforeRenderCallback(() -> {
-            surface.setMargin(0);
-            surface.setRadius(4);
-            surface.setColor(NCMScreen.getColor(NCMScreen.ColorType.BORDER));
-            surface.setAlpha(this.suggestReveal);
-        });
-
-        RoundedRectWidget inner = new RoundedRectWidget();
-        surface.addChild(inner);
-        inner.setClickable(false);
-        inner.setBeforeRenderCallback(() -> {
-            inner.setMargin(.5);
-            inner.setRadius(3.5);
-            inner.setColor(NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
-            // 完全不透明：面板底下就是歌单列表，留一点透明度会让下面的条目与它的悬停高亮透上来。
-            inner.setAlpha(this.suggestReveal);
-        });
-
-        for (int index = 0; index < NeteaseSearchSuggestService.MAX_SUGGESTIONS; index++) {
-            SuggestionRow row = new SuggestionRow(index);
-            this.suggestionRows.add(row);
-            this.suggestionPanel.addChild(row);
-        }
     }
 
     /**
@@ -1699,14 +1435,8 @@ public class NavigateBar extends NCMPanel {
         // 错峰号每帧重发：这一帧里第一次被看见的那几行才是同一批。放在这里（父组件的 onRender
         // 跑在子组件之前）和曲目列表那一条规则完全一致。
         this.entranceReveal.beginFrame();
-        /** 窄侧栏公告不与下载入口共存：保留公告原来的第五格。 */
         if (this.announcementButton != null) {
-            this.announcementButton.setHidden(!railFitsAnnouncement(this.getWidth() - 16)
-                    || DownloadCatalog.shouldShowEntry());
-        }
-        if (this.downloadButton != null) {
-            this.downloadButton.setHidden(!DownloadCatalog.shouldShowEntry()
-                    || !railFitsAnnouncement(this.getWidth() - 16));
+            this.announcementButton.setHidden(!railFitsDownloads(this.getWidth() - 16));
         }
         super.onRender(mouseX, mouseY);
     }
@@ -1857,17 +1587,13 @@ public class NavigateBar extends NCMPanel {
     }
 
     private static int railSlotCount(double railWidth) {
-        if (DownloadCatalog.shouldShowEntry() && railFitsDownloads(railWidth)) return 6;
-        return railFitsAnnouncement(railWidth) ? 5 : 4;
+        return railFitsDownloads(railWidth) ? 6 : 5;
     }
 
     private static boolean railFitsDownloads(double railWidth) {
         return (railWidth - 2 * RAIL_SURFACE_INSET - 3.0 * 5) / 6.0 >= 18.5;
     }
 
-    private static boolean railFitsAnnouncement(double railWidth) {
-        return (railWidth - 2 * RAIL_SURFACE_INSET - 3.0 * 4) / 5.0 >= 18.5;
-    }
 
     /** 会员徽标的胶囊高度与图标方格。方格必须是 partyIcon24 实际画出来的 12，填大了图标和字之间会空一块。 */
     private static final double VIP_PLATE_H = 15.0;
@@ -2121,7 +1847,9 @@ public class NavigateBar extends NCMPanel {
             if (icon == SidebarActionIcon.SCALE) return "切换窗口大小（右键还原）";
             if (icon == SidebarActionIcon.REFRESH) return refreshTooltipText();
             if (icon == SidebarActionIcon.ANNOUNCEMENT) return ProjectNews.text("title").getString();
-            if (icon == SidebarActionIcon.DOWNLOADS) return "下载管理 · 组件状态与安装";
+            if (icon == SidebarActionIcon.DOWNLOADS)
+                return com.muoniumplayer.core.screens.ncm.MusicDownloadSheet.text(
+                        DownloadCatalog.shouldShowEntry() ? "sidebar_components" : "sidebar");
             return "";
         }
 
@@ -2466,261 +2194,17 @@ public class NavigateBar extends NCMPanel {
     }
 
     /**
-     * 每帧驱动搜索联想：取词 → 防抖后异步请求 → 从缓存读回结果 → 摆放面板与行。
-     *
-     * <p>整个方法只做布局与状态推进，<b>不阻塞</b>：请求由
-     * {@link NeteaseSearchSuggestService#prefetch(String)} 异步发出，读取走
-     * {@link NeteaseSearchSuggestService#peek(String)} 的纯缓存查询。</p>
-     *
-     * <p>联想只对<b>官方网易云</b>生效：上游只有网易云有这个端点，QQ / 酷狗 / GD 聚合源都没有对应接口，
-     * 所以在那些来源下这个面板永远不出现，它们的搜索行为一字未改。</p>
-     */
-    private void layoutSuggestions() {
-        String text = this.searchField.getText() == null ? "" : this.searchField.getText().trim();
-        if (!text.equals(this.suggestQuery)) {
-            this.suggestQuery = text;
-            this.suggestQueryChangedAt = System.currentTimeMillis();
-            this.suggestHighlight = -1;
-            // 换了词就不再沿用上一次的"已收起"，否则改完词面板弹不出来。
-            if (this.suggestDismissedFor != null && !this.suggestDismissedFor.equals(text)) {
-                this.suggestDismissedFor = null;
-            }
-        }
-
-        // 联想词此前只对网易云开放，酷狗的输入框因此永远弹不出面板。现在各源都走
-        // NeteaseSearchSuggestService，由它按当前平台选端点；这里只判断"当前源有没有联想"。
-        MusicPlatform suggestPlatform = NeteaseMusicService.getCurrentPlatform();
-        boolean suggestSource = suggestPlatform == MusicPlatform.NETEASE
-                || suggestPlatform == MusicPlatform.KUGOU
-                || suggestPlatform == MusicPlatform.QISHUI;
-        boolean eligible = suggestSource && !text.isEmpty() && this.searchField.isFocused()
-                && !text.equals(this.suggestDismissedFor);
-
-        if (eligible && System.currentTimeMillis() - this.suggestQueryChangedAt >= SUGGEST_DEBOUNCE_MILLIS) {
-            NeteaseSearchSuggestService.prefetch(text);
-        }
-        this.suggestions = eligible
-                ? NeteaseSearchSuggestService.peek(text)
-                : Collections.<NeteaseSearchSuggestService.Suggestion>emptyList();
-
-        int count = Math.min(this.suggestions.size(), this.suggestionRows.size());
-        if (this.suggestHighlight >= count) this.suggestHighlight = -1;
-
-        boolean visible = eligible && count > 0;
-        this.suggestionsVisible = visible;
-        if (!visible) {
-            // 立刻隐藏而不是淡出：淡出期间面板仍然会抢走点击，那比少一个退场动画糟糕得多。
-            this.suggestReveal = 0f;
-            this.suggestionPanel.setHidden(true);
-            this.suggestionDismissLayer.setHidden(true);
-            for (SuggestionRow row : this.suggestionRows) row.setHidden(true);
-            return;
-        }
-
-        this.suggestReveal = Interpolations.interpolate(this.suggestReveal, 1f, .4f);
-        // 收起层铺满搜索栏以下的整条侧栏。它没有任何绘制（Panel 是隐形容器），只负责接一次点击。
-        this.suggestionDismissLayer.setHidden(false);
-        this.suggestionDismissLayer.setBounds(Math.max(1.0, this.getWidth()),
-                Math.max(1.0, this.getHeight() - this.searchBarBottom));
-        this.suggestionDismissLayer.setPosition(0, this.searchBarBottom);
-
-        // 面板要比它盖住的歌单条目宽：条目自己占 x=4 到 width-4（见 PlaylistItem 的布局），
-        // 而 hovering 是各组件按自己的矩形独立算的、兄弟之间不互相压制。面板要是只有 x=8 到 width-8，
-        // 鼠标停在面板上时下面那一行照样算自己被悬停，强调色高亮就会从面板两侧各露出 4px。
-        // 取 x=3 / width-6 刚好把条目整个盖住，还多出 1px 余量。
-        double width = Math.max(1.0, this.getWidth() - SUGGEST_INSET * 2.0);
-        double height = count * SUGGEST_ROW_HEIGHT + SUGGEST_PADDING * 2.0;
-        this.suggestionPanel.setHidden(false);
-        this.suggestionPanel.setBounds(width, height);
-        // 轻微下滑入场：只动位置不动高度，因为 Panel 不裁剪子组件，压高度会让行画到面板外面。
-        this.suggestionPanel.setPosition(SUGGEST_INSET,
-                this.searchBarBottom + 3.0 - 4.0 * (1f - this.suggestReveal));
-
-        for (int index = 0; index < this.suggestionRows.size(); index++) {
-            SuggestionRow row = this.suggestionRows.get(index);
-            if (index >= count) {
-                row.setHidden(true);
-                continue;
-            }
-            row.setHidden(false);
-            row.setBounds(Math.max(1.0, width - SUGGEST_PADDING * 2.0), SUGGEST_ROW_HEIGHT - 1.0);
-            row.setPosition(SUGGEST_PADDING, SUGGEST_PADDING + index * SUGGEST_ROW_HEIGHT);
-        }
-    }
-
-    /**
-     * 联想面板范围内的点击由它自己处理，并且不再往下传。
-     *
-     * <p>为什么不能只靠组件树的短路（{@code iterateChildrenMouseClick} 一命中就 return）：
-     * {@link NCMScreen#mouseClicked} 会把同一次点击「依次」交给 basePanel、currentPanel、
-     * controlsBar，中间没有早退；而 {@code onMouseClickReceived} 返回的是 void，上层根本拿不到
-     * 「这一下已经被吃掉了」这个信息。项目里音质弹窗（{@code ControlsBar#consumeQualityMenuClick}）
-     * 与队列抽屉（{@code PlayQueuePanel#consumeClick}）就是为同一个问题加的前置消费口，这里照办。</p>
-     *
-     * <p>命中判定走「面板与行自己的矩形」，不看 {@code isHovering()}：悬停状态是渲染时算出来的，
-     * 依赖它就等于依赖「这一帧确实渲染过、而且没有被别的组件抢走悬停」，而这个前置口是在渲染之外
-     * 被调用的。</p>
-     *
-     * <h2>面板状态是每帧变的：以按下时的快照为准（穿透修复）</h2>
-     * 触屏时代的点击是「按下只记账、松手才分发」，中间隔着任意长的时间。而联想面板恰恰
-     * 是全界面里状态最易变的消费者：异步联想结果到达时行数增减、{@code suggestReveal}
-     * 入场动画每帧上移、提交搜索后立刻整体隐藏。于是出现时间窗——按下的瞬间面板还在
-     * （用户看到并瞄准的就是联想面板），松手那一刻面板已经没了：本方法的可见性判断直接
-     * 放行，同一次点击穿透到底下的歌单条目/音乐来源卡片。所以 {@link NCMScreen} 在按下时
-     * 用 {@link #suggestionLayerVisibleNow()} 拍一份快照、松手分发时原样传回来：面板几何
-     * 用松手时刻的（行还点得中，信息不过期），<b>可见性裁决只用按下时的</b>——按下面板
-     * 挡着的那一下点击，永远归联想层消费。
-     *
-     * @param pressVisible 按下瞬间的 {@link #suggestionLayerVisibleNow()} 快照；即时路径
-     *                     （手势层关闭）传按下即松手的现值即可
-     * @return 是否吃掉了这次点击
-     */
-    public boolean consumeSuggestionClick(double mouseX, double mouseY, int mouseButton,
-                                          boolean pressVisible, int pressHoveredRow) {
-        if (!pressVisible) return false;
-        boolean visibleNow = this.suggestionsVisible && !this.suggestionPanel.isHidden();
-        if (!visibleNow) {
-            // 面板此刻已经不在了：这一下仍然整体吃掉。按下面板挡着，用户的意图是点面板
-            // 或关面板——一次点按的位移在阈值（8 GUI 像素）内，不可能在这段时间里合法地
-            // 瞄准一个「刚从面板底下露出来的」目标，落到新旧哪套几何上都不许漏给下层
-            // （评审修正：旧实现拿隐藏层的过期矩形做判定，窗口 resize 后会漏）。
-            // 面板没了没有行可选，也不需要再收起——下一帧 layoutSuggestions 自己会收干净。
-            return true;
-        }
-
-        if (this.isHovered(mouseX, mouseY, this.suggestionPanel.getX(), this.suggestionPanel.getY(),
-                this.suggestionPanel.getWidth(), this.suggestionPanel.getHeight())) {
-            if (mouseButton == 0) {
-                // 行下标先按松手时刻的几何算（正常路径：按下面板在、松手面板也在，
-                // 同一茬行直接命中）。面板内容在按下→松手之间被换过一茬（异步新结果
-                // 到达）时按几何可能落不进任何一行——那时退回按下沿记录的悬停下标，
-                // 用户瞄准的就是那一行。两路都没有才算「点了留白」，只吃掉不选中。
-                int index = this.suggestionRowAt(mouseX, mouseY);
-                if (index < 0 && pressHoveredRow >= 0) index = pressHoveredRow;
-                if (index >= 0) this.selectSuggestion(index);
-            }
-            // 落在面板留白（上下各 3 px）上的点击也要吃掉：它盖住的仍然是歌单条目。
-            return true;
-        }
-
-        // 收起层的范围是搜索栏以下的整条侧栏。这里的点击意图是「关掉面板」，
-        // 不能连带触发被它盖住的歌单条目或音乐来源卡片。
-        if (!this.suggestionDismissLayer.isHidden() && this.isHovered(mouseX, mouseY,
-                this.suggestionDismissLayer.getX(), this.suggestionDismissLayer.getY(),
-                this.suggestionDismissLayer.getWidth(), this.suggestionDismissLayer.getHeight())) {
-            this.dismissSuggestions();
-            return true;
-        }
-
-        // 侧栏之外（右侧列表、底部控制条）没有任何视觉遮挡，那里的点击照常生效：
-        // 输入框失焦后面板下一帧自己就会收起，不在这里额外记「这个词不再提示」。
-        return false;
-    }
-
-    /**
-     * 联想遮挡层此刻是否可见（面板本体或收起层任一在场）。
-     *
-     * <p>给 {@code NCMScreen} 在按下沿拍快照用：触屏时代的松手分发与按下之间隔着
-     * 任意长的时间，而联想面板恰恰是每帧都可能消失/变形的层——可见性必须以按下
-     * 瞬间为准，否则「按下面板在、松手面板没了」的那一下点击会穿透到底下的歌单条目。
-     * 渲染线程专用，只读两个布尔。</p>
-     */
-    public boolean suggestionLayerVisibleNow() {
-        return (this.suggestionsVisible && !this.suggestionPanel.isHidden())
-                || !this.suggestionDismissLayer.isHidden();
-    }
-
-    /**
-     * 按下沿悬停的联想行下标（无悬停返回 -1）。坐标是调用方已换算好的<b>布局轴</b>。
-     *
-     * <p>与可见性快照同拍：面板内容在按下→松手之间被异步结果换过一茬时，松手时刻的
-     * 几何命中会落空——用户瞄准的是按下时看到的那一行，用它兜底，点击才不会「吃了没反应」。</p>
-     *
-     * <p>坐标纪律（2026-11-04 评审修正）：本方法<b>绝不自己从裸 Mouse 重推坐标</b>——
-     * 五棵树的 compat {@code Mouse.getY()} 是底原点 framebuffer 轴（LWJGL2 语义），
-     * 自己换算必然翻错方向；必须复用 {@code NCMScreen.mouseClicked} 已经换算好的
-     * 布局坐标（{@code mX / WindowAdaptiveScale.correctionX()} 同一条链）。</p>
-     */
-    public int suggestionHoveredRowAt(double mouseX, double mouseY) {
-        if (!this.suggestionsVisible || this.suggestionPanel.isHidden()) return -1;
-        return this.suggestionRowAt(mouseX, mouseY);
-    }
-
-    /** 命中的联想行下标；没命中返回负一。 */
-    private int suggestionRowAt(double mouseX, double mouseY) {
-        for (int index = 0; index < this.suggestionRows.size(); index++) {
-            SuggestionRow row = this.suggestionRows.get(index);
-            if (row.isHidden()) continue;
-            if (this.isHovered(mouseX, mouseY, row.getX(), row.getY(),
-                    row.getWidth(), row.getHeight())) {
-                return index;
-            }
-        }
-        return -1;
-    }
-
-    /** 选中第 {@code index} 条联想词：填进搜索框，然后走与回车完全同一条搜索路径。 */
-    private void selectSuggestion(int index) {
-        List<NeteaseSearchSuggestService.Suggestion> current = this.suggestions;
-        if (current == null || index < 0 || index >= current.size()) return;
-        NeteaseSearchSuggestService.Suggestion suggestion = current.get(index);
-        String keyword = suggestion == null || suggestion.text == null ? "" : suggestion.text.trim();
-        if (keyword.isEmpty()) return;
-        this.searchField.setText(keyword);
-        this.searchField.getTextField().setCursorPositionEnd();
-        this.submitSearch(keyword);
-    }
-
-    /** 上/下键移动高亮。返回是否消费了这次按键（面板没开时不消费，方向键仍归输入框）。 */
-    private boolean moveSuggestionHighlight(int delta) {
-        if (!this.suggestionsVisible) return false;
-        int count = Math.min(this.suggestions.size(), this.suggestionRows.size());
-        if (count <= 0) return false;
-        if (this.suggestHighlight < 0) {
-            this.suggestHighlight = delta > 0 ? 0 : count - 1;
-        } else {
-            // 循环而不是在两端停住：只有八条，绕一圈比试探边界快。
-            this.suggestHighlight = ((this.suggestHighlight + delta) % count + count) % count;
-        }
-        return true;
-    }
-
-    /** 当前高亮的联想词；没有高亮或面板没开时返回空串。 */
-    private String highlightedSuggestionText() {
-        if (!this.suggestionsVisible || this.suggestHighlight < 0
-                || this.suggestHighlight >= this.suggestions.size()) {
-            return "";
-        }
-        String text = this.suggestions.get(this.suggestHighlight).text;
-        return text == null ? "" : text.trim();
-    }
-
-    /** 收起联想面板，并记住"这个词已经不想看建议了"。 */
-    private void dismissSuggestions() {
-        this.suggestDismissedFor = this.suggestQuery;
-        this.suggestHighlight = -1;
-        this.suggestionsVisible = false;
-        this.suggestReveal = 0f;
-        this.suggestionPanel.setHidden(true);
-        this.suggestionDismissLayer.setHidden(true);
-        for (SuggestionRow row : this.suggestionRows) row.setHidden(true);
-    }
-
-    /**
      * 执行一次搜索。
      *
      * <p>从原先内联在回车处理里的那段代码原样提出来，好让联想行点击走<b>完全同一条</b>路径 ——
      * 官方源的搜索行为一字未改：网易云的歌单模式仍然走 {@code cloudSearch} 的 1000 类型，
      * 歌曲模式仍然建一个 {@code searchMode + searchResultList} 的临时列表。</p>
      */
-    private void submitSearch(final String keyword) {
+    private void submitSearch(final String keyword, final boolean searchPlaylistMode) {
         if (keyword == null || keyword.trim().isEmpty()) return;
         final String query = keyword.trim();
         final NCMScreen screen = NCMScreen.getInstance();
         final MusicPlatform searchPlatform = NeteaseMusicService.getCurrentPlatform();
-        final boolean searchPlaylistMode = this.playlistSearchMode;
-        this.dismissSuggestions();
-        this.searchField.setFocused(false);
 
         this.playlistPanel.getChildren().forEach(child -> {
             if (child instanceof PlaylistItem) {
@@ -2871,7 +2355,9 @@ public class NavigateBar extends NCMPanel {
                 selectedItem = (PlaylistItem) entry;
             }
         }
-        if (selectedItem == null && panel instanceof HomePanel) {
+        if (NCMScreen.getInstance().getMusicChat().isPage(panel)) {
+            selectedItem = this.chatItem;
+        } else if (selectedItem == null && panel instanceof HomePanel) {
             // 只有真正的默认主页才能直接落到“主页”。固定结果页（排行榜/电台/搜索）由语义键负责，
             // 没有键时宁可不高亮，也不要误把结果页画成主页。
             if (((HomePanel) panel).isDefaultHomePage()) {
@@ -2892,6 +2378,9 @@ public class NavigateBar extends NCMPanel {
         if (this.homeItem != null) {
             this.homeItem.setSelected(this.homeItem == selectedItem);
         }
+        if (this.chatItem != null) {
+            this.chatItem.setSelected(this.chatItem == selectedItem);
+        }
         for (PlaylistItem item : this.playlistItems) {
             item.setSelected(item == selectedItem);
         }
@@ -2903,88 +2392,12 @@ public class NavigateBar extends NCMPanel {
 
     }
 
-    /**
-     * 一条搜索联想行。
-     *
-     * <p>行是固定几个、复用的，所以文案必须走 supplier 按下标去读当前的
-     * {@link NavigateBar#suggestions}，而不是构造时把字符串塞进去。下标越界要返回空串 ——
-     * 行的显隐由 {@link NavigateBar#layoutSuggestions()} 控制，但结果列表可能在两次布局之间被换掉。</p>
-     */
-    private final class SuggestionRow extends Panel {
-
-        private final int index;
-
-        private SuggestionRow(int index) {
-            this.index = index;
-            this.setShouldOverrideMouseCursor(true);
-
-            // 高亮必须是一个独立的子组件，不能靠给整行设 alpha 来开关：
-            // AbstractWidget#getAlpha 会把 alpha 逐层乘下去，行的 alpha 归零会把行里的文字一起抹掉。
-            RoundedRectWidget highlight = new RoundedRectWidget();
-            this.addChild(highlight);
-            highlight.setClickable(false);
-            highlight.setBeforeRenderCallback(() -> {
-                highlight.setMargin(0);
-                highlight.setRadius(2.5);
-                highlight.setColor(NCMScreen.getColor(NCMScreen.ColorType.ACCENT));
-                highlight.setAlpha(this.isActive() ? .30f : 0f);
-            });
-
-            LabelWidget kind = new LabelWidget(this::kindText, FontManager.pf12);
-            this.addChild(kind);
-            kind.setClickable(false);
-            kind.setBeforeRenderCallback(() -> {
-                kind.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
-                kind.centerVertically();
-                kind.setPosition(Math.max(0, this.getWidth() - kind.getWidth() - 5), kind.getRelativeY());
-            });
-
-            LabelWidget name = new LabelWidget(this::nameText, FontManager.pf12bold);
-            this.addChild(name);
-            name.setClickable(false);
-            name.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
-            name.setBeforeRenderCallback(() -> {
-                name.setColor(NCMScreen.getColor(this.isActive()
-                        ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
-                name.centerVertically();
-                name.setPosition(6, name.getRelativeY());
-                name.setMaxWidth(Math.max(1, this.getWidth() - 6 - kind.getWidth() - 10));
-            });
-
-            // 整行的 alpha 就是展开进度：文字与高亮都跟着淡入。
-            this.setBeforeRenderCallback(() -> this.setAlpha(suggestReveal));
-
-            // 正常路径是 NavigateBar#consumeSuggestionClick（在 NCMScreen 里前置消费、早退），
-            // 这里留着组件树这一条只是兜底：两条路走同一个 selectSuggestion，行为一致。
-            this.setOnClickCallback((relativeX, relativeY, mouseButton) -> {
-                if (mouseButton != 0) return false;
-                selectSuggestion(this.index);
-                return true;
-            });
-        }
-
-        /** 键盘高亮与鼠标悬停用同一套视觉：两者都表示"回车/点击会选这一条"。 */
-        private boolean isActive() {
-            return this.isHovering() || suggestHighlight == this.index;
-        }
-
-        private NeteaseSearchSuggestService.Suggestion current() {
-            List<NeteaseSearchSuggestService.Suggestion> current = suggestions;
-            return current == null || this.index >= current.size() ? null : current.get(this.index);
-        }
-
-        private String nameText() {
-            NeteaseSearchSuggestService.Suggestion suggestion = this.current();
-            return suggestion == null || suggestion.text == null ? "" : suggestion.text;
-        }
-
-        private String kindText() {
-            NeteaseSearchSuggestService.Suggestion suggestion = this.current();
-            return suggestion == null || suggestion.kind == null ? "" : suggestion.kind;
-        }
-    }
-
     public static class PlaylistItem extends Panel {
+        private static final String HOME_ICON = "A";
+        private static final double ICON_LEFT = 8;
+        private static final double LABEL_GAP = 4;
+        // The sparkles path covers about 22 of its 24 units including the round stroke.
+        private static final double SPARKLES_INK_FRACTION = 22.0 / 24;
 
         String icon;
         Location iconLocation;
@@ -3027,19 +2440,19 @@ public class NavigateBar extends NCMPanel {
         private Runnable onSecondaryClick;
 
         public PlaylistItem(String icon, Supplier<Integer> iconColorSupplier, Supplier<String> label, Runnable onClick) {
-            this(icon, FontManager.music18, null, iconColorSupplier, label, onClick);
+            this(icon, FontManager.music18, null, null, iconColorSupplier, label, onClick);
         }
 
         public PlaylistItem(String icon, CFontRenderer iconFont, Supplier<Integer> iconColorSupplier,
                             Supplier<String> label, Runnable onClick) {
-            this(icon, iconFont, null, iconColorSupplier, label, onClick);
+            this(icon, iconFont, null, null, iconColorSupplier, label, onClick);
         }
 
         public PlaylistItem(Location iconLocation, Supplier<Integer> iconColorSupplier, Supplier<String> label, Runnable onClick) {
-            this(null, FontManager.music18, iconLocation, iconColorSupplier, label, onClick);
+            this(null, FontManager.music18, iconLocation, null, iconColorSupplier, label, onClick);
         }
 
-        private PlaylistItem(String icon, CFontRenderer iconFont, Location iconLocation,
+        private PlaylistItem(String icon, CFontRenderer iconFont, Location iconLocation, String vectorIcon,
                              Supplier<Integer> iconColorSupplier, Supplier<String> label, Runnable onClick) {
             this.icon = icon;
             this.iconLocation = iconLocation;
@@ -3059,13 +2472,23 @@ public class NavigateBar extends NCMPanel {
             // 每个条目各画一块的话，切换栏目只能是一块消失、另一块出现，没有位移可动画。
 
             AbstractWidget<?> iconWidget;
-            if (iconLocation == null) {
+            if (vectorIcon != null) {
+                var vector = new LucideIconWidget(() -> vectorIcon, () -> icon, iconFont, 0, 0, 0, 0)
+                        .setDrawScale(1);
+                this.addChild(vector);
+                vector.setClickable(false).setShouldOverrideMouseCursor(false);
+                vector.setBeforeRenderCallback(() -> {
+                    layoutSidebarVector(vector);
+                    vector.setColor(iconColorSupplier.get());
+                });
+                iconWidget = vector;
+            } else if (iconLocation == null) {
                 LabelWidget glyphIcon = new LabelWidget(icon, iconFont == null ? FontManager.music18 : iconFont);
                 this.addChild(glyphIcon);
                 glyphIcon.setBeforeRenderCallback(() -> {
                     glyphIcon.setColor(iconColorSupplier.get());
                     glyphIcon.centerVertically();
-                    glyphIcon.setPosition(8, glyphIcon.getRelativeY()/* + .5*/);
+                    glyphIcon.setPosition(ICON_LEFT, glyphIcon.getRelativeY());
                 });
                 glyphIcon.setClickable(false);
                 iconWidget = glyphIcon;
@@ -3076,7 +2499,7 @@ public class NavigateBar extends NCMPanel {
                 textureIcon.setBeforeRenderCallback(() -> {
                     textureIcon.setColor(iconColorSupplier.get());
                     textureIcon.centerVertically();
-                    textureIcon.setPosition(8, textureIcon.getRelativeY());
+                    textureIcon.setPosition(ICON_LEFT, textureIcon.getRelativeY());
                 });
                 textureIcon.setClickable(false);
                 iconWidget = textureIcon;
@@ -3087,9 +2510,11 @@ public class NavigateBar extends NCMPanel {
 
             lbl.setBeforeRenderCallback(() -> {
                 lbl.centerVertically();
-                lbl.setPosition(iconWidget.getRelativeX() + iconWidget.getWidth() + 4, lbl.getRelativeY());
+                double iconAdvance = vectorIcon == null ? iconWidget.getWidth() : homeIconAdvance();
+                double labelLeft = ICON_LEFT + iconAdvance + LABEL_GAP;
+                lbl.setPosition(labelLeft, lbl.getRelativeY());
                 lbl.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
-                lbl.setMaxWidth(this.getWidth() - 8 - iconWidget.getWidth() - 12);
+                lbl.setMaxWidth(this.getWidth() - labelLeft - ICON_LEFT);
             });
 
             lbl.setClickable(false);
@@ -3113,6 +2538,23 @@ public class NavigateBar extends NCMPanel {
 
                 return true;
             }));
+        }
+
+        private static double homeIconAdvance() {
+            return FontManager.music18 == null ? 9 : FontManager.music18.getStringWidthD(HOME_ICON);
+        }
+
+        private void layoutSidebarVector(LucideIconWidget vector) {
+            var font = FontManager.music18;
+            var ink = font == null ? null : font.getGlyphBounds(HOME_ICON);
+            double inkWidth = ink == null ? homeIconAdvance() : ink.getWidth();
+            double centerX = ICON_LEFT + (ink == null ? inkWidth / 2 : (ink.getLeft() + ink.getRight()) / 2);
+            double centerY = getHeight() / 2;
+            if (ink != null) {
+                centerY += (ink.getTop() + ink.getBottom() - font.getStringHeight(HOME_ICON)) / 2;
+            }
+            double size = inkWidth / SPARKLES_INK_FRACTION;
+            vector.setBounds(centerX - size / 2, centerY - size / 2, size, size);
         }
 
         /**

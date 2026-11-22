@@ -1,14 +1,11 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
- * 对唱（duet）分组：把时间轴上真正重叠的歌词行归成一组，供渲染层同时点亮。
- *
- * <p>一首歌里的对唱段落在 TTML 里就是两个时间区间互相重叠的 &lt;p&gt;（Apple Music 用
- * {@code ttm:agent="v1"/"v2"} 区分歌手）。普通歌词一行接一行，任何时刻只有一行在唱；对唱段落
- * 里两位歌手同时在唱，只点亮其中一行会让另一行看起来像已经唱过或还没开始，而"当前行"还会在
- * 两行之间来回跳。分组在歌词提交时算一次并写在行对象上，渲染层只读不算。</p>
+ * 分配整首的声部位置，并为同时演唱的行建立时间分组。
  */
 public final class LyricDuetGroups {
 
@@ -36,10 +33,22 @@ public final class LyricDuetGroups {
      */
     public static void mark(List<LyricLine> lines) {
         if (lines == null || lines.isEmpty()) return;
+        Map<String, Integer> slots = new LinkedHashMap<>();
         for (LyricLine line : lines) {
             if (line != null) {
                 line.duetGroup = -1;
                 line.duetSlot = -1;
+                line.showVocalistLabel = false;
+                if (!line.isBreakLine && line.vocalist != null && !line.vocalist.ensemble()) {
+                    slots.computeIfAbsent(line.vocalist.id(), id -> slots.size());
+                }
+            }
+        }
+        if (slots.size() >= 2) {
+            for (LyricLine line : lines) {
+                if (line == null || line.isBreakLine || line.vocalist == null || line.vocalist.ensemble()) continue;
+                line.duetSlot = slots.get(line.vocalist.id());
+                line.showVocalistLabel = slots.size() >= 3;
             }
         }
 
@@ -64,9 +73,9 @@ public final class LyricDuetGroups {
             if (!overlong) {
                 int group = nextGroup++;
                 for (int i = index; i <= end; i++) {
-                    lines.get(i).duetGroup = group;
-                    // 组内序号决定左右列：第一位歌手靠左，第二位靠右，三人组再从左边开始。
-                    lines.get(i).duetSlot = i - index;
+                    LyricLine line = lines.get(i);
+                    line.duetGroup = group;
+                    if (line.vocalist == null) line.duetSlot = i - index;
                 }
             }
             index = end + 1;
@@ -83,6 +92,12 @@ public final class LyricDuetGroups {
     public static boolean isActive(LyricLine line, LyricLine current) {
         if (line == null || current == null) return false;
         return line == current || sharesGroup(line, current);
+    }
+
+    /** Explicit voices can remain active together within their individual timings. */
+    public static boolean isVocalistActive(LyricLine line, LyricLine current, double positionMs) {
+        return differentVocalists(line, current) && positionMs >= line.timestamp
+                && positionMs < line.timestamp + line.duration;
     }
 
     /** 给定行所在组的第一行下标；不在组里时返回 {@code index} 本身。 */
@@ -143,9 +158,26 @@ public final class LyricDuetGroups {
         if (one == null || other == null) return false;
         // 间奏占位行没有歌手，永远不参与对唱。
         if (one.isBreakLine || other.isBreakLine) return false;
+        if (one.vocalist != null || other.vocalist != null) {
+            return differentVocalists(one, other) && !one.vocalist.ensemble() && !other.vocalist.ensemble()
+                    && mainVocalEnd(one) > other.timestamp && mainVocalEnd(other) > one.timestamp;
+        }
         long overlap = overlapMillis(one, other);
         if (overlap < MIN_OVERLAP_MILLIS) return false;
         long shorter = Math.min(one.duration, other.duration);
         return shorter > 0L && overlap >= shorter * MIN_OVERLAP_RATIO;
+    }
+
+    private static boolean differentVocalists(LyricLine one, LyricLine other) {
+        return one != null && other != null && one.vocalist != null && other.vocalist != null
+                && !one.vocalist.id().equals(other.vocalist.id());
+    }
+
+    private static long mainVocalEnd(LyricLine line) {
+        long end = line.timestamp;
+        for (LyricLine.Word word : line.words) {
+            if (word != null && !word.background) end = Math.max(end, word.timestamp + word.duration);
+        }
+        return end > line.timestamp ? end : line.timestamp + line.duration;
     }
 }

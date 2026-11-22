@@ -22,6 +22,7 @@ import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
 import com.muoniumplayer.core.rendering.FontelloIcons;
 import com.muoniumplayer.core.rendering.FoliaLucideIcons;
 import com.muoniumplayer.core.rendering.GlassLook;
+import com.muoniumplayer.core.rendering.PlaybackTitleWidget;
 import com.muoniumplayer.core.rendering.PlayerQueueIcons;
 import com.muoniumplayer.core.rendering.animation.Interpolations;
 import com.muoniumplayer.core.rendering.font.GlyphInk;
@@ -339,7 +340,8 @@ public class ControlsBar extends NCMPanel {
             // 底栏这块底同样压在面板根底之上，属于内层：不接玻璃的话，整页从上到下就它最黑，
             // 玩家会读成「玻璃只做了上半截」。setFillAlpha 只动这张底，bg 后面的封面与控件不跟。
             bg.setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER,
-                    .95f - NCMTheme.getLiquidGlassAmount() * .22f));
+                    com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient.active()
+                            ? .45f : .95f - NCMTheme.getLiquidGlassAmount() * .22f));
             playingCover.setHidden(CoverHeroTransition.hidesSmallCover());
         });
 
@@ -682,22 +684,31 @@ public class ControlsBar extends NCMPanel {
 
         java.util.function.Supplier<String> appleLink = () ->
                 AppleMusicLink.forTrack(presentation.displayTrack, AppleConfigStore.storefront());
-        LabelWidget lblMusicName = new LabelWidget(() -> presentation.displayTrack == null ? "未在播放" : presentation.displayTrack.getName(), FontManager.pf14bold);
+        java.util.function.BooleanSupplier canDownload = () ->
+                com.muoniumplayer.core.screens.ncm.MusicDownloadSheet.supports(presentation.displayTrack)
+                        && lblCurTime.getRelativeX() - playingCover.getRelativeX() - playingCover.getWidth() >= 48;
+        java.util.function.IntSupplier mediaActionWidth = () ->
+                (appleLink.get().isEmpty() ? 0 : 24) + (canDownload.getAsBoolean() ? 24 : 0);
+        PlaybackTitleWidget lblMusicName = new PlaybackTitleWidget(
+                () -> presentation.displayTrack == null ? "未在播放" : presentation.displayTrack.getName(), FontManager.pf14bold);
         this.addChild(lblMusicName);
 
-        lblMusicName
-                .setClickable(false)
-                .setBeforeRenderCallback(() -> lblMusicName
-                        .setAlpha(selectionMotion.contentAlpha())
-                        .centerVertically()
-                        .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
-                        .setPosition(
-                                playingCover.getRelativeX() + playingCover.getWidth() + 4,
-                                lblMusicName.getRelativeY() - lblMusicName.getHeight() * .5 - 2 + selectionMotion.offset()
-                        )
-                        .setMaxWidth(Math.max(0.0,
-                                lblCurTime.getRelativeX() - lblMusicName.getRelativeX() - 4
-                                        - (appleLink.get().isEmpty() ? 0 : 24))));
+        lblMusicName.setBeforeRenderCallback(() -> {
+            long positionMs = CloudMusic.positionMsNow();
+            lblMusicName.setLyric(CloudMusic.findDisplayLyric(presentation, positionMs), positionMs,
+                    CloudMusic.getLyricOffsetMillis(), NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT),
+                    PlayerAppearance.replaceTitleWithLyrics());
+            lblMusicName.setAlpha(selectionMotion.contentAlpha())
+                    .centerVertically()
+                    .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
+                    .setPosition(
+                            playingCover.getRelativeX() + playingCover.getWidth() + 4,
+                            lblMusicName.getRelativeY() - lblMusicName.getHeight() * .5 - 2 + selectionMotion.offset()
+                    )
+                    .setMaxWidth(Math.max(0.0,
+                            lblCurTime.getRelativeX() - lblMusicName.getRelativeX() - 4
+                                    - mediaActionWidth.getAsInt()));
+        });
 
         LabelWidget lblMusicArtist = new LabelWidget(
                 () -> {
@@ -718,17 +729,27 @@ public class ControlsBar extends NCMPanel {
 
         lblMusicArtist
                 .setClickable(false)
-                .setBeforeRenderCallback(() -> lblMusicArtist
+                .setBeforeRenderCallback(() -> {
+                    double left = playingCover.getRelativeX() + playingCover.getWidth() + 4;
+                    double y = getY() + getHeight() * .5 + 2;
+                    var host = NCMScreen.getInstance();
+                    boolean comments = !presentation.preparing && host.musicLyricsPanel == null
+                            && lblCurTime.getRelativeX() - left >= 28
+                            && host.positionComments(presentation.displayTrack, getX() + left,
+                                    Math.min(y - 3, getY() + getHeight() - 21), getY());
+                    double artistX = left + (comments ? 24 : 0);
+                    lblMusicArtist
                         .setAlpha(selectionMotion.contentAlpha())
                         .centerVertically()
                         .setColor(NCMScreen.getColor(presentation.preparing ? NCMScreen.ColorType.ACCENT : NCMScreen.ColorType.SECONDARY_TEXT))
                         .setPosition(
-                                playingCover.getRelativeX() + playingCover.getWidth() + 4,
+                                artistX,
                                 lblMusicArtist.getRelativeY() + lblMusicArtist.getHeight() * .5 + 2 + selectionMotion.offset()
                         )
                         .setMaxWidth(Math.max(0.0,
-                                lblCurTime.getRelativeX() - lblMusicArtist.getRelativeX() - 4
-                                        - (appleLink.get().isEmpty() ? 0 : 24))));
+                                lblCurTime.getRelativeX() - artistX - 4
+                                        - mediaActionWidth.getAsInt()));
+                });
 
         IconWidget openApple = new IconWidget(FontelloIcons.LINK, FontManager.fontello16, 0, 0, 20, 20);
         this.addChild(openApple);
@@ -757,6 +778,26 @@ public class ControlsBar extends NCMPanel {
                         net.minecraft.network.chat.Component.translatable(
                                 "sh_better_ui.muonium.apple.open_failed").getString(), false);
             }
+            return true;
+        });
+
+        IconWidget downloadSong = new IconWidget(com.muoniumplayer.core.rendering.IslandStatusIcons.DOWNLOAD,
+                FontManager.islandIcon16, 0, 0, 20, 20);
+        this.addChild(downloadSong);
+        downloadSong.setTooltip(() -> com.muoniumplayer.core.screens.ncm.MusicDownloadSheet.text("playing_tooltip"));
+        downloadSong.setBeforeRenderCallback(() -> {
+            boolean available = canDownload.getAsBoolean();
+            downloadSong.setAlpha(available ? selectionMotion.contentAlpha() : 0f)
+                    .setClickable(available)
+                    .setShouldOverrideMouseCursor(available)
+                    .setColor(NCMScreen.getColor(downloadSong.isHovering()
+                            ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT))
+                    .centerVertically()
+                    .setPosition(lblCurTime.getRelativeX() - mediaActionWidth.getAsInt(), downloadSong.getRelativeY());
+        });
+        downloadSong.setOnClickCallback((x, y, button) -> {
+            if (button != 0 || !canDownload.getAsBoolean()) return false;
+            NCMScreen.getInstance().openSongDownload(presentation.displayTrack);
             return true;
         });
 

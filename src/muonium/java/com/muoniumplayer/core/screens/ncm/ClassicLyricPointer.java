@@ -5,7 +5,7 @@ import java.util.ArrayList;
 /** Hit boxes from the last painted classic lyric frame, not the next scroll layout. */
 final class ClassicLyricPointer {
     record Track(long sessionId, String trackKey, long lyricRevision) {}
-    private record Row(int index, long millis, double left, double top, double right, double bottom) {
+    record Row(int index, long millis, double left, double top, double right, double bottom) {
         boolean contains(double x, double y) {
             return left <= x && x < right && top <= y && y < bottom;
         }
@@ -45,6 +45,15 @@ final class ClassicLyricPointer {
     int hover(double x, double y) {
         Row row = hit(x, y);
         return row == null ? -1 : row.index();
+    }
+
+    Row feedbackRow(double x, double y) {
+        if (pressed == null) return hit(x, y);
+        if (!pressedTrack.equals(frameTrack)) return null;
+        for (Row row : rows) {
+            if (row.index == pressed.index) return row;
+        }
+        return null;
     }
 
     boolean press(double x, double y, Track track) {

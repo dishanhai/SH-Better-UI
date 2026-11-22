@@ -60,16 +60,6 @@ class AppleLyricInteractionTest {
         assertEquals(-1, input.release(35, 40, SESSION, REVISION));
     }
 
-    @Test
-    void gradualBlurOnlyAffectsFutureUninspectedLines() {
-        assertEquals(0, AppleLyricInteraction.blurWeight(1_000, 1_000, false, false));
-        assertEquals(.5, AppleLyricInteraction.blurWeight(1_000, 1_350, false, false));
-        assertEquals(1, AppleLyricInteraction.blurWeight(1_000, 1_700, false, false));
-        assertEquals(0, AppleLyricInteraction.blurWeight(1_000, 1_700, true, false));
-        assertEquals(0, AppleLyricInteraction.blurWeight(1_000, 1_700, false, true));
-        assertEquals(0, AppleLyricInteraction.blurWeight(1_000, 900, true, false));
-    }
-
     private void begin() {
         input.beginFrame(SESSION, REVISION, VIEW);
     }

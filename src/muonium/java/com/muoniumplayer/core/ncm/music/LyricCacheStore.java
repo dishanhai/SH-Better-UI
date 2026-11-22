@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.LyricVocalist;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -176,7 +177,7 @@ final class LyricCacheStore {
 
     // ── 序列化 ──────────────────────────────────────────────────────────────
 
-    private static JsonObject serialize(String stableKey, List<LyricLine> lines) {
+    static JsonObject serialize(String stableKey, List<LyricLine> lines) {
         JsonObject root = new JsonObject();
         root.addProperty("version", FORMAT_VERSION);
         root.addProperty("key", stableKey);
@@ -191,6 +192,11 @@ final class LyricCacheStore {
             if (line.translationText != null) item.addProperty("tr", line.translationText);
             if (line.romanizationText != null) item.addProperty("ro", line.romanizationText);
             if (line.isBreakLine) item.addProperty("br", true);
+            if (line.vocalist != null) {
+                item.addProperty("voice", line.vocalist.id());
+                item.addProperty("voiceName", line.vocalist.name());
+                if (line.vocalist.ensemble()) item.addProperty("ensemble", true);
+            }
             if (line.isChorus) {
                 item.addProperty("ch", true);
                 item.addProperty("ci", line.chorusIndex);
@@ -215,7 +221,7 @@ final class LyricCacheStore {
         return root;
     }
 
-    private static List<LyricLine> deserialize(JsonObject root) {
+    static List<LyricLine> deserialize(JsonObject root) {
         List<LyricLine> lines = new ArrayList<>();
         JsonElement element = root.get("lines");
         if (element == null || !element.isJsonArray()) return lines;
@@ -231,6 +237,11 @@ final class LyricCacheStore {
             if (item.has("tr")) line.translationText = stringOf(item, "tr");
             if (item.has("ro")) line.romanizationText = stringOf(item, "ro");
             line.isBreakLine = item.has("br") && item.get("br").getAsBoolean();
+            String voice = stringOf(item, "voice");
+            if (!voice.isBlank()) {
+                line.vocalist = new LyricVocalist(voice, stringOf(item, "voiceName"),
+                        item.has("ensemble") && item.get("ensemble").getAsBoolean());
+            }
             if (item.has("ch") && item.get("ch").getAsBoolean()) {
                 line.isChorus = true;
                 line.chorusIndex = intOf(item, "ci", -1);

@@ -271,6 +271,30 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
             return combined.values().stream().limit(20).toList();
         });
     }
+    @Override public synchronized boolean supportsPlayback(String sourceId) {
+        return sources.containsKey(sourceId) && source(sourceId).supportsPlayback();
+    }
+    @Override public synchronized List<OnlineMusicComments.Order> commentOrders(String sourceId) {
+        return state == State.CLOSED || !sources.containsKey(sourceId)
+                ? List.of() : List.copyOf(source(sourceId).commentOrders());
+    }
+    @Override public synchronized CompletableFuture<OnlineMusicComments> comments(
+            OnlineTrack track, OnlineMusicComments.Order order, int page) {
+        requireOpen(); Objects.requireNonNull(track); Objects.requireNonNull(order); checkPage(page);
+        var provider = source(track.source()).requestSnapshot();
+        if (!provider.commentOrders().contains(order))
+            return CompletableFuture.failedFuture(new UnsupportedOperationException("Music comment order unavailable"));
+        return request(track.source(), false, () -> Objects.requireNonNull(provider.comments(track, order, page, 20)));
+    }
+    @Override public synchronized CompletableFuture<OnlineMusicComments.ReplyPage> commentReplies(
+            OnlineTrack track, OnlineMusicComments.Entry parent, String cursor) {
+        requireOpen(); Objects.requireNonNull(track); Objects.requireNonNull(parent);
+        if (parent.getReplyKey() == null || cursor != null && cursor.length() > 128)
+            return CompletableFuture.failedFuture(new IllegalArgumentException("Invalid comment reply request"));
+        var provider = source(track.source()).requestSnapshot();
+        return request(track.source(), false,
+                () -> Objects.requireNonNull(provider.commentReplies(track, parent, cursor, 10)));
+    }
     @Override public synchronized boolean supportsArtistTracks(String sourceId) {
         requireOpen();
         return source(sourceId).supportsArtistTracks();
@@ -280,15 +304,31 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
         var provider = source(artist.source()).requestSnapshot();
         if (!provider.supportsArtistTracks())
             return CompletableFuture.failedFuture(new UnsupportedOperationException("Artist songs unavailable"));
-        // Respect the existing search and authorization path, without local autocomplete mixing or a new endpoint.
-        return request(artist.source(), false, () -> {
-            int limit = 20;
-            var raw = List.copyOf(provider.search(artist.name(), page, limit));
-            var matches = raw.stream().limit(limit)
-                    .filter(song -> artist.source().equals(song.source()) && song.artists().stream()
-                            .anyMatch(contributor -> artist.id().equals(contributor.id())))
-                    .toList();
-            return new OnlineArtistTracks(matches, page < 1000 && raw.size() >= limit);
+        return request(artist.source(), false, () -> provider.artistTracks(artist, page, 20));
+    }
+    @Override public synchronized boolean supportsArtistOverview(String sourceId) {
+        requireOpen();
+        return source(sourceId).supportsArtistOverview();
+    }
+    @Override public synchronized CompletableFuture<OnlineArtistOverview> artistOverview(OnlineArtist artist, int page) {
+        requireOpen(); Objects.requireNonNull(artist); checkPage(page);
+        var provider = source(artist.source()).requestSnapshot();
+        return request(artist.source(), false, () -> provider.artistOverview(artist, page, 30));
+    }
+    @Override public synchronized boolean supportsAlbumDetail(String sourceId) {
+        requireOpen();
+        return source(sourceId).supportsAlbumDetail();
+    }
+    @Override public synchronized CompletableFuture<OnlineAlbumDetail> albumDetail(OnlineAlbum album) {
+        requireOpen(); Objects.requireNonNull(album);
+        var provider = source(album.source()).requestSnapshot();
+        return request(album.source(), false, () -> {
+            var detail = provider.albumDetail(album);
+            if (!album.source().equals(detail.album().source()) || !album.id().equals(detail.album().id())
+                    || detail.tracks().stream().anyMatch(track -> !album.source().equals(track.source()))
+                    || detail.artists().stream().anyMatch(artist -> !album.source().equals(artist.source())))
+                throw new java.io.IOException("Album identity changed");
+            return detail;
         });
     }
     @Override public synchronized CompletableFuture<OnlineMusicAccount> account(String sourceId) {
@@ -401,7 +441,8 @@ final class OnlinePlayerSession implements OnlineMusicPlayer {
     @Override public OnlineMusicQueue queue() { return queue; }
 
     private void validateTrack(OnlineTrack next) {
-        Objects.requireNonNull(next); source(next.source());
+        Objects.requireNonNull(next);
+        if (!source(next.source()).supportsPlayback()) throw new IllegalArgumentException("Music source has no playback");
         if (!next.id().matches("[A-Za-z0-9]{1,40}") || !next.mediaId().matches("[A-Za-z0-9]{1,40}"))
             throw new IllegalArgumentException("Invalid platform track identifier");
     }

@@ -1674,7 +1674,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
     private String lyricPinValue() {
         LyricManualMemory.Pin pin = CloudMusic.getPinnedLyric();
         if (pin == null) return "搜索匹配…";
-        return pin.source.label + " · " + pin.describe();
+        return pin.source.displayLabel() + " · " + pin.describe();
     }
 
     private void renderSettingRow(Row row, HudSetting setting,

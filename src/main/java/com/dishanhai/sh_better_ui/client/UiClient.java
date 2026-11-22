@@ -13,6 +13,7 @@ import com.dishanhai.sh_better_ui.client.spatial.SpatialRenderer;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.kernel.api.NativeInput;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
+import com.dishanhai.sh_better_ui.kernel.internal.WelcomeShortcutNotice;
 import net.minecraftforge.event.GameShuttingDownEvent;
 import com.dishanhai.sh_better_ui.client.lyrics.render.LyricView;
 import com.mojang.blaze3d.platform.InputConstants;
@@ -182,6 +183,11 @@ public final class UiClient {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseButtonPressed(ScreenEvent.MouseButtonPressed.Pre event) {
+        if (WelcomeShortcutNotice.press(
+                event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+            return;
+        }
         var input = new NativeInput.Pointer(NativeInput.PointerAction.PRESS, event.getMouseX(), event.getMouseY(),
                 event.getButton(), 0, 0);
         if (NativeClientBridge.input(event.getScreen(), input)) event.setCanceled(true);
@@ -189,6 +195,11 @@ public final class UiClient {
 
     @SubscribeEvent(priority = EventPriority.HIGHEST)
     public static void onMouseButtonReleased(ScreenEvent.MouseButtonReleased.Pre event) {
+        if (WelcomeShortcutNotice.release(
+                event.getScreen(), event.getMouseX(), event.getMouseY(), event.getButton())) {
+            event.setCanceled(true);
+            return;
+        }
         var input = new NativeInput.Pointer(NativeInput.PointerAction.RELEASE, event.getMouseX(), event.getMouseY(),
                 event.getButton(), 0, 0);
         if (NativeClientBridge.input(event.getScreen(), input)) event.setCanceled(true);
@@ -270,6 +281,7 @@ public final class UiClient {
 
     @SubscribeEvent
     public static void onLoggingOut(ClientPlayerNetworkEvent.LoggingOut event) {
+        WelcomeShortcutNotice.dismiss();
         UiToast.clear();
         var connection = event.getConnection();
         Minecraft.getInstance().execute(() -> {

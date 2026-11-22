@@ -2,6 +2,7 @@
 package com.dishanhai.sh_better_ui.kernel.internal.music;
 
 import com.dishanhai.sh_better_ui.kernel.api.music.*;
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQTrackFavorites.State;
 import com.google.gson.*;
 import org.junit.jupiter.api.Test;
 import java.io.IOException;
@@ -16,6 +17,46 @@ import static org.junit.jupiter.api.Assertions.*;
 
 class QQFavoritesTest {
     private static final OnlineTrack TRACK = new OnlineTrack("qq", "songMid", "mediaMid", "", "", "", 0);
+
+    @Test void embeddedFavoritesBatchReadsAndChangeOnlyAfterReadback() {
+        var workers = new ArrayDeque<Runnable>();
+        var reads = new ArrayList<List<String>>();
+        var serverLiked = new java.util.concurrent.atomic.AtomicBoolean();
+        var favorites = new ClientQQTrackFavorites(workers::add, () -> source((module, method, params, write) -> {
+            if (method.equals("IsSongFanByMid")) {
+                var mids = new ArrayList<String>();
+                params.getAsJsonArray("v_songMid").forEach(value -> mids.add(value.getAsString()));
+                reads.add(mids);
+                return json("{\"m_fan\":{\"songMid\":" + serverLiked.get() + ",\"otherMid\":true}}");
+            }
+            if (method.equals("get_song_detail_yqq")) {
+                return json("{\"track_info\":{\"mid\":\"songMid\",\"id\":123,\"type\":0}}");
+            }
+            serverLiked.set(method.equals("AddSonglist"));
+            return json("{\"retCode\":0}");
+        }));
+        assertEquals(State.SIGNED_OUT, favorites.state("songMid"));
+        favorites.credentials("uin=123; qm_keyst=fixture");
+        assertEquals(State.LOADING, favorites.state("songMid"));
+        assertEquals(State.LOADING, favorites.state("otherMid"));
+        favorites.loadPending();
+        workers.remove().run();
+        assertEquals(List.of(List.of("songMid", "otherMid")), reads);
+        assertEquals(State.UNLIKED, favorites.state("songMid"));
+        assertEquals(State.LIKED, favorites.state("otherMid"));
+
+        var add = favorites.set("songMid", true);
+        assertEquals(State.ADDING, favorites.state("songMid"));
+        assertTrue(favorites.set("songMid", true).isCompletedExceptionally());
+        workers.remove().run();
+        add.join();
+        assertEquals(State.LIKED, favorites.state("songMid"));
+        var remove = favorites.set("songMid", false);
+        assertEquals(State.REMOVING, favorites.state("songMid"));
+        workers.remove().run();
+        remove.join();
+        assertEquals(State.UNLIKED, favorites.state("songMid"));
+    }
 
     @Test void upstreamProtocolVectorsAndFreshNonces() throws Exception {
         assertEquals("zzcec1b555gzqzg7laztguyjl2bu20r6x1w50c55f60", QQWebProtocol.sign("123"));

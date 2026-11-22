@@ -9,7 +9,7 @@ import net.minecraft.client.gui.GuiGraphics;
 /** Reusable immediate renderer, independent of widget, player, provider and global theme ownership. */
 public final class MusicControlRenderer {
     /** Original outline vocabulary. These are geometry, never atlas sprites or font characters. */
-    public enum Icon { SEARCH, BACK, FAVORITE, USER, HOME, LIBRARY, HISTORY, SETTINGS, PLAYLIST, ADD, CLOSE, REMOVE, REFRESH }
+    public enum Icon { SEARCH, BACK, FAVORITE, USER, HOME, LIBRARY, HISTORY, SETTINGS, PLAYLIST, ADD, CLOSE, REMOVE, REFRESH, COMMENTS }
     /** Draws only the icon; its owner supplies hover/focus chrome and the full accessible label. */
     public static void icon(GuiGraphics g, Bounds b, Icon icon, boolean pressed, boolean enabled,
                             int foreground, UiPreferences preferences) {
@@ -28,6 +28,14 @@ public final class MusicControlRenderer {
             case CLOSE -> {line(g,4,4,16,16,t,ink);line(g,4,16,16,4,t,ink);}
             case ADD -> {line(g,3,10,17,10,t,ink);line(g,10,3,10,17,t,ink);}
             case REMOVE -> line(g,3,10,17,10,t,ink);
+            case COMMENTS -> {
+                curve(g,4,14,0,11,2,3,10,3,t,ink);
+                curve(g,10,3,21,3,21,16,9,16,t,ink);
+                line(g,9,16,4,18,t,ink);
+                line(g,4,18,4,14,t,ink);
+                line(g,6,8,14,8,t,ink);
+                line(g,6,11,12,11,t,ink);
+            }
             case USER -> {ring(g,10,6,3.3f,t,ink);curve(g,3,17,3,10.5f,17,10.5f,17,17,t,ink);}
             case FAVORITE -> {
                 curve(g,10,17,6,14,2,11,2,6.5f,t,ink);

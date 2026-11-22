@@ -5,6 +5,7 @@ import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import java.io.IOException;
 import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.HttpURLConnection;
 import java.net.URI;
 import java.net.URLEncoder;
@@ -58,6 +59,43 @@ final class MusicHttp {
         catch (RuntimeException failure) { throw new IOException("Invalid music response", failure); }
     }
     byte[] audio(URI uri) throws IOException { return request(uri, null, null, null, AUDIO_LIMIT, ""); }
+    /** Keep transfer bytes off the heap and validate every redirect before opening it. */
+    void download(URI uri, long size, OutputStream out, java.util.function.LongConsumer progress) throws IOException {
+        if (size <= 0 || size > QQDownload.MAX_FILE_SIZE) throw new IOException("Invalid music file size");
+        long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.MINUTES.toNanos(3);
+        for (int hop = 0; hop < 5; hop++) {
+            if (!QQDownload.cdn(uri)) throw new IOException("Unexpected music CDN");
+            var connection = connect(uri, "https://y.qq.com/", "");
+            try {
+                int status = connection.getResponseCode();
+                if (status >= 300 && status < 400) {
+                    String location = connection.getHeaderField("Location");
+                    if (location == null) throw new IOException("Missing redirect target");
+                    uri = uri.resolve(location);
+                    continue;
+                }
+                if (status != 200) throw new IOException("Music download HTTP status " + status);
+                long length = connection.getContentLengthLong();
+                if (length >= 0 && length != size) throw new IOException("Unexpected music file size");
+                try (var in = connection.getInputStream()) {
+                    byte[] buffer = new byte[32 * 1024];
+                    long received = 0;
+                    int count;
+                    while ((count = in.read(buffer)) != -1) {
+                        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException();
+                        if (System.nanoTime() > deadline) throw new IOException("Music download timed out");
+                        received += count;
+                        if (received > size) throw new IOException("Unexpected music file size");
+                        out.write(buffer, 0, count);
+                        progress.accept(received);
+                    }
+                    if (received != size) throw new IOException("Incomplete music file");
+                }
+                return;
+            } finally { connection.disconnect(); }
+        }
+        throw new IOException("Too many music redirects");
+    }
     private byte[] request(URI target, String body, String type, String referer, int limit, String cookie) throws IOException {
         URI uri = https(target.toString());
         for (int hop = 0; hop < 5; hop++) {
@@ -77,14 +115,7 @@ final class MusicHttp {
     /** Single hop: the login transport validates every host and scopes cookies before following redirects. */
     Response exchange(URI target, String body, String type, String referer, int limit, String cookie) throws IOException {
         URI uri = https(target.toString());
-            if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException();
-            var connection = (HttpURLConnection) uri.toURL().openConnection();
-            connection.setConnectTimeout(8000);
-            connection.setReadTimeout(8000);
-            connection.setInstanceFollowRedirects(false);
-            connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36");
-            if (referer != null) connection.setRequestProperty("Referer", referer);
-            if (!cookie.isEmpty()) connection.setRequestProperty("Cookie", cookie(cookie));
+        var connection = connect(uri, referer, cookie);
             try {
                 if (body != null) {
                     connection.setRequestMethod("POST");
@@ -113,5 +144,17 @@ final class MusicHttp {
                     return new Response(status, headers, out.toByteArray());
                 }
             } finally { connection.disconnect(); }
+    }
+
+    private static HttpURLConnection connect(URI uri, String referer, String cookie) throws IOException {
+        if (Thread.currentThread().isInterrupted()) throw new java.io.InterruptedIOException();
+        var connection = (HttpURLConnection) uri.toURL().openConnection();
+        connection.setConnectTimeout(8000);
+        connection.setReadTimeout(8000);
+        connection.setInstanceFollowRedirects(false);
+        connection.setRequestProperty("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/131.0.0.0 Safari/537.36");
+        if (referer != null) connection.setRequestProperty("Referer", referer);
+        if (!cookie.isEmpty()) connection.setRequestProperty("Cookie", cookie(cookie));
+        return connection;
     }
 }

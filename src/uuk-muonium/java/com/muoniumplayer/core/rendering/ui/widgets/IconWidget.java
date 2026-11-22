@@ -38,6 +38,7 @@ public class IconWidget extends AbstractWidget<IconWidget> {
      * <p>刻意做成可选而不是直接改默认行为：项目里其它图标字体的位置都是在字距框居中的前提下调好的。</p>
      */
     public GlyphInk inkMetrics;
+    private boolean centerOnGlyph;
 
     boolean run = false;
 
@@ -75,17 +76,23 @@ public class IconWidget extends AbstractWidget<IconWidget> {
             alphaAnim = Interpolations.interpolate(alphaAnim, 0, 0.2f);
         }
 
+        double centerX = this.getX() + this.getWidth() * .5 + fontOffsetX;
+        double centerY = this.getY() + this.getHeight() * .5 + fontOffsetY;
         double drawX, drawY;
-        if (inkMetrics != null) {
+        var glyphBounds = centerOnGlyph ? fr.getGlyphBounds(icon) : null;
+        if (glyphBounds != null) {
+            drawX = centerX - (glyphBounds.getLeft() + glyphBounds.getRight()) * .5;
+            drawY = centerY - (glyphBounds.getTop() + glyphBounds.getBottom()) * .5;
+        } else if (inkMetrics != null) {
             // drawString 把位图左上角画在 (x, y - 2)，并整体缩放 0.5，所以墨迹中心的屏幕位置是
             // (drawX + centerX * 0.5, drawY - 2 + centerY * 0.5)。反解成"墨迹中心 = 按钮中心"。
-            drawX = this.getX() + this.getWidth() * 0.5 - inkMetrics.centerX() * 0.5 + fontOffsetX;
-            drawY = this.getY() + this.getHeight() * 0.5 - inkMetrics.centerY() * 0.5 + 2.0 + fontOffsetY;
+            drawX = centerX - inkMetrics.centerX() * 0.5;
+            drawY = centerY - inkMetrics.centerY() * 0.5 + 2.0;
         } else {
             int w = fr.getStringWidth(icon);
             double h = fr.getFontHeight();
-            drawX = this.getX() + this.getWidth() * 0.5 - w * 0.5 + fontOffsetX;
-            drawY = this.getY() + this.getHeight() * 0.5 - h * 0.5 + fontOffsetY;
+            drawX = centerX - w * 0.5;
+            drawY = centerY - h * 0.5;
         }
 
         fr.drawString(icon, drawX, drawY, this.getHexColor());
@@ -101,6 +108,12 @@ public class IconWidget extends AbstractWidget<IconWidget> {
 
     public IconWidget setIcon(String icon) {
         this.icon = icon;
+        return this;
+    }
+
+    /** Centers the drawn glyph in the widget using the renderer's own ink bounds. */
+    public IconWidget setCenterOnGlyph(boolean value) {
+        this.centerOnGlyph = value;
         return this;
     }
 }
