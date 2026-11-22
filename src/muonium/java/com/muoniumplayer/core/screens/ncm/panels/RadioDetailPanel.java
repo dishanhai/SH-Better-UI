@@ -35,7 +35,7 @@ import java.util.concurrent.CopyOnWriteArrayList;
  * 电台 / 播客详情页：hero 封面 + 元信息 + 订阅/播放全部，下面是节目列表。
  *
  * <p>节目在 {@link DjRadioService} 里已转成真实 songId 的 {@link Music}，所以列表行直接复用
- * {@link MusicWidget} —— 播放、红心、加入歌单、下一首播放都是现成行为；分页由滚动到底触发，
+ * {@link MusicWidget} —— 播放、红心、加入歌单、下一首播放都是现成行为；分页由列表底部的继续滚动触发，
  * 与歌单页的 {@code buildPendingMusicWidgets} 同一条分帧构建路径。</p>
  */
 public final class RadioDetailPanel extends NCMPanel {
@@ -61,6 +61,7 @@ public final class RadioDetailPanel extends NCMPanel {
     /** 下一页的上游节目序号：翻页账按上游原始条数记，跳过坏条目不影响 offset。 */
     private volatile int nextOffset;
     private volatile boolean loadingMore;
+    private boolean extensionFailed;
     private volatile boolean togglingSubscribe;
 
     private final PanelItemEntrance.RevealQueue revealQueue = new PanelItemEntrance.RevealQueue();
@@ -181,6 +182,8 @@ public final class RadioDetailPanel extends NCMPanel {
         this.list = panel;
         panel.setSpacing(2).setScrollStrength(40)
                 .setAlignment(ScrollPanel.Alignment.VERTICAL);
+        panel.setEndPull(() -> NCMScreen.getInstance().acceptsListEndInput(this), this::endStatus,
+                () -> loadPrograms(nextOffset));
         panel.setBeforeRenderCallback(() -> panel.setBounds(MARGIN, LIST_TOP,
                 Math.max(1.0, getWidth() - MARGIN * 2.0),
                 Math.max(1.0, getHeight() - LIST_TOP - MARGIN)));
@@ -302,32 +305,40 @@ public final class RadioDetailPanel extends NCMPanel {
             programs.clear();
             rowWidgets.clear();
         } else {
+            if (complete || loadingMore || programsLoading) return;
             loadingMore = true;
+            extensionFailed = false;
         }
         MultiThreadingUtil.runAsync(() -> {
             List<Music> page = Collections.emptyList();
             int upstreamCount = 0;
             boolean requestFailed = false;
             try {
-                DjRadioService.ProgramPage parsed = DjRadioService.parseProgramsPage(
-                        CloudMusicApi.djProgramByRadio(radio.getId(), PAGE_SIZE, offset, false).toJsonObject());
+                var answer = CloudMusicApi.djProgramByRadio(radio.getId(), PAGE_SIZE, offset, false);
+                var response = answer == null ? null : answer.toJsonObject();
+                if (answer == null || answer.getStatus() != 200 || response == null
+                        || response.has("code") && response.get("code").getAsInt() != 200)
+                    throw new IllegalStateException("Radio program request failed");
+                DjRadioService.ProgramPage parsed = DjRadioService.parseProgramsPage(response);
                 page = parsed.programs;
                 upstreamCount = parsed.upstreamCount;
             } catch (Throwable throwable) {
-                requestFailed = offset == 0; // 翻页失败静默，本页先到先得
+                requestFailed = true;
             }
             final List<Music> loaded = page;
             // 翻页账按上游记：offset 是上游节目序号，"解析后条数"会因跳过无 mainSong 的
             // 条目而错位（丢尾页或重复行）。complete 同样看上游——本页没给满就是到底了。
             final int nextOffset = offset + upstreamCount;
             final boolean pageComplete = upstreamCount < PAGE_SIZE;
-            final boolean failedFirstPage = requestFailed;
+            final boolean failed = requestFailed;
             MultiThreadingUtil.runOnMainThread(() -> {
                 programsLoading = false;
                 loadingMore = false;
-                if (failedFirstPage) {
-                    programsFailed = true;
-                    if (programs.isEmpty()) renderLayout();
+                if (failed) {
+                    if (offset == 0) {
+                        programsFailed = true;
+                        if (programs.isEmpty()) renderLayout();
+                    } else extensionFailed = true;
                     return;
                 }
                 this.complete = pageComplete;
@@ -410,12 +421,15 @@ public final class RadioDetailPanel extends NCMPanel {
         this.revealQueue.beginFrame();
         this.revealQueue.setAnimationsSuppressed(this.list != null && this.list.isScrollActive());
         this.buildPendingRows();
-        // 滚到底自动翻页：complete 之后不再发请求。
-        if (!complete && !loadingMore && !programsLoading && !programs.isEmpty()
-                && this.list != null && this.list.isScrolledToEnd()) {
-            loadPrograms(nextOffset);
-        }
         super.onRender(mouseX, mouseY);
+    }
+
+    private ScrollPanel.EndStatus endStatus() {
+        if (programsLoading || programsFailed || pendingRowIndex < programs.size()) return ScrollPanel.EndStatus.HIDDEN;
+        if (loadingMore) return ScrollPanel.EndStatus.LOADING;
+        if (extensionFailed) return ScrollPanel.EndStatus.FAILED;
+        if (!complete && nextOffset > 0) return ScrollPanel.EndStatus.MORE;
+        return nextOffset > PAGE_SIZE ? ScrollPanel.EndStatus.END : ScrollPanel.EndStatus.HIDDEN;
     }
 
     // ── 封面 ─────────────────────────────────────────────────────────────────

@@ -11,6 +11,8 @@ public interface WidgetTouch {
     default Object claimedBy() { return null; }
     default double dy() { return 0; }
     default boolean pressed() { return false; }
+    default boolean tapCandidate() { return false; }
+    default boolean lastPressDragged() { return false; }
     default double velocityY() { return 0; }
     default double startX() { return 0; }
     default double startY() { return 0; }
