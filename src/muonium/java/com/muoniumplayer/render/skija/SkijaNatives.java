@@ -134,12 +134,24 @@ public final class SkijaNatives {
         }
     }
 
-    public record DownloadSnapshot(String phase, int percent, String detail) {
+    public enum DownloadFailure { DIRECTORY, PACKAGE, INSTALL }
+
+    public record DownloadSnapshot(String phase, int percent, String detail, DownloadFailure failure) {
+        public DownloadSnapshot(String phase, int percent, String detail) {
+            this(phase, percent, detail, null);
+        }
     }
 
     public static DownloadSnapshot companionDownloadSnapshot() {
         SkijaCompanionDownload.State current = SkijaCompanionDownload.state();
-        return new DownloadSnapshot(current.phase().name(), current.percent(), current.detail());
+        DownloadFailure failure = current.phase() != SkijaCompanionDownload.Phase.FAILED ? null
+                : switch (current.failedDuring()) {
+                    case PREPARING -> DownloadFailure.DIRECTORY;
+                    case DOWNLOADING -> DownloadFailure.PACKAGE;
+                    case INSTALLING -> DownloadFailure.INSTALL;
+                    default -> throw new IllegalStateException("Unexpected download failure stage: " + current.failedDuring());
+                };
+        return new DownloadSnapshot(current.phase().name(), current.percent(), current.detail(), failure);
     }
 
     public static boolean canDownloadCompanion() {

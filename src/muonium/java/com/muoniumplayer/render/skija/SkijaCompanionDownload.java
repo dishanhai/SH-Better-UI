@@ -98,6 +98,7 @@ final class SkijaCompanionDownload {
     enum Phase {
         /** 等待玩家发起下载。 */
         IDLE,
+        PREPARING,
         /** 正在下载。 */
         DOWNLOADING,
         /** 下载完成，正在解压安装。 */
@@ -114,7 +115,10 @@ final class SkijaCompanionDownload {
      * @param percent 0~100；-1 表示总长度未知（拿不到 Content-Length）
      * @param detail  仅 FAILED 用：一句人话的失败原因
      */
-    record State(Phase phase, int percent, String detail) {
+    record State(Phase phase, int percent, String detail, Phase failedDuring) {
+        State(Phase phase, int percent, String detail) {
+            this(phase, percent, detail, null);
+        }
     }
 
     private static volatile State state = new State(Phase.IDLE, 0, null);
@@ -161,7 +165,7 @@ final class SkijaCompanionDownload {
         }
         Thread worker = new Thread(() -> run(pack), "MuoniumPlayer-SkijaCompanion");
         worker.setDaemon(true);
-        state = new State(Phase.DOWNLOADING, 0, null);
+        state = new State(Phase.PREPARING, 0, null);
         worker.start();
     }
 
@@ -171,6 +175,7 @@ final class SkijaCompanionDownload {
             Files.createDirectories(root.toPath());
             log("开始下载 " + pack.fileName() + "（镜像链 " + MIRRORS.size() + " 条）");
             File archive = new File(root, pack.fileName() + ".part");
+            state = new State(Phase.DOWNLOADING, 0, null);
             fetch(pack, archive);
 
             state = new State(Phase.INSTALLING, 100, null);
@@ -192,7 +197,7 @@ final class SkijaCompanionDownload {
             state = new State(Phase.DONE, 100, null);
             log("已安装 " + pack.fileName() + " → " + root.getAbsolutePath() + "；下次启动时生效");
         } catch (Throwable failure) {
-            state = new State(Phase.FAILED, 0, safeMessage(failure));
+            state = new State(Phase.FAILED, 0, safeMessage(failure), state.phase());
             log("下载或安装失败：" + describe(failure));
         }
     }

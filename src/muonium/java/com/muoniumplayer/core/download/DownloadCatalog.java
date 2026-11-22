@@ -156,6 +156,7 @@ public final class DownloadCatalog {
         String message = state.detail();
         if (nativeStatus.loaded()) status = Status.INSTALLED;
         else if (SkijaNatives.companionRestartPending()) status = Status.RESTART_REQUIRED;
+        else if ("PREPARING".equals(state.phase())) status = Status.DOWNLOADING;
         else if ("DOWNLOADING".equals(state.phase())) {
             status = HttpDownloadRace.networkState().waitingTasks() > 0 ? Status.WAITING_NETWORK : Status.DOWNLOADING;
         } else if ("INSTALLING".equals(state.phase())) status = Status.INSTALLING;

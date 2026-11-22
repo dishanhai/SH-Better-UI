@@ -60,6 +60,7 @@ public final class SkijaRecoveryButton {
         previous = download;
         button.active = SkijaNatives.canDownloadCompanion();
         Component label = switch (download.phase()) {
+            case "PREPARING" -> text("preparing");
             case "DOWNLOADING" -> download.percent() < 0 ? text("downloading")
                     : text("progress", download.percent());
             case "INSTALLING" -> text("installing");
@@ -73,7 +74,15 @@ public final class SkijaRecoveryButton {
                 .append("\n").append(text("play"));
         if ("DONE".equals(download.phase())) {
             hint.append("\n").append(text("restart"));
-        } else if ("FAILED".equals(download.phase()) || "IDLE".equals(download.phase())) {
+        }
+        if ("FAILED".equals(download.phase())) {
+            hint.append("\n").append(switch (download.failure()) {
+                case DIRECTORY -> text("failure.directory");
+                case PACKAGE -> text("failure.package");
+                case INSTALL -> text("failure.install");
+            });
+        }
+        if ("FAILED".equals(download.phase()) || "IDLE".equals(download.phase())) {
             hint.append("\n").append(text("manual", status.expectedPackageName(),
                     SkijaNatives.NATIVE_DOWNLOAD_PAGE, status.expectedDirectory()));
         }
