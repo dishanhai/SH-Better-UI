@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.dishanhai.sh_better_ui.ShBetterUi;
 import com.dishanhai.sh_better_ui.client.blur.GaussBlur.RevealDirection;
 import com.dishanhai.sh_better_ui.client.visual.VisualEffectResult;
@@ -85,8 +86,14 @@ public final class VisualRevealRenderer extends RenderType {
 
     static VisualEffectResult drawTexture(GuiGraphics graphics, ResourceLocation texture, int x, int y, int width,
                                           int height, RevealProfile profile, float radius, RevealDirection direction) {
+        var svg = com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture.find(texture, Math.max(width, height));
+        var sourceId = svg == null ? texture : svg.id();
         graphics.flush();
-        return GuiStateGuard.call(() -> drawTextureIsolated(graphics, texture, x, y, width, height, profile, radius, direction));
+        if (LegacyGuiBackend.isNonOpenGlWindow()) {
+            LegacyGuiBackend.texturedQuad(graphics, sourceId, x, y, width, height, 0f, 0f, 1f, 1f, 0xffffffff);
+            return FALLBACK;
+        }
+        return GuiStateGuard.call(() -> drawTextureIsolated(graphics, sourceId, x, y, width, height, profile, radius, direction));
     }
 
     private static VisualEffectResult drawTextureIsolated(GuiGraphics graphics, ResourceLocation texture, int x, int y,

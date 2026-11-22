@@ -1,12 +1,14 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.mojang.blaze3d.platform.GlStateManager;
 import com.mojang.blaze3d.platform.NativeImage;
 import com.mojang.blaze3d.platform.TextureUtil;
 import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.renderer.texture.AbstractTexture;
+import net.minecraft.client.renderer.texture.DynamicTexture;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.packs.resources.ResourceManager;
 import org.lwjgl.opengl.GL11;
@@ -38,6 +40,7 @@ final class RichMediaTexture extends AbstractTexture {
     private final long duration;
     private final long startedAt;
     private boolean accounted;
+    private boolean delegated;
 
     private RichMediaTexture(Pixels pixels, long startedAt) {
         location = ResourceLocation.tryParse("sh_better_ui:rich_media/atlas_" + IDS.incrementAndGet());
@@ -83,6 +86,25 @@ final class RichMediaTexture extends AbstractTexture {
         int area = texture.area();
         if (texture.sheetWidth > max || texture.sheetHeight > max
                 || mountedPixels + area > MAX_MOUNT_PIXELS || clientPixels + area > MAX_CLIENT_PIXELS) return null;
+
+        if (LegacyGuiBackend.isNonOpenGlWindow()) {
+            // Pixels belong to the decode job, which closes them after upload. The host upload owns a copy.
+            var upload = new NativeImage(texture.sheetWidth, texture.sheetHeight, false);
+            DynamicTexture dynamic = null;
+            try {
+                upload.copyFrom(pixels.image());
+                dynamic = new DynamicTexture(upload);
+                Minecraft.getInstance().getTextureManager().register(texture.location, dynamic);
+            } catch (RuntimeException failure) {
+                if (dynamic == null) upload.close();
+                else dynamic.close();
+                throw failure;
+            }
+            texture.delegated = true;
+            texture.accounted = true;
+            clientPixels += area;
+            return texture;
+        }
 
         int oldTexture = GL11.glGetInteger(GL11.GL_TEXTURE_BINDING_2D);
         int rowLength = GL11.glGetInteger(GL11.GL_UNPACK_ROW_LENGTH);
@@ -135,5 +157,8 @@ final class RichMediaTexture extends AbstractTexture {
         super.close();
     }
 
-    void release() { Minecraft.getInstance().getTextureManager().release(location); }
+    void release() {
+        Minecraft.getInstance().getTextureManager().release(location);
+        if (delegated) close();
+    }
 }

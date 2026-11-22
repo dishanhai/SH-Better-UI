@@ -27,6 +27,7 @@ public final class UiHudPanel {
     private final List<Row> rows;
     private final int width;
     private final int height;
+    private final int iconSize;
     private final TextReadabilityPalette palette = new TextReadabilityPalette();
 
     public UiHudPanel(Font font, List<Row> rows) {
@@ -35,7 +36,13 @@ public final class UiHudPanel {
 
     /** Reserves additional text space in unscaled GUI pixels for changing HUD values. */
     public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth) {
+        this(font, rows, minimumTextWidth, ICON_SIZE);
+    }
+
+    /** Resizes row icons within the existing icon lane without changing the text layout. */
+    public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth, int iconSize) {
         this.rows = List.copyOf(rows);
+        this.iconSize = UiMath.clamp(iconSize, 1, Math.min(rowHeight(font), ICON_SIZE + 2));
         int textWidth = this.rows.stream().mapToInt(row -> font.width(row.text())).max().orElse(0);
         width = TEXT_X + Math.max(textWidth, minimumTextWidth) + PADDING;
         height = this.rows.size() * rowHeight(font) + 2 * PADDING;
@@ -146,16 +153,19 @@ public final class UiHudPanel {
             int authoredTextColor = textColor;
             textColor = framePalette.baseColor(textColor);
             int iconY = PADDING + (rowHeight - ICON_SIZE) / 2;
-            pose.pushPose();
-            try {
-                pose.scale(0.5f, 0.5f, 1);
-                for (var row : rows) {
-                    row.icon().draw(graphics, PADDING * 2, iconY * 2, 1,
+            float centeredInset = (ICON_SIZE - iconSize) / 2f;
+            float iconScale = (float) iconSize / GraphicIcon.PIXELS;
+            for (var row : rows) {
+                pose.pushPose();
+                try {
+                    pose.translate(PADDING + centeredInset, iconY + centeredInset, 0);
+                    pose.scale(iconScale, iconScale, 1);
+                    row.icon().draw(graphics, 0, 0, 1,
                             preferences.highContrast() ? textColor : row.iconColor());
-                    iconY += rowHeight;
+                } finally {
+                    pose.popPose();
                 }
-            } finally {
-                pose.popPose();
+                iconY += rowHeight;
             }
             int lineY = PADDING + (rowHeight - font.lineHeight) / 2;
             if (glass && !preferences.highContrast() && supportsSoftText(scale)) {

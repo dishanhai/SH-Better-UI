@@ -119,6 +119,7 @@
 - [x] 修复 Forge 黑洞合成后的准心反色。使用 GTL 的 CozyUI 准心贴图，在隔离世界验证 SHCLIB F10 → Esc，以及资源重载后 F10 → 返回。两轮各采样 60 帧，准心外围保留世界颜色，中心正常反色。
 - [ ] 在实际消费实例复验黑洞及其他材质的预览、设置应用、关闭面板返回世界、连续切换、窗口尺寸与 GUI 缩放变化、F3+T 重载；有 Oculus／Iris／OptiFine 时分别检查光影开启与关闭。当前修复未部署消费实例。
 - [ ] 在 NeoForge 1.21.1 客户端执行同等材质视觉验收；原生 GPU 与 Forge 背景回归运行方式见 `docs/RENDER_STATE_VERIFICATION.md`。26.x 使用独立渲染后端，现有精简面板的背景移植仍按下方待办处理。
+- [ ] 按 [旧版 Vulkan SVG 验收清单](docs/legacy-vulkan-svg.md#release-checks) 在 Forge 1.20.1 和 NeoForge 1.21.1 的 OpenGL 与 Vulkan 宿主中复验图标，在 GUI 缩放 2／3 下核对 HUD 行图标独立放大、文字布局和资源包覆盖恢复。
 
 ## 自定义音乐字体（PR #31）
 

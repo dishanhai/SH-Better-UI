@@ -136,13 +136,14 @@ public final class AlignmentAssets {
     }
 
     private Optional<TextureMetrics> load(TextureKey key) {
-        String name = BuiltInSvgIcons.name(key.id().getNamespace(), key.id().getPath());
-        if (BuiltInSvgIcons.hasSource(name)) {
+        var resource = resources.getResource(key.id());
+        var winner = resource.orElse(null);
+        String name = BuiltInSvgIcons.select(key.id().getNamespace(), key.id().getPath(), winner == null ? null : winner::open);
+        if (name != null) {
             var image = BuiltInSvgIcons.render(name, 128);
             return Optional.of(TextureMetrics.scan(image.getWidth(), image.getHeight(), key.threshold(),
                     (x, y) -> image.getRGB(x, y) >>> 24));
         }
-        var resource = resources.getResource(key.id());
         if (resource.isEmpty()) return Optional.empty();
         try (var stream = resource.get().open(); var image = NativeImage.read(stream)) {
             return Optional.of(TextureMetrics.scan(image.getWidth(), image.getHeight(), key.threshold(),
