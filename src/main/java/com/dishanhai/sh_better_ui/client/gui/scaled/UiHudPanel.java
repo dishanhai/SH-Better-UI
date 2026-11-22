@@ -42,7 +42,7 @@ public final class UiHudPanel {
     /** Resizes row icons within the existing icon lane without changing the text layout. */
     public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth, int iconSize) {
         this.rows = List.copyOf(rows);
-        this.iconSize = Math.clamp(iconSize, 1, Math.min(rowHeight(font), ICON_SIZE + 2));
+        this.iconSize = Math.max(1, Math.min(iconSize, Math.min(rowHeight(font), ICON_SIZE + 2)));
         int textWidth = this.rows.stream().mapToInt(row -> font.width(row.text())).max().orElse(0);
         width = TEXT_X + Math.max(textWidth, minimumTextWidth) + PADDING;
         height = this.rows.size() * rowHeight(font) + 2 * PADDING;
