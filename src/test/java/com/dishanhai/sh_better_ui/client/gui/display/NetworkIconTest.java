@@ -326,6 +326,8 @@ class NetworkIconTest {
 
     private static void assertVectorCompanion(String path, BufferedImage original) throws IOException {
         var detail = readTintMask(path, 64);
+        assertTransparentBorder(original, path.replace("/display_64/", "/display/"));
+        assertTransparentBorder(detail, path);
         boolean hasSubpixelDetail = false;
         for (int y = 0; y < 64; y++) {
             for (int x = 0; x < 64; x++) {
@@ -336,6 +338,16 @@ class NetworkIconTest {
             }
         }
         assertTrue(hasSubpixelDetail, path + " must contain independently rendered edge coverage");
+    }
+
+    private static void assertTransparentBorder(BufferedImage mask, String path) {
+        int edge = mask.getWidth() - 1;
+        for (int point = 0; point <= edge; point++) {
+            assertEquals(0, mask.getRGB(point, 0) >>> 24, path + " top edge");
+            assertEquals(0, mask.getRGB(point, edge) >>> 24, path + " bottom edge");
+            assertEquals(0, mask.getRGB(0, point) >>> 24, path + " left edge");
+            assertEquals(0, mask.getRGB(edge, point) >>> 24, path + " right edge");
+        }
     }
 
     private static boolean isNearestNeighborCopy(BufferedImage copy, BufferedImage original) {
