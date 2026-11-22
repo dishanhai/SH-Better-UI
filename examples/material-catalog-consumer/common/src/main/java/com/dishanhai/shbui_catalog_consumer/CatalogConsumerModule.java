@@ -4,6 +4,7 @@ package com.dishanhai.shbui_catalog_consumer;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.api.UiScreen;
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleContext;
 import com.dishanhai.sh_better_ui.kernel.api.ModuleDescriptor;
 import com.dishanhai.sh_better_ui.kernel.api.RenderService;
@@ -66,7 +67,7 @@ public final class CatalogConsumerModule implements UIModule {
     }
 
     private void open(Screen parent) {
-        if (module.engine().require(UIApis.MATERIAL_CATALOG).find(GLASS_ID).isEmpty()) return;
+        if (module.engine().materialCatalog().find(GLASS_ID).isEmpty()) return;
         var page = new ConsumerPage();
         var title = label("title");
         var builder = ShBetterUiApi.screen(title).parent(parent)
@@ -93,16 +94,16 @@ public final class CatalogConsumerModule implements UIModule {
 
         void render(UiScreen active, UiFrame frame) {
             if (scope == null || !scope.isOpen() || active.width < 64 || active.height < 48) return;
-            var graphics = frame.graphics();
+            var canvas = frame.canvas();
             int width = Math.min(212, active.width - 32);
             int x = (active.width - width) / 2;
             int y = (active.height - 30) / 2;
-            graphics.fill(0, 0, active.width, active.height, 0xff172437);
+            canvas.fill(new Bounds(0, 0, active.width, active.height), 0xff172437);
             for (int band = 0; band < 10; band++) {
                 int left = x + band * width / 10;
                 int right = x + (band + 1) * width / 10;
                 int color = band % 2 == 0 ? 0xff204677 : 0xff15273d;
-                graphics.fill(left, y - 8, right, y + 38, color);
+                canvas.fill(new Bounds(left, y - 8, right - left, 46), color);
             }
 
             if (paint != null && !paint.status().isTerminal()) return;

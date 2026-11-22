@@ -2,6 +2,8 @@
 package com.dishanhai.sh_better_ui.client.api;
 
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
+import com.dishanhai.sh_better_ui.kernel.api.UIEngine;
+import com.dishanhai.sh_better_ui.kernel.api.UnifiedUI;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
 
 /** Entry point for the native GUI features available on NeoForge 26. */
@@ -25,6 +27,9 @@ public final class ShBetterUiApi {
 
     private ShBetterUiApi() {}
 
+    /** Canonical cross-platform service entry. Available after client kernel startup. */
+    public static UIEngine unified() { return UnifiedUI.get(); }
+
     public static ControlsApi controls() {
         return CONTROLS;
     }
@@ -42,6 +47,10 @@ public final class ShBetterUiApi {
     public static BlurApi blur() { return BLUR; }
 
     public static UiClientApi client() { return CLIENT; }
+
+    public static UiScreenBuilder screen(String titleKey) {
+        return screen(net.minecraft.network.chat.Component.translatable(titleKey));
+    }
 
     public static UiScreenBuilder screen(net.minecraft.network.chat.Component title) { return CLIENT.screen(title); }
 

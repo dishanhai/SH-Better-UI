@@ -39,6 +39,7 @@ import static com.dishanhai.shbui_widgets_smoke.GallerySmoke.key;
 /** Exercises the public PageService through a separately loaded consumer mod. */
 public final class DeclarativePageSmoke implements UIModule {
     private static final UiId ID = new UiId(WidgetsSmoke.ID, "declarative_page");
+    private static final UiId MODAL_ID = new UiId(WidgetsSmoke.ID, "declarative_modal");
     private static final UiId ACTION = new UiId(WidgetsSmoke.ID, "apply");
     private static ModuleContext owner;
     private static PageService pages;
@@ -61,7 +62,7 @@ public final class DeclarativePageSmoke implements UIModule {
     @Override public void stop(ModuleContext context) { owner = null; }
 
     static void frame(Minecraft client) {
-        if (stage == 6) return;
+        if (stage == 7) return;
         if (deadline == 0) deadline = System.nanoTime() + Duration.ofSeconds(45).toNanos();
         require(System.nanoTime() < deadline, "timed out at stage " + stage);
         if (WidgetSmokePlatform.hasOverlay(client)) return;
@@ -69,15 +70,15 @@ public final class DeclarativePageSmoke implements UIModule {
             case 0 -> {
                 require(WidgetSmokePlatform.backend().equalsIgnoreCase(System.getProperty("shbui.widgetSmoke.expectedBackend")),
                         "expected graphics backend");
-                pages = owner.engine().require(PageService.KEY);
-                require(pages.pageTypes().equals(Set.of(UiPageType.SCREEN))
+                pages = owner.engine().pages();
+                require(pages.pageTypes().equals(Set.of(UiPageType.SCREEN, UiPageType.MODAL))
                                 && pages.components().containsKey(UiBuiltinComponents.id("button"))
                                 && !pages.components().containsKey(UiBuiltinComponents.id("rich_text")),
                         "only available renderers are advertised");
                 var before = WidgetSmokePlatform.screen(client);
                 reject(() -> pages.register(owner, UiPageDefinition.builder(ID)
                         .root(UiNode.builtin("unsupported", "rich_text").text("").build()).build()));
-                reject(() -> pages.register(owner, UiPageDefinition.builder(ID).type(UiPageType.MODAL)
+                reject(() -> pages.register(owner, UiPageDefinition.builder(ID).type(UiPageType.HUD)
                         .root(UiNode.builtin("body", "text").text("").build()).build()));
                 require(WidgetSmokePlatform.screen(client) == before, "incompatible pages leave the screen unchanged");
                 var definition = pages.define(ID).title(CommonComponents.GUI_PROCEED.getString())
@@ -154,6 +155,25 @@ public final class DeclarativePageSmoke implements UIModule {
                                 && !reopened.displayed().toCompletableFuture().join()
                                 && registration.status() == RegistrationHandle.Status.REVOKED
                                 && pages.find(owner, ID).isEmpty(), "revoke closes an unpresented instance and restores the parent");
+
+                registration = pages.register(owner, pages.define(MODAL_ID).type(UiPageType.MODAL)
+                        .title("Declarative modal")
+                        .root("modal", "modal", root -> root.child("notice", "text", text -> text.text("Notice")))
+                        .build());
+                instance = pages.open(owner, MODAL_ID, Map.of(), ignored -> { throw new AssertionError("No modal action declared"); });
+                page = WidgetSmokePlatform.screen(client);
+                require(page != parent && page.getFocused() instanceof AbstractWidget back
+                                && back.getMessage().equals(CommonComponents.GUI_BACK), "modal initially focuses Back");
+                stage++;
+            }
+            case 6 -> {
+                if (!instance.displayed().toCompletableFuture().isDone()) return;
+                require(instance.displayed().toCompletableFuture().join()
+                                && instance.snapshot().state() == PageService.State.ACTIVE, "modal is presented");
+                require(page.keyPressed(key(GLFW.GLFW_KEY_ESCAPE))
+                                && WidgetSmokePlatform.screen(client) == parent, "Escape closes the modal and restores its parent");
+                require(instance.closed().toCompletableFuture().join().state() == PageService.State.CLOSED, "modal terminal state");
+                registration.close();
                 try {
                     Files.writeString(client.gameDirectory.toPath().resolve("declarative-page.txt"),
                             "SHBUI_DECLARATIVE_PAGE_PASS backend=" + WidgetSmokePlatform.backend() + "\n");

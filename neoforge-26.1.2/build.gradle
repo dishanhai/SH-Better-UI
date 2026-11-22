@@ -11,7 +11,7 @@ apply from: '../gradle/neoforge-26-port.gradle'
 apply from: '../gradle/muonium-neoforge.gradle'
 
 // Optional integrations are compiled against pinned official artifacts, never bundled or required at runtime.
-// Keep this source set out of the 26.2 port until those upstream APIs are separately verified.
+// 26.2 shares only the GuideME Java adapter, with a separate artifact and Mixin config.
 sourceSets.main.java.srcDir('src/textCompat/java')
 sourceSets.main.resources.srcDir('src/textCompat/resources')
 repositories {

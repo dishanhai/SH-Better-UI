@@ -27,11 +27,12 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionStage;
 import java.util.function.Consumer;
 
-/** Local declarative Screen service for the 26.x native extraction pipeline. */
+/** Local declarative foreground pages for the 26.x native extraction pipeline. */
 final class ClientPages implements PageService {
     private static final int MAX_REGISTRATIONS = 256;
+    private static final Set<UiPageType> PAGE_TYPES = Set.of(UiPageType.SCREEN, UiPageType.MODAL);
     private final KernelHost host;
-    private final UiPageValidator validator = new UiPageValidator();
+    private static final UiPageValidator VALIDATOR = new UiPageValidator();
     private final Map<UiId, Registered> definitions = new LinkedHashMap<>();
     private OpenPage active;
 
@@ -44,7 +45,7 @@ final class ClientPages implements PageService {
 
     @Override public Set<UiPageType> pageTypes() {
         host.assertOwner();
-        return Set.of(UiPageType.SCREEN);
+        return PAGE_TYPES;
     }
 
     @Override public RegistrationHandle register(ModuleContext owner, UiPageDefinition page) {
@@ -73,7 +74,7 @@ final class ClientPages implements PageService {
         Objects.requireNonNull(action);
         var client = Minecraft.getInstance();
         if (active != null || NativePort.hasOverlay(client)) {
-            throw new IllegalStateException("A native declarative Screen cannot open now");
+            throw new IllegalStateException("A native declarative foreground page cannot open now");
         }
         var instance = new OpenPage(owner.scope(), resolve(page), new PageDataState(page.dataSchema(), data), action);
         active = instance;
@@ -102,9 +103,9 @@ final class ClientPages implements PageService {
         return true;
     }
 
-    private UiPageDefinition resolve(UiPageDefinition page) {
-        if (page.type() != UiPageType.SCREEN) throw new IllegalArgumentException("Unsupported page type: " + page.type());
-        var resolved = validator.resolve(page, false, NativePageScreen.COMPONENTS);
+    static UiPageDefinition resolve(UiPageDefinition page) {
+        if (!PAGE_TYPES.contains(page.type())) throw new IllegalArgumentException("Unsupported page type: " + page.type());
+        var resolved = VALIDATOR.resolve(page, false, NativePageScreen.COMPONENTS);
         var effective = resolved.page().orElseThrow(() -> new IllegalArgumentException(resolved.problems().get(0).toString()));
         validateActions(effective.root(), effective);
         return effective;

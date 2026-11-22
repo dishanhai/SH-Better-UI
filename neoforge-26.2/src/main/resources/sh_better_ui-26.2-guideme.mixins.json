@@ -1,0 +1,8 @@
+{
+  "required": false,
+  "minVersion": "0.8",
+  "package": "com.dishanhai.sh_better_ui.client.compat.text26.mixin",
+  "compatibilityLevel": "JAVA_25",
+  "client": ["GuideMe26LineBuilderMixin", "GuideMe26LineTextRunMixin"],
+  "injectors": { "defaultRequire": 1 }
+}

@@ -8,16 +8,18 @@ import java.util.List;
 /** Bounded native screen backgrounds. No remote textures, shaders, workers or GPU lifetime are owned. */
 public final class NativeAppearanceBackground {
     public static final String BACKDROP = "nativeBackdrop";
+    private static final String LEGACY_PLAIN = "sh_better_ui:plain";
     public static final String SOLID = "nativeSolid", GRADIENT = "nativeGradient", DOTS = "dotMatrix";
     private static final List<String> IDS = List.of(BACKDROP, SOLID, GRADIENT, DOTS);
     private NativeAppearanceBackground() {}
     public static List<String> supportedIds() { return IDS; }
-    public static boolean supported(String id) { return IDS.contains(id); }
+    public static boolean supported(String id) { return id != null && (LEGACY_PLAIN.equals(id) || IDS.contains(id)); }
+    public static boolean isBackdrop(String id) { return BACKDROP.equals(id) || LEGACY_PLAIN.equals(id); }
     public record Sample(String effect, int base, int secondary, int accent, double phase, int spacing, int countLimit) {}
     /** The sampling contract is also used by tests: reduced motion/high contrast never depend on wall time. */
     public static Sample sample(int width, int height, ThemeSettings settings, UiPreferences preferences, long nowMs) {
         var theme = UiTheme.resolve(settings);
-        if (settings.backgroundEffect().equals(BACKDROP)) return new Sample(BACKDROP, theme.background(), theme.background(), theme.accent(), 0, 32, 0);
+        if (isBackdrop(settings.backgroundEffect())) return new Sample(BACKDROP, theme.background(), theme.background(), theme.accent(), 0, 32, 0);
         if (preferences.highContrast()) return new Sample(SOLID, theme.light() ? 0xffffffff : 0xff000000,
                 theme.light() ? 0xffffffff : 0xff000000, theme.light() ? 0xff000000 : 0xffffffff, 0, 32, 0);
         String effect = supported(settings.backgroundEffect()) ? settings.backgroundEffect() : SOLID;

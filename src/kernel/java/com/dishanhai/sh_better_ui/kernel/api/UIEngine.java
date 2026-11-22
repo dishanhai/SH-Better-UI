@@ -2,6 +2,8 @@
 package com.dishanhai.sh_better_ui.kernel.api;
 
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassService;
+import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalog;
+import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 
 import java.util.Optional;
 
@@ -55,6 +57,12 @@ public interface UIEngine {
     default UIPlatform platform() {
         return require(UIPlatform.KEY);
     }
+
+    /** The same declarative contract on every client. Query pageTypes() and components() for support. */
+    default PageService pages() { return require(PageService.KEY); }
+
+    /** Shared material metadata and presets; does not promise a platform-specific draw backend. */
+    default MaterialCatalog materialCatalog() { return require(MaterialCatalog.KEY); }
 
     default GlassService glass() {
         return require(GlassService.KEY);

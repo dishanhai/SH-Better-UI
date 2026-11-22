@@ -2,10 +2,15 @@
 // Isolated consumer: actual pinned GuideME/FTB jars are installed only in this test profile.
 gradle.beforeProject { p ->
     p.afterEvaluate {
-        if (p.projectDir.name != 'neoforge-26.1.2') return
+        def guideOnly = p.projectDir.name == 'neoforge-26.2'
+        if (!guideOnly && p.projectDir.name != 'neoforge-26.1.2') return
         def library = p.tasks.named('jar', Jar)
         def sources = p.sourceSets.create('textCompatSmoke') {
             java.setSrcDirs([p.file('src/textCompatSmoke/java')])
+            if (guideOnly) {
+                java.srcDir(p.file('../neoforge-26.1.2/src/textCompatSmoke/java'))
+                java.include('**/GuideMeCompatProbe.java', '**/GuideMeOnlySmoke.java')
+            }
             resources.setSrcDirs([p.file('src/textCompatSmoke/resources')])
             compileClasspath += p.sourceSets.main.compileClasspath + p.files(library.flatMap { it.archiveFile })
         }
@@ -16,11 +21,12 @@ gradle.beforeProject { p ->
             loadedMods.set([consumer])
             gameDirectory.set(directory)
             programArguments.addAll('--width', '1000', '--height', '800')
+            if (guideOnly) programArguments.addAll('--graphicsBackend', 'opengl')
         }
         p.tasks.named('compileTextCompatSmokeJava').configure { dependsOn(library) }
         def stage = p.tasks.register('stageTextCompatSmokeMods', Sync) {
             from library.flatMap { it.archiveFile }
-            from p.configurations.textCompatArtifacts
+            from(guideOnly ? p.configurations.guideMeTextCompat : p.configurations.textCompatArtifacts)
             into new File(directory, 'mods')
         }
         p.tasks.named('runTextCompatSmoke').configure {

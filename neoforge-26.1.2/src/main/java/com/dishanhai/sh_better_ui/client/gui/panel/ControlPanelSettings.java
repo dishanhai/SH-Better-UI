@@ -106,6 +106,11 @@ public record ControlPanelSettings(ThemeSettings theme, boolean highContrast, bo
         }
     }
 
+    /** Saves only the theme against the latest applied snapshot under the settings lock. */
+    public static synchronized boolean saveTheme(ThemeSettings theme) {
+        return save(settings.withTheme(theme));
+    }
+
     static synchronized boolean save(ControlPanelSettings draft) {
         Objects.requireNonNull(draft, "draft");
         if (file == null) return false;

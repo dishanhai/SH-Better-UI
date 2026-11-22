@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.api;
 
+import com.dishanhai.sh_better_ui.kernel.api.material.MaterialCatalog;
 import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.internal.EnginePublication;
 
@@ -23,6 +24,10 @@ public final class UnifiedUI {
     }
 
     public static PageService pages() {
-        return get().require(PageService.KEY);
+        return get().pages();
+    }
+
+    public static MaterialCatalog materialCatalog() {
+        return get().materialCatalog();
     }
 }

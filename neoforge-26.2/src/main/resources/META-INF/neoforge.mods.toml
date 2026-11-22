@@ -20,6 +20,8 @@ config="sh_better_ui-26-blur.mixins.json"
 
 [[mixins]]
 config="sh_better_ui-26-text.mixins.json"
+[[mixins]]
+config="sh_better_ui-26.2-guideme.mixins.json"
 
 [[dependencies.${mod_id}]]
 modId="minecraft"

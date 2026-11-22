@@ -14,7 +14,7 @@ final class NativePageScreenInputTest {
         for (String name : new String[]{"row", "grid", "toggle", "slider"}) {
             assertTrue(NativePageScreen.COMPONENTS.containsKey(UiBuiltinComponents.id(name)));
         }
-        assertFalse(NativePageScreen.COMPONENTS.containsKey(UiBuiltinComponents.id("modal")));
+        assertTrue(NativePageScreen.COMPONENTS.containsKey(UiBuiltinComponents.id("modal")));
         var definition = UiPageDefinition.builder(new UiId("example", "form"))
                 .root("form", "grid", root -> root
                         .child("enabled", "toggle", input -> input.label("Enabled"))
@@ -23,6 +23,43 @@ final class NativePageScreenInputTest {
         var result = new UiPageValidator().resolve(definition, false, NativePageScreen.COMPONENTS);
         assertTrue(result.page().isPresent(), result.problems().toString());
         assertDoesNotThrow(() -> ClientPages.validateActions(result.page().orElseThrow().root(), definition));
+    }
+
+    @Test
+    void localModalResolvesWithoutGrantingRemoteActionsOrOtherSurfaces() {
+        var local = modal(UiPageType.MODAL, UiActionPolicy.LOCAL);
+        assertEquals(UiPageType.MODAL, ClientPages.resolve(local).type());
+        assertThrows(IllegalArgumentException.class, () -> ClientPages.resolve(modal(UiPageType.MODAL, UiActionPolicy.SERVER)));
+        assertThrows(IllegalArgumentException.class, () -> ClientPages.resolve(modal(UiPageType.HUD, UiActionPolicy.LOCAL)));
+        assertThrows(IllegalArgumentException.class, () -> ClientPages.resolve(modal(UiPageType.NOTIFICATION, UiActionPolicy.LOCAL)));
+    }
+
+    private static UiPageDefinition modal(UiPageType type, UiActionPolicy policy) {
+        var action = new UiId("example", "dismiss");
+        return UiPageDefinition.builder(new UiId("example", "dialog"))
+                .type(type)
+                .action(new UiActionDefinition(action, policy, new UiDataSchema(Map.of())))
+                .root("dialog", "modal", root -> root
+                        .child("notice", "text", text -> text.property("text", new UiValue.Text("Notice")))
+                        .child("dismiss", "button", button -> button.label("Dismiss").action(action)))
+                .build();
+    }
+
+    @Test
+    void modalBoxStaysCenteredAndWithinScreenAtAnyGuiSize() {
+        for (int width : new int[]{1, 79, 80, 180, 428, 480, 1920}) {
+            for (int height : new int[]{1, 79, 80, 200, 300, 1080}) {
+                var area = NativePageScreen.modalBounds(width, height);
+                assertTrue(area.x() >= 0 && area.y() >= 0);
+                assertTrue(area.right() <= width && area.bottom() <= height);
+                assertTrue(area.width() > 0 && area.height() > 0);
+                assertTrue(Math.abs(width - 2 * area.x() - area.width()) <= 1);
+                assertTrue(Math.abs(height - 2 * area.y() - area.height()) <= 1);
+            }
+        }
+        var desktop = NativePageScreen.modalBounds(1920, 1080);
+        assertEquals(428, desktop.width());
+        assertEquals(300, desktop.height());
     }
 
     @Test

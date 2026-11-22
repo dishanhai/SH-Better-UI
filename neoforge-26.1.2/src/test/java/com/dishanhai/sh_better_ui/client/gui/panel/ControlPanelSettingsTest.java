@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import com.dishanhai.sh_better_ui.config.ControlFeedbackSettings;
 import com.dishanhai.sh_better_ui.kernel.api.glass.GlassMaterial;
@@ -56,6 +57,21 @@ final class ControlPanelSettingsTest {
         var reset = draft.withFeedback(ControlFeedbackSettings.DEFAULT);
         assertEquals(ControlFeedbackSettings.DEFAULT, reset.feedback());
         assertEquals(draft, reset.withFeedback(feedback));
+    }
+
+    @Test
+    void publicThemeSavePersistsOnlyThemeAndKeepsOtherAppliedSettings() {
+        ControlPanelSettings.load(config);
+        var before = ControlPanelSettings.DEFAULT.withDisplay(true, true, false)
+                .withGlass(false, true, 70, 120, 160)
+                .withFeedback(new ControlFeedbackSettings(false, true, false, 400));
+        assertTrue(ControlPanelSettings.save(before));
+
+        var theme = before.theme().withMode(ThemeSettings.Mode.LIGHT);
+        assertTrue(ShBetterUiApi.settings().saveTheme(theme));
+        assertEquals(theme, ShBetterUiApi.settings().theme());
+        ControlPanelSettings.load(config);
+        assertEquals(before.withTheme(theme), ControlPanelSettings.current());
     }
 
     @Test

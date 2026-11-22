@@ -6,7 +6,7 @@ plugins {
     id 'org.jetbrains.kotlin.jvm' version '2.4.0'
 }
 
-ext.portMixinConfigs = ['muonium.mixins.json', 'sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json']
+ext.portMixinConfigs = ['muonium.mixins.json', 'sh_better_ui-26.2.mixins.json', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'sh_better_ui-26.2-guideme.mixins.json']
 apply from: '../gradle/neoforge-26-port.gradle'
 apply from: '../gradle/muonium-neoforge.gradle'
 
@@ -29,6 +29,55 @@ sourceSets.main.java {
     }
 }
 sourceSets.test.java.srcDir('../neoforge-26.1.2/src/test/java')
+
+// GuideME's official 26.2 artifact preserves the layout/render injection contract.
+// FTB Library's adapter stays on 26.1.2 until the provider is validated on 26.2.
+def sharedTextCompat = file('../neoforge-26.1.2/src/textCompat/java')
+sourceSets.main.java {
+    srcDir(sharedTextCompat)
+    exclude { entry -> entry.file.toPath().startsWith(sharedTextCompat.toPath())
+            && entry.name == 'FtbTextEffectsMixin.java' }
+}
+sourceSets.test.java {
+    srcDir('../neoforge-26.1.2/src/textCompatTest/java')
+    include('com/dishanhai/sh_better_ui/client/compat/text26/**')
+}
+configurations {
+    guideMeTextCompat {
+        canBeResolved = true
+        canBeConsumed = false
+        transitive = false
+    }
+}
+configurations.compileOnly.extendsFrom(configurations.guideMeTextCompat)
+dependencies {
+    guideMeTextCompat('org.appliedenergistics:guideme:26.2.2-alpha') { transitive = false }
+}
+
+tasks.named('test', Test) {
+    inputs.files(configurations.guideMeTextCompat)
+    doFirst {
+        systemProperty 'shbui.guideme26.artifact', configurations.guideMeTextCompat.singleFile.absolutePath
+    }
+}
+
+tasks.named('verifyLibraryJar') {
+    doLast {
+        new java.util.zip.ZipFile(tasks.jar.archiveFile.get().asFile).withCloseable { zip ->
+            def mixin = 'com/dishanhai/sh_better_ui/client/compat/text26/mixin/'
+            ['sh_better_ui-26.2-guideme.mixins.json',
+             "${mixin}GuideMe26LineBuilderMixin.class",
+             "${mixin}GuideMe26LineTextRunMixin.class"].each { path ->
+                if (zip.getEntry(path) == null) throw new GradleException("Missing GuideME adapter entry: ${path}")
+            }
+            if (zip.entries().any { it.name.startsWith('guideme/') ||
+                    it.name == "${mixin}FtbTextEffectsMixin.class" ||
+                    (it.name.startsWith('META-INF/jarjar/') && it.name.toLowerCase(Locale.ROOT).contains('guideme')) }) {
+                throw new GradleException('The 26.2 GuideME adapter must not bundle provider classes or the FTB adapter')
+            }
+        }
+    }
+}
 processResources {
     from('../neoforge-26.1.2/src/main/resources') {
         include('assets/sh_better_ui/textures/gui/rich/native-motion.gif', 'sh_better_ui-26-blur.mixins.json', 'sh_better_ui-26-text.mixins.json', 'assets/sh_better_ui/shaders/core/liquid_glass.*',

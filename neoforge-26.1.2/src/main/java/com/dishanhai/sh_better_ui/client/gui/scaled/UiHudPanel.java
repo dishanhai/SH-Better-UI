@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
+import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.display.SvgIconTexture;
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface;
@@ -21,12 +22,24 @@ public final class UiHudPanel {
     private static final int MARGIN = 4, PADDING = 6, ICON_SIZE = 8, TEXT_X = 18;
     private static final int TEXT = 0xFFF7F7FA;
     private final List<Row> rows;
-    private final int width, height;
+    private final int width, height, iconSize;
     private final TextReadabilityPalette palette = new TextReadabilityPalette();
 
     public UiHudPanel(Font font, List<Row> rows) {
+        this(font, rows, 0);
+    }
+
+    /** Reserves additional text space in unscaled GUI pixels for changing HUD values. */
+    public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth) {
+        this(font, rows, minimumTextWidth, ICON_SIZE);
+    }
+
+    /** Resizes row icons within the existing icon lane without changing the text layout. */
+    public UiHudPanel(Font font, List<Row> rows, int minimumTextWidth, int iconSize) {
         this.rows = List.copyOf(rows);
-        width = TEXT_X + PADDING + rows.stream().mapToInt(row -> font.width(row.text())).max().orElse(0);
+        this.iconSize = UiMath.clamp(iconSize, 1, Math.min(font.lineHeight + 3, ICON_SIZE + 2));
+        int textWidth = this.rows.stream().mapToInt(row -> font.width(row.text())).max().orElse(0);
+        width = TEXT_X + PADDING + Math.max(textWidth, minimumTextWidth);
         height = rows.size() * (font.lineHeight + 3) + 2 * PADDING;
     }
 
@@ -54,7 +67,7 @@ public final class UiHudPanel {
         try {
             pose.translate(x, y).scale(scale);
             surface(graphics, 0, 0, width, height, 6, preferences, false);
-            foreground(graphics, font, preferences, selected);
+            foreground(graphics, font, preferences, selected, scale);
         } finally { pose.popMatrix(); }
     }
 
@@ -74,14 +87,14 @@ public final class UiHudPanel {
         pose.pushMatrix();
         try {
             pose.translate(x, y).scale(scale);
-            foreground(graphics, font, preferences, selected);
+            foreground(graphics, font, preferences, selected, scale);
         } finally {
             pose.popMatrix();
             graphics.disableScissor();
         }
     }
 
-    private void foreground(GuiGraphicsExtractor graphics, Font font, UiPreferences preferences, int selected) {
+    private void foreground(GuiGraphicsExtractor graphics, Font font, UiPreferences preferences, int selected, float scale) {
         if (selected >= 0 && selected < rows.size()) {
             int rowY = PADDING + selected * (font.lineHeight + 3);
             surface(graphics, PADDING - 2, rowY, width - 2 * PADDING + 4, font.lineHeight + 3, 6, preferences, true);
@@ -90,10 +103,16 @@ public final class UiHudPanel {
         int color = palette.color(TEXT);
         int lineY = PADDING + 1;
         for (var row : rows) {
-            var svg = SvgIconTexture.find(row.icon(), ICON_SIZE);
-            int texels = svg == null ? ICON_SIZE : svg.side();
-            graphics.blit(RenderPipelines.GUI_TEXTURED, svg == null ? row.icon() : svg.id(), PADDING, lineY,
-                    0f, 0f, ICON_SIZE, ICON_SIZE, texels, texels, texels, texels, row.color());
+            if ((row.color() >>> 24) != 0) {
+                // Keep the original icon centre and preserve the text/keycap geometry.
+                int offset = Math.floorDiv(ICON_SIZE - iconSize, 2);
+                var svg = SvgIconTexture.find(row.icon(), iconSize * scale);
+                int texels = svg == null ? GraphicIcon.PIXELS : svg.side();
+                int tint = preferences.highContrast() ? (color & 0x00ffffff) | (row.color() & 0xff000000) : row.color();
+                graphics.blit(RenderPipelines.GUI_TEXTURED, svg == null ? row.icon() : svg.id(),
+                        PADDING + offset, lineY + offset, 0f, 0f,
+                        iconSize, iconSize, texels, texels, texels, texels, tint);
+            }
             UiHudRichText.draw(graphics, font, row.text().getVisualOrderText(), TEXT_X, lineY, color, preferences, palette);
             lineY += font.lineHeight + 3;
         }
@@ -118,6 +137,21 @@ public final class UiHudPanel {
 
     public record Row(Identifier icon, int color, Component text) {
         public Row { text = UiHudRichText.prepare(text); }
+
+        /** HUD rows use the icon's static texture and tint; its miniature remains unanimated. */
+        public Row(GraphicIcon icon, int iconColor, Component text) { this(icon.texture(), iconColor, text); }
+
+        public int iconColor() { return color; }
     }
-    public record Placement(int width, int height, int travelX, int travelY, float scale) {}
+    public record Placement(int width, int height, int travelX, int travelY, float scale) {
+        public int x(double fraction) { return MARGIN + (int) Math.round(travelX * fraction); }
+        public int y(double fraction) { return MARGIN + (int) Math.round(travelY * fraction); }
+
+        public double moveX(double x, double current) { return fraction(x, travelX, current); }
+        public double moveY(double y, double current) { return fraction(y, travelY, current); }
+
+        private static double fraction(double coordinate, int travel, double current) {
+            return travel == 0 ? current : Math.max(0, Math.min(1, (coordinate - MARGIN) / travel));
+        }
+    }
 }

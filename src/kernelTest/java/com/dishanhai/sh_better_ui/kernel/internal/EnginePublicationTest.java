@@ -9,6 +9,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.ResourceLock;
 
 import java.util.List;
+import java.util.NoSuchElementException;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -22,6 +23,8 @@ class EnginePublicationTest {
             host.start(List.of());
             assertTrue(UnifiedUI.isAvailable());
             assertSame(slot.current(), UnifiedUI.get());
+            assertThrows(NoSuchElementException.class, UnifiedUI::pages);
+            assertThrows(NoSuchElementException.class, UnifiedUI::materialCatalog);
         }
         assertFalse(UnifiedUI.isAvailable());
         assertThrows(IllegalStateException.class, UnifiedUI::get);

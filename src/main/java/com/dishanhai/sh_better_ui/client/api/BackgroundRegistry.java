@@ -43,6 +43,8 @@ public final class BackgroundRegistry {
 
     public synchronized Optional<BackgroundSpec> find(String id) {
         var entry = byId.get(id);
+        // The 26.x original-scene option is equivalent to this platform's plain backdrop.
+        if (entry == null && "nativeBackdrop".equals(id)) entry = byId.get("sh_better_ui:plain");
         // Preserve selections saved while reveal was offered as a background.
         if (entry == null && "reveal".equals(id)) entry = byId.get("photonKnot");
         return entry == null ? Optional.empty() : Optional.of(entry.spec());
