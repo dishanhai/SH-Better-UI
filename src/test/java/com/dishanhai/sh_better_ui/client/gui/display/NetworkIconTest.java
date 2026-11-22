@@ -96,14 +96,14 @@ class NetworkIconTest {
 
     @Test
     void gameAndPeripheralIconsAreTransparentSixteenPixelTextures() throws IOException {
-        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
+        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.MINECRAFT_GRASS_BLOCK, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
                 GraphicIcon.KEYBOARD, GraphicIcon.HEADPHONES, GraphicIcon.MICROPHONE, GraphicIcon.FORGE,
                 GraphicIcon.NEOFORGE));
     }
 
     @Test
     void modIconsAreTransparentSixteenPixelTextures() throws IOException {
-        assertIconTextures(List.of(GraphicIcon.AE2, GraphicIcon.MEKANISM, GraphicIcon.FTB_QUESTS,
+        assertIconTextures(List.of(GraphicIcon.AE2, GraphicIcon.AE2_ME_CONTROLLER, GraphicIcon.MEKANISM, GraphicIcon.FTB_QUESTS,
                 GraphicIcon.KUBEJS, GraphicIcon.GREGTECH));
     }
 
@@ -315,7 +315,14 @@ class NetworkIconTest {
             assertNotNull(image, path);
             assertEquals(size, image.getWidth(), path);
             assertEquals(size, image.getHeight(), path);
-            int accent = switch (path.substring(path.lastIndexOf('/') + 1)) {
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+            // The orthographic block studies preserve source colors, rather than acting as tint masks.
+            int blockAccent = switch (fileName) {
+                case "ae2_me_controller.png" -> 0x6199FF;
+                case "minecraft_grass_block.png" -> 0x6F903C;
+                default -> 0;
+            };
+            int accent = switch (fileName) {
                 case "gamepad_xbox_a.png", "gamepad_xbox_guide.png" -> 0x39A872;
                 case "gamepad_xbox_b.png" -> 0xD6485D;
                 case "gamepad_xbox_x.png" -> 0x468BDE;
@@ -332,13 +339,15 @@ class NetworkIconTest {
                         transparent = true;
                     } else {
                         int rgb = pixel & 0xFFFFFF;
-                        if (accent == 0xFFFFFF) {
+                        if (blockAccent != 0) {
+                            hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, blockAccent, size == 16 ? 42 : 3);
+                        } else if (accent == 0xFFFFFF) {
                             assertEquals(0xFFFFFF, rgb, path);
                         } else if ((pixel >>> 24) >= 128) {
                             // SVG rasterization blends the white rim into partially covered accent pixels.
                             assertTrue(matchesAccentRamp(rgb, accent), path + " contains an unexpected color");
                         }
-                        hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, accent, 3);
+                        if (blockAccent == 0) hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, accent, 3);
                         painted = true;
                     }
                 }

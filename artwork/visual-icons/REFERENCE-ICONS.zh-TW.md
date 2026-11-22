@@ -39,3 +39,16 @@
 | Windows | [原型](https://cdn-dynmedia-1.microsoft.com/is/content/microsoftcorp/microsoft/mscle/documents/presentations/Windows_Trademark_Guidelines_2026.pdf#page=3) | Microsoft 品牌指南第 3 頁的四格圖形及間隙 | [windows.svg](./windows.svg) |
 | X（社群平台） | [原型](https://about.x.com/en/who-we-are/brand-toolkit) · [向量版本](https://github.com/simple-icons/simple-icons/blob/549ca1d13f2a864889439f6242452c6b4f6514af/icons/x.svg) | 保留 X 的筆畫與斜線留白 | [x.svg](./x.svg) |
 | YouTube | [原型](https://brand.youtube/youtube-logo) · [向量版本](https://github.com/simple-icons/simple-icons/blob/549ca1d13f2a864889439f6242452c6b4f6514af/icons/youtube.svg) | 保留圓角播放標誌及三角留白 | [youtube.svg](./youtube.svg) |
+
+## 另外提供的方塊正視圖
+
+這兩枚圖示和原本的 `ae2`、`minecraft` 標識分開。只畫一個方塊面，不畫頂面、透視或投影；保留遊戲實物的識別色。SVG 以手繪路徑重建，不含上游的 PNG 或遊戲模型。
+
+| 圖示 | 網路原型 | 來源與處理 | 遊戲用 SVG |
+| --- | --- | --- | --- |
+| AE2 ME 控制器（正視圖） | [AE2 1.20.1 官方手冊](https://guide.appliedenergistics.org/1.20.1/items-blocks-machines/controller/) · [通電模型](https://github.com/AppliedEnergistics/Applied-Energistics-2/blob/b4b08d9941e3faecb520d76be617629bb56661e1/src/main/resources/assets/ae2/models/block/controller/controller_block_online.json) · [外框](https://github.com/AppliedEnergistics/Applied-Energistics-2/blob/b4b08d9941e3faecb520d76be617629bb56661e1/src/main/resources/assets/ae2/textures/block/controller_powered.png) · [燈效](https://github.com/AppliedEnergistics/Applied-Energistics-2/blob/b4b08d9941e3faecb520d76be617629bb56661e1/src/main/resources/assets/ae2/textures/block/controller_lights.png) | 取通電單方塊材質與燈效第 0 幀為參考，保留銀灰外框與藍紫電路，簡化表面紋理 | [ae2_me_controller.svg](./ae2_me_controller.svg) |
+| Minecraft 草地方塊（正視圖） | [Mojang 版本索引](https://piston-meta.mojang.com/mc/game/version_manifest_v2.json) → Java Edition 1.20.1 用戶端中的 `grass_block_side.png` 和 `grass_block_side_overlay.png` | 依 `grass_block.json` 的單面外觀重繪，保留綠色草緣與棕色土層；採用固定草綠，不逐像素複製或散布原版檔案，也不作為本專案標誌 | [minecraft_grass_block.svg](./minecraft_grass_block.svg) |
+
+ME 控制器外觀源自 AE2 材質與模型，© 2020 Ridanisaurus Rid、© 2013–2020 AlgorithmX2 等作者。重繪的 SVG 及其兩種 PNG 匯出依 [CC BY-NC-SA 3.0](https://creativecommons.org/licenses/by-nc-sa/3.0/) 提供，不在本專案 MIT 授權範圍內。見 [AE2 上游材質授權](https://github.com/AppliedEnergistics/Applied-Energistics-2/blob/b4b08d9941e3faecb520d76be617629bb56661e1/README.md#license)。
+
+Minecraft 草地方塊是非官方的物件圖示，未獲 Mojang 或 Microsoft 核准，也與其無關。見 [Minecraft 使用指南](https://www.minecraft.net/zh-hant/usage-guidelines)。

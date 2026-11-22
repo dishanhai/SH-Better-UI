@@ -3,6 +3,7 @@ access_denied	拒絕存取
 acknowledgments	致謝
 add	新增
 ae2	應用能源 2（Applied Energistics 2）
+ae2_me_controller	AE2 ME 控制器（正視圖）
 ae2_order	AE2 下單
 ae2_orderable	可下單
 ae2_pattern	AE2 樣板
@@ -364,6 +365,7 @@ merge	合併
 microphone	麥克風
 migrate	遷移
 minecraft	Minecraft
+minecraft_grass_block	Minecraft 草地方塊（正視圖）
 mirror	鏡像翻轉
 mob	生物
 mod	模組

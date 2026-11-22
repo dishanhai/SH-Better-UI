@@ -123,6 +123,7 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     public static final GraphicIcon ANDROID = builtIn("android");
     public static final GraphicIcon LINUX = builtIn("linux");
     public static final GraphicIcon MINECRAFT = builtIn("minecraft");
+    public static final GraphicIcon MINECRAFT_GRASS_BLOCK = builtIn("minecraft_grass_block");
     public static final GraphicIcon GAMEPAD = builtIn("gamepad");
     public static final GraphicIcon MOUSE = builtIn("mouse");
     public static final GraphicIcon KEYBOARD = builtIn("keyboard");
@@ -146,6 +147,7 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     public static final GraphicIcon TOOLTIP = builtIn("tooltip");
     public static final GraphicIcon INTERACTION = builtIn("interaction");
     public static final GraphicIcon AE2 = builtIn("ae2");
+    public static final GraphicIcon AE2_ME_CONTROLLER = builtIn("ae2_me_controller");
     public static final GraphicIcon QUANTUM = builtIn("quantum");
     public static final GraphicIcon AE2_PATTERN = builtIn("ae2_pattern");
     public static final GraphicIcon AE2_ORDER = builtIn("ae2_order");
