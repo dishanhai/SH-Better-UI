@@ -1,7 +1,6 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.onboarding.steps;
 
-import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.rendering.FoliaLucideIcons;
 import com.muoniumplayer.core.screens.onboarding.OnboardingController;
 import com.muoniumplayer.core.screens.onboarding.OnboardingMetrics;
@@ -13,9 +12,7 @@ import com.muoniumplayer.party.ui.PartyIcons;
 /** 完成页，带实际设置结果的紧凑摘要。 */
 public final class FinishStep implements OnboardingStepView {
 
-    private static final double TITLE_H = 44;
-    private static final double SUBTITLE_H = 20;
-    private static final double NOTE_H = 14;
+    private static final double TITLE_GAP = 6;
     /** 摘要卡有几行：账号 / 音源 / 主题 / 沉浸感。 */
     private static final int SUMMARY_ROWS = 4;
 
@@ -56,12 +53,15 @@ public final class FinishStep implements OnboardingStepView {
                 x + icon * .5, top + icon * .5 + 1, icon * .56, OnboardingUi.GREEN);
 
         double titleY = top + icon + gapIconTitle;
-        OnboardingUi.drawText(OnboardingUi.metric().titleFont(), "一切就绪", x, titleY, OnboardingUi.textPrimary());
-        OnboardingUi.drawText(OnboardingUi.metric().subtitleFont(), net.minecraft.network.chat.Component.translatable(
+        var metrics = OnboardingUi.metric();
+        OnboardingUi.drawTextReserving(metrics.titleFont(), "一切就绪",
+                x, titleY, width, 0, OnboardingUi.textPrimary());
+        double subtitleY = titleY + OnboardingMetrics.lineHeight(metrics.titleFont()) + TITLE_GAP;
+        OnboardingUi.drawTextReserving(metrics.subtitleFont(), net.minecraft.network.chat.Component.translatable(
                         "sh_better_ui.muonium.experience.ready").getString(),
-                x, titleY + TITLE_H - 6, OnboardingUi.textSecondary());
+                x, subtitleY, width, 0, OnboardingUi.textSecondary());
 
-        double summaryY = titleY + TITLE_H - 6 + SUBTITLE_H + gapSubSummary;
+        double summaryY = subtitleY + OnboardingMetrics.lineHeight(metrics.subtitleFont()) + gapSubSummary;
         // 四张摘要卡：账号 / 音源 / 主题 / 沉浸感。走和前面几页同一套卡壳，
         // 这样「完成」这一屏不是另画一套摘要条，而是刚才那一路选下来的同一批卡片。
         double rowH = summaryRowHeight();
@@ -78,16 +78,16 @@ public final class FinishStep implements OnboardingStepView {
                 OnboardingStep.APPEARANCE, OnboardingStep.AUTOMIX
         };
         for (int i = 0; i < labels.length; i++) {
-            renderSummaryCard(icons[i], labels[i], values[i], x,
-                    summaryY + (rowH + rowGap) * i, width, rowH);
-            if (summaryY + (rowH + rowGap) * (i + 1) > y + height) {
-                // 内容带装不下四张就不往下画：被裁掉半张卡比少一张更难读。
+            double rowY = summaryY + (rowH + rowGap) * i;
+            if (rowY + rowH > y + height) {
                 break;
             }
+            renderSummaryCard(icons[i], labels[i], values[i], x, rowY, width, rowH);
         }
         if (note) {
-            OnboardingUi.drawText(OnboardingUi.metric().bodyFont(), "点击右下角开始使用，随时可以回到主界面继续调整。",
-                    x, summaryY + (rowH + rowGap) * labels.length + gapNote, OnboardingUi.textMuted());
+            OnboardingUi.drawTextReserving(metrics.bodyFont(), "点击右下角开始使用，随时可以回到主界面继续调整。",
+                    x, summaryY + rowH * labels.length + rowGap * (labels.length - 1) + gapNote,
+                    width, 0, OnboardingUi.textMuted());
         }
     }
 
@@ -110,9 +110,16 @@ public final class FinishStep implements OnboardingStepView {
                                       double gapNote, boolean note) {
         double rowH = summaryRowHeight();
         double rowGap = Math.max(4, rowH * .14);
-        double height = icon + gapIconTitle + TITLE_H + SUBTITLE_H + gapSubSummary
+        var metrics = OnboardingUi.metric();
+        double height = icon + gapIconTitle + OnboardingMetrics.lineHeight(metrics.titleFont())
+                + TITLE_GAP + OnboardingMetrics.lineHeight(metrics.subtitleFont()) + gapSubSummary
                 + rowH * SUMMARY_ROWS + rowGap * (SUMMARY_ROWS - 1);
-        return note ? height + gapNote + NOTE_H : height;
+        return note ? height + gapNote + OnboardingMetrics.lineHeight(metrics.bodyFont()) : height;
+    }
+
+    @Override
+    public double minimumHeight(double width) {
+        return blockHeight(44, 16, 16, 12, false);
     }
 
     private static String accountSummary() {
@@ -135,11 +142,13 @@ public final class FinishStep implements OnboardingStepView {
         OnboardingUi.drawStepIcon(step, content[0] + 8, content[1] + content[3] * .5, 14,
                 OnboardingUi.textMuted());
         double labelX = content[0] + 24;
-        OnboardingUi.drawText(OnboardingUi.metric().bodyFont(), label, labelX,
+        String fittedLabel = OnboardingUi.ellipsize(OnboardingUi.metric().bodyFont(), label,
+                content[0] + content[2] - labelX);
+        OnboardingUi.drawText(OnboardingUi.metric().bodyFont(), fittedLabel, labelX,
                 content[1] + content[3] * .5 - OnboardingMetrics.lineHeight(
                         OnboardingUi.metric().bodyFont()) * .5,
                 OnboardingUi.textMuted());
-        double valueX = labelX + OnboardingUi.textWidth(OnboardingUi.metric().bodyFont(), label) + 12;
+        double valueX = labelX + OnboardingUi.textWidth(OnboardingUi.metric().bodyFont(), fittedLabel) + 12;
         // 结果靠右对齐到内容区右端：四行读下来是「标签一列、结果一列」，比跟在标签后面更好扫。
         double available = content[0] + content[2] - valueX;
         String fitted = OnboardingUi.ellipsize(OnboardingUi.metric().labelBold(), value, available);

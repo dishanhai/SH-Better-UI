@@ -932,6 +932,7 @@
   "sh_better_ui.muonium.experience.local_library": "本機歌單",
   "sh_better_ui.muonium.experience.welcome": "歡迎來到 SHBUI",
   "sh_better_ui.muonium.experience.ready": "SHBUI 已準備就緒",
+  "sh_better_ui.muonium.experience.source_note": "YouTube 與嗶哩嗶哩無需登入。汽水音樂需使用外部工具（網路硬碟或 QQ 群）取得 Cookie 登入。GD 音樂台沿用現有設定。",
   "sh_better_ui.muonium.center.host_controls": "使用 SHBUI 控制項",
   "sh_better_ui.muonium.center.host_controls.desc": "在播放器使用 SHBUI 控制項和快捷入口。重新開啟 HUD 設定即可套用設定介面。",
   "sh_better_ui.muonium.center.host_theme": "跟隨 SHBUI 主題",

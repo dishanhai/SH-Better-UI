@@ -69,7 +69,7 @@ public final class AutomixModelStep implements OnboardingStepView {
                        double x, double y, double width, double height,
                        double mouseX, double mouseY) {
         OnboardingUi.drawHeader("AUTOMIX · IMMERSION", "让音乐跟着世界一起变",
-                "Folia 在本机分析节拍与乐段；声学与环境选曲决定音乐要不要回应你所处的环境。", x, y);
+                "Folia 在本机分析节拍与乐段；声学与环境选曲决定音乐要不要回应你所处的环境。", x, y, width);
 
         // 这一页有两组彼此独立的东西：三张模型卡（要下载、要点）和两张沉浸感开关卡。
         // 竖着排下来在常规档要多占 74 逻辑像素，主按钮会被挤出内容带 —— 而 854×480 正是
@@ -136,7 +136,8 @@ public final class AutomixModelStep implements OnboardingStepView {
                             : OnboardingUi.colorWithAlpha(OnboardingUi.BRAND,
                                     active ? 30 : (hover ? 205 : 165)));
             OnboardingUi.drawCentered(OnboardingUi.metric().labelBold(),
-                    installed ? "已装" : (active ? "下载中" : "下载"),
+                    OnboardingUi.ellipsize(OnboardingUi.metric().labelBold(),
+                            installed ? "已装" : (active ? "下载中" : "下载"), buttonW - 8),
                     buttonX + buttonW * .5, buttonY + (buttonH - OnboardingMetrics.lineHeight(
                             OnboardingUi.metric().labelBold())) * .5,
                     installed ? OnboardingUi.GREEN : OnboardingUi.textPrimary());
@@ -216,7 +217,7 @@ public final class AutomixModelStep implements OnboardingStepView {
             cta = allInstalled ? "已就绪" : (installingAll ? "安装中" : "下载全部");
         }
         OnboardingUi.drawTextReserving(OnboardingUi.metric().labelBold(), cta,
-                x + 38, actionY + 13, ctaTextRight, 0, OnboardingUi.textPrimary());
+                x + 38, actionY + 13, ctaTextRight - x - 38, 0, OnboardingUi.textPrimary());
 
         double noteX = x + ctaW + NOTE_GAP;
         double noteW = Math.max(0, x + width - noteX);
@@ -286,8 +287,9 @@ public final class AutomixModelStep implements OnboardingStepView {
     }
 
     /** 整页要占多高：三张模型卡 + 两张沉浸感卡 + 主行动条。 */
-    static double contentHeight() {
-        return contentBottom(0) + CTA_GAP + CTA_H;
+    @Override
+    public double minimumHeight(double width) {
+        return contentBottom(0) + CTA_GAP + CTA_H + CTA_BOTTOM_GAP;
     }
 
     /** 主行动按钮的宽度，随内容带收放。绘制与命中测试读同一份。 */
@@ -328,7 +330,6 @@ public final class AutomixModelStep implements OnboardingStepView {
         double leftW = twoColumns ? Math.max(0, (width - gap) * .62) : width;
         double rightX = twoColumns ? x + leftW + gap : x;
         double rightW = twoColumns ? width - gap - leftW : width;
-        double rightTop = twoColumns ? y : immersionY(y);
 
         for (int i = 0; i < KINDS.length; i++) {
             if (OnboardingUi.inside(mouseX, mouseY, x, rowY(y, i), leftW, rowHeight())) {
@@ -338,7 +339,7 @@ public final class AutomixModelStep implements OnboardingStepView {
         }
         // 两张沉浸感开关卡：点整张卡都能翻，不必非得点中那枚胶囊。
         double immersionH = immersionCardHeight();
-        double immersionTop = twoColumns ? immersionY(y) : rightTop;
+        double immersionTop = twoColumns ? immersionY(y) : rowsBottom(y) + OnboardingUi.metric().cardGap;
         for (int i = 0; i < 2; i++) {
             double cardY = immersionTop + i * (immersionH + OnboardingUi.metric().cardGap);
             if (OnboardingUi.inside(mouseX, mouseY, rightX, cardY, rightW, immersionH)) {

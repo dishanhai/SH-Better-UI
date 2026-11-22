@@ -1331,6 +1331,7 @@
   "sh_better_ui.muonium.experience.local_library": "Local playlists",
   "sh_better_ui.muonium.experience.welcome": "Welcome to SHBUI",
   "sh_better_ui.muonium.experience.ready": "SHBUI is ready",
+  "sh_better_ui.muonium.experience.source_note": "YouTube and Bilibili work without signing in. Qishui requires a Cookie from an external tool shared via cloud storage or QQ. GD Music uses your existing settings.",
   "sh_better_ui.muonium.center.host_controls": "Use SHBUI controls",
   "sh_better_ui.muonium.center.host_controls.desc": "Use SHBUI controls and shortcuts in the player. Open the HUD settings again to switch the settings interface.",
   "sh_better_ui.muonium.center.host_theme": "Follow SHBUI theme",
