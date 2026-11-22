@@ -5,6 +5,8 @@ import org.junit.jupiter.api.Test;
 import javax.imageio.ImageIO;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.*;
@@ -94,14 +96,16 @@ class NetworkIconTest {
 
     @Test
     void gameAndPeripheralIconsAreTransparentSixteenPixelTextures() throws IOException {
-        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
+        assertEquals(GraphicIcon.MINECRAFT_CREEPER_HEAD, GraphicIcon.MINECRAFT_2D);
+        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.MINECRAFT_CREEPER_HEAD,
+                GraphicIcon.MINECRAFT_GRASS_BLOCK, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
                 GraphicIcon.KEYBOARD, GraphicIcon.HEADPHONES, GraphicIcon.MICROPHONE, GraphicIcon.FORGE,
                 GraphicIcon.NEOFORGE));
     }
 
     @Test
     void modIconsAreTransparentSixteenPixelTextures() throws IOException {
-        assertIconTextures(List.of(GraphicIcon.AE2, GraphicIcon.MEKANISM, GraphicIcon.FTB_QUESTS,
+        assertIconTextures(List.of(GraphicIcon.AE2, GraphicIcon.AE2_ME_CONTROLLER, GraphicIcon.MEKANISM, GraphicIcon.FTB_QUESTS,
                 GraphicIcon.KUBEJS, GraphicIcon.GREGTECH));
     }
 
@@ -251,47 +255,162 @@ class NetworkIconTest {
                 GraphicIcon.AE2_ORDERABLE, GraphicIcon.AE2_STOCK));
     }
 
+    @Test
+    void developerAndLicenseIconsHaveBothTextureSizes() throws IOException {
+        assertIconTextures(List.of(GraphicIcon.GOOGLE, GraphicIcon.LICENSE_MIT, GraphicIcon.LICENSE_LGPL,
+                GraphicIcon.LICENSE_GPL, GraphicIcon.LICENSE_APACHE_2, GraphicIcon.LICENSE_BSD,
+                GraphicIcon.LICENSE_MPL_2, GraphicIcon.THIRD_PARTY, GraphicIcon.DEPENDENCY,
+                GraphicIcon.LIBRARY, GraphicIcon.FRAMEWORK, GraphicIcon.COMPONENT, GraphicIcon.EXTENSION,
+                GraphicIcon.PLUGIN, GraphicIcon.LICENSE));
+    }
+
+    @Test
+    void vectorMastersHaveIndependentlyRenderedTintableTextures() throws IOException {
+        try (var sources = Files.list(vectorMasterDirectory())) {
+            var masters = sources.filter(source -> source.getFileName().toString().endsWith(".svg")).toList();
+            assertFalse(masters.isEmpty());
+            for (var source : masters) {
+                String name = source.getFileName().toString().replaceFirst("\\.svg$", ".png");
+                String path = "/assets/sh_better_ui/textures/gui/display/" + name;
+                var original = readTintMask(path, 16);
+                assertVectorCompanion(path.replace("/display/", "/display_64/"), original);
+            }
+        }
+        try (var inline = GraphicIcon.class.getResourceAsStream(
+                     "/assets/sh_better_ui/textures/gui/rich/material-shop.png");
+             var display = GraphicIcon.class.getResourceAsStream(
+                     "/assets/sh_better_ui/textures/gui/display_64/shop.png")) {
+            assertNotNull(inline);
+            assertNotNull(display);
+            assertArrayEquals(display.readAllBytes(), inline.readAllBytes());
+        }
+    }
+
+    private static Path vectorMasterDirectory() {
+        for (Path root = Path.of("").toAbsolutePath(); root != null; root = root.getParent()) {
+            Path masters = root.resolve("artwork/visual-icons");
+            if (Files.isDirectory(masters)) return masters;
+        }
+        throw new AssertionError("Cannot locate the built-in SVG icon masters");
+    }
+
     private static void assertIconTextures(List<GraphicIcon> icons) throws IOException {
+        var masters = vectorMasterDirectory();
         for (var icon : icons) {
             var id = icon.texture();
             String path = "/assets/" + id.getNamespace() + "/" + id.getPath();
-            try (var stream = GraphicIcon.class.getResourceAsStream(path)) {
-                assertNotNull(stream, path);
-                var image = ImageIO.read(stream);
-                assertNotNull(image, path);
-                assertEquals(16, image.getWidth(), path);
-                assertEquals(16, image.getHeight(), path);
-                boolean transparent = false;
-                boolean painted = false;
-                for (int y = 0; y < image.getHeight(); y++) {
-                    for (int x = 0; x < image.getWidth(); x++) {
-                        int pixel = image.getRGB(x, y);
-                        if ((pixel >>> 24) == 0) {
-                            transparent = true;
-                        } else {
-                            assertEquals(0xFFFFFF, pixel & 0xFFFFFF, path);
-                            painted = true;
-                        }
-                    }
-                }
-                assertTrue(transparent && painted, path);
-                assertEnlargedCopy(path.replace("/display/", "/display_64/"), image);
+            var image = readTintMask(path, 16);
+            String companion = path.replace("/display/", "/display_64/");
+            String file = path.substring(path.lastIndexOf('/') + 1);
+            if (Files.isRegularFile(masters.resolve(file.replaceFirst("\\.png$", ".svg")))) {
+                assertVectorCompanion(companion, image);
+            } else {
+                assertTrue(isNearestNeighborCopy(readTintMask(companion, 64), image), companion);
             }
         }
     }
 
-    private static void assertEnlargedCopy(String path, BufferedImage original) throws IOException {
+    private static BufferedImage readTintMask(String path, int size) throws IOException {
         try (var stream = GraphicIcon.class.getResourceAsStream(path)) {
             assertNotNull(stream, path);
-            var copy = ImageIO.read(stream);
-            assertNotNull(copy, path);
-            assertEquals(64, copy.getWidth(), path);
-            assertEquals(64, copy.getHeight(), path);
-            for (int y = 0; y < copy.getHeight(); y++) {
-                for (int x = 0; x < copy.getWidth(); x++) {
-                    assertEquals(original.getRGB(x / 4, y / 4), copy.getRGB(x, y), path);
+            var image = ImageIO.read(stream);
+            assertNotNull(image, path);
+            assertEquals(size, image.getWidth(), path);
+            assertEquals(size, image.getHeight(), path);
+            String fileName = path.substring(path.lastIndexOf('/') + 1);
+            // The orthographic block studies preserve source colors, rather than acting as tint masks.
+            int blockAccent = switch (fileName) {
+                case "ae2_me_controller.png" -> 0x6199FF;
+                case "minecraft_grass_block.png" -> 0x6F903C;
+                case "minecraft_creeper_head.png" -> 0x70B94E;
+                default -> 0;
+            };
+            int accent = switch (fileName) {
+                case "gamepad_xbox_a.png", "gamepad_xbox_guide.png" -> 0x39A872;
+                case "gamepad_xbox_b.png" -> 0xD6485D;
+                case "gamepad_xbox_x.png" -> 0x468BDE;
+                case "gamepad_xbox_y.png" -> 0xC59131;
+                default -> 0xFFFFFF;
+            };
+            boolean hasAccent = false;
+            boolean transparent = false;
+            boolean painted = false;
+            for (int y = 0; y < size; y++) {
+                for (int x = 0; x < size; x++) {
+                    int pixel = image.getRGB(x, y);
+                    if ((pixel >>> 24) == 0) {
+                        transparent = true;
+                    } else {
+                        int rgb = pixel & 0xFFFFFF;
+                        if (blockAccent != 0) {
+                            hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, blockAccent, size == 16 ? 42 : 3);
+                        } else if (accent == 0xFFFFFF) {
+                            assertEquals(0xFFFFFF, rgb, path);
+                        } else if ((pixel >>> 24) >= 128) {
+                            // SVG rasterization blends the white rim into partially covered accent pixels.
+                            assertTrue(matchesAccentRamp(rgb, accent), path + " contains an unexpected color");
+                        }
+                        if (blockAccent == 0) hasAccent |= (pixel >>> 24) >= 128 && nearColor(rgb, accent, 3);
+                        painted = true;
+                    }
+                }
+            }
+            assertTrue(transparent && painted && hasAccent, path);
+            return image;
+        }
+    }
+
+    private static boolean matchesAccentRamp(int rgb, int accent) {
+        int numerator = 765 - ((rgb >> 16) & 0xFF) - ((rgb >> 8) & 0xFF) - (rgb & 0xFF);
+        int denominator = 765 - ((accent >> 16) & 0xFF) - ((accent >> 8) & 0xFF) - (accent & 0xFF);
+        double coverage = Math.min(1.0, (double) numerator / denominator);
+        int expected = 0;
+        for (int shift = 0; shift < 24; shift += 8) {
+            int channel = 255 - (int) Math.round(coverage * (255 - ((accent >> shift) & 0xFF)));
+            expected |= channel << shift;
+        }
+        return nearColor(rgb, expected, 4);
+    }
+
+    private static boolean nearColor(int rgb, int expected, int tolerance) {
+        for (int shift = 0; shift < 24; shift += 8) {
+            if (Math.abs(((rgb >> shift) & 0xFF) - ((expected >> shift) & 0xFF)) > tolerance) return false;
+        }
+        return true;
+    }
+
+    private static void assertVectorCompanion(String path, BufferedImage original) throws IOException {
+        var detail = readTintMask(path, 64);
+        assertTransparentBorder(original, path.replace("/display_64/", "/display/"));
+        assertTransparentBorder(detail, path);
+        boolean hasSubpixelDetail = false;
+        for (int y = 0; y < 64; y++) {
+            for (int x = 0; x < 64; x++) {
+                int alpha = detail.getRGB(x, y) >>> 24;
+                if (alpha > 0 && alpha < 255 && alpha != (original.getRGB(x / 4, y / 4) >>> 24)) {
+                    hasSubpixelDetail = true;
                 }
             }
         }
+        assertTrue(hasSubpixelDetail, path + " must contain independently rendered edge coverage");
+    }
+
+    private static void assertTransparentBorder(BufferedImage mask, String path) {
+        int edge = mask.getWidth() - 1;
+        for (int point = 0; point <= edge; point++) {
+            assertEquals(0, mask.getRGB(point, 0) >>> 24, path + " top edge");
+            assertEquals(0, mask.getRGB(point, edge) >>> 24, path + " bottom edge");
+            assertEquals(0, mask.getRGB(0, point) >>> 24, path + " left edge");
+            assertEquals(0, mask.getRGB(edge, point) >>> 24, path + " right edge");
+        }
+    }
+
+    private static boolean isNearestNeighborCopy(BufferedImage copy, BufferedImage original) {
+        for (int y = 0; y < copy.getHeight(); y++) {
+            for (int x = 0; x < copy.getWidth(); x++) {
+                if (original.getRGB(x / 4, y / 4) != copy.getRGB(x, y)) return false;
+            }
+        }
+        return true;
     }
 }
