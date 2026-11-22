@@ -92,6 +92,9 @@ public class AudioPlayer {
      */
     private volatile boolean closed;
     private volatile boolean replacementStopped;
+    /** Monotonic timestamp of the latest position change, used to reject earlier visual audio samples. */
+    @Getter
+    private volatile long lastSeekNanos;
 
     /** 由 {@link #prepareStart(float)} 设置：读头已定位、搁架已接入、窗口已预热。 */
     private volatile boolean prepared;
@@ -227,6 +230,7 @@ public class AudioPlayer {
             } else {
                 this.player.cue(safeMillis / 1000F);
             }
+            lastSeekNanos = System.nanoTime();
             this.player.resyncTimeStretch();
             this.player.amp(effectiveAmp());
             // 拖进度后声音内容不连续了：声场里的余音一并作废，否则旧句的尾巴会叠在新句上。

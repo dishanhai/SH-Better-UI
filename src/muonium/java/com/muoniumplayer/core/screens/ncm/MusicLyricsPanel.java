@@ -158,6 +158,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
     /** QPlayer 流体背景的音频响应状态；背景不再叠加旧的模糊封面层。 */
     private final QPlayerFluidLyricBackground fluidLyricBackground = new QPlayerFluidLyricBackground();
     private final AppleCoverBackdrop appleCoverBackdrop = new AppleCoverBackdrop();
+    private double backdropLyricScrollPixels;
 
     /** folia 背景（与 QPlayer 那套完全独立，见 {@code foliabg} 包）。 */
     private final com.muoniumplayer.core.screens.ncm.foliabg.FoliaBackgroundHost foliaBackground =
@@ -763,6 +764,8 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     public void onRender(double mouseX, double mouseY, double posX, double posY, double width, double height, int dWheel) {
 
+        double lyricScrollPixels = backdropLyricScrollPixels;
+        backdropLyricScrollPixels = 0.0;
         seekBounds = null;
         boolean lmbDownNow = Mouse.isButtonDown(0);
         metadataTrack = null;
@@ -823,7 +826,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         // The first few transition frames are below perceptual visibility. Keep the hero/scrim,
         // but do not bind a blurred cover or build the chrome until those layers can contribute pixels.
         if (alpha > .012f) {
-            this.renderBackground(posX, posY, width, height, alpha, snapshot);
+            this.renderBackground(posX, posY, width, height, alpha, snapshot, lyricScrollPixels);
         }
         if (CoverHeroTransition.chromeFade() > .004) {
             this.renderControlsPart(mouseX, mouseY, posX, posY, width, height, alpha, snapshot, presentation);
@@ -974,6 +977,9 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             }
             styleRenderer.render(lyricViewport.left, lyricViewport.top,
                     lyricViewport.width, lyricHeight, alpha, songProgress, displayedCurrentLyric);
+            if (styleRenderer instanceof AppleLyricRenderer apple) {
+                backdropLyricScrollPixels = apple.takeScrollPixels();
+            }
             return;
         }
 
@@ -1902,7 +1908,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
                 readingGroupTop = docTop[qplayerGroupStart[viewGroup]];
             }
             double restOffset = centerY - targetScroll;
-            scrollMotion.apply(lines, docTop, restOffset,
+            backdropLyricScrollPixels = scrollMotion.apply(lines, docTop, restOffset,
                     qplayerGroupStart[viewGroup], playheadMs, qplayerInInterlude, manual || stillLyrics || seek.editing());
             classicRenderStart = Math.max(0, qplayerGroupStart[viewGroup] - 16);
             classicRenderEnd = Math.min(size, qplayerGroupEnd[viewGroup] + 17);
@@ -2585,6 +2591,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             if (!isCurrentTrack(menuTrack)) trackMenu.dismiss();
             trackMenu.release(x, y);
         } else if (!closing && action != null && track == metadataTrack && action == nowPlaying.hitAt(x, y)) {
+            nowPlaying.clearFocus();
             openMetadata(NCMScreen.getInstance(), action, track);
         }
     }
@@ -2601,7 +2608,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
     }
 
     private void renderBackground(double posX, double posY, double width, double height,
-                                  float alpha, CloudMusic.PlaybackSnapshot snapshot) {
+                                  float alpha, CloudMusic.PlaybackSnapshot snapshot, double lyricScrollPixels) {
         if (alpha <= .004f) return;
         Music current = snapshot.music;
 
@@ -2625,7 +2632,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
             UiPreferences preferences = UiPreferences.configured();
             rendered = appleCoverBackdrop.render(posX, posY, width, height, alpha, snapshot,
                     HudConfig.fullscreenLyricFluidStatic || preferences.reducedMotion(),
-                    preferences.highContrast());
+                    preferences.highContrast(), lyricScrollPixels);
         } else if (!com.muoniumplayer.core.screens.ncm.foliabg.FoliaBackgroundOptions.isQPlayer(kind)) {
             rendered = foliaBackground.render(posX, posY, width, height, alpha, current);
         } else if (current == null) {
