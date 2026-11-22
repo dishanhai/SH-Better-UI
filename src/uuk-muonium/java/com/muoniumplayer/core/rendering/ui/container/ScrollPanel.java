@@ -134,6 +134,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     private Supplier<EndStatus> endStatus;
     private Runnable loadNext;
     private double lastTouchY;
+    private boolean endKeyboardFocused;
 
     public enum EndStatus { HIDDEN, MORE, LOADING, FAILED, END }
 
@@ -514,9 +515,20 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         return true;
     }
 
-    @Override
-    public boolean onKeyTyped(char character, int keyCode) {
-        if (keyCode != Keyboard.KEY_END || !canLoadNext()) return super.onKeyTyped(character, keyCode);
+    public boolean acceptsEndKeyboardFocus() {
+        return this.endPull != null && this.endInput.getAsBoolean();
+    }
+
+    public boolean endKeyboardHit(double x, double y) {
+        return this.testHovered(x, y);
+    }
+
+    public void setEndKeyboardFocused(boolean focused) {
+        this.endKeyboardFocused = focused;
+    }
+
+    public boolean handleFocusedEnd() {
+        if (!canLoadNext()) return false;
         double end = this.getMaximumScrollOffset();
         if (this.actualScrollOffset >= end - .5) this.loadNext.run();
         else this.scrollToOffsetImmediately(end);
@@ -1106,6 +1118,14 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         // 正因如此它才能住在视口外侧的页面留白里（见 INDICATOR_INSET_RIGHT）。
         // 纵向位置仍被 onRender 夹在视口高度内，不会越界。
         this.drawScrollIndicator();
+        if (this.endKeyboardFocused && this.acceptsEndKeyboardFocus()) {
+            double x = this.getX(), y = this.getY(), w = this.getWidth(), h = this.getHeight();
+            int ink = UiPreferences.configured().highContrast() ? 0xFFFFFFFF : 0xFF329DFF;
+            Rect.draw(x, y, w, 1, ink);
+            Rect.draw(x, y + h - 1, w, 1, ink);
+            Rect.draw(x, y, 1, h, ink);
+            Rect.draw(x + w - 1, y, 1, h, ink);
+        }
     }
 
     private void renderEndPull(double mouseX, double mouseY) {

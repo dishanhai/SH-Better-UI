@@ -4,6 +4,9 @@ import com.muoniumplayer.core.rendering.ui.AbstractWidget;
 import com.muoniumplayer.core.rendering.ui.container.Panel;
 import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  */
 public abstract class NCMPanel extends Panel {
@@ -13,6 +16,7 @@ public abstract class NCMPanel extends Panel {
      * 等页面可能复用 HomePanel 或 NeteaseDiscoveryPanel，但仍然要让同一条侧栏高亮保持连贯。
      */
     private String navigationKey;
+    private ScrollPanel endKeyboardFocus;
 
     public abstract void onInit();
 
@@ -57,6 +61,54 @@ public abstract class NCMPanel extends Panel {
     public boolean onKeyTypedReceived(char typedChar, int keyCode) {
         if (isDismissing()) return false;
         return super.onKeyTypedReceived(typedChar, keyCode);
+    }
+
+    final void focusEndListAt(double x, double y) {
+        setEndKeyboardFocus(endLists().stream().filter(list -> list.endKeyboardHit(x, y))
+                .findFirst().orElse(null));
+    }
+
+    final void clearEndKeyboardFocus() {
+        setEndKeyboardFocus(null);
+    }
+
+    final boolean focusNextEndList(boolean backwards) {
+        List<ScrollPanel> lists = endLists();
+        if (lists.isEmpty()) return false;
+        int current = lists.indexOf(endKeyboardFocus);
+        int next = current < 0 ? (backwards ? lists.size() - 1 : 0)
+                : Math.floorMod(current + (backwards ? -1 : 1), lists.size());
+        setEndKeyboardFocus(lists.get(next));
+        return true;
+    }
+
+    final boolean handleFocusedListEnd() {
+        return endKeyboardFocus != null && endLists().contains(endKeyboardFocus)
+                && endKeyboardFocus.handleFocusedEnd();
+    }
+
+    private void setEndKeyboardFocus(ScrollPanel next) {
+        if (endKeyboardFocus == next) return;
+        if (endKeyboardFocus != null) endKeyboardFocus.setEndKeyboardFocused(false);
+        endKeyboardFocus = next;
+        if (next != null) next.setEndKeyboardFocused(true);
+    }
+
+    private List<ScrollPanel> endLists() {
+        List<ScrollPanel> lists = new ArrayList<>();
+        collectEndLists(this, lists);
+        return lists;
+    }
+
+    private static void collectEndLists(AbstractWidget<?> host, List<ScrollPanel> lists) {
+        for (AbstractWidget<?> child : host.getChildren()) {
+            if (child.isHidden()) continue;
+            if (child instanceof ScrollPanel list) {
+                if (list.acceptsEndKeyboardFocus()) lists.add(list);
+            } else {
+                collectEndLists(child, lists);
+            }
+        }
     }
 
     /**
