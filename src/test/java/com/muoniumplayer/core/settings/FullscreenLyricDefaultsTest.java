@@ -38,6 +38,31 @@ class FullscreenLyricDefaultsTest {
     }
 
     @Test
+    void existingBackgroundPresetSurvivesUpgradeUntilAppleIsEnabled() {
+        JsonObject previous = FoliaBackgroundConfig.toJson();
+        try {
+            JsonObject saved = new JsonObject();
+            saved.addProperty("backgroundKind", 1);
+            FoliaBackgroundConfig.applyJson(saved);
+            assertEquals(1, FoliaBackgroundConfig.backgroundKind);
+            assertFalse(FoliaBackgroundConfig.appleCoverBackdrop);
+
+            saved.addProperty("appleCoverBackdrop", true);
+            FoliaBackgroundConfig.applyJson(saved);
+            assertEquals(1, FoliaBackgroundConfig.backgroundKind);
+            assertTrue(FoliaBackgroundConfig.appleCoverBackdrop);
+
+            JsonObject legacy = new JsonObject();
+            legacy.addProperty("enabled", false);
+            FoliaBackgroundConfig.applyJson(legacy);
+            assertEquals(0, FoliaBackgroundConfig.backgroundKind);
+            assertFalse(FoliaBackgroundConfig.appleCoverBackdrop);
+        } finally {
+            FoliaBackgroundConfig.applyJson(previous);
+        }
+    }
+
+    @Test
     void backgroundUsesDefaultForMissingSettingAndKeepsExplicitOff() {
         JsonObject previous = FoliaBackgroundConfig.toJson();
         try {

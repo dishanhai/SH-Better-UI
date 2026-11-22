@@ -172,7 +172,10 @@ public final class FoliaBackgroundConfig {
         try {
             backgroundKind = clampInt(getInt(root, "backgroundKind",
                     getBoolean(root, "enabled", true) ? 2 : 0), 0, 2);
-            appleCoverBackdrop = getBoolean(root, "appleCoverBackdrop", DEFAULT_APPLE_COVER_BACKDROP);
+            // Legacy files stored the active backdrop in this preset, not in the new toggle.
+            boolean hasSavedPreset = root.has("backgroundKind") || root.has("enabled") || root.has("mode");
+            appleCoverBackdrop = getBoolean(root, "appleCoverBackdrop",
+                    DEFAULT_APPLE_COVER_BACKDROP && !hasSavedPreset);
             mode = readMode(root);
             staticMode = getBoolean(root, "staticMode", staticMode);
             audioResponse = clamp(getFloat(root, "audioResponse", audioResponse), 0f, 2f);
