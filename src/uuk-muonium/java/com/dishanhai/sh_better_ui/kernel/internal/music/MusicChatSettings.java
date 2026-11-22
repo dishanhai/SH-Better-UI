@@ -28,7 +28,8 @@ import static com.muoniumplayer.core.screens.ncm.NCMScreen.ColorType.*;
 final class MusicChatSettings extends Panel {
     private static final int FIELD_ROW = 32;
     private static final int PROVIDER_COLUMNS = 3;
-    private static final int PROVIDER_TOP = 15;
+    private static final int REVIEW_SECTION = 76;
+    private static final int PROVIDER_TOP = REVIEW_SECTION + 15;
     private static final int PROVIDER_ROW = BUTTON_HEIGHT + GAP;
     private static final int FIELDS_TOP = PROVIDER_TOP + 3 * PROVIDER_ROW + 5;
     private static final int API_ACTION_Y = 3 * FIELD_ROW + 6;
@@ -57,6 +58,7 @@ final class MusicChatSettings extends Panel {
     private String key = "";
     private boolean removeKey;
     private String status = "";
+    private boolean automaticReview;
     private List<MusicChatClient.Model> models = List.of();
     private CompletableFuture<List<MusicChatClient.Model>> request;
     private ChatGptLogin.Attempt login;
@@ -86,6 +88,7 @@ final class MusicChatSettings extends Panel {
             subscriptionModel = original.model();
         }
         try {
+            automaticReview = MusicChatConfig.loadSongReview().automatic();
             if (api == null) api = MusicChatConfig.loadApi();
             savedProfiles = MusicChatConfig.loadProfiles();
         } catch (IOException | RuntimeException error) {
@@ -114,7 +117,13 @@ final class MusicChatSettings extends Panel {
             }
         });
 
-        NcmExpressive.label(form, () -> text("providers"), FontManager.pf14bold, () -> 0, () -> 7,
+        Supplier<String> reviewLabel = () -> text(automaticReview ? "auto_review_on" : "auto_review_off");
+        button(form, focus, reviewLabel, () -> original != null, () -> automaticReview, () -> 0, () -> 0,
+                () -> Math.min(form.getWidth(), buttonWidth(reviewLabel.get())), this::toggleAutomaticReview)
+                .setTooltip(() -> text("auto_review_help"));
+        paragraph(form, () -> text(original == null ? "auto_review_configure" : "auto_review_help"),
+                () -> BUTTON_HEIGHT + 4, 3);
+        NcmExpressive.label(form, () -> text("providers"), FontManager.pf14bold, () -> 0, () -> REVIEW_SECTION + 7,
                 form::getWidth, () -> color(PRIMARY_TEXT));
         for (int i = 0; i <= PROVIDERS.length; i++) {
             boolean plan = i == PROVIDERS.length;
@@ -167,6 +176,18 @@ final class MusicChatSettings extends Panel {
 
     private static double saveWidth(Panel column) {
         return Math.min(column.getWidth() * .4, buttonWidth(text("save")));
+    }
+
+    private void toggleAutomaticReview() {
+        boolean enabled = !automaticReview;
+        try {
+            MusicChatConfig.setAutomaticSongReview(original, enabled);
+        } catch (IOException | RuntimeException ignored) {
+            setStatus(text("storage_error"));
+            return;
+        }
+        automaticReview = enabled;
+        MusicTypography.narrate(Component.literal(text(enabled ? "auto_review_on" : "auto_review_off")));
     }
 
     private static double providerWidth(Panel form) {

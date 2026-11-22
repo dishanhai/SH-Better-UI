@@ -7,10 +7,14 @@
 
 | 代码位置 | 职责 |
 | --- | --- |
-| `src/muonium/java` | 播放器、音源、账号、缓冲、下载、解码、DSP、Automix、歌词、世界渲染、HUD、房间客户端和局域网房间引擎 |
-| `src/uuk-muonium` | 原生控件、字体渲染与图标、目录选择器 |
-| `src/kernel/java` | UUK 控件主题、触摸及字体宿主契约 |
-| `src/muonium-forge` 和各 NeoForge 工程的 `src/muonium` | 对应版本的客户端生命周期、Mixin、网络事件、输入以及世界渲染适配 |
+| `src/muonium` | 播放、音源、账号、缓冲、下载、解码、DSP、Automix、歌词数据、预设和房间业务 |
+| `src/uuk-muonium` | UUK 管理的播放器页面、播放控件、弹层、全屏及 3D 歌词表现、HUD、欢迎引导、字体与界面资源 |
+| `src/kernel/java` | UUK 的主题、输入和字体契约，以及可供各播放器复用的界面状态模型 |
+| `src/muonium-forge` 和各 NeoForge 工程的 `src/muonium` | 对应版本的客户端生命周期、Mixin、网络事件、输入、HUD 设置宿主以及世界渲染适配 |
+
+四个平台共用 `src/uuk-muonium`。内嵌 UI 沿用 `com.muoniumplayer` 类名和原资源路径，通过现有 MP 服务读取状态并提交播放操作。维护 MP 界面与控件时从 UUK 的该源码集入口修改。
+
+在主控面板的「开发者面板 → 控件图库 → MP 音乐播放器」打开实际播放器或播放器设置。播放器关闭后回到该预览，首次使用引导仍由常规播放器入口触发。
 
 NeoForge 26.2 的 Muonium 图层需要 OpenGL。使用 Vulkan 时，游戏显示图形 API 提示。切换为 OpenGL 并重启后可进入原版 Skija 界面。
 
@@ -29,6 +33,8 @@ NeoForge 26.2 的 Muonium 图层需要 OpenGL。使用 Vulkan 时，游戏显示
 ## AI 聊天
 
 在播放器侧栏打开「AI 聊天 → AI 设置」。
+
+保存 AI 渠道后，可在全屏播放页的「歌曲百科」点按「AI 点评」。点评使用歌名、歌手、专辑和可用的平台简介、曲风。自动点评默认关闭，可在「AI 设置」手动开启。开启后，打开百科或在百科中切歌时会生成点评。切换 AI 渠道或模型后，需要重新开启自动点评。
 
 - 使用 **ChatGPT 订阅**时，在快速配置中选择「ChatGPT 订阅 → 使用 ChatGPT 登录」，在系统浏览器中完成授权。浏览器未打开时，可点「复制登录链接」后手动打开。回到游戏后，从该账号的模型列表选择模型并保存。符合资格的 Plus 或 Pro 账号可使用订阅额度，无需 API 密钥。可添加其他账号，或通过「管理用量」查看 ChatGPT 中的应用用量。[OpenAI 登录集成指南](https://developers.openai.com/siwc/quickstart)
 - 使用 **API 密钥**时，选择供应商预设，也可填写兼容 Chat Completions 的 HTTPS 基础地址或完整的 `/chat/completions` 地址。填写对应密钥后点击「获取模型」，选择模型或填写模型 ID，再保存。OpenAI 根地址会自动补全 `/v1`，OpenAI GPT‑6 系列使用 Responses API。每个 API 地址单独保存密钥和模型，已配置的地址会自动带出其模型。

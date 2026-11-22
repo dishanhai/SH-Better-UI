@@ -20,6 +20,7 @@ record MusicChatConfig(URI endpoint, String model, String key, String account) {
     static final int MODEL_LIMIT = 128;
     static final int KEY_LIMIT = 1024;
     private static final String CREDENTIAL = "ai-chat";
+    private static final String AUTO_REVIEW = "automatic_song_review";
     static final String COMPLETIONS = "/chat/completions";
     private static final MusicCredentialStore STORE = credentialStore();
     private static JsonObject session = new JsonObject();
@@ -98,6 +99,27 @@ record MusicChatConfig(URI endpoint, String model, String key, String account) {
         return activeProfile(readConfig());
     }
 
+    static synchronized SongAiReview loadSongReview() throws IOException {
+        var json = readConfig();
+        return new SongAiReview(activeProfile(json), automaticSongReview(json));
+    }
+
+    static synchronized void setAutomaticSongReview(MusicChatConfig profile, boolean enabled) throws IOException {
+        update(() -> {
+            var json = readConfig();
+            if (profile == null || !profile.equals(activeProfile(json))) throw new IOException("Chat profile changed");
+            json.addProperty(AUTO_REVIEW, enabled);
+            writeConfig(json);
+            return null;
+        });
+    }
+
+    static boolean automaticSongReview(JsonObject json) {
+        var value = json.get(AUTO_REVIEW);
+        return value != null && value.isJsonPrimitive() && value.getAsJsonPrimitive().isBoolean()
+                && value.getAsBoolean();
+    }
+
     static synchronized MusicChatConfig loadApi() throws IOException {
         return apiProfile(readConfig());
     }
@@ -159,6 +181,7 @@ record MusicChatConfig(URI endpoint, String model, String key, String account) {
     }
 
     static void activate(JsonObject json, MusicChatConfig profile) {
+        if (json.has(AUTO_REVIEW) && !profile.equals(activeProfile(json))) json.remove(AUTO_REVIEW);
         var apis = object(json, "api_profiles");
         var plans = object(json, "subscription_models");
         MusicChatConfig lastApi = apiProfile(json);
@@ -207,6 +230,7 @@ record MusicChatConfig(URI endpoint, String model, String key, String account) {
             object(json, "api_profiles").remove(profile.baseUrl());
             var api = apiProfile(json);
             if (api != null && api.endpoint().equals(profile.endpoint())) {
+                if (!json.has("account")) json.remove(AUTO_REVIEW);
                 json.remove("url");
                 json.remove("model");
                 json.remove("key");
