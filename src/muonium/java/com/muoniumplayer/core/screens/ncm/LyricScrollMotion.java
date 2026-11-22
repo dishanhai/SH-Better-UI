@@ -69,10 +69,10 @@ final class LyricScrollMotion {
         seekSpringTarget = 0.0;
     }
 
-    void apply(List<LyricLine> lines, double[] docTop, double restOffset, int anchorIndex,
-               double playheadMs, boolean interlude, boolean manualScroll) {
+    double apply(List<LyricLine> lines, double[] docTop, double restOffset, int anchorIndex,
+                 double playheadMs, boolean interlude, boolean manualScroll) {
         int count = Math.min(lines.size(), docTop.length);
-        if (count <= 0 || anchorIndex < 0 || anchorIndex >= count) return;
+        if (count <= 0 || anchorIndex < 0 || anchorIndex >= count) return 0.0;
 
         if (trackChanged(lines, count)) {
             lineCurTop = new double[0];
@@ -90,6 +90,8 @@ final class LyricScrollMotion {
             lineSpringInit = false;
         }
         if (cascadeDelayBuf.length != count) cascadeDelayBuf = new double[count];
+        double previousTop = lineSpringInit && anchorIndex >= prevVisStart && anchorIndex < prevVisEnd
+                ? lineCurTop[anchorIndex] : Double.NaN;
 
         long nowNs = System.nanoTime();
         double dt = springLastNs == 0L ? 0.0 : (nowNs - springLastNs) / 1_000_000_000.0;
@@ -135,7 +137,7 @@ final class LyricScrollMotion {
             prevVisStart = start;
             prevVisEnd = end;
             lineSpringInit = true;
-            return;
+            return Double.isNaN(previousTop) ? 0.0 : lineCurTop[anchorIndex] - previousTop;
         }
 
         double stiffness = interlude ? INTERLUDE_STIFFNESS : NORMAL_STIFFNESS;
@@ -159,6 +161,7 @@ final class LyricScrollMotion {
         prevVisStart = start;
         prevVisEnd = end;
         lineSpringInit = true;
+        return Double.isNaN(previousTop) ? 0.0 : lineCurTop[anchorIndex] - previousTop;
     }
 
     /** qplayer 级联：头侧零延迟；尾侧从 50ms 起，按 1.05x 衰减。 */

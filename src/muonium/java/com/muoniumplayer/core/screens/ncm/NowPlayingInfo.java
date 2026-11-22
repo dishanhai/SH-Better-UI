@@ -144,7 +144,6 @@ final class NowPlayingInfo implements SharedRenderingConstants {
     }
 
     void activateTitleAction(Action action) {
-        focused = action;
         switch (action) {
             case FAVORITE -> {
                 if (favorite != null) favorite.activate();
@@ -608,9 +607,9 @@ final class NowPlayingInfo implements SharedRenderingConstants {
         var hit = new Hit(action, x, y, width, height);
         hits.add(hit);
         boolean hover = hit.contains(mouseX, mouseY);
-        boolean selected = focused == action || (action == Action.FLOATING_LYRICS && HudConfig.musicLyricsEnabled);
-        if (selected || hover) {
-            float fill = hover && pointerDown ? .23f : selected ? .16f : .10f;
+        boolean keyboardFocused = focused == action;
+        if (keyboardFocused || hover) {
+            float fill = hover && pointerDown ? .23f : keyboardFocused ? .16f : .10f;
             roundedRect(x, y, width, height, PILL_RADIUS, RGBA.white(alpha * fill));
         }
     }
