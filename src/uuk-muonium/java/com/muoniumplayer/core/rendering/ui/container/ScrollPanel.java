@@ -10,6 +10,8 @@ import com.muoniumplayer.core.rendering.rendersystem.RenderSystem;
 import com.muoniumplayer.core.rendering.ui.AbstractWidget;
 import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTheme;
 import com.dishanhai.sh_better_ui.kernel.api.controls.WidgetTouch;
+import com.dishanhai.sh_better_ui.kernel.api.layout.VerticalScroll;
+import com.muoniumplayer.core.utils.cursor.CursorUtils;
 
 import java.util.ArrayList;
 import java.util.Collections;
@@ -84,7 +86,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
 
     // ──────────────────────── 滚动指示条 ────────────────────────
     // 播放器里所有列表以前都没有滚动条，240 张卡的内容长度完全不可见。这里补一条「只在需要时
-    // 出现」的极细指示条：不占布局、不画轨道、不抢点击（画在裁剪之后，纯视觉）。宽度与圆角
+    // 出现」的极细指示条：不占布局，画在裁剪之后。宽度与圆角
     // 走设计档 2.5L / 1.25L，颜色取主题次要文字色再乘透明度，深浅主题都成立。
 
     /** 指示条宽（布局单位）。 */
@@ -118,6 +120,9 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
     private double indicatorThumbLength;
     /** 本帧内容可滚动总长；绘制时不再二次扫描子项。 */
     private double indicatorMaximumOffset = -1.0;
+    private VerticalScroll scrollbar;
+    private double scrollbarViewport = -1;
+    private double scrollbarMaximum = -1;
 
     /**
      * 垂直等高列表的快速路径。歌曲行都是固定高度时，不需要每帧给几千个子项重新排版；
@@ -212,12 +217,69 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         return this;
     }
 
+    /** Enable direct manipulation. The input host owns the pointer from press through release. */
+    public ScrollPanel enableScrollbarDrag() {
+        this.scrollbar = new VerticalScroll();
+        return this;
+    }
+
+    public boolean pressScrollbar(double x, double y) {
+        if (this.scrollbar == null || this.isHidden() || !this.canPollTouchInput()
+                || this.indicatorAlpha <= .015f || !this.hitsThumb(x, y)) return false;
+        int track = this.scrollbarTrackHeight();
+        if (track <= this.scrollbar.thumbHeight(track)) return false;
+        if (!this.scrollbar.beginDrag(y - this.getY(), track)) return false;
+        this.touchDragging = false;
+        this.applyScrollbarOffset();
+        return true;
+    }
+
+    public boolean dragScrollbar(double y) {
+        if (this.scrollbar == null || !this.scrollbar.dragging()) return false;
+        this.scrollbar.dragTo(y - this.getY(), this.scrollbarTrackHeight());
+        this.applyScrollbarOffset();
+        return true;
+    }
+
+    public void endScrollbarDrag() {
+        if (this.scrollbar != null) this.scrollbar.endDrag();
+    }
+
+    public void cancelScrollbarDrag() {
+        if (this.scrollbar != null && this.scrollbar.cancelDrag()) this.applyScrollbarOffset();
+    }
+
+    private void applyScrollbarOffset() {
+        this.targetScrollOffset = this.actualScrollOffset = this.scrollbar.offset();
+        this.lastScrollInputNanos = System.nanoTime();
+    }
+
+    private int scrollbarTrackHeight() {
+        return Math.max(0, (int) this.getHeight());
+    }
+
+    private double indicatorCenterX() {
+        return this.getX() + this.getWidth()
+                + (this.indicatorInsideViewport ? -INDICATOR_INSET_INSIDE : INDICATOR_INSET_RIGHT);
+    }
+
+    private boolean hitsThumb(double x, double y) {
+        return Math.abs(x - this.indicatorCenterX()) <= 4.5
+                && y >= this.indicatorThumbTop && y < this.indicatorThumbTop + this.indicatorThumbLength;
+    }
+
     /**
      * 为固定高度的垂直条目启用排版快速路径。传入非正数可关闭。
      * 隐藏/筛选条目时应关闭此模式，因为隐藏项会改变实际行高。
      */
     public ScrollPanel setUniformVerticalItemHeight(double height) {
         this.uniformVerticalItemHeight = height > 0.0 ? height : -1.0;
+        if (this.hasIndexedVerticalLayout()) {
+            // The indexed pass needs the previous visible children to clear hover and
+            // finish animations for rows that disappear when a filter is applied.
+            this.invalidateLayout();
+            return this;
+        }
         this.resetUniformLayoutState();
         if (this.uniformVerticalItemHeight > 0.0) {
             this.placeUniformChildrenOutsideViewport();
@@ -408,6 +470,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
 
     @Override
     public boolean onDWheel(double mouseX, double mouseY, int dWheel) {
+        if (this.scrollbar != null && this.scrollbar.dragging()) return true;
 
         // 垂直滑动
         if (dWheel != 0) this.lastScrollInputNanos = System.nanoTime();
@@ -447,6 +510,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
      * 平滑会变成橡皮筋。甩动时把惯性距离一次性记进 target，让既有平滑自然接管减速尾。</h2>
      */
     private void advanceTouchDrag() {
+        if (this.scrollbar != null && this.scrollbar.dragging()) return;
         if (!canPollTouchInput()) {
             // A modal change must not finish an underlying drag with somebody else's release/fling.
             this.touchDragging = false;
@@ -993,14 +1057,30 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         final boolean overflows = vertical && viewport > 1.0 && maximumScrollOffset > .5;
         if (!overflows) {
             this.indicatorAlpha = 0.0f;
+            this.endScrollbarDrag();
             return;
         }
 
+        boolean draggable = this.scrollbar != null;
+        if (draggable) {
+            if (this.scrollbarViewport != viewport || this.scrollbarMaximum != maximumScrollOffset) {
+                this.scrollbar.resize(viewport, viewport + maximumScrollOffset);
+                this.scrollbarViewport = viewport;
+                this.scrollbarMaximum = maximumScrollOffset;
+            }
+            this.scrollbar.scrollTo(this.actualScrollOffset);
+            int track = this.scrollbarTrackHeight();
+            this.indicatorThumbLength = this.scrollbar.thumbHeight(track);
+            this.indicatorThumbTop = this.getY() + this.scrollbar.thumbTop(track);
+        }
+        boolean thumbHovered = draggable && this.canPollTouchInput() && this.hitsThumb(mouseX, mouseY);
+        boolean dragging = draggable && this.scrollbar.dragging();
+        if (thumbHovered || dragging) CursorUtils.setOverride(CursorUtils.HAND);
         final long now = System.nanoTime();
         final boolean recentlyScrolled = this.lastScrollInputNanos != 0L
                 && now - this.lastScrollInputNanos < INDICATOR_HOLD_NANOS;
         final boolean settling = Math.abs(this.targetScrollOffset - this.actualScrollOffset) > .5;
-        final boolean visible = recentlyScrolled || settling || this.testHovered(mouseX, mouseY);
+        final boolean visible = dragging || thumbHovered || recentlyScrolled || settling || this.testHovered(mouseX, mouseY);
 
         final double frameMs = Math.min(MAX_FRAME_MS, Math.max(0.0, RenderSystem.getFrameDeltaTime() * 10.0));
         if (visible) {
@@ -1011,6 +1091,7 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
                     this.indicatorAlpha - (float) (frameMs * INDICATOR_FADE_OUT_PER_MS));
         }
 
+        if (draggable) return;
         final double contentLength = maximumScrollOffset + viewport;
         final double ratio = Math.min(1.0, viewport / Math.max(viewport, contentLength));
         final double length = Math.max(INDICATOR_MIN_LENGTH, viewport * ratio);
@@ -1021,16 +1102,16 @@ public class ScrollPanel extends AbstractWidget<ScrollPanel> {
         this.indicatorThumbTop = this.getY() + travel * progress;
     }
 
-    /** 画在视口右缘外侧的极细滑块；无轨道、不参与点击。透明度跟主题次要文字色走。 */
+    /** 画在视口右缘的滑块；透明度跟主题次要文字色走。 */
     private void drawScrollIndicator() {
         if (this.indicatorAlpha <= .015f || this.indicatorMaximumOffset <= .5) return;
         final int color = WidgetTheme.color(WidgetTheme.Role.SECONDARY_TEXT);
         // 以「中心线」定位：正值向内、负值向外，换方向时不用同时改宽度与内缩两处。
-        final double centerX = this.getX() + this.getWidth()
-                + (this.indicatorInsideViewport ? -INDICATOR_INSET_INSIDE : INDICATOR_INSET_RIGHT);
+        boolean dragging = this.scrollbar != null && this.scrollbar.dragging();
+        final double centerX = this.indicatorCenterX();
         final double x = centerX - INDICATOR_WIDTH * .5;
         this.roundedRect(x, this.indicatorThumbTop, INDICATOR_WIDTH, this.indicatorThumbLength,
-                INDICATOR_WIDTH * .5, RenderSystem.reAlpha(color, this.indicatorAlpha * .55f));
+                INDICATOR_WIDTH * .5, RenderSystem.reAlpha(color, this.indicatorAlpha * (dragging ? .95f : .55f)));
     }
 
     @Override

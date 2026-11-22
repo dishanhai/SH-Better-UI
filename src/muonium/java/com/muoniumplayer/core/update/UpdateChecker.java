@@ -157,8 +157,6 @@ public final class UpdateChecker {
             "modrinth.com",
             "gitee.com",
             "qq.com",
-            "afdian.com",
-            "afdian.net",
     };
 
     private static final Object LOCK = new Object();

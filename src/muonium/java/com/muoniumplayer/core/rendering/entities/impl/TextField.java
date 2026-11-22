@@ -110,7 +110,7 @@ public class TextField implements SharedConstants {
         String filtered = ChatAllowedCharacters.filterAllowedCharacters(input);
         int selStart = Math.min(cursorPosition, selectionEnd);
         int selEnd = Math.max(cursorPosition, selectionEnd);
-        int availableSpace = maxStringLength - text.length() - (selEnd - selStart);
+        int availableSpace = maxStringLength - text.length() + selEnd - selStart;
 
         StringBuilder newText = new StringBuilder();
 
@@ -266,7 +266,7 @@ public class TextField implements SharedConstants {
             return true;
         }
         if (KeyboardUtils.isKeyComboCtrlC(keyCode)) {
-            KeyboardUtils.setClipboardString(getSelectedText());
+            if (!isPassword) KeyboardUtils.setClipboardString(getSelectedText());
             return true;
         }
         if (KeyboardUtils.isKeyComboCtrlV(keyCode)) {
@@ -276,7 +276,7 @@ public class TextField implements SharedConstants {
             return true;
         }
         if (KeyboardUtils.isKeyComboCtrlX(keyCode)) {
-            KeyboardUtils.setClipboardString(getSelectedText());
+            if (!isPassword) KeyboardUtils.setClipboardString(getSelectedText());
             if (isEnabled) {
                 writeText("");
             }
@@ -422,7 +422,7 @@ public class TextField implements SharedConstants {
 
         float relativeX = mouseX - xPosition;
 
-        float charWidth = (float) getFontRenderer().getStringWidthD(text) / text.length();
+        float charWidth = (float) getFontRenderer().getStringWidthD(getDisplayText()) / text.length();
         dragEndChar = (int) (relativeX / charWidth);
         dragEndChar = clamp_int(dragEndChar, 0, text.length());
         setSelectionPos(dragEndChar);
@@ -466,18 +466,19 @@ public class TextField implements SharedConstants {
 
     private double calculateTextScrollOffset() {
         double offset = 0;
-        double totalWidth = getFontRenderer().getStringWidthD(text);
+        String displayText = getDisplayText();
+        double totalWidth = getFontRenderer().getStringWidthD(displayText);
 
         if (totalWidth > this.width) {
             int targetPos = Math.max(cursorPosition, selectionEnd);
-            double widthToTarget = getFontRenderer().getStringWidthD(text.substring(0, targetPos));
+            double widthToTarget = getFontRenderer().getStringWidthD(displayText.substring(0, targetPos));
 
             if (widthToTarget > this.width) {
                 offset = widthToTarget - this.width;
             }
 
             int leftPos = Math.min(cursorPosition, selectionEnd);
-            double widthToLeft = getFontRenderer().getStringWidthD(text.substring(0, leftPos));
+            double widthToLeft = getFontRenderer().getStringWidthD(displayText.substring(0, leftPos));
             if (widthToLeft < offset) {
                 offset = widthToLeft;
             }
@@ -546,7 +547,7 @@ public class TextField implements SharedConstants {
     }
 
     private String getDisplayText() {
-        return isPassword ? new String(new char[text.length()]).replace('\0', '*') : text;
+        return isPassword ? "*".repeat(text.length()) : text;
     }
 
     private boolean hasSelection() {

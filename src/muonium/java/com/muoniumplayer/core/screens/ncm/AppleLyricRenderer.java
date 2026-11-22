@@ -4,6 +4,8 @@ import java.util.ArrayList;
 import java.util.List;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicPressMotion;
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.LyricPlaybackFocus;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.rendering.font.CFontRenderer;
 import com.muoniumplayer.core.settings.HudConfig;
@@ -15,6 +17,7 @@ import io.github.humbleui.skija.FilterTileMode;
 import io.github.humbleui.skija.ImageFilter;
 import io.github.humbleui.skija.Paint;
 import io.github.humbleui.types.Rect;
+import net.minecraft.network.chat.Component;
 
 /**
  * 「苹果」：仿 Apple Music 全屏歌词。
@@ -156,6 +159,9 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         double textHeight;
         double width;
         final List<Tok> toks = new ArrayList<Tok>();
+        String vocalistLabel;
+        double vocalistWidth;
+        double vocalistHeight;
         String[] translationRows;
         double[] translationRawWidths;
         double translationRawWidth;
@@ -174,14 +180,18 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
     private long laidOutFontRevision;
 
     /** Half-pixel sigma steps, up to 6px; never allocate a filter per line or per frame. */
-    private final Paint[] blurPaints = new Paint[13];
+    private final Paint[] blurPaints = new Paint[25];
+    private final LyricPlaybackFocus.Transition blurTransition = new LyricPlaybackFocus.Transition();
     private double pointerX = Double.NaN;
     private double pointerY = Double.NaN;
     private long pointerSession;
     private long pointerRevision;
     private boolean acceptingPointer;
+    private final MusicPressMotion pressMotion = new MusicPressMotion();
+    private Object feedbackLine;
 
     void lyricPointer(double x, double y, CloudMusic.PlaybackSnapshot snapshot, long revision) {
+        if (pointerSession != snapshot.sessionId || pointerRevision != revision) cancelLyricPress();
         pointerX = x;
         pointerY = y;
         pointerSession = snapshot.sessionId;
@@ -194,6 +204,8 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         pointerX = pointerY = Double.NaN;
         interaction.invalidate();
         manualScroll.end(System.nanoTime());
+        pressMotion.reset();
+        feedbackLine = null;
     }
 
     void scrollLyrics(int wheel) {
@@ -215,6 +227,9 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         double slop = Math.max(1, TouchSettings.DRAG_THRESHOLD_PX);
         interaction.press(x, y, snapshot.sessionId, revision, slop);
         manualScroll.press(x, y, slop);
+        pressMotion.reset();
+        feedbackLine = interaction.pressedIdentity();
+        pressMotion.sample(true, System.nanoTime() / 1_000_000L, UiPreferences.configured().reducedMotion());
         return true;
     }
 
@@ -227,20 +242,29 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         long millis = interaction.release(x, y, snapshot.sessionId, revision);
         manualScroll.end(System.nanoTime());
         if (millis >= 0) manualScroll.reset();
+        if (millis < 0) cancelLyricPress();
+        else pressMotion.sample(false, System.nanoTime() / 1_000_000L, UiPreferences.configured().reducedMotion());
         return millis;
     }
 
     void cancelLyricPress() {
         interaction.cancel();
         manualScroll.end(System.nanoTime());
+        pressMotion.reset();
+        feedbackLine = null;
     }
 
     void dragLyric(double x, double y) {
         interaction.drag(x, y);
         if (manualScroll.move(x, y, cameraY, System.nanoTime())) expandBrowseLayout();
+        if (!interaction.isPressed()) {
+            pressMotion.reset();
+            feedbackLine = null;
+        }
     }
 
     void disposeLyricBlur() {
+        blurTransition.reset();
         for (int i = 1; i < blurPaints.length; i++) {
             if (blurPaints[i] != null) {
                 blurPaints[i].close();
@@ -252,7 +276,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
     private Paint blurPaint(int key) {
         if (blurPaints[key] == null) {
             Paint paint = new Paint();
-            try (ImageFilter filter = ImageFilter.makeBlur(key / 2f, key / 2f, FilterTileMode.DECAL)) {
+            try (ImageFilter filter = ImageFilter.makeBlur(key / 4f, key / 4f, FilterTileMode.DECAL)) {
                 paint.setImageFilter(filter);
             }
             blurPaints[key] = paint;
@@ -360,6 +384,13 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             anchorY = focusTop(currentLine, positionMs);
         }
         if (rows.isEmpty() || font == null) return;
+        UiPreferences preferences = UiPreferences.configured();
+        long nowMs = System.nanoTime() / 1_000_000L;
+        double pressAmount = pressMotion.sample(interaction.isPressed(), nowMs, preferences.reducedMotion());
+        boolean animateBlur = HudConfig.fullscreenLyricEdgeBlur && !preferences.highContrast()
+                && !preferences.reducedMotion();
+        if (animateBlur) blurTransition.beginFrame(nowMs);
+        else blurTransition.reset();
 
         long now = System.nanoTime();
         boolean browsing = manualScroll.isBrowsing(now);
@@ -393,6 +424,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
         double activeBoost = FullscreenLyricStage.clamp(HudConfig.currentLineScale, 1.0, 1.30);
 
         int activeIndex = activeRowIndex(currentLine, positionMs);
+        LyricLine activeLine = rows.get(activeIndex).line;
         double inset = Math.max(6.0, width * .06);
 
         for (int i = firstVisibleRow(cameraY + top - anchorScreenY - 12); i < rows.size(); i++) {
@@ -401,7 +433,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             if (blockY > top + height + 12) break;
 
             int distance = i - activeIndex;
-            boolean active = distance == 0;
+            boolean active = distance == 0 || LyricDuetGroups.isVocalistActive(row.line, activeLine, positionMs);
             double enter = FullscreenLyricStage.clamp01(
                     (positionMs - (row.line.timestamp - 300.0)) / 460.0);
             double eased = FullscreenLyricStage.easeOutCubic(enter);
@@ -422,7 +454,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             double blockX = row.right ? left + width - inset - row.width : left + inset;
             drawLeadDots(row, blockX, blockY, positionMs, accent, litColor, rowAlpha, alpha);
 
-            double textTop = blockY + row.textTop;
+            double textTop = blockY + row.textTop + row.vocalistHeight;
             // 进场时整行从下方 6 px 抬上来，只有当前行做，避免整屏都在动。
             double lift = active ? (1.0 - eased) * 6.0 : 0.0;
             double lineScale = active ? 1.0 + (activeBoost - 1.0) * eased : 1.0;
@@ -433,6 +465,11 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             double textRight = pivotX + (blockX + row.width - pivotX) * lineScale;
             double visualTop = pivotY - lift + (textTop - pivotY) * lineScale;
             double visualBottom = visualTop + row.textHeight * lineScale;
+            if (row.vocalistLabel != null) {
+                textLeft = Math.min(textLeft, row.right ? blockX + row.width - row.vocalistWidth : blockX);
+                textRight = Math.max(textRight, row.right ? blockX + row.width : blockX + row.vocalistWidth);
+                visualTop = Math.min(visualTop, textTop - row.vocalistHeight - lift);
+            }
             if (row.translationRows != null && translationFont != null) {
                 double transWidth = row.translationRawWidth * translationScale;
                 textLeft = Math.min(textLeft, row.right ? blockX + row.width - transWidth : blockX);
@@ -445,32 +482,39 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
             if (!target.visible()) continue;
             boolean hovered = acceptingPointer && target.contains(pointerX, pointerY);
             boolean pressed = acceptingPointer && interaction.isPressed(row.line);
+            double compression = row.line == feedbackLine ? pressAmount : 0.0;
             if (acceptingPointer) interaction.add(row.line, row.line.timestamp, target);
-            if (hovered || pressed) {
+            if (hovered || pressed || compression > 0.0) {
+                double plateAlpha = pressed ? .15 : Math.max(hovered ? .055 : 0.0, .15 * compression);
                 FullscreenLyricStage.bar(target.left(), target.top(),
                         target.right() - target.left(), target.bottom() - target.top(),
-                        5.0, litColor, alpha * (pressed ? .11 : .055));
+                        5.0, litColor, alpha * plateAlpha);
             }
 
-            double blur = HudConfig.fullscreenLyricEdgeBlur && !browsing
-                    ? AppleLyricInteraction.blurWeight(positionMs, row.line.timestamp, distance <= 0,
-                            hovered || pressed)
-                    : 0.0;
-            int blurKey = (int) Math.round(Math.min(12.0, fontPx * .20) * blur);
+            double blur = animateBlur && !browsing ? blurTransition.sample(row.line, active ? 0.0 : LyricPlaybackFocus.blur(
+                    distance, row.line.timestamp - positionMs, hovered || pressed ? 1 : compression)) : 0.0;
+            int blurKey = (int) Math.round(Math.min(24.0, fontPx * .32) * blur);
             Canvas canvas = blurKey > 0 ? SkijaGfx.canvas() : null;
             int layer = -1;
             if (canvas != null) {
-                float pad = blurKey * 1.5f + 3f;
+                float pad = blurKey * .75f + 3f;
                 Rect bounds = Rect.makeLTRB((float) target.left() - pad, (float) target.top() - pad,
                         (float) target.right() + pad, (float) target.bottom() + pad);
                 layer = canvas.saveLayer(bounds, blurPaint(blurKey));
                 rowAlpha = Math.min(alpha, rowAlpha * (1.0 + .20 * blur));
+            }
+            boolean scalePressed = compression > 0;
+            if (scalePressed) {
+                FullscreenLyricStage.pushMatrix();
+                FullscreenLyricStage.scaleAt((textLeft + textRight) * .5, (visualTop + visualBottom) * .5,
+                        1.0 - .035 * compression);
             }
             try {
                 drawLyricText(row, blockX, textTop, lift, pivotX, pivotY, lineScale,
                         positionMs, active, distance < 0, rowAlpha, litColor, dimColor,
                         effects && active, glowStrength, popScale);
             } finally {
+                if (scalePressed) FullscreenLyricStage.popMatrix();
                 if (canvas != null) canvas.restoreToCount(layer);
             }
         }
@@ -481,6 +525,18 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                                double pivotX, double pivotY, double lineScale, double positionMs,
                                boolean active, boolean passed, double rowAlpha, int litColor,
                                int dimColor, boolean glow, double glowStrength, double popScale) {
+        if (row.vocalistLabel != null) {
+            double x = row.right ? blockX + row.width - row.vocalistWidth : blockX;
+            double y = textTop - row.vocalistHeight - lift;
+            FullscreenLyricStage.pushMatrix();
+            try {
+                FullscreenLyricStage.scaleAt(x, y, translationScale);
+                translationFont.drawString(row.vocalistLabel, x, y,
+                        FullscreenLyricStage.withAlpha(litColor, rowAlpha * .80));
+            } finally {
+                FullscreenLyricStage.popMatrix();
+            }
+        }
         for (int t = 0; t < row.toks.size(); t++) {
             Tok tok = row.toks.get(t);
             drawToken(row, tok, blockX, textTop - lift, pivotX, pivotY - lift, lineScale,
@@ -818,11 +874,23 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
 
             Row row = new Row();
             row.line = line;
-            row.right = line.duetSlot == 1;
+            row.right = LyricDuetGroups.rightAligned(line.duetSlot);
             row.graphemeTotal = Math.max(1, FullscreenLyricStage.graphemeCount(line.lyric));
 
-            int visualRows = layoutTokens(row, line, contentWidth, main, background);
+            double lineWidth = line.vocalist == null ? contentWidth
+                    : LyricDuetGroups.columnWidth(contentWidth, line.duetSlot);
+            int visualRows = layoutTokens(row, line, lineWidth, main, background);
             if (row.toks.isEmpty()) continue;
+
+            if (line.showVocalistLabel && translationFont != null) {
+                String name = line.vocalist.name();
+                String label = name.isBlank() ? Component.translatable(
+                        "sh_better_ui.muonium.lyric_vocalist", line.duetSlot + 1).getString() : name;
+                if (!FullscreenLyricStage.glyphsReady(translationFont, label)) metricsPending = true;
+                row.vocalistLabel = translationFont.trim(label, lineWidth / translationScale);
+                row.vocalistWidth = rawTranslationWidth(row.vocalistLabel) * translationScale;
+                row.vocalistHeight = FullscreenLyricStage.lineHeightOf(translationFont, translationScale) + fontPx * .08;
+            }
 
             String translation = secondaryText(line);
             if (translation != null && translationFont != null) {
@@ -830,7 +898,7 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
                     metricsPending = true;
                 }
                 String[] wrapped = line.wrappedRows(translationFont, translation,
-                        contentWidth / translationScale);
+                        lineWidth / translationScale);
                 row.translationRows = wrapped;
                 row.translationRawWidths = new double[wrapped.length];
                 for (int j = 0; j < wrapped.length; j++) {
@@ -843,16 +911,16 @@ final class AppleLyricRenderer extends AbstractStageLyricRenderer {
 
             applyGap(row, line, previousEnd);
             row.y = y;
-            row.height = row.textTop + row.textHeight;
+            row.height = row.textTop + row.vocalistHeight + row.textHeight;
             if (row.translationRows != null) {
                 row.height += fontPx * .12 + translationHeight(row);
             }
             y += row.height + gapBetween;
-            previousEnd = lastVocalEnd(line);
+            previousEnd = Math.max(previousEnd, lastVocalEnd(line));
             rows.add(row);
 
             if (visualRows > MAX_VISUAL_ROWS) fits = false;
-            if (row.width > contentWidth + .5) fits = false;
+            if (row.width > lineWidth + .5) fits = false;
             if (row.height > heightLimit) fits = false;
         }
         if (rows.isEmpty()) return true;

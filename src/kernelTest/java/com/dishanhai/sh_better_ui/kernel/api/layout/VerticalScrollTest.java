@@ -25,7 +25,9 @@ class VerticalScrollTest {
         scroll.scrollTo(100);
         int top = scroll.thumbTop(100);
         assertTrue(scroll.beginDrag(top + 3, 100));
-        assertEquals(100, scroll.offset(), 2);
+        assertEquals(100, scroll.offset(), 1e-9);
+        assertTrue(scroll.dragTo(-50, 100));
+        assertEquals(0, scroll.offset());
         assertTrue(scroll.dragTo(90, 100));
         assertTrue(scroll.cancelDrag());
         assertEquals(100, scroll.offset());

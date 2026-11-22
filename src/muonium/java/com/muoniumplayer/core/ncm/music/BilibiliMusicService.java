@@ -42,6 +42,7 @@ public final class BilibiliMusicService {
             "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/136.0.0.0 Safari/537.36";
     static final String REFERER = "https://www.bilibili.com/";
     private static final Pattern BVID_PATTERN = Pattern.compile("(BV[0-9A-Za-z]{10})");
+    private static final Pattern VIDEO_CID_PATTERN = Pattern.compile("(BV[0-9A-Za-z]{10})_c([1-9][0-9]{0,18})");
     private static final Pattern PAGE_PATTERN = Pattern.compile("(?:[?&]p=)([1-9][0-9]*)");
     private static final Pattern AV_PATTERN = Pattern.compile("(?i)(?:/|\\b)av([0-9]+)");
     private static final int CONNECT_TIMEOUT_MS = 10_000;
@@ -171,7 +172,7 @@ public final class BilibiliMusicService {
         if (direct == null) return null;
 
         try {
-            Track track = loadVideo(direct.bvid, direct.page);
+            Track track = loadVideo(direct);
             if (track == null) return null;
 
             boolean hires = allowHires && queryVipAccount();
@@ -335,7 +336,7 @@ public final class BilibiliMusicService {
         DirectVideo direct = parseSourceId(sourceId);
         if (direct == null) return null;
         try {
-            return loadVideo(direct.bvid, direct.page);
+            return loadVideo(direct);
         } catch (Throwable throwable) {
             System.err.println("[Music/Bilibili] Track resolve failed for "
                     + nonBlank(sourceId) + ": " + describe(throwable));
@@ -375,9 +376,28 @@ public final class BilibiliMusicService {
     }
 
     private static Track loadVideo(String videoId, int page) throws Exception {
-        JsonObject response = getJson(API_ROOT + "/view?" + viewIdQuery(videoId));
+        return loadVideo(new DirectVideo(videoId, page));
+    }
+
+    private static Track loadVideo(DirectVideo video) throws Exception {
+        JsonObject response = getJson(API_ROOT + "/view?" + viewIdQuery(video.bvid));
         requireSuccessful(response, "view");
-        return trackFromViewData(object(response, "data"), videoId, page);
+        JsonObject data = object(response, "data");
+        int page = video.cid == null ? video.page : pageForCid(data, video.cid);
+        Track track = page > 0 ? trackFromViewData(data, video.bvid, page) : null;
+        return track != null && (video.cid == null || video.cid.equals(track.cid)) ? track : null;
+    }
+
+    static int pageForCid(JsonObject data, String cid) {
+        JsonArray pages = array(data, "pages");
+        if (pages == null || pages.isEmpty()) return cid.equals(string(data, "cid")) ? 1 : 0;
+        for (JsonElement element : pages) {
+            if (element instanceof JsonObject page && cid.equals(string(page, "cid"))) {
+                long index = longValue(page, "page");
+                return index > 0 && index <= Integer.MAX_VALUE ? (int) index : 0;
+            }
+        }
+        return 0;
     }
 
     static Track trackFromViewData(JsonObject data, String videoId, int page) {
@@ -501,6 +521,8 @@ public final class BilibiliMusicService {
     static DirectVideo parseSourceId(String sourceId) {
         String value = nonBlank(sourceId);
         if (value.isEmpty()) return null;
+        Matcher byCid = VIDEO_CID_PATTERN.matcher(value);
+        if (byCid.matches()) return new DirectVideo(byCid.group(1), 1, byCid.group(2));
         int page = 1;
         // 现行格式的页码段是 "_pN"（B 站网址 ?p=N 的口径）。位数管住再转数字：
         // 超长尾巴是垃圾输入，按无后缀处理，别抛异常。
@@ -893,10 +915,16 @@ public final class BilibiliMusicService {
     static final class DirectVideo {
         final String bvid;
         final int page;
+        final String cid;
 
         DirectVideo(String bvid, int page) {
+            this(bvid, page, null);
+        }
+
+        DirectVideo(String bvid, int page, String cid) {
             this.bvid = bvid;
             this.page = page;
+            this.cid = cid;
         }
     }
 

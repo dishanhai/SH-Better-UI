@@ -16,7 +16,9 @@ final class MusicFrontendRoutes {
 
     enum Page {
         DISCOVER, LIBRARY, SEARCH, NOW_PLAYING, LYRICS, QUEUE, SETTINGS, ACCOUNTS, ACCOUNT, DISCOVERY,
-        ARTIST, PLAYLIST, HISTORY;
+        ARTIST, ALBUM, PLAYLIST, HISTORY, COMMENTS;
+
+        boolean detail() { return this == ARTIST || this == ALBUM; }
 
         boolean primary() {
             return this == DISCOVER || this == LIBRARY || this == SEARCH;
@@ -32,7 +34,7 @@ final class MusicFrontendRoutes {
             if (page.primary() && (!provider.isEmpty() || !id.isEmpty())) {
                 throw new IllegalArgumentException("Primary pages do not take a provider or resource ID");
             }
-            if ((page == Page.ARTIST || page == Page.PLAYLIST) && (provider.isBlank() || id.isBlank())) {
+            if ((page.detail() || page == Page.PLAYLIST || page == Page.COMMENTS) && (provider.isBlank() || id.isBlank())) {
                 throw new IllegalArgumentException("Resource routes require a provider and ID");
             }
             if (page == Page.ACCOUNT && provider.isBlank()) {

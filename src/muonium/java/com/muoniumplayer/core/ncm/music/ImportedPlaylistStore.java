@@ -4,22 +4,27 @@ import com.google.gson.Gson;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
+import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.settings.ConfigPaths;
 import com.muoniumplayer.core.settings.JsonConfigStorage;
 
 import java.io.File;
+import java.io.IOException;
+import java.util.Collection;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Locale;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * 用户用「粘贴分享链接」跨平台导入的歌单引用，持久化在 {@link ConfigPaths#IMPORTED_PLAYLISTS}。
  *
- * <p>只存引用（平台 + 歌单 ID + 标题 + 封面 + 曲目数），不存曲目：点开时由
+ * <p>分享链接只存引用（平台 + 歌单 ID + 标题 + 封面 + 曲目数）：点开时由
  * {@link PlayList#queryMusics()} 按平台匿名向上游拉取，所以导入天然跟随上游变化，落盘体积极小，
  * 也和任何账号凭据文件解耦——未登录也能导入，退出登录不会丢导入的歌单。</p>
+ * <p>Listen 1 自建歌单另有已整理的曲目快照，收藏的上游歌单仍是引用。</p>
  *
  * <p>键是 {@code 平台名:平台歌单ID} 而不是裸歌单 ID：网易云、QQ、汽水的 ID 都是十几个数字，
  * 不同平台间随时可能撞号，撞上的后果是两个平台的链接互相覆盖本地引用。</p>
@@ -86,6 +91,22 @@ public final class ImportedPlaylistStore {
         }
     }
 
+    /** Save the complete batch before exposing it to the sidebar. */
+    public static PlayList importListen1(Listen1PlaylistImport.Result result) throws IOException {
+        load();
+        synchronized (LOCK) {
+            var updated = new LinkedHashMap<>(PLAYLISTS);
+            for (PlayList playlist : result.playlists()) {
+                String key = keyOf(playlist);
+                if (Listen1PlaylistImport.hasSavedTracks(playlist)) updated.put(key, playlist);
+                else updated.putIfAbsent(key, playlist);
+            }
+            write(updated.values());
+            PLAYLISTS.putAll(updated);
+            return updated.get(keyOf(result.playlists().get(0)));
+        }
+    }
+
     /** 按歌单自身（平台 + 平台歌单 ID）移除本地引用；不影响上游，也不涉及账号。 */
     public static void remove(PlayList playlist) {
         String key = keyOf(playlist);
@@ -149,22 +170,21 @@ public final class ImportedPlaylistStore {
 
     private static void save() {
         try {
-            File file = ConfigPaths.IMPORTED_PLAYLISTS;
-            File parent = file.getParentFile();
-            if (parent != null && !parent.exists() && !parent.mkdirs() && !parent.isDirectory()) return;
-            JsonArray items = new JsonArray();
-            for (PlayList playlist : PLAYLISTS.values()) {
-                items.add(serialize(playlist));
-            }
-            JsonObject root = new JsonObject();
-            root.add("playlists", items);
-            JsonConfigStorage.writeObject(file, GSON, root);
+            write(PLAYLISTS.values());
         } catch (Throwable ignored) {
             // 写失败只影响下次启动能不能记住，不该把当前操作也一起失败掉。
         }
     }
 
-    private static JsonObject serialize(PlayList playlist) {
+    private static void write(Collection<PlayList> playlists) throws IOException {
+        JsonArray items = new JsonArray();
+        for (PlayList playlist : playlists) items.add(serialize(playlist));
+        JsonObject root = new JsonObject();
+        root.add("playlists", items);
+        JsonConfigStorage.writeObject(ConfigPaths.IMPORTED_PLAYLISTS, GSON, root);
+    }
+
+    static JsonObject serialize(PlayList playlist) {
         JsonObject item = new JsonObject();
         // 连同派生的 long id 一起存：还原时直接用，避免把 stableLong 逻辑复制一份到此处而失去一致。
         item.addProperty("id", playlist.getId());
@@ -173,10 +193,15 @@ public final class ImportedPlaylistStore {
         item.addProperty("name", playlist.getName());
         item.addProperty("cover", playlist.getCoverUrl());
         item.addProperty("count", playlist.getCount());
+        if (Listen1PlaylistImport.hasSavedTracks(playlist)) {
+            JsonArray tracks = new JsonArray();
+            for (Music music : playlist.getMusics()) tracks.add(LocalPlaylistStore.serializeTrack(music));
+            item.add("tracks", tracks);
+        }
         return item;
     }
 
-    private static PlayList deserialize(JsonObject item) {
+    static PlayList deserialize(JsonObject item) {
         String id = string(item, "playlistId");
         if (id.isEmpty()) return null;
         MusicPlatform platform = resolvePlatform(string(item, "platform"));
@@ -189,6 +214,16 @@ public final class ImportedPlaylistStore {
                 "", 0L);
         playlist.setPlatform(platform);
         playlist.setPlatformPlaylistId(id);
+        if (Listen1PlaylistImport.hasSavedTracks(playlist)) {
+            if (!(item.get("tracks") instanceof JsonArray saved)) return null;
+            var tracks = new ArrayList<Music>();
+            for (JsonElement row : saved) {
+                Music music = LocalPlaylistStore.deserializeTrack(row);
+                if (music != null) tracks.add(music);
+            }
+            playlist.musics = new CopyOnWriteArrayList<>(tracks);
+            playlist.musicsQueried = playlist.musicsLoaded = true;
+        }
         return playlist;
     }
 

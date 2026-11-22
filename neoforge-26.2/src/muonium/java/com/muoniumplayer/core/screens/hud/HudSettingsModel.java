@@ -1930,6 +1930,7 @@ public final class HudSettingsModel {
                                         () -> HudConfig.spectrumEnabled)),
                         new Group(HudCenterSections.Section.MODS, "设置界面", HudSettingsIcons.MODERN_UI,
                                 HudCenterSections.controlsOption(), HudCenterSections.themeOption(),
+                                HudCenterSections.narrowPlayerLyricsOption(),
                                 choice(HudCenterSections.text("editor"), HudCenterSections.text("editor.desc"),
                                         new Supplier<String>() {
                                             public String get() {

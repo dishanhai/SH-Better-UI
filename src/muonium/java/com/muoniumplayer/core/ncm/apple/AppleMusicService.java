@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.ncm.apple;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.AppleMusicLyrics;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -20,7 +21,7 @@ import java.util.regex.Pattern;
  * Apple Music 的宿主适配层：AMP API 的原始 JSON ↔ 播放器的 {@code Music}/{@code PlayList}。
  *
  * <h3>这个平台的边界要先说清楚</h3>
- * <p>Apple 的目录能力（搜索/歌单/榜单/歌词）是公开的；但<b>完整音轨是 FairPlay DRM 保护</b>，
+ * <p>Apple 的搜索、歌单与榜单属于公开目录；歌词需要订阅账号，完整音轨受 FairPlay DRM 保护，
  * 官方接口只有 30 秒 preview。所以这里产出的行是「半元数据行」：点播先走本机引擎
  * （{@code AppleNativeEngine}，用户自备订阅 cookies）拉完整版，拿不到由换源流水线找替身，
  * 最后才落 preview 兜底。与 Spotify 同理，Apple 行<b>绝不进换源候选表</b>——它没有完整流
@@ -83,6 +84,8 @@ public final class AppleMusicService {
         public String albumId = "";
         public long durationMillis;
         public String coverUrl = "";
+        /** 目录明确返回 false 时，这个版本没有歌词。 */
+        public boolean mayHaveLyrics = true;
         /** 官方 30 秒试听地址；preview 兜底播放与试听按钮用。 */
         public String previewUrl = "";
     }
@@ -105,22 +108,28 @@ public final class AppleMusicService {
      * HttpURLConnection 的请求形态,换 HttpClient 即过(tools/apple-native-probe 实测)。</p>
      */
     public static List<Track> search(String keyword, int limit) {
+        return search(keyword, limit, AppleConfigStore.storefront());
+    }
+
+    /** 按指定地区搜索，便于用同一地区重取候选的歌词。 */
+    public static List<Track> search(String keyword, int limit, String storefront) {
         if (keyword == null || keyword.trim().isEmpty()) return Collections.emptyList();
-        return viaTransport(() -> {
+        if (storefront == null || !storefront.matches("[a-z]{2}")) return Collections.emptyList();
+        List<Track> tracks = viaTransport(() -> {
             try {
                 Map<String, String> query = new LinkedHashMap<>();
                 query.put("term", keyword.trim());
                 query.put("types", "songs");
                 query.put("limit", String.valueOf(Math.max(1, Math.min(limit, SEARCH_LIMIT_MAX))));
                 JsonObject payload = AppleApiClient.getCatalog(catalogPath(
-                        "/catalog/" + AppleConfigStore.storefront() + "/search", query));
-                List<Track> tracks = readSearchTracks(payload, "songs");
-                return tracks.isEmpty() ? null : tracks;
+                        "/catalog/" + storefront + "/search", query));
+                return readSearchTracks(payload, "songs");
             } catch (IOException | AppleApiClient.AppleApiException throwable) {
                 System.err.println("[Music/Apple] Java 搜索失败: " + throwable.getMessage());
                 return null;
             }
         });
+        return tracks == null ? Collections.emptyList() : tracks;
     }
 
 
@@ -274,46 +283,27 @@ public final class AppleMusicService {
 
     // ── 歌词 / 试听 ─────────────────────────────────────────────────────────
 
-    /**
-     * 拉一首歌的 TTML 歌词（逐词/逐音节，Apple 官方形态）。助手优先（TLS 指纹），
-     * 直连降级同 {@link #search}。
-     *
-     * <p>账号态（media-user-token）在时拿到的是逐词版；游客态经常拿不到 {@code ttml}
-     * 字段，返回空串由调用方落到 AMLL DB 兜底。返回原始 TTML 字符串，由
-     * {@code LyricParser.parseTtml} 统一进时间轴。</p>
-     */
+    /** 使用播放器已有的 Apple Music 账号态读取当前地区的 TTML。 */
     public static String ttml(String songId) {
-        String id = songId == null ? "" : songId.trim();
-        if (id.isEmpty()) return "";
-        return viaTransport(() -> {
-            try {
-                Map<String, String> query = new LinkedHashMap<>();
-                query.put("extend", "extendedAssetUrls");
-                query.put("include", "lyrics");
-                JsonObject payload = AppleApiClient.getCatalog(
-                        catalogPath("/catalog/" + AppleConfigStore.storefront() + "/songs/" + id, query));
-                JsonArray data = payload.getAsJsonArray("data");
-                if (data == null || data.size() == 0) return null;
-                JsonObject relationships = data.get(0).getAsJsonObject().getAsJsonObject("relationships");
-                if (relationships == null) return null;
-                JsonArray lyrics = relationships.getAsJsonArray("lyrics");
-                if (lyrics == null) return null;
-                JsonObject lyricsRelation = lyrics.size() > 0 ? lyrics.get(0).getAsJsonObject() : null;
-                JsonArray lyricData = lyricsRelation == null ? null
-                        : lyricsRelation.getAsJsonArray("data");
-                if (lyricData == null) return null;
-                for (JsonElement element : lyricData) {
-                    if (element == null || !element.isJsonObject()) continue;
-                    JsonObject attributes = element.getAsJsonObject().getAsJsonObject("attributes");
-                    String ttml = attributes == null ? "" : text(attributes, "ttml");
-                    if (!ttml.isEmpty()) return ttml;
-                }
-                return null;
-            } catch (IOException | AppleApiClient.AppleApiException throwable) {
-                System.err.println("[Music/Apple] Java 歌词失败: " + throwable.getMessage());
-                return null;
-            }
-        });
+        return ttml(songId, AppleConfigStore.storefront());
+    }
+
+    /** 按候选所属地区取词。未登录或没有返回歌词时为空。 */
+    public static String ttml(String songId, String storefront) {
+        if (!lyricsAccountAvailable() || Thread.currentThread().isInterrupted()) return "";
+        try {
+            String path = AppleMusicLyrics.requestPath(storefront, songId == null ? "" : songId.trim());
+            return AppleMusicLyrics.readTtml(AppleApiClient.getAccount(path));
+        } catch (AppleApiClient.AppleApiException failure) {
+            System.err.println("[Music/Apple] 歌词请求失败 HTTP " + failure.statusCode);
+        } catch (IOException | IllegalArgumentException failure) {
+            System.err.println("[Music/Apple] 歌词请求失败: " + failure.getClass().getSimpleName());
+        }
+        return "";
+    }
+
+    public static boolean lyricsAccountAvailable() {
+        return !AppleConfigStore.mediaUserToken().isEmpty() && !AppleApiClient.isAccountInvalid();
     }
 
     /** 单曲详情：preview 兜底播放要的 30 秒试听地址。助手优先，拿不到返回空串。 */
@@ -702,11 +692,7 @@ public final class AppleMusicService {
     private static List<Track> readSearchTracks(JsonObject payload, String member) {
         JsonArray data = searchSectionData(payload, member);
         List<Track> out = new ArrayList<>();
-        if (data == null) return out;
-        for (JsonElement element : data) {
-            Track parsed = readTrack(element == null ? null : element.getAsJsonObject());
-            if (parsed != null) out.add(parsed);
-        }
+        readTracksInto(out, data);
         return out;
     }
 
@@ -770,6 +756,9 @@ public final class AppleMusicService {
                 && attributes.get("durationInMillis").isJsonPrimitive()
                 ? attributes.get("durationInMillis").getAsLong() : 0L;
         out.coverUrl = artworkUrl(attributes);
+        JsonElement hasLyrics = attributes.get("hasLyrics");
+        out.mayHaveLyrics = hasLyrics == null || !hasLyrics.isJsonPrimitive()
+                || !hasLyrics.getAsJsonPrimitive().isBoolean() || hasLyrics.getAsBoolean();
         out.previewUrl = previewOf(resource);
         return out;
     }

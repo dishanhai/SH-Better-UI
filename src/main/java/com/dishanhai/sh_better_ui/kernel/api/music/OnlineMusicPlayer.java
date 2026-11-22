@@ -17,11 +17,27 @@ public interface OnlineMusicPlayer extends AutoCloseable {
     List<String> sources();
     /** One-based page, twenty results per page. Cancelling the future interrupts the request. */
     CompletableFuture<List<OnlineTrack>> search(String source, String query, int page);
+    /** Whether tracks from the catalog can be submitted to this player for stream resolution. */
+    default boolean supportsPlayback(String source) { return true; }
+    /** Orders in display order, or an empty list when the source has no public song comments. */
+    default List<OnlineMusicComments.Order> commentOrders(String source) { return List.of(); }
+    /** One-based page of up to twenty entries, cancelling the future interrupts the read. */
+    default CompletableFuture<OnlineMusicComments> comments(OnlineTrack track, OnlineMusicComments.Order order, int page) {
+        return unsupported();
+    }
+    /** Public replies beneath a comment on this track. Pass null for the first page. */
+    default CompletableFuture<OnlineMusicComments.ReplyPage> commentReplies(
+            OnlineTrack track, OnlineMusicComments.Entry parent, String cursor) {
+        return unsupported();
+    }
     /** Whether this source can find songs by provider artist identity. */
     default boolean supportsArtistTracks(String source) { return false; }
-    /** One-based page of provider search results, filtered by artist identity without reranking.
-     * This is neither a best-of list nor a complete catalogue. No audio is resolved by this request. */
+    /** One-based page of tracks in provider order. Sources may use identity-filtered search as a fallback. */
     default CompletableFuture<OnlineArtistTracks> artistTracks(OnlineArtist artist, int page) { return unsupported(); }
+    default boolean supportsArtistOverview(String source) { return false; }
+    default CompletableFuture<OnlineArtistOverview> artistOverview(OnlineArtist artist, int page) { return unsupported(); }
+    default boolean supportsAlbumDetail(String source) { return false; }
+    default CompletableFuture<OnlineAlbumDetail> albumDetail(OnlineAlbum album) { return unsupported(); }
     /** Replaces credentials and stops playback. Saved only when explicitly enabled for this source. */
     void credentials(String source, String cookie);
     /** Opt in before or after login/import; current credentials are saved immediately.

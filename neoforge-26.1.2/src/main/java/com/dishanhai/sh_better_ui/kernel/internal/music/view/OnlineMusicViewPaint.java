@@ -6,15 +6,57 @@ import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.MusicTextLayout;
+import java.util.List;
 import net.minecraft.client.gui.Font;
 import net.minecraft.network.chat.FormattedText;
 import net.minecraft.network.chat.Component;
 
 final class OnlineMusicViewPaint {
+    private static final java.util.concurrent.atomic.AtomicLong AVATAR_IDS = new java.util.concurrent.atomic.AtomicLong();
+
+    static final class Avatar implements AutoCloseable {
+        private final net.minecraft.resources.Identifier id =
+                net.minecraft.resources.Identifier.tryParse(
+                        "sh_better_ui:music/comments/avatar_" + AVATAR_IDS.incrementAndGet());
+        private final int width, height;
+
+        Avatar(byte[] png) throws java.io.IOException {
+            var pixels = com.mojang.blaze3d.platform.NativeImage.read(new java.io.ByteArrayInputStream(png));
+            width = pixels.getWidth();
+            height = pixels.getHeight();
+            net.minecraft.client.renderer.texture.DynamicTexture texture = null;
+            try {
+                texture = new net.minecraft.client.renderer.texture.DynamicTexture(() -> "SHBUI comment avatar", pixels);
+                net.minecraft.client.Minecraft.getInstance().getTextureManager().register(id, texture);
+            } catch (RuntimeException error) {
+                if (texture == null) pixels.close(); else texture.close();
+                throw error;
+            }
+        }
+
+        void draw(UiFrame ui, Bounds area) {
+            int side = Math.min(width, height);
+            ui.graphics().blit(net.minecraft.client.renderer.RenderPipelines.GUI_TEXTURED, id, area.x(), area.y(),
+                    (width - side) / 2f, (height - side) / 2f, area.width(), area.height(),
+                    side, side, width, height, 0xffffffff);
+        }
+
+        @Override public void close() {
+            net.minecraft.client.Minecraft.getInstance().getTextureManager().release(id);
+        }
+    }
+
+    static void rule(UiFrame ui, Bounds area, int color) {
+        ui.graphics().fill(area.x(), area.y(), area.right(), area.bottom(), color);
+    }
+    static void narrate(Component text) { net.minecraft.client.Minecraft.getInstance().getNarrator().saySystemNow(text); }
     /** Resolve style before wrapping; the exact same styled runs are measured and drawn. */
     static FormattedText wrapContent(Component text) { return MusicTextLayout.bound(MusicTypography.text(text)).text(); }
     static void clip(UiFrame ui, Bounds bounds) { ui.graphics().enableScissor(bounds.x(), bounds.y(), bounds.right(), bounds.bottom()); }
     static void unclip(UiFrame ui) { ui.graphics().disableScissor(); }
+    static void skeleton(UiFrame ui, Bounds bounds, List<UiSkeleton.Block> blocks, long now) {
+        UiSkeleton.draw(ui.graphics(), bounds, blocks, now, ui.preferences());
+    }
     static boolean editing(UiSlider slider) { return slider.isPointerEditing(); }
     static String clipboard() { return net.minecraft.client.Minecraft.getInstance().keyboardHandler.getClipboard(); }
     static void line(UiFrame ui, Font font, Component text, int x, int y, int width, int color) {
@@ -22,7 +64,7 @@ final class OnlineMusicViewPaint {
                 font, MusicTypography.text(text), Math.max(0, width));
         ink(ui, font, value, x, y, color);
     }
-    private static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
+    static void ink(UiFrame ui, Font font, net.minecraft.util.FormattedCharSequence text,
                             int x, int y, int color) {
         // The shared player paints an opaque canvas; per-label plates only repeat visual chrome.
         ui.graphics().text(font, text, x, y, color, false);

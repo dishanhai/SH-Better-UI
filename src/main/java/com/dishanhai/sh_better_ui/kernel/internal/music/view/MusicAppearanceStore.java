@@ -12,7 +12,7 @@ import java.util.Objects;
 /** Stores only the music surface preference; playback and global UI settings are untouched. */
 final class MusicAppearanceStore {
     enum Preference {
-        AUTOMATIC, CLASSIC, LIQUID_GLASS;
+        AUTOMATIC, CLASSIC, LIQUID_GLASS, RAINBOW;
 
         String id() { return name().toLowerCase(Locale.ROOT); }
 
@@ -23,13 +23,6 @@ final class MusicAppearanceStore {
             return AUTOMATIC;
         }
 
-        Preference next() {
-            return switch (this) {
-                case AUTOMATIC -> CLASSIC;
-                case CLASSIC -> LIQUID_GLASS;
-                case LIQUID_GLASS -> AUTOMATIC;
-            };
-        }
     }
 
     private final Path file;

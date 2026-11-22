@@ -99,7 +99,8 @@ final class LyricScrollMotion {
 
         boolean seek = lastPlayheadMs >= 0.0 && isHardClockDiscontinuity(lastPlayheadMs, playheadMs);
         lastPlayheadMs = playheadMs;
-        if (seek && !seekSpringActive) {
+        if (manualScroll) seekSpringActive = false;
+        if (!manualScroll && seek && !seekSpringActive) {
             int seekFromAnchor = springAnchorPrev != Integer.MIN_VALUE && springAnchorPrev < count
                     ? springAnchorPrev : anchorIndex;
             seekSpringValue = lineSpringInit && seekFromAnchor >= 0 && seekFromAnchor < lineCurTop.length

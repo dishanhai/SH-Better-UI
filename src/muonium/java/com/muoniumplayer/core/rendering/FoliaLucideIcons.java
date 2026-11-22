@@ -470,6 +470,12 @@ public final class FoliaLucideIcons {
         "M22 4v16",
     };
 
+    /** 待播队列的自动续播。 */
+    public static final String INFINITY = "infinity";
+    static final String[] D_INFINITY = {
+            "M12 12 C9 7 7.5 6 5.7 6 C2.8 6 1 8.8 1 12 S2.8 18 5.7 18 C7.5 18 9 17 12 12 C15 7 16.5 6 18.3 6 C21.2 6 23 8.8 23 12 S21.2 18 18.3 18 C16.5 18 15 17 12 12"
+    };
+
     /** 音质·Hi-Res（lucide {@code audio-lines}）。 */
     public static final String AUDIO_LINES = "audio-lines";
     static final String[] D_AUDIO_LINES = {
@@ -661,6 +667,7 @@ public final class FoliaLucideIcons {
         TABLE.put("signal-high", D_SIGNAL_HIGH);
         TABLE.put("signal", D_SIGNAL);
         TABLE.put("audio-lines", D_AUDIO_LINES);
+        TABLE.put(INFINITY, D_INFINITY);
         TABLE.put("waves", D_WAVES);
         TABLE.put("orbit", D_ORBIT);
         TABLE.put("crown", D_CROWN);

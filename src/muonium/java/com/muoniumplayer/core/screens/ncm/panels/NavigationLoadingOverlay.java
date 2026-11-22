@@ -1,5 +1,12 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingCatalogPresentation;
+import com.muoniumplayer.core.rendering.Rect;
+import com.muoniumplayer.core.rendering.RGBA;
+import com.muoniumplayer.core.screens.ncm.NCMScreen;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
+
 /**
  * 内容区的「导航等待」遮罩：点了导航栏里那几个要先取网络才知道去哪的入口时，
  * 在<b>当前页面之上</b>转一枚转子，取到数据后一次性切到目标页。
@@ -44,6 +51,7 @@ public final class NavigationLoadingOverlay {
     private float alpha;
     /** 上一帧的 nanoTime，用来把透明度改成帧率无关的真毫秒推进。 */
     private long lastFadeNanos;
+    private Boolean catalogArtist;
 
     /**
      * 这一帧是否需要画。淡出期间 {@code text} 已经是 {@code null} 但 {@code alpha} 还没归零，
@@ -58,8 +66,13 @@ public final class NavigationLoadingOverlay {
         return spinning && text != null;
     }
 
+    public boolean isCatalogLoading() {
+        return catalogArtist != null && isLoading();
+    }
+
     /** 开始等待。{@code label} 是给用户看的目标名，例如「排行榜」。 */
     public void beginLoading(String label) {
+        clearCatalog();
         String safe = label == null ? "" : label.trim();
         this.text = safe.isEmpty() ? "正在获取…" : "正在获取" + safe + "…";
         this.spinning = true;
@@ -67,8 +80,16 @@ public final class NavigationLoadingOverlay {
         this.expiryNanos = 0L;
     }
 
+    public void beginCatalogLoading(String label, boolean artist) {
+        beginLoading(label);
+        catalogArtist = artist;
+        alpha = 0f;
+        lastFadeNanos = 0L;
+    }
+
     /** 换成一条会自动消失的提示（加载失败、结果为空）。 */
     public void showMessage(String message) {
+        clearCatalog();
         String safe = message == null ? "" : message.trim();
         this.text = safe.isEmpty() ? "获取失败" : safe;
         this.spinning = false;
@@ -78,9 +99,17 @@ public final class NavigationLoadingOverlay {
 
     /** 成功切页时调用：立刻收起，不留提示。 */
     public void clear() {
+        clearCatalog();
         this.text = null;
         this.spinning = false;
         this.expiryNanos = 0L;
+    }
+
+    private void clearCatalog() {
+        if (catalogArtist == null) return;
+        catalogArtist = null;
+        alpha = 0f;
+        lastFadeNanos = 0L;
     }
 
     /**
@@ -110,7 +139,10 @@ public final class NavigationLoadingOverlay {
         // 真毫秒推进：以前用指数逼近，高帧率下遮罩几乎「啪」一下出现，低帧率下又拖尾；
         // 这里按 120/160ms 的固定时长走，观感与换页转场（默认约 140ms）同一档。
         final double frameMs = this.advanceFadeClock(now);
-        if (current != null) {
+        var preferences = UiPreferences.configured();
+        if (preferences.reducedMotion()) {
+            alpha = current == null ? 0f : 1f;
+        } else if (current != null) {
             alpha = Math.min(1f, alpha + (float) (frameMs / FADE_IN_MS));
         } else {
             alpha = Math.max(0f, alpha - (float) (frameMs / FADE_OUT_MS));
@@ -119,7 +151,13 @@ public final class NavigationLoadingOverlay {
             alpha = 0f;
             return;
         }
-        spinner.paint(x, y, width, height, alpha * Math.max(0f, Math.min(1f, parentAlpha)), fadingSpinning);
+        float opacity = alpha * Math.max(0f, Math.min(1f, parentAlpha));
+        if (catalogArtist != null) {
+            int surface = NCMScreen.getColor(NCMScreen.ColorType.GENERIC_BACKGROUND);
+            Rect.draw(x, y, width, height, RGBA.color(surface, opacity));
+            PlayingCatalogPresentation.skeleton(new Box(x, y, width, height), catalogArtist, !catalogArtist, catalogArtist,
+                    now / 1_000_000L, preferences, opacity);
+        } else spinner.paintCard(x, y, width, height, opacity, fadingSpinning, frameMs, preferences);
     }
 
     /** 推进并返回本帧毫秒数；第一帧与断档（>64ms）按 0 处理，避免遮罩一帧跳满。 */

@@ -9,6 +9,10 @@ import com.muoniumplayer.core.ncm.music.GdStudioMusicService;
 import com.muoniumplayer.core.ncm.music.LocalPlaylistStore;
 import com.muoniumplayer.core.ncm.music.QishuiMusicService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
+import com.muoniumplayer.core.screens.ncm.MusicDownloadSheet;
+import com.muoniumplayer.core.screens.ncm.AddToPlaylistOverlay;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingTrackPages;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
 import com.muoniumplayer.core.rendering.FoliaLucideIcons;
@@ -29,6 +33,7 @@ import com.muoniumplayer.core.screens.ncm.SheetHeroRelay;
 import com.muoniumplayer.core.screens.ncm.SheetClock;
 import com.muoniumplayer.core.screens.ncm.TrackSelectionMotion;
 import com.muoniumplayer.core.utils.Location;
+import net.minecraft.network.chat.Component;
 
 import java.awt.*;
 
@@ -46,10 +51,16 @@ public class MusicWidget extends RoundedRectWidget {
     private static final long ONE_HOUR_MILLIS = 3600_000L;
 
     private final TrackSelectionMotion selectionMotion = new TrackSelectionMotion();
+    private IconWidget addToPlaylistButton;
+    private boolean playlistAddFocused;
     private PlaybackPresentation presentation = new PlaybackPresentation(null, null, 0L);
     private boolean displaySelected;
     private double selectionEmphasis;
     private long feedbackNanos;
+    private final LikeButton like;
+    private boolean favoriteFocused;
+    private final LabelWidget artistCredit, albumCredit;
+    private LabelWidget focusedCredit;
 
     public PlayList playList;
     public Music music;
@@ -548,23 +559,38 @@ public class MusicWidget extends RoundedRectWidget {
         });
 
         String albumName = music.getAlbum() == null || music.getAlbum().getName() == null
-                ? "未知专辑" : music.getAlbum().getName();
-        LabelWidget lblMusicArtist = new LabelWidget(music.getArtistsName() + " - " + albumName, FontManager.pf14);
+                ? "" : music.getAlbum().getName();
+        var artistName = PlayingTrackPages.firstArtist(music);
+        var artistsText = music.getArtistsName();
+        LabelWidget lblMusicArtist = new LabelWidget(artistsText, FontManager.pf14);
+        LabelWidget separator = new LabelWidget(" · ", FontManager.pf14);
+        LabelWidget lblMusicAlbum = new LabelWidget(albumName, FontManager.pf14);
+        artistCredit = lblMusicArtist;
+        albumCredit = lblMusicAlbum;
         this.addChild(lblMusicArtist);
-
-        lblMusicArtist
-                .setWidthLimitType(LabelWidget.WidthLimitType.SCROLL)
-                .setBeforeRenderCallback(() -> {
-                    if (displaySelected)
-                        lblMusicArtist.setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
-                    else
-                        lblMusicArtist.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
-                    lblMusicArtist.centerVertically();
-                    lblMusicArtist.setPosition(cover.getRelativeX() + cover.getWidth() + 4, lblMusicArtist.getRelativeY() + lblMusicArtist.getHeight() * .5 + 2);
-                    lblMusicArtist.setMaxWidth(this.getWidth() - (cover.getRelativeX() + cover.getWidth() + 4 + rightActionsReserve()));
-                });
-
-        lblMusicArtist.setClickable(false);
+        this.addChild(separator);
+        this.addChild(lblMusicAlbum);
+        configureCredit(lblMusicArtist, artistName, false);
+        configureCredit(lblMusicAlbum, albumName, true);
+        separator.setClickable(false);
+        separator.setHidden(artistsText.isBlank() || albumName.isBlank());
+        lblMusicArtist.setBeforeRenderCallback(() -> {
+            double x = cover.getRelativeX() + cover.getWidth() + 4;
+            double width = Math.max(0, getWidth() - x - rightActionsReserve());
+            lblMusicArtist.setPosition(x, getHeight() * .5 + 2);
+            lblMusicArtist.setMaxWidth(albumName.isBlank() ? width : width * .48);
+            creditInk(lblMusicArtist);
+        });
+        separator.setBeforeRenderCallback(() -> {
+            separator.setPosition(lblMusicArtist.getRelativeX() + lblMusicArtist.getWidth(), lblMusicArtist.getRelativeY());
+            separator.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+        });
+        lblMusicAlbum.setBeforeRenderCallback(() -> {
+            double x = lblMusicArtist.getRelativeX() + lblMusicArtist.getWidth() + (separator.isHidden() ? 0 : separator.getWidth());
+            lblMusicAlbum.setPosition(x, lblMusicArtist.getRelativeY());
+            lblMusicAlbum.setMaxWidth(Math.max(0, getWidth() - x - rightActionsReserve()));
+            creditInk(lblMusicAlbum);
+        });
 
         // 第三方源在搜索响应中不返回时长；时长是在
         // 解码过程中测量的，因此标签实时读取该值，而不是在构建时固定为 00:00。
@@ -584,29 +610,36 @@ public class MusicWidget extends RoundedRectWidget {
         // ===== 收藏：歌曲喜欢/取消喜欢 + 加入歌单 =====
         // 酷狗也走这两个按钮。原先它们被写死成 music.isNetease()，所以切到酷狗后整排收藏控件
         // 直接消失——不是"点了没反应"，是根本没画出来。现在改成"当前源是否支持收藏"。
-        final boolean likeable = LikeButton.canFavourite(music);
-        final boolean playlistAddable = canAddToPlaylist(music);
+        final boolean likeable = LikeButton.canRenderFor(music);
+        final boolean downloadable = MusicDownloadSheet.supports(music);
+        final boolean removable = playList != null && playList.isLocalPlaylist();
         // 红心那一颗（描边与实心红心两态、爆心、取消收藏的二次确认）整个交给 {@link LikeButton}，
         // 私人 FM 的 hero 卡用的是同一份。这里只报位置：挂在固定的时长槽位左边缘上，而不是时长
         // 标签的左边缘 —— 后者宽度随数字变化，会让每一行的图标列各自漂移，上下两行对不齐。
-        final LikeButton like = new LikeButton(this, music,
-                () -> actionsAnchorX(lblMusicDuration) - ACTION_GAP - LikeButton.BOX);
+        this.like = new LikeButton(this, music,
+                () -> actionsAnchorX(lblMusicDuration) - ACTION_GAP - LikeButton.BOX
+                        - (music.isQQ() ? (2 + (downloadable ? 1 : 0)
+                        + (removable ? 1 : 0)) * (ACTION_GAP + ACTION_ICON_SIZE) : 0));
 
         // 图标走字体（player-action-icons U+E113 方框加号）而不是 playlist.png：字形按实际字号
         // 运行时生成，不再受离线烘图的尺寸/裁切影响，也和相邻的「下一首播放」共用同一套墨迹对齐。
         IconWidget btnAddToPlaylist = PlayerQueueIcons.newAddToPlaylistButton(20);
+        this.addToPlaylistButton = btnAddToPlaylist;
         this.addChild(btnAddToPlaylist);
-        btnAddToPlaylist.setShouldOverrideMouseCursor(true);
-        btnAddToPlaylist.setHidden(!playlistAddable);
-        btnAddToPlaylist.setClickable(playlistAddable);
+        btnAddToPlaylist.setShouldOverrideMouseCursor(true).setTooltip(() -> AddToPlaylistOverlay.text("title"));
         btnAddToPlaylist.setBeforeRenderCallback(() -> {
-            btnAddToPlaylist.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            btnAddToPlaylist.setColor(NCMScreen.getColor(btnAddToPlaylist.isHovering()
+                    ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
             btnAddToPlaylist.centerVertically();
-            btnAddToPlaylist.setPosition(like.getRelativeX() - ACTION_GAP - btnAddToPlaylist.getWidth(),
+            double anchor = likeable && !music.isQQ() ? like.getRelativeX() : actionsAnchorX(lblMusicDuration);
+            if (music.isQQ()) {
+                anchor -= (1 + (downloadable ? 1 : 0) + (removable ? 1 : 0)) * (ACTION_GAP + ACTION_ICON_SIZE);
+            }
+            btnAddToPlaylist.setPosition(anchor - ACTION_GAP - btnAddToPlaylist.getWidth(),
                     btnAddToPlaylist.getRelativeY());
         });
         btnAddToPlaylist.setOnClickCallback((x, y, button) -> {
-            if (button != 0 || !playlistAddable)
+            if (button != 0)
                 return false;
             // 这块板从「+」飞到弹窗顶部那行歌名上：它要说的是「你要动的是这一首」，
             // 而那枚「+」本身就是「给这一首加进去」—— 两者是同一个操作的两端。
@@ -630,12 +663,7 @@ public class MusicWidget extends RoundedRectWidget {
             btnPlayNext.setColor(queued ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT)
                     : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
             btnPlayNext.centerVertically();
-            // 图标列从右往左是「时长槽位 ← 收藏 ← 加入歌单 ← 下一首」。取最靠右那个可见控件当锚点：
-            // 隐藏的控件位置不可靠（B 站就只有收藏没有加入歌单，全不支持的源两个都没有），
-            // 回退到固定的时长槽位会让下一首图标压到红心身上。
-            double anchorX = playlistAddable ? btnAddToPlaylist.getRelativeX()
-                    : likeable ? like.getRelativeX()
-                    : actionsAnchorX(lblMusicDuration);
+            double anchorX = music.isQQ() ? actionsAnchorX(lblMusicDuration) : btnAddToPlaylist.getRelativeX();
             btnPlayNext.setPosition(anchorX - ACTION_GAP - btnPlayNext.getWidth(), btnPlayNext.getRelativeY());
         });
         btnPlayNext.setOnClickCallback((x, y, button) -> {
@@ -645,10 +673,31 @@ public class MusicWidget extends RoundedRectWidget {
             return true;
         });
 
+        if (downloadable) {
+            IconWidget download = new IconWidget(com.muoniumplayer.core.rendering.IslandStatusIcons.DOWNLOAD,
+                    FontManager.islandIcon16, 0, 0, ACTION_ICON_SIZE, ACTION_ICON_SIZE);
+            this.addChild(download);
+            download.setShouldOverrideMouseCursor(true).setTooltip(
+                    () -> com.muoniumplayer.core.screens.ncm.MusicDownloadSheet.text("title"));
+            download.setBeforeRenderCallback(() -> {
+                double left = btnPlayNext.getRelativeX() - ACTION_GAP - ACTION_ICON_SIZE;
+                if (removable) left -= ACTION_GAP + ACTION_ICON_SIZE;
+                download.centerVertically();
+                download.setPosition(left, download.getRelativeY());
+                download.setColor(NCMScreen.getColor(download.isHovering()
+                        ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
+            });
+            download.setOnClickCallback((x, y, button) -> {
+                if (button != 0) return false;
+                NCMScreen.getInstance().openSongDownload(music);
+                return true;
+            });
+        }
+
         // ===== 从这张本地单里移除 =====
         // 只在当前这张单是本机自建时出现：账号歌单的「移除」要写回平台云端，那件事归详情页和收藏
         // 按钮管，不该在这里冒充能做。本地单没有这个问题 —— 删的就是本机那份 JSON 里的一行。
-        if (playList != null && playList.isLocalPlaylist()) {
+        if (removable) {
             LucideIconWidget btnRemoveFromList = new LucideIconWidget(() -> FoliaLucideIcons.CLOSE,
                     () -> "✕", FontManager.pf14bold, 0, 0, ACTION_ICON_SIZE, ACTION_ICON_SIZE);
             this.addChild(btnRemoveFromList);
@@ -671,17 +720,6 @@ public class MusicWidget extends RoundedRectWidget {
                 return true;
             });
         }
-    }
-
-    /**
-     * 「加入歌单」该不该画出来。
-     *
-     * <p>弹的是网易云歌单选择框，一首 B 站稿件塞不进去，所以只有落在网易云曲库里的源才开放。
-     * 例外是本机自建歌单：它的曲目存在本地、取流按逐曲的 {@code source} 分支走，任何源的歌都放得进 ——
-     * 所以只要用户手上有一张本地单，这颗按钮对他就是有效的，不该因为当前源不支持云端歌单就藏掉。</p>
-     */
-    private static boolean canAddToPlaylist(Music music) {
-        return music != null && (music.isNetease() || music.isKuGou() || LocalPlaylistStore.hasAny());
     }
 
     /**
@@ -724,6 +762,70 @@ public class MusicWidget extends RoundedRectWidget {
         this.entranceEased = 1.0;
         this.setAlpha(1f);
         this.setTransformations(null);
+    }
+
+    boolean canFocusFavorite() {
+        return !this.isHidden() && LikeButton.supportsQQ(this.music);
+    }
+
+    void focusFavorite(boolean focused) {
+        this.favoriteFocused = focused;
+        if (focused) MusicTypography.narrate(this.like.qqNarration(this.music));
+    }
+
+    boolean activateFocusedFavorite() {
+        return this.favoriteFocused && this.canFocusFavorite() && this.like.activateQQ(this.music);
+    }
+
+    boolean canFocusPlaylistAdd() {
+        return !isHidden() && addToPlaylistButton != null;
+    }
+
+    void focusPlaylistAdd(boolean focused) {
+        playlistAddFocused = focused;
+        if (focused) MusicTypography.narrate(Component.literal(AddToPlaylistOverlay.text("track_action", music.getName())));
+    }
+
+    boolean activateFocusedPlaylistAdd() {
+        return playlistAddFocused && canFocusPlaylistAdd() && addToPlaylistButton.onMouseClicked(0, 0, 0);
+    }
+
+    boolean canFocusCredit(boolean album) {
+        return !isHidden() && (album ? albumCredit : artistCredit).isClickable();
+    }
+
+    void focusCredit(boolean album, boolean focused) {
+        var target = album ? albumCredit : artistCredit;
+        if (focused) {
+            focusedCredit = target;
+            MusicTypography.narrate(Component.translatable("sh_better_ui.online_music." + (album ? "album.open" : "artist.open"),
+                    target.getLabel()));
+        } else if (focusedCredit == target) focusedCredit = null;
+    }
+
+    boolean activateFocusedCredit(boolean album) {
+        var target = album ? albumCredit : artistCredit;
+        return focusedCredit == target && canFocusCredit(album) && target.onMouseClicked(0, 0, 0);
+    }
+
+    @Override
+    protected void afterRenderChildren(double mouseX, double mouseY) {
+        super.afterRenderChildren(mouseX, mouseY);
+        if (this.favoriteFocused) {
+            roundedOutline(this.getX() + this.like.getRelativeX(), this.getY() + this.like.getRelativeY(),
+                    LikeButton.BOX, LikeButton.BOX, 4, 1,
+                    new Color(reAlpha(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), this.getAlpha()), true));
+        }
+        if (playlistAddFocused && addToPlaylistButton != null) {
+            roundedOutline(addToPlaylistButton.getX(), addToPlaylistButton.getY(),
+                    addToPlaylistButton.getWidth(), addToPlaylistButton.getHeight(), 4, 1,
+                    new Color(reAlpha(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), getAlpha()), true));
+        }
+        if (focusedCredit != null && focusedCredit.getWidth() > 0) {
+            roundedOutline(focusedCredit.getX() - 1, focusedCredit.getY(), focusedCredit.getWidth() + 2,
+                    focusedCredit.getHeight(), 3, 1,
+                    new Color(reAlpha(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), getAlpha()), true));
+        }
     }
 
     /** Do not bring a half-transparent row back when fast scrolling reverses direction. */
@@ -791,9 +893,8 @@ public class MusicWidget extends RoundedRectWidget {
      */
     private double rightActionsReserve() {
         double slot = durationSlotWidth(this.music.getDuration() >= ONE_HOUR_MILLIS);
-        // 「下一首」人人都有，另外几枚按各自的开关数。之前这里写死成 isNetease() ? 3 : 1，
-        // 于是酷狗/B 站画了三枚却只留一枚的宽度，长标题会滑到图标底下。
-        int iconCount = 1 + (canAddToPlaylist(this.music) ? 1 : 0) + (LikeButton.canFavourite(this.music) ? 1 : 0)
+        int iconCount = 2 + (LikeButton.canRenderFor(this.music) ? 1 : 0)
+                + (MusicDownloadSheet.supports(this.music) ? 1 : 0)
                 + (this.playList != null && this.playList.isLocalPlaylist() ? 1 : 0);
         return DURATION_RIGHT_MARGIN + slot + iconCount * (ACTION_GAP + ACTION_ICON_SIZE);
     }
@@ -837,6 +938,28 @@ public class MusicWidget extends RoundedRectWidget {
         sb.append(String.format("%02d", seconds));
 
         return sb.toString();
+    }
+
+    private void configureCredit(LabelWidget label, String name, boolean album) {
+        boolean available = !name.isBlank();
+        label.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+        label.setClickable(available).setShouldOverrideMouseCursor(available);
+        if (!available) return;
+        boolean chooseArtist = !album && PlayingTrackPages.artistNames(music).size() > 1;
+        label.setTooltip(() -> Component.translatable("sh_better_ui.online_music."
+                + (album ? "album.open" : chooseArtist ? "artist.choose" : "artist.open"), name).getString());
+        label.setOnClickCallback((x, y, button) -> {
+            if (button != 0) return false;
+            PlayingTrackPages.open(NCMScreen.getInstance(), this.music, album,
+                    new com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box(label.getX(), label.getY(),
+                            label.getWidth(), label.getHeight()), false);
+            return true;
+        });
+    }
+
+    private void creditInk(LabelWidget label) {
+        label.setColor(NCMScreen.getColor(label.isClickable() && label.isHovering() ? NCMScreen.ColorType.ACCENT
+                : displaySelected ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
     }
 
     private boolean loadCover() {

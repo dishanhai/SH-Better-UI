@@ -1,7 +1,9 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.api.input.FilePicker;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.ncm.music.ImportedPlaylistStore;
+import com.muoniumplayer.core.ncm.music.Listen1PlaylistImport;
 import com.muoniumplayer.core.ncm.music.PlaylistImportService;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
@@ -10,9 +12,14 @@ import com.muoniumplayer.core.rendering.ui.container.Panel;
 import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.TextFieldWidget;
+import com.muoniumplayer.core.screens.ncm.panels.PlaylistPanel;
 import com.muoniumplayer.core.utils.KeyboardUtils;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
+
+import java.io.IOException;
+import java.nio.file.Path;
 
 /**
  * 全渠道歌单导入面板（侧栏「导入歌单」标题行的「＋」打开）。
@@ -40,6 +47,7 @@ public final class PlaylistImportOverlay extends NcmSheet {
     private static final String IDLE_TEXT = "自动识别平台 · 匿名导入 · 只保存在本机";
 
     private final NcmExpressiveLayout layout = new NcmExpressiveLayout();
+    private final boolean listen1;
     private TextFieldWidget input;
     /** 后台解析进行中：挡住重复提交，不因关闭面板而取消。 */
     private volatile boolean running;
@@ -48,6 +56,19 @@ public final class PlaylistImportOverlay extends NcmSheet {
     private boolean folderMode;
     /** 复用建单页的系统选择器与扫描链路，不另起一套文件夹导入。 */
     private final PlaylistCreateSheet folderImporter = new PlaylistCreateSheet();
+
+    public PlaylistImportOverlay() {
+        this(false);
+    }
+
+    PlaylistImportOverlay(boolean listen1) {
+        this.listen1 = listen1;
+        if (listen1) statusText = "";
+    }
+
+    boolean isListen1() {
+        return listen1;
+    }
 
     @Override
     public void renderWidget(double mouseX, double mouseY, int dWheel) {
@@ -74,10 +95,10 @@ public final class PlaylistImportOverlay extends NcmSheet {
         final Panel dialog = NcmExpressive.shell(this, 660, () -> 624,
                 () -> presentation, this::dispose);
         NcmExpressive.header(dialog, PartyIcons.LINK, () -> "我的音乐资料库",
-                () -> "导入歌单", this::dispose);
-        buildSegments(dialog);
+                () -> listen1 ? listen1Text("title") : "导入歌单", this::dispose);
+        if (!listen1) buildSegments(dialog);
 
-        final Panel content = body(dialog, () -> NcmExpressive.headerHeight(dialog) + 80,
+        final Panel content = body(dialog, () -> NcmExpressive.headerHeight(dialog) + (listen1 ? 14 : 80),
                 () -> footerHeight(dialog));
         final ScrollPanel list = feed(content);
         // 状态变化只切换同一棵控件树；链接、焦点和 SheetClock 都不重建。
@@ -108,7 +129,7 @@ public final class PlaylistImportOverlay extends NcmSheet {
                 () -> cancelWidth(footer),
                 () -> NcmExpressive.BUTTON_HEIGHT, this::dispose);
         confirmAction = NcmExpressive.action(footer, PartyIcons.CHECK,
-                () -> statusTone == TONE_BAD ? "重新导入" : "导入歌单",
+                () -> listen1 ? listen1Text("import") : statusTone == TONE_BAD ? "重新导入" : "导入歌单",
                 NcmExpressive.ActionStyle.PRIMARY,
                 () -> footer.getWidth() - INSET - primaryWidth(footer),
                 () -> primaryY(footer),
@@ -160,12 +181,12 @@ public final class PlaylistImportOverlay extends NcmSheet {
     }
 
     private void buildLinkBody(Panel host) {
-        NcmExpressive.label(host, () -> "粘贴歌单分享链接", NcmExpressive.labelFont(),
+        NcmExpressive.label(host, () -> listen1 ? listen1Text("path") : "粘贴歌单分享链接", NcmExpressive.labelFont(),
                 () -> INSET, () -> 25, () -> host.getWidth() - INSET * 2 - 100,
                 () -> NcmExpressivePalette.live().text());
-        NcmExpressive.action(host, PartyIcons.LINK, () -> "粘贴", NcmExpressive.ActionStyle.NEUTRAL,
+        NcmExpressive.action(host, PartyIcons.LINK, () -> listen1 ? listen1Text("browse") : "粘贴", NcmExpressive.ActionStyle.NEUTRAL,
                 () -> host.getWidth() - INSET - 92, () -> 4, () -> 92, () -> 42,
-                this::fillFromClipboard);
+                listen1 ? this::chooseBackup : this::fillFromClipboard);
         final RoundedRectWidget field = NcmExpressive.surface(host, INSET, 58,
                 () -> host.getWidth() - INSET * 2, () -> FIELD_H, 17,
                 () -> NcmExpressivePalette.live().input());
@@ -197,7 +218,7 @@ public final class PlaylistImportOverlay extends NcmSheet {
         field.addChild(input);
         input.getTextField().setMaxStringLength(4096);
         input.setEnabled(true).setFocused(true);
-        input.setPlaceholder("输入分享链接 / 数字 ID");
+        input.setPlaceholder(listen1 ? "listen1_backup.json" : "输入分享链接 / 数字 ID");
         input.drawUnderline(false);
         input.setBeforeRenderCallback(() -> {
             input.setBounds(Math.max(1, field.getWidth() - 70), FIELD_H - 16);
@@ -206,10 +227,10 @@ public final class PlaylistImportOverlay extends NcmSheet {
             input.setColor(palette.text());
             input.setDisabledTextColor(palette.muted());
         });
-        NcmExpressive.label(host, () -> "保存为 Mu 本地歌单引用，不会下载全部歌曲。",
+        NcmExpressive.label(host, () -> listen1 ? listen1Text("hint") : "保存为 Mu 本地歌单引用，不会下载全部歌曲。",
                 NcmExpressive.bodyFont(), () -> INSET, () -> 152,
                 () -> host.getWidth() - INSET * 2, () -> NcmExpressivePalette.live().muted());
-        NcmExpressive.label(host, () -> "网易云 / QQ / 酷狗 / B 站 / 汽水 / YouTube / Apple Music",
+        NcmExpressive.label(host, () -> listen1 ? listen1Text("sources") : "网易云 / QQ / 酷狗 / B 站 / 汽水 / YouTube / Apple Music",
                 NcmExpressive.captionFont(), () -> INSET, () -> 184,
                 () -> host.getWidth() - INSET * 2, () -> NcmExpressivePalette.live().muted());
         NcmExpressive.status(host, this::statusGlyph, () -> statusText,
@@ -261,9 +282,10 @@ public final class PlaylistImportOverlay extends NcmSheet {
     private void buildLoadingBody(Panel host) {
         NcmExpressive.loading(host, () -> host.getWidth() * .5, () -> 84,
                 () -> 64, () -> NcmExpressivePalette.live().primary());
-        NcmExpressive.centered(host, () -> "正在读取歌单", NcmExpressive.titleFont(),
+        NcmExpressive.centered(host, () -> listen1 ? listen1Text("loading") : "正在读取歌单", NcmExpressive.titleFont(),
                 () -> host.getWidth() * .5, () -> 149, () -> host.getWidth() - INSET * 2,
                 () -> NcmExpressivePalette.live().text());
+        if (listen1) return;
         NcmExpressive.centered(host, () -> "识别平台并读取歌单信息，不下载音频", NcmExpressive.bodyFont(),
                 () -> host.getWidth() * .5, () -> 190, () -> host.getWidth() - INSET * 2,
                 () -> NcmExpressivePalette.live().muted());
@@ -373,6 +395,10 @@ public final class PlaylistImportOverlay extends NcmSheet {
     private void submit() {
         if (running || folderMode || closing) return;
         final String pasted = input.getText() == null ? "" : input.getText().trim();
+        if (listen1) {
+            submitBackup(pasted);
+            return;
+        }
         if (pasted.isEmpty()) {
             statusText = "先输入或粘贴歌单链接 / ID";
             statusTone = TONE_BAD;
@@ -406,6 +432,83 @@ public final class PlaylistImportOverlay extends NcmSheet {
                 }
             });
         });
+    }
+
+    private void chooseBackup() {
+        if (running || closing) return;
+        try {
+            FilePicker.choose(Component.translatable("sh_better_ui.muonium.listen1.browse"), "*.json")
+                    .ifPresent(path -> {
+                        input.setText(path.toString());
+                        statusTone = TONE_IDLE;
+                        statusText = "";
+                    });
+        } catch (RuntimeException | LinkageError unavailable) {
+            setBackupError("picker_failed");
+        }
+    }
+
+    private void submitBackup(String pathText) {
+        String path = pathText;
+        if (path.startsWith("\"") && path.endsWith("\"") && path.length() >= 2) {
+            path = path.substring(1, path.length() - 1);
+        }
+        if (path.isBlank()) {
+            setBackupError("path_required");
+            return;
+        }
+        final Path file;
+        try {
+            file = Path.of(path);
+        } catch (IllegalArgumentException invalid) {
+            setBackupError("failed");
+            return;
+        }
+        running = true;
+        final NCMScreen screen = NCMScreen.getInstance();
+        MultiThreadingUtil.runAsync(() -> {
+            final Listen1PlaylistImport.Result result;
+            try {
+                result = Listen1PlaylistImport.read(file);
+            } catch (IOException | RuntimeException failure) {
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    if (!closing) setBackupError("failed");
+                });
+                return;
+            }
+            MultiThreadingUtil.runOnMainThread(() -> finishBackup(screen, result));
+        });
+    }
+
+    private void finishBackup(NCMScreen screen, Listen1PlaylistImport.Result result) {
+        if (closing || screen.playlistImportOverlay != this) return;
+        if (result.playlists().isEmpty()) {
+            setBackupError("empty");
+            return;
+        }
+        final PlayList first;
+        try {
+            first = ImportedPlaylistStore.importListen1(result);
+        } catch (IOException | RuntimeException failure) {
+            setBackupError("save_failed");
+            return;
+        }
+        screen.markDirty();
+        screen.setCurrentPanel(new PlaylistPanel(first));
+        DownloadDynamicIsland.showModelOperationResult(listen1Text("title"),
+                listen1Text("loaded", result.playlists().size(), result.tracks(),
+                        result.skippedTracks(), result.skippedFavorites()), true);
+        dispose();
+    }
+
+    private void setBackupError(String key) {
+        running = false;
+        statusTone = TONE_BAD;
+        statusText = listen1Text(key);
+    }
+
+    private static String listen1Text(String key, Object... args) {
+        return Component.translatable("sh_better_ui.muonium.listen1." + key, args).getString();
     }
 
     /** 失败/异常收尾：回到主线程清进度标志并把原因显示在状态行上，面板保持打开供修改重试。 */

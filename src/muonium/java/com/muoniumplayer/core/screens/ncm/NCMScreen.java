@@ -1,5 +1,13 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.internal.AnchoredActionMenu;
+import com.dishanhai.sh_better_ui.kernel.api.music.OnlineTrack;
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicChatEntry;
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.MusicCommentsDrawer;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
+
 import lombok.Getter;
 import com.dishanhai.sh_better_ui.kernel.internal.music.view.AppleMusicAccount;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
@@ -7,7 +15,7 @@ import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
 import com.muoniumplayer.core.settings.TouchSettings;
 import com.muoniumplayer.compat.gl.GL11;
-import com.muoniumplayer.api.features.ExtensionScreen;
+import com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicScreen;
 import com.muoniumplayer.core.interfaces.SharedConstants;
 import com.muoniumplayer.core.interfaces.SharedRenderingConstants;
 import com.muoniumplayer.core.management.FontManager;
@@ -15,6 +23,7 @@ import com.muoniumplayer.core.ncm.OptionsUtil;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.FoliaModelNotice;
 import com.muoniumplayer.core.ncm.music.KuGouMusicService;
+import com.muoniumplayer.core.ncm.music.NeteaseMusicService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.rendering.GlassLook;
@@ -28,7 +37,6 @@ import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
 import com.muoniumplayer.core.rendering.ui.widgets.RectWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
 import com.muoniumplayer.core.settings.HudConfig;
-import com.muoniumplayer.core.update.SponsorNotice;
 import com.dishanhai.sh_better_ui.kernel.internal.ProjectNews;
 import com.muoniumplayer.core.screens.ncm.DownloadManagerOverlay;
 import com.muoniumplayer.core.screens.ncm.panels.ControlsBar;
@@ -52,7 +60,7 @@ import com.muoniumplayer.render.skija.SkijaGfx;
 
 /**
  */
-public class NCMScreen extends ExtensionScreen implements SharedConstants, SharedRenderingConstants {
+public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, SharedRenderingConstants {
 
     /** 统一的播放器外框线宽；内容裁剪使用同一尺寸，避免模糊污染外框。 */
     public static final double PLAYER_BORDER_THICKNESS = .8;
@@ -89,6 +97,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     /** 转场期间被换下去的那张旧页。它和新页<b>同时</b>画，见渲染里的换页段。 */
     NCMPanel prevAnimatingPanel = null;
     NCMPanel currentPanel = null;
+    @Getter
+    private final MusicChatEntry musicChat = new MusicChatEntry(this);
     /** 旧页被换下去那一刻的不透明度。中途再切页时它小于 1，转场就从这里接着往下淡。 */
     float prevAnimatingPanelAlpha = 0f;
     /** 本次换页的进度：0 = 刚切页，1 = 已经停稳。没有旧页时它就是 1。 */
@@ -137,6 +147,34 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     PlayQueuePanel playQueuePanel;
 
     public MusicLyricsPanel musicLyricsPanel = null;
+    // dishanhai: both transport bars register the same UUK drawer entry.
+    private final MusicCommentsDrawer commentsDrawer = new MusicCommentsDrawer();
+    private final AnchoredActionMenu catalogArtistMenu = new AnchoredActionMenu();
+    private Box catalogArtistAnchor;
+    private BooleanSupplier catalogArtistAvailable = () -> false;
+    private MusicLyricsPanel trackActionPointerOwner;
+    private ScrollPanel playlistScrollbarCapture;
+    private Music commentsMusic;
+    private OnlineTrack commentsTrack;
+    private double commentsBottom;
+
+    boolean blocksFullscreenLyricInput() {
+        return isModalOverlayActive() || commentsDrawer.isOpen() || !net.minecraft.client.Minecraft.getInstance().isWindowActive();
+    }
+
+    public boolean positionComments(Music music, double x, double y, double bottom) {
+        if (music == null) return false;
+        if (commentsMusic != music || commentsTrack == null) {
+            commentsMusic = music;
+            commentsTrack = MusicCommentsDrawer.reference(music.getSource().name().toLowerCase(java.util.Locale.ROOT),
+                    music.getSourceId(), music.getSourceMid(), music.getKugouAlbumAudioId(),
+                    music.getName(), music.getArtistsName());
+        }
+        if (commentsTrack == null) return false;
+        commentsBottom = bottom;
+        commentsDrawer.position(commentsTrack, x, y);
+        return true;
+    }
 
     /** 主题色插值由 NCMTheme 负责；此渲染器只负责按钮起点的波浪与玻璃高光。 */
     private final ThemeTransitionRenderer themeTransitionRenderer = new ThemeTransitionRenderer();
@@ -206,10 +244,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
      */
     public ModelInstallNoticeOverlay modelInstallNoticeOverlay = null;
 
-    public SponsorNoticeOverlay sponsorNoticeOverlay = null;
     public DownloadManagerOverlay downloadManagerOverlay = null;
-    /** 模型提示占用了本次打开时，赞助提示延到下一次打开，不连续催促。 */
-    private boolean sponsorDeferredForHost;
+    private MusicDownloadSheet musicDownloadSheet;
 
     /**
      * 表示是否需要重新布局, 当用户信息和用户歌单加载完设置为 true,
@@ -239,7 +275,6 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     public void initGui() {
         boolean reopening = !this.hostOpen;
         if (reopening) {
-            this.sponsorDeferredForHost = false;
             this.initialLayoutStage = this.currentPanel == null
                     ? (skipNextLayoutAfterPrewarm ? 5 : 1) : 0;
         }
@@ -389,9 +424,26 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     @Override
     public void onGuiClosed() {
+        this.musicChat.hostClosed();
+        if (this.playlistsPanel != null) this.playlistsPanel.getSearch().dispose();
+        this.pendingClickActive = false;
+        this.pendingSearchClick = null;
+        this.cancelPlaylistScrollbarDrag();
+        this.trackActionPointerOwner = null;
+        this.catalogArtistMenu.close();
+        this.catalogArtistAnchor = null;
+        this.catalogArtistAvailable = () -> false;
+        this.cancelCatalogNavigation();
+        this.commentsDrawer.close();
+        this.commentsMusic = null;
+        this.commentsTrack = null;
         this.appleMusicAccount.close();
         this.hostOpen = false;
         ++this.contentHostGeneration;
+        if (this.playlistImportOverlay != null && this.playlistImportOverlay.isListen1()) {
+            this.playlistImportOverlay.dispose();
+            this.playlistImportOverlay = null;
+        }
         if (this.currentPanel instanceof HomePanel) {
             ((HomePanel) this.currentPanel).onHostClosed();
         }
@@ -400,7 +452,6 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         this.transitionWasRunning = false;
         this.contentHitStateStale = false;
         this.pendingClickActive = false;
-        this.pendingClickSponsorOwner = null;
         if (this.viperOverlay != null) {
             this.viperOverlay.onHostClosed();
             this.viperOverlay = null;
@@ -419,13 +470,13 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         // 提示层不跨「一次打开播放器」存活：下次打开时由 maybeShowModelNotice 重新决定要不要弹，
         // 而「本次启动已弹过」的闸门在 FoliaModelNotice 里，所以这里清掉不会导致重复提示。
         this.modelInstallNoticeOverlay = null;
-        if (this.sponsorNoticeOverlay != null) {
-            this.sponsorNoticeOverlay.onHostClosed();
-            this.sponsorNoticeOverlay = null;
-        }
         if (this.downloadManagerOverlay != null) {
             this.downloadManagerOverlay.handleEscape();
             this.downloadManagerOverlay = null;
+        }
+        if (this.musicDownloadSheet != null) {
+            this.musicDownloadSheet.dispose();
+            this.musicDownloadSheet = null;
         }
     }
 
@@ -448,7 +499,14 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                 0, 0, glassBackdrop.getParentWidth(), glassBackdrop.getParentHeight()));
         this.basePanel.addChild(glassBackdrop);
 
-        RoundedRectWidget bg = new RoundedRectWidget();
+        RoundedRectWidget bg = new RoundedRectWidget() {
+            @Override public void onRender(double mouseX, double mouseY) {
+                if (com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient.active())
+                    com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient.paint(NCMTheme.getCurrent(),
+                            getX(), getY(), getWidth(), getHeight(), getRadius(), getAlpha());
+                else super.onRender(mouseX, mouseY);
+            }
+        };
         bg.setBeforeRenderCallback(() -> {
             bg.setBounds(0, 0, bg.getParentWidth(), bg.getParentHeight());
             bg.setRadius(this.getPlayerCornerRadius());
@@ -456,7 +514,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             // 液态玻璃保留足够实体感，同时让游戏画面能轻微透入形成材质层次。
             // 真玻璃那一档再把这层按「玻璃浓度」压薄，让背后那张真画面透出来；
             // 浓度推到 1 时压薄系数正好是 1，也就是完全退回上面这个数。
-            bg.setAlpha(GlassLook.tintedAlpha(GlassLook.Surface.PLAYER,
+            bg.setAlpha(hasThemeBackdrop() ? .76f : GlassLook.tintedAlpha(GlassLook.Surface.PLAYER,
                     1.0f - NCMTheme.getLiquidGlassAmount() * 0.14f));
         });
         this.basePanel.addChild(bg);
@@ -486,8 +544,9 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             this.currentPanelBg.setColor(getColor(ColorType.GENERIC_BACKGROUND));
             // 这一层是<em>叠在 bg 之上</em>的第二张底，走内层那一档：两档共用一条曲线时，
             // 两张 0.6 的深色叠完就是 0.85，玩家管这个叫「外面是玻璃，页面里面一块黑斑」。
-            this.currentPanelBg.setAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER,
-                    1.0f - NCMTheme.getLiquidGlassAmount() * 0.24f));
+            this.currentPanelBg.setAlpha(hasThemeBackdrop() ? .22f : GlassLook.washAlpha(GlassLook.Surface.PLAYER,
+                    com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient.active()
+                            ? .30f : 1.0f - NCMTheme.getLiquidGlassAmount() * 0.24f));
         });
     }
 
@@ -604,6 +663,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     @Override
     public void drawScreen(int mX, int mY) {
+        this.commentsDrawer.beginFrame();
         // 响应式布局：GuiScreen 打开期间 RenderGameOverlayEvent 不触发，width/height/scaleFactor
         // 停留在上一次游戏帧值。每帧刷新 ScaledResolution，保证窗口 resize / GUI Scale 变化后
         // 布局与鼠标坐标映射立即正确。
@@ -612,12 +672,12 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         // 所有播放器几何和过渡目标都必须在自适应布局中捕获。
         //在 updatePanelScaleAnimation()/tick() 把形变目标留在 Minecraft
         //GUI 坐标后进入它，而渲染变换期望自适应坐标。
-        WindowAdaptiveScale.begin();
+        boolean adaptiveLayout = WindowAdaptiveScale.begin();
         // 手势层每帧推进：喂的是与点击分发同一口径的布局坐标。必须在所有消费者
         // （ScrollPanel/歌词页/队列抽屉/延迟点击）之前跑，它们在下面的渲染回调里查询。
         TouchGestures.get().advance(System.nanoTime(),
-                mX / WindowAdaptiveScale.correctionX(),
-                mY / WindowAdaptiveScale.correctionY(),
+                adaptiveLayout ? mX / WindowAdaptiveScale.correctionX() : mX,
+                adaptiveLayout ? mY / WindowAdaptiveScale.correctionY() : mY,
                 Mouse.isButtonDown(0));
         this.updatePanelScaleAnimation();
         // 两条时钟互不接管：外层从岛展开/收回，内部主页 -> 全屏歌词页。
@@ -657,12 +717,16 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         // 「本次启动只弹一次」「确实还缺组件」「没有别的模态占着」三道闸，条件不满足时
         // 只是一次布尔判断。
         this.maybeShowModelNotice();
-        this.maybeShowSponsorNotice();
 
-        try (ScrollPanel.TouchInputScope ignored = ScrollPanel.restrictTouchInputTo(
-                this.downloadManagerOverlay != null ? this.downloadManagerOverlay : this.sponsorNoticeOverlay)) {
+        NeteaseMusicService.syncQQFavoriteAccount();
+        AbstractWidget<?> downloadOverlay = this.musicDownloadSheet != null
+                ? this.musicDownloadSheet : this.downloadManagerOverlay;
+        try (ScrollPanel.TouchInputScope ignored = downloadOverlay == null && this.isMusicSearchActive()
+                ? this.playlistsPanel.getSearch().restrictTouchInput()
+                : ScrollPanel.restrictTouchInputTo(downloadOverlay)) {
             drawPlayerContents(mX, mY, pageReveal, controlsReveal, frameStarted);
         }
+        NeteaseMusicService.qqTrackFavorites().loadPending();
     }
 
     private void drawPlayerContents(int mX, int mY, float pageReveal, float controlsReveal, long frameStarted) {
@@ -683,6 +747,16 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         double yScale = RenderSystem.getHeightNotScaled() / RenderSystem.getHeight();
         double mouseX = mX / xScale;
         double mouseY = mY / yScale;
+        if (this.playlistScrollbarCapture != null) {
+            if (this.playlistScrollbarCapture != this.activePlaylistScrollbar()) {
+                this.cancelPlaylistScrollbarDrag();
+            } else if (!Mouse.isButtonDown(0)) {
+                this.playlistScrollbarCapture.endScrollbarDrag();
+                this.playlistScrollbarCapture = null;
+            } else {
+                this.playlistScrollbarCapture.dragScrollbar(mouseY);
+            }
+        }
         if (!PlayerIslandTransition.isRunning()
                 && (mouseX != this.lastContentMouseX || mouseY != this.lastContentMouseY)) {
             invalidateTransitionContent();
@@ -699,6 +773,10 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         int baseDWheel = (isModalOverlayActive() || queueCapturesWheel) ? 0 : dWheel;
         int lyricsDWheel = isModalOverlayActive() ? 0 : dWheel;
         int queueDWheel = isModalOverlayActive() ? 0 : dWheel;
+        boolean trackMenuOpen = this.musicLyricsPanel != null && this.musicLyricsPanel.isTrackMenuOpen();
+        if (trackMenuOpen || (!isModalOverlayActive() && this.commentsDrawer.wheel(mouseX, mouseY, dWheel))) {
+            baseDWheel = lyricsDWheel = queueDWheel = 0;
+        }
 
         boolean motionRunning = PlayerIslandTransition.isRunning();
         if (motionRunning && !this.transitionWasRunning) {
@@ -768,7 +846,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                 // 换页转场：一条真时钟。普通换页两页同时画（交叉淡入）；音源切换专场只画新页，
                 // 从内容区底色上淡入 —— 旧源内容不参与，避免两层内容同框的「残留感」。
                 if (this.prevAnimatingPanel != null || this.panelSoloFadeActive) {
-                    this.panelTransitionT = Math.min(1.0,
+                    this.panelTransitionT = UiPreferences.configured().reducedMotion() ? 1.0 : Math.min(1.0,
                             this.panelTransitionT + panelTransitionStepMillis() / panelTransitionMillis());
                 }
                 final double transitionEased = TransitionCurveCache.MOTION.at(this.panelTransitionT);
@@ -833,7 +911,9 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                             this.basePanel.renderWidget(mouseX, mouseY, 0);
                             StencilClipManager.restoreActiveClip();
                         }
-                        this.currentPanel.renderWidget(mouseX, mouseY, baseDWheel);
+                        boolean catalogPending = this.navigationLoading.isCatalogLoading();
+                        this.currentPanel.renderWidget(catalogPending ? -1000000.0 : mouseX,
+                                catalogPending ? -1000000.0 : mouseY, catalogPending ? 0 : baseDWheel);
                         this.contentHitStateStale = false;
                     } else {
                         this.contentHitStateStale = true;
@@ -934,9 +1014,25 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             }
         }
 
+        this.commentsDrawer.render(new Box(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight()),
+                this.commentsBottom, this.musicLyricsPanel != null, mouseX, mouseY, Mouse.isButtonDown(0),
+                !this.closing && !isModalOverlayActive() && !trackMenuOpen
+                        && !CoverHeroTransition.isRunning() && !PlayerIslandTransition.isRunning()
+                        && net.minecraft.client.Minecraft.getInstance().isWindowActive());
+        if (this.commentsDrawer.wantsHandCursor()) CursorUtils.setOverride(CursorUtils.HAND);
+
         // 接力封面画在歌词页之上、裁剪之外：它飞行时要从控制栏一路压过压暗层与面板内容，
         // 起落两点都在面板矩形内，出界的只有那圈飞行阴影。
         CoverHeroTransition.render();
+
+        if (this.catalogArtistMenu.isOpen()) {
+            if (!catalogArtistMenuAvailable()) dismissCatalogArtistMenu();
+            else {
+                this.catalogArtistMenu.wheel(mouseX, mouseY, dWheel);
+                this.catalogArtistMenu.render(new Box(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight()),
+                        this.catalogArtistAnchor, mouseX, mouseY, Mouse.isButtonDown(0), alpha);
+            }
+        }
 
         // 波浪绘制在播放器内容之上、模态弹窗之下，并复用播放器圆角 Stencil。
         if (this.themeTransitionRenderer.isActive()) {
@@ -946,8 +1042,16 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                     basePanel.getWidth(), basePanel.getHeight(), alpha);
             StencilClipManager.endClip();
         }
+        if (this.isMusicSearchActive()) {
+            StencilClipManager.beginClip(() -> roundedRect(basePanel.getX(), basePanel.getY(),
+                    basePanel.getWidth(), basePanel.getHeight(), cornerRadius, -1));
+            this.playlistsPanel.getSearch().render(
+                    new Box(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight()),
+                    mouseX, mouseY, alpha);
+            StencilClipManager.endClip();
+        }
         // 加入歌单弹窗：渲染在面板之上、与 basePanel 同一坐标空间，作为模态覆盖层。
-        if (this.addToPlaylistOverlay != null) {
+        if (this.addToPlaylistOverlay != null && this.playlistCreateSheet == null) {
             StencilClipManager.beginClip(() -> roundedRect(basePanel.getX(), basePanel.getY(),
                     basePanel.getWidth(), basePanel.getHeight(), cornerRadius, -1));
             this.addToPlaylistOverlay.setBounds(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight());
@@ -1172,20 +1276,6 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             StencilClipManager.endClip();
         }
 
-        if (this.sponsorNoticeOverlay != null) {
-            StencilClipManager.beginClip(() -> roundedRect(basePanel.getX(), basePanel.getY(),
-                    basePanel.getWidth(), basePanel.getHeight(), cornerRadius, -1));
-            this.sponsorNoticeOverlay.setBounds(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight());
-            this.sponsorNoticeOverlay.setAlpha(alpha);
-            this.sponsorNoticeOverlay.renderWidget(mouseX, mouseY, dWheel);
-            if (this.sponsorNoticeOverlay.shouldClose()) {
-                this.pendingClickActive = false;
-                this.pendingClickSponsorOwner = null;
-                this.sponsorNoticeOverlay.releaseResources();
-                this.sponsorNoticeOverlay = null;
-            }
-            StencilClipManager.endClip();
-        }
         if (this.downloadManagerOverlay != null) {
             StencilClipManager.beginClip(() -> roundedRect(basePanel.getX(), basePanel.getY(),
                     basePanel.getWidth(), basePanel.getHeight(), cornerRadius, -1));
@@ -1195,6 +1285,12 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             this.downloadManagerOverlay.renderWidget(mouseX, mouseY, dWheel);
             if (this.downloadManagerOverlay.shouldClose()) this.downloadManagerOverlay = null;
             StencilClipManager.endClip();
+        }
+        if (this.musicDownloadSheet != null) {
+            this.musicDownloadSheet.setBounds(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight());
+            this.musicDownloadSheet.setAlpha(alpha);
+            this.musicDownloadSheet.renderWidget(mouseX, mouseY, dWheel);
+            if (this.musicDownloadSheet.shouldClose()) this.musicDownloadSheet = null;
         }
 
         // 这组边框使用最终 basePanel 坐标。岛屿展开/收回期间内容被压进移动中的 surface，
@@ -1285,6 +1381,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
         @Override
         public void onRender(double mouseX, double mouseY) {
+            if (hasThemeBackdrop()) return;
             // 落定后的材质交接窗里按 handoff 淡入：转场贴图（renderSurface）在更下面
             // 保持全浓度垫底，这里铺上来把它盖住 —— 覆盖式交接，背景浓度恒定，
             // 不会两层半透明叠出「先变亮再回落」的中段凹陷。
@@ -1383,16 +1480,57 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
      *               所以 loader 里只该取数据、不要碰 GL
      */
     public void navigateAsync(String label, Supplier<NCMPanel> loader) {
-        navigateAsync(label, loader, false, () -> true);
+        navigateAsync(label, loader, false, null, () -> true);
     }
 
     public void openPlayingTrackPage(String label, Supplier<NCMPanel> loader, BooleanSupplier stillCurrent) {
         if (this.musicLyricsPanel == null || !stillCurrent.getAsBoolean()) return;
         this.musicLyricsPanel.close();
-        navigateAsync(label, loader, true, stillCurrent);
+        navigateAsync(label, loader, true, null, stillCurrent);
     }
 
-    private void navigateAsync(String label, Supplier<NCMPanel> loader, boolean fromLyrics,
+    public void navigateCatalogPage(String label, Supplier<NCMPanel> loader, boolean artist, boolean fromLyrics) {
+        navigateCatalogPage(label, loader, artist, fromLyrics, () -> true);
+    }
+
+    public void navigateCatalogPage(String label, Supplier<NCMPanel> loader, boolean artist, boolean fromLyrics,
+                                    BooleanSupplier stillCurrent) {
+        if (!stillCurrent.getAsBoolean()) return;
+        if (fromLyrics) {
+            if (this.musicLyricsPanel == null) return;
+            this.musicLyricsPanel.close();
+        }
+        navigateAsync(label, loader, fromLyrics, artist, stillCurrent);
+    }
+
+    public void chooseCatalogArtist(Box anchor, List<AnchoredActionMenu.Entry> artists, BooleanSupplier available) {
+        if (isModalOverlayActive() || anchor == null || artists.size() < 2) return;
+        this.catalogArtistAnchor = anchor;
+        this.catalogArtistAvailable = available;
+        this.catalogArtistMenu.open(artists);
+    }
+
+    private boolean catalogArtistMenuAvailable() {
+        return this.hostOpen && !this.closing && this.catalogArtistAvailable.getAsBoolean()
+                && net.minecraft.client.Minecraft.getInstance().isWindowActive();
+    }
+
+    private void dismissCatalogArtistMenu() {
+        this.catalogArtistMenu.dismiss();
+        this.catalogArtistAnchor = null;
+        this.catalogArtistAvailable = () -> false;
+    }
+
+    private boolean cancelCatalogNavigation() {
+        if (!this.navigationLoading.isCatalogLoading()) return false;
+        this.navigationRequests.invalidate();
+        this.navigationLoading.clear();
+        this.pendingNavigationLabel = "";
+        this.pendingPanelNavigationKey = null;
+        return true;
+    }
+
+    private void navigateAsync(String label, Supplier<NCMPanel> loader, boolean fromLyrics, Boolean catalogArtist,
                                BooleanSupplier stillCurrent) {
         if (loader == null) return;
         final String targetName = label == null ? "" : label;
@@ -1400,7 +1538,11 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         if (this.navigationLoading.isLoading() && targetName.equals(this.pendingNavigationLabel)) return;
         final long ticket = this.navigationRequests.begin();
         this.pendingNavigationLabel = targetName;
-        this.navigationLoading.beginLoading(targetName);
+        if (catalogArtist == null) this.navigationLoading.beginLoading(targetName);
+        else {
+            this.navigationLoading.beginCatalogLoading(targetName, catalogArtist);
+            MusicTypography.narrate(net.minecraft.network.chat.Component.translatable("sh_better_ui.online_music.detail.loading"));
+        }
         MultiThreadingUtil.runAsync(() -> {
             NCMPanel loaded = null;
             String failure = null;
@@ -1413,7 +1555,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             final NCMPanel panel = loaded;
             final String error = failure;
             MultiThreadingUtil.runOnMainThread(() -> {
-                if (!this.navigationRequests.isCurrent(ticket)) return;
+                if (!this.navigationRequests.isCurrent(ticket)
+                        || catalogArtist != null && !this.navigationLoading.isCatalogLoading()) return;
                 if (!stillCurrent.getAsBoolean()) {
                     this.pendingPanelNavigationKey = null;
                     this.navigationLoading.clear();
@@ -1478,6 +1621,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     }
 
     private void innerSetCurrentPanel(NCMPanel panel, boolean shouldCallInit) {
+        dismissCatalogArtistMenu();
         this.transitionContent.clear();
         invalidateTransitionContent();
         this.navigationRequests.invalidate();
@@ -1501,6 +1645,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             this.finishDroppedPanel(this.prevAnimatingPanel);
         }
         this.prevAnimatingPanelAlpha = this.currentPanel == null ? 0f : this.currentPanel.getAlpha();
+        this.musicChat.pageHidden(this.currentPanel);
         this.prevAnimatingPanel = this.currentPanel;
         this.currentPanel = panel;
         this.panelTransitionBackward = this.pendingNavigationBackward;
@@ -1540,17 +1685,14 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         return PANEL_TRANSITION_MS / Math.max(.30, HudConfig.playerUiSwitchSpeed);
     }
 
-    /**
-     * 本帧推进的毫秒数。抄 {@code CoverHeroTransition#step}：{@code getFrameDeltaTime()} 的单位是
-     * 10ms，并且它在帧间隔过大时会把值压小，所以卡顿时转场是整体变慢而不是跳过去 —— 一帧跨掉
-     * 小半条曲线就是「一顿一顿」的由来。这里再夹一道 40ms 上限，低于 25fps 宁可慢也不要跳。
-     */
+    /** 使用播放器每帧采样的时钟，主菜单没有 HUD 帧时也能推进换页。 */
     private static double panelTransitionStepMillis() {
-        return Math.min(40.0, Math.max(0.0, RenderSystem.getFrameDeltaTime() * 10.0));
+        return Math.min(40.0, PlayerIslandTransition.lastFrameMillis());
     }
 
     // 独立的二级面板仍可提供有用的退路。
     public void navigateBack() {
+        if (this.musicChat.closeSettings(this.currentPanel)) return;
         // 两条出口（退历史、退回主页）都是后退。方向标志只能紧挨着真正那次换页设：
         // 它在 innerSetCurrentPanel 里被取走并清零，所以在「已经在主页、按了个空」这条
         // 什么都不做的分支上提前置位，会一路留到下一次前进，把该往右推的页推成往左。
@@ -1598,26 +1740,14 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         }
     }
 
-    /**
-     * 打开“加入歌单”弹窗。由 MusicWidget 的「+」按钮调用。
-     * 复用原项目 PlayList.addToList(musicId) → CloudMusicApi.playlistTracks("add", pid, musicId)。
-     */
+    /** 打开歌曲行的加入歌单弹窗。 */
     public void openAddToPlaylist(Music music) {
         openAddToPlaylist(music, null);
     }
 
     /** @param heroFrom 歌曲行那枚「+」在按下那一刻的矩形，飞进弹窗顶部那一行。 */
     public void openAddToPlaylist(Music music, SheetHeroRelay.Origin heroFrom) {
-        if (music != null && music.isQQ()) {
-            return; // QQ 曲目不可提交到网易云歌单。
-        }
-        // 酷狗曲目走酷狗歌单，前提是登录了——没登录时弹窗只会列出一片空白，不如直接提示。
-        if (music != null && music.isKuGou() && !KuGouMusicService.isLoggedIn()) {
-            openConfirmation("需要登录酷狗音乐", "加入歌单需要登录酷狗账号，请先在账号管理器里登录。",
-                    "知道了", () -> {
-                    });
-            return;
-        }
+        if (music == null) return;
         this.addToPlaylistOverlay = new AddToPlaylistOverlay(music);
         this.addToPlaylistOverlay.claimHero(heroFrom);
         this.addToPlaylistOverlay.onInit();
@@ -1651,32 +1781,9 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         if (this.musicLyricsPanel != null) return;
         if (isModalOverlayActive()) return;
         if (!FoliaModelNotice.shouldShow()) return;
-        this.sponsorDeferredForHost = true;
         this.modelInstallNoticeOverlay = new ModelInstallNoticeOverlay();
         this.modelInstallNoticeOverlay.onInit();
         FoliaModelNotice.markShownThisSession();
-    }
-
-    private void maybeShowSponsorNotice() {
-        if (this.sponsorDeferredForHost || this.sponsorNoticeOverlay != null) return;
-        if (!isContentLayoutReady() || this.dirty || this.closing) return;
-        if (this.musicLyricsPanel != null || isModalOverlayActive()) return;
-        if (this.prevAnimatingPanel != null || this.panelSoloFadeActive
-                || this.navigationLoading.isVisible() || this.themeTransitionRenderer.isActive()) return;
-        if (this.playQueuePanel != null && this.playQueuePanel.isVisible()) return;
-        // 不把用户按到一半的点击交给刚出现的弹窗。
-        if (this.pendingClickActive || Mouse.isButtonDown(0)) return;
-        if (!SponsorNotice.shouldShow()) return;
-        SponsorNotice.Snapshot snapshot = SponsorNotice.snapshot();
-        SponsorNoticeOverlay overlay = new SponsorNoticeOverlay(snapshot.launches(), snapshot.canHideForever());
-        try {
-            overlay.onInit();
-            if (SponsorNotice.markShownThisSession()) this.sponsorNoticeOverlay = overlay;
-            else overlay.releaseResources();
-        } catch (RuntimeException | Error failure) {
-            overlay.releaseResources();
-            throw failure;
-        }
     }
 
     public void openProjectNews() {
@@ -1687,6 +1794,27 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         if (!com.muoniumplayer.core.download.DownloadCatalog.shouldShowEntry()) return;
         this.downloadManagerOverlay = new DownloadManagerOverlay();
         this.downloadManagerOverlay.onInit();
+    }
+
+    public void openMusicDownloads() { openMusicDownloads(null); }
+
+    void openMusicDownloads(java.nio.file.Path folder) { openMusicDownloadSheet(null, folder); }
+
+    public void openSongDownload(com.muoniumplayer.core.ncm.music.dto.Music track) {
+        if (MusicDownloadSheet.supports(track)) openMusicDownloadSheet(track, null);
+    }
+
+    private void openMusicDownloadSheet(com.muoniumplayer.core.ncm.music.dto.Music track, java.nio.file.Path folder) {
+        if (!this.hostOpen || this.closing) return;
+        if (this.musicDownloadSheet != null) this.musicDownloadSheet.dispose();
+        this.musicDownloadSheet = new MusicDownloadSheet(track, folder);
+        this.musicDownloadSheet.onInit();
+    }
+
+    void openDownloadAccount() {
+        if (this.musicDownloadSheet != null) this.musicDownloadSheet.dispose();
+        this.musicDownloadSheet = null;
+        openAccountManager(com.muoniumplayer.core.ncm.music.MusicPlatform.QQ);
     }
 
     public void openAccountManager() {
@@ -1738,18 +1866,31 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     /** 打开全渠道歌单导入面板（自动识别平台）；同样先回收旧实例，避免两层叠在一起。 */
     public void openPlaylistImport() {
+        openPlaylistImport(new PlaylistImportOverlay());
+    }
+
+    public void openListen1Import() {
+        openPlaylistImport(new PlaylistImportOverlay(true));
+    }
+
+    private void openPlaylistImport(PlaylistImportOverlay overlay) {
         if (this.playlistCreateSheet != null) this.playlistCreateSheet.dispose();
         this.playlistCreateSheet = null;
         if (this.qishuiCloudPlaylistSheet != null) this.qishuiCloudPlaylistSheet.dispose();
         this.qishuiCloudPlaylistSheet = null;
         if (this.playlistImportOverlay != null) this.playlistImportOverlay.dispose();
-        this.playlistImportOverlay = new PlaylistImportOverlay();
+        this.playlistImportOverlay = overlay;
         this.playlistImportOverlay.onInit();
     }
 
     /** 打开建单页。它和导入面板回答的是同一个问题（「我要一张单子」），所以互斥打开。 */
     public void openPlaylistCreate() {
         openPlaylistSheet(new PlaylistCreateSheet());
+    }
+
+    void openPlaylistCreateForTrack(Music track,
+            com.dishanhai.sh_better_ui.kernel.api.music.platform.QQMusicPlaylists qqPlaylists) {
+        openPlaylistSheet(new PlaylistCreateSheet(track, qqPlaylists));
     }
 
     /** 把建单页换成「重命名这一张」：同一份表单，落盘的动作不同（见 {@link PlaylistCreateSheet}）。 */
@@ -1826,8 +1967,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     /** 音效工作台只在没有其他模态时拥有交互，画面遮挡和原始鼠标轮询使用同一个判断。 */
     private boolean effectsWorkbenchOwnsInput() {
-        return this.sponsorNoticeOverlay == null
-                && this.downloadManagerOverlay == null
+        return this.downloadManagerOverlay == null
+                && this.musicDownloadSheet == null
                 && this.modelInstallNoticeOverlay == null
                 && this.confirmationOverlay == null
                 && this.themePaletteOverlay == null
@@ -1886,6 +2027,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
     @Override
     public void keyTyped(char typedChar, int keyCode) {
+        if (keyCode == Keyboard.KEY_ESCAPE && musicLyricsPanel != null && musicLyricsPanel.cancelSeek()) return;
+        if (keyCode == Keyboard.KEY_ESCAPE && this.cancelPlaylistScrollbarDrag()) return;
         if (this.initialLayoutStage != 0) {
             if (keyCode == Keyboard.KEY_ESCAPE) {
                 this.closing = true;
@@ -1897,11 +2040,27 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             return;
         }
         if (keyCode != Keyboard.KEY_ESCAPE) this.transitionContent.clear();
-
-        if (this.sponsorNoticeOverlay != null) {
-            if (keyCode == Keyboard.KEY_ESCAPE) this.sponsorNoticeOverlay.handleEscape();
+        if (this.catalogArtistMenu.isOpen()) {
+            if (!catalogArtistMenuAvailable()) dismissCatalogArtistMenu();
+            else this.catalogArtistMenu.key(keyCode, Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
+            if (!this.catalogArtistMenu.isOpen()) dismissCatalogArtistMenu();
             return;
         }
+        if (this.musicLyricsPanel != null && !isModalOverlayActive()
+                && this.musicLyricsPanel.trackMenuKeyPressed(keyCode)) return;
+
+        if (this.musicDownloadSheet != null) {
+            this.musicDownloadSheet.onKeyTypedReceived(typedChar, keyCode);
+            return;
+        }
+        if (!isModalOverlayActive() && keyCode == Keyboard.KEY_J
+                && (Keyboard.isKeyDown(Keyboard.KEY_LCONTROL) || Keyboard.isKeyDown(Keyboard.KEY_RCONTROL))) {
+            if (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT))
+                openSongDownload(CloudMusic.playbackPresentation().displayTrack);
+            else openMusicDownloads();
+            return;
+        }
+
         if (this.downloadManagerOverlay != null) {
             if (keyCode == Keyboard.KEY_ESCAPE) this.downloadManagerOverlay.handleEscape();
             return;
@@ -1923,9 +2082,7 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         }
 
         if (this.themePaletteOverlay != null) {
-            if (keyCode == Keyboard.KEY_ESCAPE) {
-                this.themePaletteOverlay.handleEscape();
-            }
+            this.themePaletteOverlay.handleKey(keyCode);
             return;
         }
 
@@ -2045,17 +2202,37 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             return;
         }
 
-        // 加入歌单弹窗为模态：仅处理 ESC，其余按键不穿透到下层面板。
-        // ESC 走 overlay 自己的收尾（SheetClock 退场 + closing 置位），而不是直接置 null——
-        // 硬置 null 会跳过退场动画，还会让在途的提交请求失去作废闸门。
         if (this.addToPlaylistOverlay != null) {
-            if (keyCode == Keyboard.KEY_ESCAPE)
-                this.addToPlaylistOverlay.requestClose();
+            this.addToPlaylistOverlay.handleKey(keyCode);
             return;
         }
 
-        if (this.musicLyricsPanel != null && (this.musicLyricsPanel.singKeyPressed(keyCode)
+        if (this.musicLyricsPanel == null && this.playlistsPanel != null
+                && this.playlistsPanel.getSearch().key(typedChar, keyCode)) return;
+
+        if (keyCode == Keyboard.KEY_ESCAPE && this.cancelCatalogNavigation()) return;
+
+        if (this.musicLyricsPanel != null && !this.commentsDrawer.isOpen()
+                && this.musicLyricsPanel.openQueueKeyPressed(keyCode)) {
+            return;
+        }
+        if (this.commentsDrawer.key(Keyboard.toGlfw(keyCode),
+                Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT))) {
+            return;
+        }
+        if (this.musicLyricsPanel != null
+                && ((!this.commentsDrawer.isOpen() && this.musicLyricsPanel.singKeyPressed(keyCode))
                 || this.musicLyricsPanel.metadataKeyPressed(keyCode))) {
+            return;
+        }
+
+        if (keyCode == Keyboard.KEY_ESCAPE && this.musicLyricsPanel == null
+                && this.musicChat.isPage(this.currentPanel)) {
+            if (this.playQueuePanel != null && this.playQueuePanel.isOpen()) {
+                this.playQueuePanel.setOpen(false);
+            } else {
+                this.navigateBack();
+            }
             return;
         }
 
@@ -2064,6 +2241,11 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         }
 
         if (this.currentPanel != null && this.currentPanel.onKeyTypedReceived(typedChar, keyCode)) {
+            return;
+        }
+        if (this.activePlaylistScrollbar() != null
+                && (this.playQueuePanel == null || !this.playQueuePanel.isOpen())
+                && this.currentPanel instanceof PlaylistPanel playlist && playlist.songActionKeyPressed(keyCode)) {
             return;
         }
 
@@ -2077,7 +2259,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
 
             if (this.musicLyricsPanel != null)
                 this.musicLyricsPanel.close();
-            else if (this.currentPanel != null && this.currentPanel == this.playingTrackDetails)
+            else if (this.currentPanel != null && (this.currentPanel == this.playingTrackDetails
+                    || com.dishanhai.sh_better_ui.kernel.internal.PlayingTrackPages.isDetail(this.currentPanel)))
                 this.navigateBack();
             else {
                 closing = true;
@@ -2107,8 +2290,13 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
      * 「打开歌词选择页会穿透控制」正是这个缝。</p>
      */
     public boolean isModalOverlayActive() {
-        return this.sponsorNoticeOverlay != null
+        return this.isMusicSearchActive() || this.hasOtherModalOverlay();
+    }
+
+    private boolean hasOtherModalOverlay() {
+        return this.catalogArtistMenu.isOpen()
                 || this.downloadManagerOverlay != null
+                || this.musicDownloadSheet != null
                 || this.modelInstallNoticeOverlay != null
                 || this.confirmationOverlay != null
                 || this.themePaletteOverlay != null
@@ -2126,6 +2314,25 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
                 || this.addToPlaylistOverlay != null;
     }
 
+    private boolean isMusicSearchActive() {
+        return this.playlistsPanel != null && this.playlistsPanel.getSearch().active();
+    }
+
+    private ScrollPanel activePlaylistScrollbar() {
+        if (this.closing || this.contentHitStateStale || this.prevAnimatingPanel != null || this.musicLyricsPanel != null
+                || this.commentsDrawer.isOpen() || this.isModalOverlayActive()
+                || this.navigationLoading.isCatalogLoading()
+                || this.controlsBar.isQualityMenuOpen()) return null;
+        return this.currentPanel instanceof PlaylistPanel playlist ? playlist.songListScrollPanel() : null;
+    }
+
+    private boolean cancelPlaylistScrollbarDrag() {
+        if (this.playlistScrollbarCapture == null) return false;
+        this.playlistScrollbarCapture.cancelScrollbarDrag();
+        this.playlistScrollbarCapture = null;
+        return true;
+    }
+
     /**
      * 被延迟分发的按压：按下时记下坐标与按钮，松手时（若不是拖动）由
      * {@link #mouseReleased} 补发。见 {@link #mouseClicked} 的类注释级说明。
@@ -2134,24 +2341,8 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     private double pendingClickX;
     private double pendingClickY;
     private int pendingClickButton;
-    private SponsorNoticeOverlay pendingClickSponsorOwner;
-    /**
-     * 按下瞬间「搜索联想遮挡层是否可见」的快照（{@link NavigateBar#suggestionLayerVisibleNow()}）。
-     *
-     * <p>联想面板的状态是每帧变的：异步结果到达、入场动画、提交搜索都会让它消失/变形，
-     * 而触屏时代的分发隔着按下→松手一整段时间。可见性若在松手时现查，「按下面板在、
-     * 松手面板没了」的那一下点击就会从联想层漏过去，穿透到底下的歌单条目/音乐来源卡片。
-     * 几何照旧用松手时刻的（行还点得中），唯独可见性裁决用按下时的快照。</p>
-     */
-    private boolean pendingClickSuggestionVisible;
-    /**
-     * 按下瞬间悬停的联想行下标（{@link NavigateBar#suggestionHoveredRowNow()}）。
-     *
-     * <p>面板内容在按下→松手之间被异步新结果换过一茬时，松手时刻的几何命中会落空
-     * （{@code suggestionRowAt} 返回 -1），表现就是「点了联想词没反应」。用户瞄准的是
-     * 按下时看到的那一行，用它兜底。</p>
-     */
-    private int pendingClickSuggestionRow = -1;
+    // 绑定按下时看见的搜索词，避免异步联想替换行后提交另一个词。
+    private Runnable pendingSearchClick;
 
     /**
      * 触屏时代的点击时机：按下只记账，松手才分发。
@@ -2178,62 +2369,72 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         if (this.initialLayoutStage != 0) return;
 
         RenderSystem.refreshResolution();
-        WindowAdaptiveScale.begin();
-        double xScale = WindowAdaptiveScale.correctionX();
-        double yScale = WindowAdaptiveScale.correctionY();
+        boolean adaptiveLayout = WindowAdaptiveScale.begin();
+        double xScale = adaptiveLayout ? WindowAdaptiveScale.correctionX() : 1.0;
+        double yScale = adaptiveLayout ? WindowAdaptiveScale.correctionY() : 1.0;
         double mouseX = mX / xScale;
         double mouseY = mY / yScale;
         WindowAdaptiveScale.end();
 
+        if (this.catalogArtistMenu.isOpen()) {
+            this.pendingClickActive = false;
+            if (mouseButton == 0 && catalogArtistMenuAvailable()) this.catalogArtistMenu.press(mouseX, mouseY);
+            return;
+        }
+        this.pendingSearchClick = null;
+        if (this.isMusicSearchActive() && !this.hasOtherModalOverlay()
+                && this.playlistsPanel.getSearch().pressInput(mouseX, mouseY, mouseButton)) {
+            this.pendingClickActive = false;
+            return;
+        }
+        if (this.musicLyricsPanel != null && !isModalOverlayActive()) {
+            if (mouseButton == 0 && (!this.commentsDrawer.isOpen() || this.musicLyricsPanel.isTrackMenuOpen())
+                    && this.musicLyricsPanel.pressTrackActions(mouseX, mouseY)) {
+                this.trackActionPointerOwner = this.musicLyricsPanel;
+                this.pendingClickActive = false;
+                return;
+            }
+            if (this.musicLyricsPanel.isTrackMenuOpen()) return;
+        }
+        if (!isModalOverlayActive() && this.commentsDrawer.press(mouseX, mouseY, mouseButton)) {
+            this.pendingClickActive = false;
+            return;
+        }
+        if (mouseButton == 0 && (this.playQueuePanel == null || !this.playQueuePanel.capturesWheel(mouseX, mouseY))) {
+            ScrollPanel scrollbar = this.activePlaylistScrollbar();
+            if (scrollbar != null && scrollbar.pressScrollbar(mouseX, mouseY)) {
+                this.playlistScrollbarCapture = scrollbar;
+                this.pendingClickActive = false;
+                return;
+            }
+        }
         if (mouseButton == 0 && this.musicLyricsPanel != null) {
             this.musicLyricsPanel.cancelLyricPointerPress();
-            if (this.musicLyricsPanel.pressSingFader(mouseX, mouseY)
+            if ((!isModalOverlayActive() && !commentsDrawer.isOpen() && this.musicLyricsPanel.pressSeek(mouseX, mouseY))
+                    || (!isModalOverlayActive() && this.musicLyricsPanel.pressQueueScrollbar(mouseX, mouseY))
+                    || this.musicLyricsPanel.pressSingFader(mouseX, mouseY)
                     || this.musicLyricsPanel.pressLyricPointer(mouseX, mouseY)) {
                 this.pendingClickActive = false;
-                this.pendingClickSponsorOwner = null;
                 return;
             }
         }
 
         if (TouchSettings.ENABLED) {
-            // 按下只记账（坐标已换算到布局空间，与 dispatchClick 内部口径一致）；
-            // 松手沿上由 TouchGestures 判定这是点按还是拖动滚动。联想可见性与悬停行
-            // 在此拍快照：它是每帧都可能消失/换内容的层，松手时现查会把「按下面板在、
-            // 松手面板没了/换了」的点击漏给下层（穿透误点）或落空（点了没反应）。
-            // 悬停行用的是本方法刚换算好的布局坐标——绝不让联想层自己从裸 Mouse 重推
-            // （compat Mouse.getY() 是底原点 framebuffer 轴，自己换算必翻错方向）。
             this.pendingClickActive = true;
             this.pendingClickX = mouseX;
             this.pendingClickY = mouseY;
             this.pendingClickButton = mouseButton;
-            this.pendingClickSponsorOwner = this.sponsorNoticeOverlay;
-            this.pendingClickSuggestionVisible = this.playlistsPanel != null
-                    && this.playlistsPanel.suggestionLayerVisibleNow();
-            this.pendingClickSuggestionRow = this.pendingClickSuggestionVisible
-                    ? this.playlistsPanel.suggestionHoveredRowAt(mouseX, mouseY) : -1;
+            if (this.isMusicSearchActive() && !this.hasOtherModalOverlay()) {
+                this.pendingSearchClick = this.playlistsPanel.getSearch().captureClick(mouseX, mouseY, mouseButton);
+            }
             return;
         }
-        // 即时路径：按下即分发，可见性现查（与延迟路径的快照语义等价——此刻就是「按下时」）。
-        dispatchClick(mouseX, mouseY, mouseButton,
-                this.playlistsPanel != null && this.playlistsPanel.suggestionLayerVisibleNow(),
-                this.playlistsPanel == null ? -1
-                        : this.playlistsPanel.suggestionHoveredRowAt(mouseX, mouseY));
+        dispatchClick(mouseX, mouseY, mouseButton);
     }
 
-    /**
-     * 真正的点击分发：原 {@code mouseClicked} 的完整主体（模态浮层优先级、队列/联想前置
-     * 消费、侧键导航、歌词搜索页的换轴换算）原样保留。「按下即分发」（功能关闭时的回滚
-     * 路径）与「松手补发」共用这一段，保证两条路径的行为永远一致。
-     *
-     * @param suggestionVisible 联想遮挡层的可见性裁决：延迟分发路径传按下时拍的快照，
-     *                          即时路径传现查值（按下即松手，两者等价）
-     * @param suggestionRow     按下时悬停的联想行下标：面板内容在按压期间被异步结果
-     *                          换茬时，松手的几何命中会落空，用它兜底选中
-     */
-    private void dispatchClick(double mouseX, double mouseY, int mouseButton,
-                               boolean suggestionVisible, int suggestionRow) {
-        if (this.sponsorNoticeOverlay != null) {
-            this.sponsorNoticeOverlay.onMouseClickReceived(mouseX, mouseY, mouseButton);
+    private void dispatchClick(double mouseX, double mouseY, int mouseButton) {
+        if (this.musicDownloadSheet != null) {
+            this.musicDownloadSheet.onMouseClickReceived(mouseX, mouseY, mouseButton);
             return;
         }
         if (this.downloadManagerOverlay != null) {
@@ -2319,6 +2520,10 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
         }
 
         if (musicLyricsPanel == null) {
+            if (this.isMusicSearchActive()) {
+                this.playlistsPanel.getSearch().captureClick(mouseX, mouseY, mouseButton).run();
+                return;
+            }
             // 质量弹出窗在视觉上与歌曲列表重叠。在分发给列表之前
             //消费其完整边界，防止点击穿透。
             if (this.controlsBar.consumeQualityMenuClick(mouseX, mouseY, mouseButton)) {
@@ -2328,19 +2533,13 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             if (this.playQueuePanel != null && this.playQueuePanel.consumeClick(mouseX, mouseY, mouseButton)) {
                 return;
             }
-            // 搜索联想下拉遮住了侧栏的歌单条目与音乐来源卡片，同样必须前置消费。
-            // 光靠组件树内部「命中即 return」管不住：下面这三行是连续调用、没有早退，
-            // 而 onMouseClickReceived 返回的是 void，谁也拿不到「已经被吃掉」这个信息。
-            // 可见性用按下时拍的快照（dispatchClick 的入参），防「按下面板在、松手面板
-            // 没了」的时间窗里点击从联想层漏下去。
             if (this.playlistsPanel != null
-                    && this.playlistsPanel.consumeSuggestionClick(mouseX, mouseY, mouseButton,
-                    suggestionVisible, suggestionRow)) {
+                    && this.playlistsPanel.getSearch().clickAnchor(mouseX, mouseY, mouseButton)) {
                 return;
             }
             this.basePanel.onMouseClickReceived(mouseX, mouseY, mouseButton);
 
-            if (this.currentPanel != null && !this.contentHitStateStale)
+            if (this.currentPanel != null && !this.contentHitStateStale && !this.navigationLoading.isCatalogLoading())
                 this.currentPanel.onMouseClickReceived(mouseX, mouseY, mouseButton);
 
             this.controlsBar.onMouseClickReceived(mouseX, mouseY, mouseButton);
@@ -2381,14 +2580,67 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
     @Override
     public void mouseReleased(int mX, int mY, int state) {
         super.mouseReleased(mX, mY, state);
-        if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasSingFaderPress()) {
+        if (state == 0 && this.catalogArtistMenu.isOpen()) {
+            if (!catalogArtistMenuAvailable()) dismissCatalogArtistMenu();
+            else if (!TouchSettings.ENABLED || TouchGestures.get().consumeTap()) {
+                RenderSystem.refreshResolution();
+                WindowAdaptiveScale.begin();
+                double mouseX = mX / WindowAdaptiveScale.correctionX();
+                double mouseY = mY / WindowAdaptiveScale.correctionY();
+                WindowAdaptiveScale.end();
+                this.catalogArtistMenu.release(mouseX, mouseY);
+            } else this.catalogArtistMenu.cancelPress();
+            if (!this.catalogArtistMenu.isOpen()) dismissCatalogArtistMenu();
+            return;
+        }
+        if (state == 0 && this.trackActionPointerOwner != null) {
+            var owner = this.trackActionPointerOwner;
+            this.trackActionPointerOwner = null;
+            if (owner == this.musicLyricsPanel && !isModalOverlayActive()
+                    && (!TouchSettings.ENABLED || TouchGestures.get().consumeTap())) {
+                RenderSystem.refreshResolution();
+                WindowAdaptiveScale.begin();
+                double mouseX = mX / WindowAdaptiveScale.correctionX();
+                double mouseY = mY / WindowAdaptiveScale.correctionY();
+                WindowAdaptiveScale.end();
+                owner.releaseTrackActions(mouseX, mouseY);
+            }
+            return;
+        }
+        if (state == 0 && this.playlistScrollbarCapture != null) {
+            if (this.playlistScrollbarCapture != this.activePlaylistScrollbar()) {
+                this.cancelPlaylistScrollbarDrag();
+            } else {
+                RenderSystem.refreshResolution();
+                WindowAdaptiveScale.begin();
+                double mouseY = mY / WindowAdaptiveScale.correctionY();
+                WindowAdaptiveScale.end();
+                this.playlistScrollbarCapture.dragScrollbar(mouseY);
+                this.playlistScrollbarCapture.endScrollbarDrag();
+                this.playlistScrollbarCapture = null;
+            }
+            return;
+        }
+        if (state == 0 && musicLyricsPanel != null && musicLyricsPanel.hasSeekPress()) {
+            RenderSystem.refreshResolution();
+            WindowAdaptiveScale.begin();
+            double x = mX / WindowAdaptiveScale.correctionX();
+            WindowAdaptiveScale.end();
+            if (commentsDrawer.isOpen()) musicLyricsPanel.cancelSeek();
+            else musicLyricsPanel.releaseSeek(x);
+            return;
+        }
+        boolean singFaderPressed = this.musicLyricsPanel != null && this.musicLyricsPanel.hasSingFaderPress();
+        if (state == 0 && (this.commentsDrawer.ownsPointer() || singFaderPressed)) {
             RenderSystem.refreshResolution();
             WindowAdaptiveScale.begin();
             double mouseX = mX / WindowAdaptiveScale.correctionX();
             double mouseY = mY / WindowAdaptiveScale.correctionY();
             WindowAdaptiveScale.end();
-            if (this.musicLyricsPanel.releaseSingFader(mouseX, mouseY)) return;
+            if (this.commentsDrawer.release(mouseX, mouseY, state)) return;
+            if (singFaderPressed && this.musicLyricsPanel.releaseSingFader(mouseX, mouseY)) return;
         }
+        if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.releaseQueueScrollbar()) return;
         if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasLyricPointerPress()) {
             if (TouchSettings.ENABLED && !TouchGestures.get().consumeTap()) {
                 this.musicLyricsPanel.cancelLyricPointerPress();
@@ -2406,15 +2658,16 @@ public class NCMScreen extends ExtensionScreen implements SharedConstants, Share
             return;
         }
         this.pendingClickActive = false;
-        SponsorNoticeOverlay clickOwner = this.pendingClickSponsorOwner;
-        this.pendingClickSponsorOwner = null;
+        Runnable searchClick = this.pendingSearchClick;
+        this.pendingSearchClick = null;
         if (state == 0 && !TouchGestures.get().consumeTap()) {
             return;
         }
-        if (clickOwner != this.sponsorNoticeOverlay) return;
-        // 可见性用按下时的快照，不是松手时的现值——那正是穿透的时间窗。
-        dispatchClick(this.pendingClickX, this.pendingClickY, state,
-                this.pendingClickSuggestionVisible, this.pendingClickSuggestionRow);
+        if (searchClick != null) {
+            if (!this.hasOtherModalOverlay()) searchClick.run();
+            return;
+        }
+        dispatchClick(this.pendingClickX, this.pendingClickY, state);
     }
 
     /** 播放器主题的颜色语义；具体颜色由 {@link NCMTheme} 提供。 */

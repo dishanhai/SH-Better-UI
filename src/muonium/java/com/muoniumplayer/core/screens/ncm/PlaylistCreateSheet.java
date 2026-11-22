@@ -1,9 +1,11 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQMusicPlaylists;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.ncm.music.LocalMusicLibrary;
 import com.muoniumplayer.core.ncm.music.LocalPlaylistStore;
+import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
 import com.muoniumplayer.core.rendering.font.CFontRenderer;
@@ -12,7 +14,13 @@ import com.muoniumplayer.core.rendering.ui.container.ScrollPanel;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.TextFieldWidget;
 import com.muoniumplayer.core.screens.ncm.panels.PlaylistPanel;
+import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
+
+import java.util.function.Supplier;
+
+import static com.muoniumplayer.core.screens.ncm.AddToPlaylistOverlay.text;
 
 /**
  * 新建一张本地歌单：只要一个名字。
@@ -44,6 +52,11 @@ public final class PlaylistCreateSheet extends NcmSheet {
     private TextFieldWidget input;
     /** 非空即「重命名这一张」模式；为 null 时是新建。 */
     private final PlayList renaming;
+    private final Music firstTrack;
+    private final QQMusicPlaylists qqPlaylists;
+    private QQMusicPlaylists.Playlist createdQQ;
+    private boolean busy;
+    private boolean createUnconfirmed;
     private String statusText = IDLE_TEXT;
     private boolean failed;
     /** 「导入本地文件夹」的选择器在打开中；同一张建单页同一时刻只许一枚系统对话框。 */
@@ -55,7 +68,16 @@ public final class PlaylistCreateSheet extends NcmSheet {
 
     public PlaylistCreateSheet(PlayList renaming) {
         this.renaming = renaming;
+        firstTrack = null;
+        qqPlaylists = null;
         if (renaming != null) this.statusText = IDLE_TEXT_RENAME;
+    }
+
+    PlaylistCreateSheet(Music firstTrack, QQMusicPlaylists qqPlaylists) {
+        renaming = null;
+        this.firstTrack = firstTrack;
+        this.qqPlaylists = qqPlaylists;
+        statusText = text(qqPlaylists == null ? "local" : "qq_private");
     }
 
     @Override
@@ -80,17 +102,20 @@ public final class PlaylistCreateSheet extends NcmSheet {
     public void onInit() {
         beginPage();
 
-        final Panel dialog = NcmExpressive.shell(this, 660, () -> renaming == null ? 686 : 472,
+        boolean showImports = renaming == null && firstTrack == null;
+        final Panel dialog = NcmExpressive.shell(this, 660, () -> showImports ? 686 : 472,
                 () -> presentation, this::dismiss);
         NcmExpressive.header(dialog, renaming == null ? PartyIcons.ALBUM : PartyIcons.TEXT_FORMAT,
-                () -> "Mu 本地歌单", () -> renaming == null ? "新建本地歌单" : "重命名本地歌单",
+                () -> firstTrack == null ? "Mu 本地歌单" : firstTrack.getName(),
+                () -> firstTrack == null ? (renaming == null ? "新建本地歌单" : "重命名本地歌单")
+                        : text(qqPlaylists == null ? "create_local" : "create_qq"),
                 this::dismiss);
         final Panel content = body(dialog, () -> NcmExpressive.headerHeight(dialog) + 14,
                 () -> footerHeight(dialog));
         final ScrollPanel list = feed(content);
-        nameForm = strip(list, () -> (renaming == null ? 438 : 224) + errorDetailsHeight());
+        nameForm = strip(list, () -> (showImports ? 524 : 224) + errorDetailsHeight());
         buildNameForm(nameForm);
-        if (renaming == null) buildImportEntries(nameForm);
+        if (showImports) buildImportEntries(nameForm);
 
         final Panel footer = new Panel();
         dialog.addChild(footer);
@@ -98,11 +123,12 @@ public final class PlaylistCreateSheet extends NcmSheet {
             footer.setBounds(dialog.getWidth(), footerHeight(dialog));
             footer.setPosition(0, Math.max(0, dialog.getHeight() - footer.getHeight()));
         });
-        NcmExpressive.action(footer, "", () -> "取消", NcmExpressive.ActionStyle.TONAL,
+        NcmExpressive.action(footer, "", () -> text("cancel"), NcmExpressive.ActionStyle.TONAL,
                 () -> INSET, () -> 20,
                 () -> cancelWidth(footer),
                 () -> NcmExpressive.BUTTON_HEIGHT, this::dismiss);
-        NcmExpressive.action(footer, PartyIcons.CHECK, () -> renaming == null ? "新建" : "保存",
+        NcmExpressive.action(footer, PartyIcons.CHECK, () -> firstTrack == null ? (renaming == null ? "新建" : "保存")
+                        : text(busy ? "working" : createdQQ == null ? "create_and_add" : "retry_add"),
                 NcmExpressive.ActionStyle.PRIMARY,
                 () -> footer.getWidth() - INSET - confirmWidth(footer),
                 () -> footer.getWidth() < 360 ? 82 : 20,
@@ -110,7 +136,8 @@ public final class PlaylistCreateSheet extends NcmSheet {
     }
 
     private void buildNameForm(Panel host) {
-        NcmExpressive.label(host, () -> renaming == null ? "给歌单起个名字" : "输入新的歌单名",
+        NcmExpressive.label(host, () -> firstTrack != null ? text("name")
+                        : renaming == null ? "给歌单起个名字" : "输入新的歌单名",
                 NcmExpressive.labelFont(), () -> INSET, () -> 24,
                 () -> host.getWidth() - INSET * 2, () -> NcmExpressivePalette.live().text());
         final RoundedRectWidget field = NcmExpressive.surface(host, INSET, 54,
@@ -142,10 +169,10 @@ public final class PlaylistCreateSheet extends NcmSheet {
             }
         };
         field.addChild(input);
-        input.getTextField().setMaxStringLength(NAME_LIMIT);
+        input.getTextField().setMaxStringLength(qqPlaylists == null ? NAME_LIMIT : QQMusicPlaylists.NAME_LIMIT);
         input.setEnabled(true).setFocused(true);
         // 保留空输入的新名字语义；旧名字只在占位说明中显示，不触碰既有歌单对象。
-        input.setPlaceholder(renaming == null ? "比如「跑步」「睡前」「待听」"
+        input.setPlaceholder(firstTrack != null ? text("name") : renaming == null ? "比如「跑步」「睡前」「待听」"
                 : "当前「" + (renaming.getName() == null ? "" : renaming.getName()) + "」· 输入新名字");
         input.drawUnderline(false);
         input.setBeforeRenderCallback(() -> {
@@ -156,7 +183,8 @@ public final class PlaylistCreateSheet extends NcmSheet {
             input.setDisabledTextColor(palette.muted());
         });
         NcmExpressive.label(host,
-                () -> renaming == null ? "建好后，可从任意音源把喜欢的歌加进来。" : "这里只换名字，不会移除或重新下载曲目。",
+                () -> firstTrack != null ? text("with_track", firstTrack.getName())
+                        : renaming == null ? "建好后，可从任意音源把喜欢的歌加进来。" : "这里只换名字，不会移除或重新下载曲目。",
                 NcmExpressive.bodyFont(), () -> INSET, () -> 146,
                 () -> host.getWidth() - INSET * 2, () -> NcmExpressivePalette.live().muted());
         NcmExpressive.status(host, () -> failed ? PartyIcons.CLOSE : PartyIcons.INFO, () -> statusText,
@@ -187,26 +215,32 @@ public final class PlaylistCreateSheet extends NcmSheet {
         final Panel entries = new Panel();
         host.addChild(entries);
         entries.setBeforeRenderCallback(() -> {
-            entries.setBounds(host.getWidth(), 214);
+            entries.setBounds(host.getWidth(), 300);
             entries.setPosition(0, 224 + errorDetailsHeight());
         });
         NcmExpressive.label(entries, () -> "已有收藏？也可以直接导入", NcmExpressive.labelFont(),
                 () -> INSET, () -> 22, () -> entries.getWidth() - INSET * 2,
                 () -> NcmExpressivePalette.live().text());
-        buildImportEntry(entries, 50, PartyIcons.LINK, "从链接导入", "保存歌单引用，不下载全部歌曲", this::openImport);
-        buildImportEntry(entries, 136, PartyIcons.FOLDER_OPEN, "导入本地文件夹", "系统选择器 · 只扫描这一层，不递归", this::openLocalFolderImport);
+        buildImportEntry(entries, 50, PartyIcons.LINK, () -> "从链接导入",
+                () -> "保存歌单引用，不下载全部歌曲", this::openImport);
+        buildImportEntry(entries, 136, PartyIcons.FOLDER_OPEN, () -> "导入本地文件夹",
+                () -> "系统选择器 · 只扫描这一层，不递归", this::openLocalFolderImport);
+        buildImportEntry(entries, 222, PartyIcons.FOLDER_OPEN,
+                () -> Component.translatable("sh_better_ui.muonium.listen1.title").getString(),
+                () -> Component.translatable("sh_better_ui.muonium.listen1.entry").getString(),
+                () -> NCMScreen.getInstance().openListen1Import());
     }
 
-    private void buildImportEntry(Panel host, double top, String glyph, String title,
-                                  String detail, Runnable onClick) {
+    private void buildImportEntry(Panel host, double top, String glyph, Supplier<String> title,
+                                  Supplier<String> detail, Runnable onClick) {
         final RoundedRectWidget entry = NcmExpressive.hitSurface(host, () -> INSET, () -> top,
                 () -> host.getWidth() - INSET * 2, () -> 76, NcmExpressive.CARD_RADIUS,
                 () -> NcmExpressivePalette.live().container(), onClick);
         NcmExpressive.icon(entry, glyph, ICON_XL, () -> 32, () -> 38,
                 () -> NcmExpressivePalette.live().primary());
-        NcmExpressive.label(entry, () -> title, NcmExpressive.labelFont(), () -> 62, () -> 25,
+        NcmExpressive.label(entry, title, NcmExpressive.labelFont(), () -> 62, () -> 25,
                 () -> entry.getWidth() - 90, () -> NcmExpressivePalette.live().text());
-        NcmExpressive.label(entry, () -> detail, NcmExpressive.captionFont(), () -> 62, () -> 52,
+        NcmExpressive.label(entry, detail, NcmExpressive.captionFont(), () -> 62, () -> 52,
                 () -> entry.getWidth() - 90, () -> NcmExpressivePalette.live().muted());
         NcmExpressive.icon(entry, PartyIcons.CHEVRON_RIGHT, ICON_M,
                 () -> entry.getWidth() - 20, () -> 38, () -> NcmExpressivePalette.live().muted());
@@ -266,6 +300,10 @@ public final class PlaylistCreateSheet extends NcmSheet {
 
     @Override
     public boolean onKeyTyped(char character, int keyCode) {
+        if (createdQQ != null && (keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER)) {
+            submit();
+            return true;
+        }
         if (keyCode == Keyboard.KEY_TAB && !closing) {
             input.setFocused(true);
             return true;
@@ -278,6 +316,7 @@ public final class PlaylistCreateSheet extends NcmSheet {
     }
 
     private void dismiss() {
+        if (busy) return;
         dispose();
     }
 
@@ -339,8 +378,17 @@ public final class PlaylistCreateSheet extends NcmSheet {
         final String name = dirFile.getName() == null || dirFile.getName().trim().isEmpty()
                 ? "本地音乐" : dirFile.getName();
         if (tracks == null || tracks.isEmpty()) {
-            DownloadDynamicIsland.showModelOperationResult("本地音乐",
-                    "「" + name + "」里没有支持的音频文件（mp3 / flac / wav / m4a / aac）", false);
+            var folder = dirFile.toPath();
+            com.muoniumplayer.core.ncm.music.NeteaseMusicService.songDownloads().scan(folder)
+                    .whenComplete((files, failure) -> com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil
+                            .runOnMainThread(() -> {
+                                if (failure == null && !files.isEmpty()) {
+                                    NCMScreen.getInstance().openMusicDownloads(folder);
+                                } else {
+                                    DownloadDynamicIsland.showModelOperationResult(MusicDownloadSheet.text("local"),
+                                            MusicDownloadSheet.text(failure == null ? "empty_files" : "read_failed"), false);
+                                }
+                            }));
             return;
         }
         final PlayList created;
@@ -363,9 +411,14 @@ public final class PlaylistCreateSheet extends NcmSheet {
     }
 
     private void submit() {
+        if (busy || createUnconfirmed || closing) return;
+        if (createdQQ != null) {
+            addToCreatedQQ();
+            return;
+        }
         final String name = input.getText() == null ? "" : input.getText().trim();
         if (name.isEmpty()) {
-            statusText = renaming == null ? "先给歌单起个名字" : "名字不能是空的";
+            statusText = firstTrack != null ? text("name_required") : renaming == null ? "先给歌单起个名字" : "名字不能是空的";
             failed = true;
             return;
         }
@@ -373,13 +426,21 @@ public final class PlaylistCreateSheet extends NcmSheet {
             renameTo(name);
             return;
         }
+        if (qqPlaylists != null) {
+            createQQ(name);
+            return;
+        }
         final PlayList created;
         try {
-            created = LocalPlaylistStore.create(name);
-        } catch (Throwable failure) {
-            statusText = "建单失败：" + (failure.getMessage() == null || failure.getMessage().trim().isEmpty()
+            created = LocalPlaylistStore.create(name, firstTrack);
+        } catch (RuntimeException failure) {
+            statusText = firstTrack != null ? text("save_failed") : "建单失败：" + (failure.getMessage() == null || failure.getMessage().trim().isEmpty()
                     ? "本机写入出错" : failure.getMessage().trim());
             failed = true;
+            return;
+        }
+        if (firstTrack != null) {
+            finishCreateForTrack(created.getName());
             return;
         }
         NCMScreen.getInstance().markDirty();
@@ -387,6 +448,57 @@ public final class PlaylistCreateSheet extends NcmSheet {
         dispose();
         // 建完直接进这张单：空列表配一句提示，比让用户回到侧栏再找它一次要顺。
         NCMScreen.getInstance().setCurrentPanel(new PlaylistPanel(created));
+    }
+
+    private void createQQ(String name) {
+        busy = true;
+        failed = false;
+        statusText = text("working");
+        input.setEnabled(false);
+        qqPlaylists.create(name).whenComplete((created, failure) -> MultiThreadingUtil.runOnMainThread(() -> {
+            busy = false;
+            if (failure != null) {
+                failed = true;
+                createUnconfirmed = true;
+                statusText = text(qqPlaylists.available() ? "qq_create_unconfirmed" : "qq_account_changed");
+                if (NCMScreen.getInstance().addToPlaylistOverlay != null) {
+                    NCMScreen.getInstance().addToPlaylistOverlay.reloadQQPlaylists();
+                }
+                return;
+            }
+            createdQQ = created;
+            if (NCMScreen.getInstance().playlistCreateSheet == this && !closing) addToCreatedQQ();
+            else AddToPlaylistOverlay.refreshQQSidebar(qqPlaylists);
+        }));
+    }
+
+    private void addToCreatedQQ() {
+        busy = true;
+        failed = false;
+        statusText = text("adding", createdQQ.name());
+        qqPlaylists.add(createdQQ, firstTrack.getSourceMid()).whenComplete((added, failure) ->
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    busy = false;
+                    AddToPlaylistOverlay.refreshQQSidebar(qqPlaylists);
+                    var screen = NCMScreen.getInstance();
+                    if (screen.playlistCreateSheet != this || closing) return;
+                    if (failure == null) {
+                        finishCreateForTrack(createdQQ.name());
+                    } else {
+                        failed = true;
+                        statusText = text(qqPlaylists.available() ? "qq_created_add_failed" : "qq_account_changed",
+                                createdQQ.name());
+                        if (screen.addToPlaylistOverlay != null) screen.addToPlaylistOverlay.reloadQQPlaylists();
+                    }
+                }));
+    }
+
+    private void finishCreateForTrack(String name) {
+        var screen = NCMScreen.getInstance();
+        screen.markDirty();
+        if (screen.addToPlaylistOverlay != null) screen.addToPlaylistOverlay.requestClose();
+        DownloadDynamicIsland.showModelOperationResult(text("title"), text("added", name), true);
+        dispose();
     }
 
     /**

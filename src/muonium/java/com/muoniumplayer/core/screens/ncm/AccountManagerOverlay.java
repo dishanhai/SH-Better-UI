@@ -1390,8 +1390,8 @@ public class AccountManagerOverlay extends NcmSheet {
                 () -> appleText(account.stateKey(appleLinksAllowed())),
                 () -> NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT), () -> 6.0);
 
-        RoundedButtonWidget connect = action(dialog, () -> account.running() ? PartyIcons.CLOSE : PartyIcons.KEY,
-                () -> appleText(account.running() ? "close" : "open"), FontManager.pf12bold, () -> 0xFFFFFF,
+        RoundedButtonWidget connect = action(dialog, () -> account.running() || account.connecting() ? PartyIcons.CLOSE : PartyIcons.KEY,
+                () -> appleText(account.actionKey()), FontManager.pf12bold, () -> 0xFFFFFF,
                 () -> account.toggleConnection(appleLinksAllowed()));
         connect.setRadius(6.0);
         connect.setBeforeRenderCallback(() -> {

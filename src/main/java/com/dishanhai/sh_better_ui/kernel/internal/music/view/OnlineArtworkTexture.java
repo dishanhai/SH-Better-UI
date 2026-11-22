@@ -21,6 +21,7 @@ public final class OnlineArtworkTexture implements AutoCloseable, MusicCoverHand
     }
     private static final AtomicLong IDS = new AtomicLong();
     private final long instance = IDS.incrementAndGet();
+    private final float cornerFraction;
     private final ResourceLocation id = ResourceLocation.tryParse("sh_better_ui:music/online_cover_" + instance);
     private final ScheduledThreadPoolExecutor worker = new ScheduledThreadPoolExecutor(1, job -> {
         var thread = new Thread(job, "shb-online-cover"); thread.setDaemon(true); return thread;
@@ -33,7 +34,13 @@ public final class OnlineArtworkTexture implements AutoCloseable, MusicCoverHand
     private long generation;
     private boolean closed;
     private com.dishanhai.sh_better_ui.kernel.api.OwnershipLease lease;
-    public OnlineArtworkTexture() { worker.setRemoveOnCancelPolicy(true); }
+    public OnlineArtworkTexture() { this(0); }
+    OnlineArtworkTexture(float cornerFraction) {
+        this.cornerFraction = cornerFraction;
+        worker.setRemoveOnCancelPolicy(true);
+        worker.setKeepAliveTime(2, TimeUnit.SECONDS);
+        worker.allowCoreThreadTimeOut(true);
+    }
 
     public synchronized Optional<Texture> texture(OnlineTrack track) {
         return Optional.ofNullable(poll(track == null ? "" : track.artworkUrl()).image());
@@ -79,6 +86,17 @@ public final class OnlineArtworkTexture implements AutoCloseable, MusicCoverHand
                 pixels[y * columns + x] = (abgr & 0xff00ff00) | ((abgr >>> 16) & 255) | ((abgr & 255) << 16);
             }
             var colors = ArtworkPalette.fromArgb(columns, rows, pixels);
+            if (cornerFraction > 0) {
+                int size = MusicArtworkThumbnail.size(image.getWidth(), image.getHeight());
+                int[] thumbnailPixels = MusicArtworkThumbnail.pixels(image.getWidth(), image.getHeight(),
+                        cornerFraction, image::getPixelRGBA);
+                var thumbnail = new NativeImage(size, size, false);
+                image.close();
+                image = thumbnail;
+                for (int y = 0; y < size; y++) for (int x = 0; x < size; x++) {
+                    image.setPixelRGBA(x, y, thumbnailPixels[y * size + x]);
+                }
+            }
             synchronized (this) {
                 if (!closed && ticket == generation && !Thread.currentThread().isInterrupted()) {
                     pending = image; pendingPalette = colors; image = null;

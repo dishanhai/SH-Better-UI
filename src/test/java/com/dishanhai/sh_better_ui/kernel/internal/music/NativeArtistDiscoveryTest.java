@@ -37,6 +37,62 @@ class NativeArtistDiscoveryTest {
                 QQMusicSource.parseSearch(input, 20).get(0).artists());
     }
 
+    @Test void qqArtistSongsUseTheProviderPageSizeAndStableTrackMetadata() throws Exception {
+        var artist = new OnlineArtist("qq", "singer1", "Artist");
+        var source = new QQMusicSource(new QQFavorites(), (url, body, type, referer, cookies) -> {
+            var request = JsonParser.parseString(body).getAsJsonObject().getAsJsonObject("req");
+            assertEquals("GetSingerSongList", request.get("method").getAsString());
+            var params = request.getAsJsonObject("param");
+            assertEquals("singer1", params.get("singerMid").getAsString());
+            assertEquals(20, params.get("begin").getAsInt());
+            assertEquals(20, params.get("num").getAsInt());
+            return JsonParser.parseString("""
+                    {"code":0,"req":{"code":0,"data":{"singerMid":"singer1","totalNum":42,"songList":[
+                      {"songInfo":{"id":123,"mid":"song1","name":"Title","pay":{"pay_play":1}}}
+                    ]}}}
+                    """).getAsJsonObject();
+        });
+        var page = source.artistTracks(artist, 2, 20);
+        assertEquals(42, page.total());
+        assertTrue(page.mayHaveMore());
+        assertEquals("123", page.tracks().get(0).catalogId());
+        assertEquals("song1", page.tracks().get(0).id());
+        assertTrue(page.tracks().get(0).vip());
+    }
+
+    @Test void qqAlbumUsesProviderIdentityAndPreservesReleaseOrder() throws Exception {
+        var calls = new ArrayList<String>();
+        var source = new QQMusicSource(new QQFavorites(), (url, body, type, referer, cookies) -> {
+            var request = JsonParser.parseString(body).getAsJsonObject().getAsJsonObject("req");
+            var method = request.get("method").getAsString();
+            calls.add(method);
+            var params = request.getAsJsonObject("param");
+            if (method.equals("GetAlbumDetail")) {
+                assertEquals("album1", params.get("albumMId").getAsString());
+                return JsonParser.parseString("""
+                        {"code":0,"req":{"code":0,"data":{"basicInfo":{"albumMid":"album1",
+                          "albumName":"Release","publishDate":"2020-01-01","desc":"About this record"},
+                          "singer":{"singerList":[{"mid":"singer1","name":"Artist"}]}}}}
+                        """).getAsJsonObject();
+            }
+            assertEquals("album1", params.get("albumMid").getAsString());
+            assertEquals(2, params.get("order").getAsInt());
+            return JsonParser.parseString("""
+                    {"code":0,"req":{"code":0,"data":{"albumMid":"album1","totalNum":2,"songList":[
+                      {"songInfo":{"mid":"song2","name":"First","album":{"mid":"album1","name":"Release"}}},
+                      {"songInfo":{"mid":"song1","name":"Second","album":{"mid":"album1","name":"Release"}}}
+                    ]}}}
+                    """).getAsJsonObject();
+        });
+        var album = new OnlineAlbum("qq", "album1", "Release", "", "");
+        var detail = source.albumDetail(album);
+        assertEquals(List.of("GetAlbumDetail", "GetAlbumSongList"), calls);
+        assertEquals("2020-01-01", detail.album().releaseDate());
+        assertEquals(List.of(new OnlineArtist("qq", "singer1", "Artist")), detail.artists());
+        assertEquals(List.of("song2", "song1"), detail.tracks().stream().map(OnlineTrack::id).toList());
+        assertEquals(album.id(), detail.tracks().get(0).release().id());
+    }
+
     @Test void artistRequestPreservesProviderOrderAndRejectsSameNameDifferentIdentity() throws Exception {
         var page = new ArrayList<>(List.of(
                 song("1", new OnlineArtist("test", "other", ARTIST.name())),

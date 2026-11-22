@@ -15,10 +15,23 @@ public final class OnlineArtwork {
 
     /** Legacy provider metadata sometimes uses HTTP; upgrade only known CDN hosts to HTTPS. */
     public static URI validated(String value) throws IOException {
+        return validated(value, false);
+    }
+
+    public static URI validatedAvatar(String value) throws IOException {
+        return validated(value, true);
+    }
+
+    private static URI validated(String value, boolean avatar) throws IOException {
         try {
             URI uri = URI.create(value);
             String host = uri.getHost();
             boolean known = host != null && (host.equals("y.gtimg.cn") || host.matches("p[1-9][0-9]?\\.music\\.126\\.net"));
+            if (avatar && host != null) {
+                known |= host.matches("(thirdqq|q[0-9]?)\\.qlogo\\.cn") || host.matches("pic[0-9]+\\.y\\.qq\\.com")
+                        || host.equals("y.qq.com") || host.matches("p[0-9]{1,2}\\.music\\.126\\.net")
+                        || host.equals("imge.kugou.com") || host.equals("img.kugou.com");
+            }
             if (!known || uri.getRawUserInfo() != null || uri.getPort() != -1 || uri.getRawFragment() != null
                     || !("https".equals(uri.getScheme()) || "http".equals(uri.getScheme())) || value.length() > 2048)
                 throw new IOException("Unsupported artwork address");
@@ -30,7 +43,15 @@ public final class OnlineArtwork {
             .connectTimeout(java.time.Duration.ofSeconds(4)).followRedirects(java.net.http.HttpClient.Redirect.NEVER).build();
 
     public static byte[] download(String value) throws IOException {
-        URI uri = validated(value);
+        return download(value, false);
+    }
+
+    public static byte[] downloadAvatar(String value) throws IOException {
+        return download(value, true);
+    }
+
+    private static byte[] download(String value, boolean avatar) throws IOException {
+        URI uri = validated(value, avatar);
         long deadline = System.nanoTime() + java.util.concurrent.TimeUnit.SECONDS.toNanos(20);
         for (int redirect = 0; redirect <= 3; redirect++) {
             if (Thread.currentThread().isInterrupted() || System.nanoTime() > deadline) throw new InterruptedIOException();
@@ -50,11 +71,11 @@ public final class OnlineArtwork {
             if (code >= 300 && code < 400) {
                 String location = response.headers().firstValue("Location").orElse(null);
                 if (location == null) throw new IOException("Missing artwork redirect");
-                uri = validated(uri.resolve(location).toString());
+                uri = validated(uri.resolve(location).toString(), avatar);
                 continue;
             }
             if (code != 200) throw new IOException("Artwork unavailable");
-            return normalize(response.body());
+            return normalize(response.body(), avatar ? 64 : 512);
         }
         throw new IOException("Too many artwork redirects");
     }
@@ -83,6 +104,10 @@ public final class OnlineArtwork {
 
     /** Inspect dimensions before allocating pixels, then make a bounded PNG for the GPU decoder. */
     public static byte[] normalize(byte[] bytes) throws IOException {
+        return normalize(bytes, 512);
+    }
+
+    private static byte[] normalize(byte[] bytes, int maxSide) throws IOException {
         if (bytes.length == 0 || bytes.length > MAX_BYTES) throw new IOException("Invalid artwork size");
         try (var input = new MemoryCacheImageInputStream(new ByteArrayInputStream(bytes))) {
             var readers = ImageIO.getImageReaders(input);
@@ -95,7 +120,7 @@ public final class OnlineArtwork {
                 int w = reader.getWidth(0), h = reader.getHeight(0);
                 if (w < 1 || h < 1 || w > 2048 || h > 2048) throw new IOException("Artwork dimensions too large");
                 var source = reader.read(0);
-                double scale = Math.min(1d, 512d / Math.max(w, h));
+                double scale = Math.min(1d, (double) maxSide / Math.max(w, h));
                 var image = new BufferedImage(Math.max(1, (int)(w * scale)), Math.max(1, (int)(h * scale)), BufferedImage.TYPE_INT_ARGB);
                 var graphics = image.createGraphics();
                 try { graphics.setRenderingHint(RenderingHints.KEY_INTERPOLATION, RenderingHints.VALUE_INTERPOLATION_BILINEAR);

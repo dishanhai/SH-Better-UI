@@ -6,12 +6,13 @@ import com.muoniumplayer.core.utils.other.multithreading.BackgroundWork;
 
 import java.io.File;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
+import java.util.function.Predicate;
 
 /**
  * 磁盘音频缓存的容量兜底。
@@ -53,6 +54,14 @@ public final class MusicAudioCache {
     private static final String[] PARTIAL_SUFFIXES = {".download", ".part", ".jaad-input", ".decrypted"};
 
     private static final Object LOCK = new Object();
+    private static final Object SWEEP_LOCK = new Object();
+    private static final long REPLAY_MAX_AGE_MILLIS = 30 * 60 * 1000L;
+    private static final Map<String, Replay> REPLAYS = new LinkedHashMap<>();
+    private static long revision;
+    private static CompletableFuture<Sweep> clearing;
+
+    private record Replay(long until, String type, long bytes, long modified,
+                          com.muoniumplayer.core.ncm.music.dto.Music.PlaybackQuality quality) {}
 
     /** 组名 -> 最近一次被播放流程解析出来的时刻。lastModified 只记写入，读命中不会更新它。 */
     private static final LinkedHashMap<String, Long> RECENT = new LinkedHashMap<String, Long>();
@@ -88,6 +97,73 @@ public final class MusicAudioCache {
 
     public static File directory() {
         return DIRECTORY;
+    }
+
+    static long revision() {
+        synchronized (LOCK) { return revision; }
+    }
+
+    public static void invalidateReplay() {
+        synchronized (LOCK) {
+            revision++;
+            REPLAYS.clear();
+        }
+    }
+
+    static void rememberReplay(String key, File file, com.muoniumplayer.core.ncm.music.dto.Music song, long expectedRevision) {
+        File source = file.getName().endsWith(".decoded.wav")
+                ? AudioCacheFiles.findCachedAudioFile(DIRECTORY, key, null) : file;
+        if (source == null) return;
+        String type = AudioContainerSupport.detectContainer(source);
+        if (!AudioContainerSupport.isSupportedContainer(type)) return;
+        synchronized (LOCK) {
+            if (expectedRevision != revision) return;
+            REPLAYS.remove(key);
+            REPLAYS.put(key, new Replay(System.currentTimeMillis() + REPLAY_MAX_AGE_MILLIS, type,
+                    source.length(), source.lastModified(), song.getPlaybackQuality()));
+            if (REPLAYS.size() > 512) REPLAYS.remove(REPLAYS.keySet().iterator().next());
+        }
+    }
+
+    static File replayFile(String key, com.muoniumplayer.core.ncm.music.dto.Music song) {
+        synchronized (LOCK) {
+            Replay replay = REPLAYS.get(key);
+            if (replay == null || replay.until() < System.currentTimeMillis()) return null;
+            File file = AudioCacheFiles.findCachedAudioFile(DIRECTORY, key, replay.type());
+            if (file == null || file.length() != replay.bytes() || file.lastModified() != replay.modified()) return null;
+            song.setPlaybackQuality(replay.quality());
+            touch(file);
+            return file;
+        }
+    }
+
+    static void forgetReplay(String key) {
+        synchronized (LOCK) { REPLAYS.remove(key); }
+    }
+
+    /** Remove finished idle entries only. The same directory and grouping rules apply to auto-eviction. */
+    public static CompletableFuture<Sweep> clearIdleAsync() {
+        CompletableFuture<Sweep> result;
+        synchronized (LOCK) {
+            if (clearing != null && !clearing.isDone()) return clearing.copy();
+            result = new CompletableFuture<>();
+            clearing = result;
+        }
+        BackgroundWork.submit(() -> {
+            synchronized (SWEEP_LOCK) {
+                long now = System.currentTimeMillis();
+                invalidateReplay();
+                try {
+                    Sweep sweep = sweep(DIRECTORY, 0, now, Map.of(), 0, PARTIAL_MAX_AGE_MILLIS,
+                            true, CloudMusic::musicCacheGroupInUse);
+                    publishMeasuredBytes(sweep.remainingBytes);
+                    result.complete(sweep);
+                } catch (RuntimeException failure) {
+                    result.completeExceptionally(failure);
+                }
+            }
+        }).exceptionally(failure -> { result.completeExceptionally(failure); return null; });
+        return result.copy();
     }
 
     /** 当前缓存目录占用。目录不存在时返回 0。 */
@@ -172,26 +248,25 @@ public final class MusicAudioCache {
      * <p>上限为 0（不限制）时仍然会清掉过期残片：那些文件任何情况下都没有价值。</p>
      */
     public static Sweep enforceLimit() {
-        if (sweeping) return new Sweep(0L, totalBytes(), 0, 0);
-        sweeping = true;
-        try {
-            Sweep result = sweep(DIRECTORY, configuredLimitBytes(), System.currentTimeMillis(),
-                    snapshotRecent(), PROTECTED_RECENT_GROUPS, PARTIAL_MAX_AGE_MILLIS);
-            publishMeasuredBytes(result.remainingBytes);
-            if (result.freedBytes > 0L) {
-                // 自动清理刻意不弹灵动岛：它总是跟在下载/转码通知后面，再插一条只会挤掉更重要的信息。
-                // 留一行日志，事后能从 latest.log 里查到到底删了什么规模的缓存。
-                System.out.println("[Cache] freed " + formatBytes(result.freedBytes)
-                        + " from the music cache, " + result.removedGroups + " track(s) removed, "
-                        + formatBytes(result.remainingBytes) + " left"
-                        + (result.skippedGroups > 0 ? " (" + result.skippedGroups + " in use)" : ""));
+        synchronized (SWEEP_LOCK) {
+            sweeping = true;
+            try {
+                Sweep result = sweep(DIRECTORY, configuredLimitBytes(), System.currentTimeMillis(),
+                        snapshotRecent(), PROTECTED_RECENT_GROUPS, PARTIAL_MAX_AGE_MILLIS,
+                        false, CloudMusic::musicCacheGroupInUse);
+                publishMeasuredBytes(result.remainingBytes);
+                if (result.freedBytes > 0L) {
+                    System.out.println("[Cache] freed " + formatBytes(result.freedBytes)
+                            + " from the music cache, " + result.removedGroups + " track(s) removed, "
+                            + formatBytes(result.remainingBytes) + " left"
+                            + (result.skippedGroups > 0 ? " (" + result.skippedGroups + " in use)" : ""));
+                }
+                return result;
+            } catch (Throwable ignored) {
+                return new Sweep(0L, totalBytes(), 0, 0);
+            } finally {
+                sweeping = false;
             }
-            return result;
-        } catch (Throwable ignored) {
-            // 清理失败不该影响播放，下一次下载还会再试。
-            return new Sweep(0L, totalBytes(), 0, 0);
-        } finally {
-            sweeping = false;
         }
     }
 
@@ -217,13 +292,20 @@ public final class MusicAudioCache {
      */
     static Sweep sweep(File directory, long limitBytes, long now,
                        Map<String, Long> recent, int protectedGroups, long partialMaxAge) {
+        return sweep(directory, limitBytes, now, recent, protectedGroups, partialMaxAge, false, group -> false);
+    }
+
+    static Sweep sweep(File directory, long limitBytes, long now, Map<String, Long> recent,
+                       int protectedGroups, long partialMaxAge, boolean clear, Predicate<String> inUse) {
         File[] files = directory == null ? null : directory.listFiles();
+        if (clear && files == null && directory != null && directory.exists())
+            throw new IllegalStateException("Cannot list the music cache");
         if (files == null) return new Sweep(0L, 0L, 0, 0);
 
         long freed = 0L;
         Map<String, GroupState> groups = new LinkedHashMap<String, GroupState>();
         for (File file : files) {
-            if (!file.isFile()) continue;
+            if (!java.nio.file.Files.isRegularFile(file.toPath(), java.nio.file.LinkOption.NOFOLLOW_LINKS)) continue;
             String name = file.getName();
 
             // 上一轮改名到一半被打断留下的文件，任何情况下都是垃圾。
@@ -258,39 +340,46 @@ public final class MusicAudioCache {
 
         long total = 0L;
         for (GroupState state : groups.values()) total += state.bytes;
-        if (limitBytes <= 0L || total <= limitBytes) {
+        if (!clear && (limitBytes <= 0L || total <= limitBytes)) {
             return new Sweep(freed, total, 0, 0);
         }
 
-        List<GroupState> candidates = new ArrayList<GroupState>();
+        List<Map.Entry<String, GroupState>> candidates = new ArrayList<>();
+        int skipped = 0;
         for (Map.Entry<String, GroupState> entry : groups.entrySet()) {
             GroupState state = entry.getValue();
             Long touched = recent == null ? null : recent.get(entry.getKey());
             if (touched != null) state.touch(touched.longValue());
-            if (state.busy || state.files.isEmpty()) continue;
-            candidates.add(state);
+            if (state.busy || state.files.isEmpty()) {
+                if (clear) skipped++;
+                continue;
+            }
+            candidates.add(entry);
         }
 
         // 最近使用的在后面。末尾的 protectedGroups 组直接不考虑。
-        Collections.sort(candidates, new Comparator<GroupState>() {
-            public int compare(GroupState left, GroupState right) {
-                return left.newest < right.newest ? -1 : (left.newest > right.newest ? 1 : 0);
-            }
-        });
+        candidates.sort(Comparator.comparingLong(entry -> entry.getValue().newest));
         int evictable = Math.max(0, candidates.size() - Math.max(0, protectedGroups));
 
         int removed = 0;
-        int skipped = 0;
-        for (int index = 0; index < evictable && total > limitBytes; index++) {
-            GroupState state = candidates.get(index);
-            long released = evictGroup(state);
-            if (released <= 0L) {
+        for (int index = 0; index < evictable && (clear || total > limitBytes); index++) {
+            var entry = candidates.get(index);
+            GroupState state = entry.getValue();
+            long released;
+            synchronized (LOCK) {
+                Long lastUse = RECENT.get(entry.getKey());
+                if (inUse.test(entry.getKey()) || lastUse != null && lastUse >= now) {
+                    skipped++;
+                    continue;
+                }
+                released = evictGroup(state);
+            }
+            if (released < state.bytes) {
                 skipped++;
-                continue;
             }
             freed += released;
             total -= released;
-            removed++;
+            if (released == state.bytes) removed++;
         }
         return new Sweep(freed, total, removed, skipped);
     }

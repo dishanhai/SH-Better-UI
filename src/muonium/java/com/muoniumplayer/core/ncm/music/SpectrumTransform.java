@@ -20,9 +20,23 @@ final class SpectrumTransform {
         if (sampleRate < 8000 || left.length < window.length || right.length < window.length)
             throw new IllegalArgumentException("Invalid spectrum frame");
         if (sampleRate != mappedRate) map(sampleRate);
-        Arrays.fill(power,0.0);
-        transformChannel(left);
-        transformChannel(right); // power summation preserves stereo anti-phase and right-only sound
+        double leftEnergy = windowChannel(left, real);
+        double rightEnergy = windowChannel(right, imaginary);
+        if (leftEnergy < 1e-12 && rightEnergy < 1e-12) {
+            Arrays.fill(result, 0, BANDS, 0f);
+            return;
+        }
+        if (leftEnergy < 1e-12) Arrays.fill(real, 0.0);
+        if (rightEnergy < 1e-12) Arrays.fill(imaginary, 0.0);
+        // Pack two real signals into one complex FFT. The conjugate bin pair cancels the
+        // cross terms: (|Z[k]|² + |Z[N-k]|²) / 2 = |L[k]|² + |R[k]|².
+        FourierMath.fft(window.length, real, imaginary);
+        for (int bin = 1; bin < power.length; bin++) {
+            int mirror = window.length - bin;
+            double positive = real[bin] * real[bin] + imaginary[bin] * imaginary[bin];
+            double negative = real[mirror] * real[mirror] + imaginary[mirror] * imaginary[mirror];
+            power[bin] = (positive + negative) * .5;
+        }
         for (int band=0; band<BANDS; band++) {
             double strongest=0.0;
             for (int bin=starts[band]; bin<ends[band]; bin++) strongest=Math.max(strongest,power[bin]);
@@ -31,7 +45,7 @@ final class SpectrumTransform {
             result[band]=(float)Math.max(0.0,Math.min(1.0,(db+72.0)/66.0));
         }
     }
-    private void transformChannel(float[] channel) {
+    private double windowChannel(float[] channel, double[] destination) {
         double mean=0.0;
         for (int i=0; i<window.length; i++) mean+=Float.isFinite(channel[i]) ? channel[i] : 0f;
         mean/=window.length;
@@ -39,11 +53,9 @@ final class SpectrumTransform {
         for (int i=0; i<window.length; i++) {
             double sample=(Float.isFinite(channel[i]) ? channel[i] : 0f)-mean;
             energy+=sample*sample;
-            real[i]=sample*window[i]; imaginary[i]=0.0;
+            destination[i] = sample * window[i];
         }
-        if (energy < 1e-12) return;
-        FourierMath.fft(window.length,real,imaginary);
-        for (int i=1; i<power.length; i++) power[i]+=real[i]*real[i]+imaginary[i]*imaginary[i];
+        return energy;
     }
     private void map(int rate) {
         mappedRate=rate;

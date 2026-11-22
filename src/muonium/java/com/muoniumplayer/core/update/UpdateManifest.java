@@ -79,18 +79,16 @@ public final class UpdateManifest {
     private final JsonObject channels;
     private final Entry fallback;
     private final List<Announcement> announcements;
-    private final List<Announcement> sponsorships;
     private final List<Announcement> communities;
     private final long contentRevision;
 
     private UpdateManifest(int schema, JsonObject channels, Entry fallback,
-                           List<Announcement> announcements, List<Announcement> sponsorships,
-                           List<Announcement> communities, long contentRevision) {
+                           List<Announcement> announcements, List<Announcement> communities,
+                           long contentRevision) {
         this.schema = schema;
         this.channels = channels;
         this.fallback = fallback;
         this.announcements = announcements;
-        this.sponsorships = sponsorships;
         this.communities = communities;
         this.contentRevision = contentRevision;
     }
@@ -121,14 +119,12 @@ public final class UpdateManifest {
             JsonObject channels = childObject(root, "channels");
             Entry fallback = readEntry(childObject(root, "fallback"));
             List<Announcement> announcements = readAnnouncements(root.get("announcements"));
-            List<Announcement> sponsorships = readAnnouncements(root.get("sponsorships"));
             List<Announcement> communities = readAnnouncements(root.get("communities"));
-            if (channels == null && fallback == null && announcements.isEmpty()
-                    && sponsorships.isEmpty() && communities.isEmpty()) {
+            if (channels == null && fallback == null && announcements.isEmpty() && communities.isEmpty()) {
                 return null;
             }
-            return new UpdateManifest(schema, channels, fallback, announcements, sponsorships,
-                    communities, readContentRevision(root.get("contentRevision")));
+            return new UpdateManifest(schema, channels, fallback, announcements, communities,
+                    readContentRevision(root.get("contentRevision")));
         } catch (Throwable malformed) {
             return null;
         }
@@ -168,10 +164,6 @@ public final class UpdateManifest {
     }
 
     /** Passive cards: ids are scoped to this section and never enter announcement read tracking. */
-    public List<Announcement> sponsorships() {
-        return this.sponsorships;
-    }
-
     public List<Announcement> communities() {
         return this.communities;
     }

@@ -6,7 +6,7 @@ import java.util.List;
 
 /**
  * Immutable remote content card. Only announcement ids participate in read tracking;
- * sponsorships and communities use the same data shape with their own id scopes.
+ * community cards use the same data shape with a separate id scope.
  */
 public final class Announcement {
 

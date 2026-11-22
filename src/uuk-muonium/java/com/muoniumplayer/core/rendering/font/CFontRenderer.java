@@ -454,7 +454,10 @@ public class CFontRenderer implements Closeable, SharedConstants {
      */
     private GlyphRef[][] glyphBlocks = new GlyphRef[256][];
 
-    private GlyphRef glyphRef(char c) {
+    private final Map<Integer, GlyphRef> supplementaryGlyphs = new HashMap<>();
+
+    private GlyphRef glyphRef(int c) {
+        if (c > Character.MAX_VALUE) return supplementaryGlyphs.computeIfAbsent(c, this::resolve);
         int hi = (c >>> 8) & 0xFF;
         int lo = c & 0xFF;
         GlyphRef[] block = glyphBlocks[hi];
@@ -470,7 +473,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
         return ref;
     }
 
-    private GlyphRef resolve(char c) {
+    private GlyphRef resolve(int c) {
         for (int i = 0; i < skTypefaces.length; i++) {
             short glyphId = skTypefaces[i].getUTF32Glyph(c);
             if (glyphId != 0) {
@@ -602,7 +605,9 @@ public class CFontRenderer implements Closeable, SharedConstants {
         double right = Double.NEGATIVE_INFINITY, bottom = Double.NEGATIVE_INFINITY;
         double x = 0, y = baselineOffset - 2;
         for (int i = 0; i < text.length(); i++) {
-            char c = text.charAt(i), next = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
+            int c = text.codePointAt(i);
+            i += Character.charCount(c) - 1;
+            int next = i + 1 < text.length() ? text.codePointAt(i + 1) : 0;
             if (c == '\n') { x = 0; y += getHeight() + 2; continue; }
             c = replaceForMeasurement(c);
             GlyphRef ref = glyphRef(c);
@@ -616,7 +621,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 }
                 x += ref.advance;
             }
-            if (fontKerning != null && next != '\0' && next != '\n') x += fontKerning.getKerning(c, next, sizePx);
+            x += pairKerning(c, next);
         }
         io.github.humbleui.types.Rect ink = Double.isFinite(left) ? new io.github.humbleui.types.Rect(
                 (float) left, (float) top, (float) right, (float) bottom) : null;
@@ -679,8 +684,9 @@ public class CFontRenderer implements Closeable, SharedConstants {
         boolean inSel = false;
 
         for (int i = 0; i < s.length(); i++) {
-            char c = s.charAt(i);
-            char nextChar = i + 1 < s.length() ? s.charAt(i + 1) : '\0';
+            int c = s.codePointAt(i);
+            i += Character.charCount(c) - 1;
+            int nextChar = i + 1 < s.length() ? s.codePointAt(i + 1) : 0;
 
             if (inSel) {
                 inSel = false;
@@ -688,7 +694,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                     runs.flushBlob(canvas, x, originY, argb);
                     argb = baseArgb;
                 } else {
-                    int colorCode = this.getColorCode(c);
+                    int colorCode = c <= Character.MAX_VALUE ? getColorCode((char) c) : Integer.MIN_VALUE;
                     if (colorCode != Integer.MIN_VALUE) {
                         runs.flushBlob(canvas, x, originY, argb);
                         argb = (alpha255 << 24) | (colorCode & 0xFFFFFF);
@@ -719,9 +725,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
             }
 
             // 添加字间距
-            if (fontKerning != null && nextChar != '\0' && nextChar != '\u00a7' && nextChar != '\n') {
-                penX += fontKerning.getKerning(c, nextChar, sizePx);
-            }
+            if (nextChar != '\u00a7') penX += pairKerning(c, nextChar);
         }
 
         runs.flushBlob(canvas, x, originY, argb);
@@ -737,8 +741,9 @@ public class CFontRenderer implements Closeable, SharedConstants {
             double lineY = 0.0;
             double lineStep = this.getHeight() + 2.0;
             for (int i = 0; i < text.length(); i++) {
-                char c = text.charAt(i);
-                char next = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
+                int c = text.codePointAt(i);
+                i += Character.charCount(c) - 1;
+                int next = i + 1 < text.length() ? text.codePointAt(i + 1) : 0;
                 if (c == '\n') {
                     lineY += lineStep;
                     penX = 0.0;
@@ -752,9 +757,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                     runs.add(ref.fontIndex, ref.glyphId, (float) penX, (float) (lineY + baselineOffset));
                     penX += ref.advance;
                 }
-                if (fontKerning != null && next != '\0' && next != '\n') {
-                    penX += fontKerning.getKerning(c, next, sizePx);
-                }
+                penX += pairKerning(c, next);
             }
             return runs.buildBlob();
         } finally {
@@ -922,8 +925,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
      * 放得下的前缀」也不需要单调性 —— 每个长度都真量了一遍，和从长往短扫到第一个放得下的是同一个结果。</p>
      */
     private String trimLinear(String name, double width) {
-        final char[] chars = name.toCharArray();
-        final int n = chars.length;
+        final int n = name.length();
 
         // 省略号自身：三个点连排，最后一个点后面没有下一个字符。
         double ellipsisWidth = getCharWidth('.', '.') + getCharWidth('.', '.') + getCharWidth('.', '\0');
@@ -932,15 +934,17 @@ public class CFontRenderer implements Closeable, SharedConstants {
         // 不含末字符到第一个点的跨字步进 —— 那一项要单独加，因为它依赖省略号。
         double inner = 0.0;
         int bestFit = -1;             // 目前放得下的最长前缀长度，0 表示连一个字符都放不下
-        for (int i = 0; i < n; i++) {
-            char last = replaceForMeasurement(chars[i]);
-            double total = inner + getCharWidth(last, '.') + ellipsisWidth;
+        for (int i = 0; i < n;) {
+            int cp = name.codePointAt(i);
+            i += Character.charCount(cp);
+            int last = replaceForMeasurement(cp);
+            double total = inner + codePointWidth(last, '.') + ellipsisWidth;
             if (total <= width) {
-                bestFit = i + 1;      // 顺着往后走，最后一次点亮就是「最长的那个放得下」
+                bestFit = i;
             }
-            if (i + 1 < n) {
+            if (i < n) {
                 // 下一个前缀多出来的一步：前字符按替换后的形，后字符用原字符量字距。
-                inner += getCharWidth(last, chars[i + 1]);
+                inner += codePointWidth(last, name.codePointAt(i));
             }
         }
 
@@ -953,9 +957,10 @@ public class CFontRenderer implements Closeable, SharedConstants {
     }
 
     /** 与 {@link #getStringWidthD(String)} 同一套全角括号替换。 */
-    private static char replaceForMeasurement(char ch) {
+    private static int replaceForMeasurement(int ch) {
         if (ch == '（') return '(';
         if (ch == '）') return ')';
+        if (ch == '・') return '·';
         return ch;
     }
 
@@ -975,7 +980,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 return substring + ELLIPSIS;
             }
 
-            idx--;
+            idx = name.offsetByCodePoints(idx, -1);
         }
 
         return "";
@@ -1012,12 +1017,13 @@ public class CFontRenderer implements Closeable, SharedConstants {
 
         boolean shouldntAdd = false;
 
-        char[] c = stripControlCodes(text).toCharArray();
+        String plain = stripControlCodes(text);
         double currentLine = 0;
         double maxPreviousLines = 0;
-        for (int i = 0; i < c.length; i++) {
-            char c1 = c[i];
-            char c2 = i + 1 < c.length ? c[i + 1] : '\0';
+        for (int i = 0; i < plain.length();) {
+            int c1 = plain.codePointAt(i);
+            i += Character.charCount(c1);
+            int c2 = i < plain.length() ? plain.codePointAt(i) : 0;
 
             if (c1 == '\n') {
                 maxPreviousLines = Math.max(currentLine, maxPreviousLines);
@@ -1025,13 +1031,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 continue;
             }
 
-            if (c1 == '（')
-                c1 = '(';
-
-            if (c1 == '）')
-                c1 = ')';
-
-            float charWidth = getCharWidth(c1, c2);
+            float charWidth = codePointWidth(replaceForMeasurement(c1), c2);
 
             if (!shouldntAdd) {
                 shouldntAdd = charWidth == 0;
@@ -1071,6 +1071,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
         // Font changes invalidate glyph IDs, offsets and kerning in every blob.
         plainTextBlobs.close();
         glyphInkBounds.clear();
+        supplementaryGlyphs.clear();
         for (io.github.humbleui.skija.Font f : skFonts) {
             f.close();
         }
@@ -1089,6 +1090,21 @@ public class CFontRenderer implements Closeable, SharedConstants {
     }
 
     public float getCharWidth(char ch, char nextChar) {
+        return codePointWidth(ch, nextChar);
+    }
+
+    /** Advance of a cluster including kerning into the following cluster in this run. */
+    public double advanceInRun(String text, int start, int end) {
+        double width = 0;
+        for (int i = start; i < end;) {
+            int cp = text.codePointAt(i);
+            i += Character.charCount(cp);
+            width += codePointWidth(replaceForMeasurement(cp), i < text.length() ? text.codePointAt(i) : 0);
+        }
+        return width;
+    }
+
+    private float codePointWidth(int ch, int nextChar) {
         if (skFonts.length == 0) {
             return .0f;
         }
@@ -1097,14 +1113,13 @@ public class CFontRenderer implements Closeable, SharedConstants {
             return .0f;
         }
 
-        float width = ref.advance;
+        return ref.advance + pairKerning(ch, nextChar);
+    }
 
-        // 添加字间距
-        if (fontKerning != null && nextChar != '\0') {
-            width += fontKerning.getKerning(ch, nextChar, sizePx);
-        }
-
-        return width;
+    private float pairKerning(int ch, int next) {
+        if (fontKerning == null || ch > Character.MAX_VALUE || next > Character.MAX_VALUE
+                || next == 0 || next == '\n') return 0;
+        return fontKerning.getKerning((char) ch, (char) next, sizePx);
     }
 
     public double getStringHeight(String text) {
@@ -1221,12 +1236,13 @@ public class CFontRenderer implements Closeable, SharedConstants {
         int lastBreakableIndexPriority = 0;
         boolean lastBreakableTrimThisChar = false;
 
-        for (int i = startIndex; i < text.length(); i++) {
-            char c = text.charAt(i);
-            char nextChar = i + 1 < text.length() ? text.charAt(i + 1) : '\0';
+        for (int i = startIndex; i < text.length();) {
+            int c = text.codePointAt(i);
+            int end = i + Character.charCount(c);
+            int nextChar = end < text.length() ? text.codePointAt(end) : 0;
 
             if (c == '\247' && i + 1 < text.length()) {
-                i++;
+                i = end + Character.charCount(nextChar);
                 continue;
             }
 
@@ -1234,7 +1250,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 return new LineBreakResult(i, i + 1);
             }
 
-            int breakableCharValue = breakableChars[c];
+            int breakableCharValue = c < breakableChars.length ? breakableChars[c] : 0;
             if (breakableCharValue > 0) {
                 if (breakableCharValue == 1) {
                     int openIndex = findMatchingOpenBracket(text, i, startIndex);
@@ -1253,7 +1269,7 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 }
             }
 
-            double charWidth = getCharWidth(c, nextChar);
+            double charWidth = codePointWidth(replaceForMeasurement(c), nextChar);
 
             if (currentWidth + charWidth > maxWidth) {
                 if (breakableCharValue > 0 && breakableCharValue >= lastBreakableIndexPriority) {
@@ -1265,12 +1281,13 @@ public class CFontRenderer implements Closeable, SharedConstants {
                 }
 
                 if (i == startIndex) {
-                    return new LineBreakResult(startIndex + 1, startIndex + 1);
+                    return new LineBreakResult(end, end);
                 }
                 return new LineBreakResult(i, i);
             }
 
             currentWidth += charWidth;
+            i = end;
         }
 
         return new LineBreakResult(text.length(), text.length());

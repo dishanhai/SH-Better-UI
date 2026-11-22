@@ -7,6 +7,8 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiPointerCapture;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
 import com.dishanhai.sh_better_ui.client.visual.VisualFrameCoordinator;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
+import com.dishanhai.sh_better_ui.kernel.internal.WelcomeShortcutNotice;
+import com.dishanhai.sh_better_ui.kernel.internal.WelcomeShortcutNoticeRenderer;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -28,16 +30,19 @@ final class UiClientRendering {
         UiOverlayHost overlay = UiOverlayHost.current(owner);
         if (overlay != null) overlay.render(graphics, mouseX, mouseY, partialTick);
         UiToast.renderOverlay(graphics);
+        WelcomeShortcutNoticeRenderer.draw(graphics, owner, mouseX, mouseY);
     }
 
     static void renderHudOverlay(GuiGraphics graphics) {
         Minecraft minecraft = Minecraft.getInstance();
         if (minecraft.screen == null && minecraft.getOverlay() == null && !minecraft.options.hideGui) {
             UiToast.renderOverlay(graphics);
+            WelcomeShortcutNoticeRenderer.draw(graphics, null, -1, -1);
         }
     }
 
     static void screenClosing(Screen owner) {
+        WelcomeShortcutNotice.screenClosing(owner);
         VisualFrameCoordinator.cancel(owner);
         UiFrameScheduler.ownerClosing(owner, () -> {
             try {

@@ -24,6 +24,8 @@ SHBUI changes by dishanhai, November 2026:
   The embedded player's PCM route supports public previews and its provider fallback.
 * Bundled MP devices/keys, third-party song lyrics, Apple font binaries, and
   personal-use impulse responses are excluded.
+* The player's sponsorship reminder, its QR images and the sponsorship section
+  of the update manifest are removed.
 * Stock headphone surround uses the symmetric MIT KEMAR measurements by Bill
   Gardner and Keith Martin. The two SHBUI room presets use the University of
   Surrey's measured BRIRs. See META-INF/third-party/mit-kemar and surrey-brir

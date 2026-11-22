@@ -17,7 +17,7 @@ public final class MusicTransportControl extends AbstractWidget {
     public enum Glyph { PREVIOUS, PLAY, PAUSE, NEXT, BACK, LYRICS, QUEUE, STOP, CANCEL, SEARCH, FAVORITE, REMOVE, USER }
     private Glyph glyph;
     private final TransportGlyphMotion glyphMotion = new TransportGlyphMotion();
-    private final TransportPressMotion pressMotion = new TransportPressMotion();
+    private final MusicPressMotion pressMotion = new MusicPressMotion();
     private UiPreferences preferences;
     private final Runnable action,feedback;
     private boolean pointerPressed;

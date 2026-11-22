@@ -1,10 +1,15 @@
+// Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.api.music.platform.QQMusicPlaylists;
+import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.ncm.api.CloudMusicApi;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.KuGouMusicService;
 import com.muoniumplayer.core.ncm.music.LocalPlaylistStore;
 import com.muoniumplayer.core.ncm.music.MusicPlatform;
+import com.muoniumplayer.core.ncm.music.NeteaseMusicService;
 import com.muoniumplayer.core.ncm.music.dto.Music;
 import com.muoniumplayer.core.ncm.music.dto.PlayList;
 import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
@@ -18,9 +23,12 @@ import com.muoniumplayer.core.rendering.ui.widgets.RoundedImageWidget;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
 
 import java.util.ArrayList;
+import java.util.IdentityHashMap;
 import java.util.List;
+import java.util.Map;
 
 /**
  * 加入歌单弹窗：展示请求中的状态，并根据网易云接口的 HTTP 状态与业务 code 给出真实结果反馈。
@@ -30,7 +38,16 @@ public class AddToPlaylistOverlay extends NCMPanel {
     private static final double ROW_HEIGHT = 72.0;
     private static final double ROW_GAP = 8.0;
 
-    public Music music;
+    private final Music music;
+    private final QQMusicPlaylists qqPlaylists;
+    private final List<PlayList> qqRows = new ArrayList<>();
+    private final Map<PlayList, QQMusicPlaylists.Playlist> qqTargets = new IdentityHashMap<>();
+    private boolean qqLoading;
+    private boolean qqLoadFailed;
+    private boolean showQQ;
+    private record Choice(Panel row, String label) {}
+    private final List<Choice> choices = new ArrayList<>();
+    private int focusedChoice = -1;
     /** 接力板起点由 NCMScreen 从被点击的列表控件传入。 */
     private SheetHeroRelay.Origin heroOrigin;
     private LabelWidget heroTarget;
@@ -79,6 +96,13 @@ public class AddToPlaylistOverlay extends NCMPanel {
 
     public AddToPlaylistOverlay(Music music) {
         this.music = music;
+        qqPlaylists = music != null && music.isQQ() && music.getSourceMid() != null
+                && music.getSourceMid().matches("[A-Za-z0-9]{1,40}") ? NeteaseMusicService.openQQPlaylists() : null;
+        showQQ = qqPlaylists != null && qqPlaylists.available();
+    }
+
+    public static String text(String key, Object... args) {
+        return Component.translatable("sh_better_ui.muonium.playlist." + key, args).getString();
     }
 
     /** 正在退场：还画得着，但 {@link NCMPanel} 会把它这一帧的输入整个吞掉。 */
@@ -134,6 +158,41 @@ public class AddToPlaylistOverlay extends NCMPanel {
         clock.requestDismiss();
     }
 
+    void handleKey(int key) {
+        if (key == Keyboard.KEY_ESCAPE) {
+            requestClose();
+            return;
+        }
+        if (closing || choices.isEmpty()) return;
+        boolean enter = key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER || key == Keyboard.KEY_SPACE;
+        if (feedbackState == FeedbackState.ERROR && enter) {
+            submitToPlaylist(selectedPlaylist);
+            return;
+        }
+        if (feedbackState != FeedbackState.IDLE) return;
+        if (enter && focusedChoice >= 0) {
+            choices.get(focusedChoice).row().onMouseClicked(0, 0, 0);
+        } else if (key == Keyboard.KEY_TAB || key == Keyboard.KEY_DOWN || key == Keyboard.KEY_UP) {
+            boolean backwards = key == Keyboard.KEY_UP || key == Keyboard.KEY_TAB
+                    && (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
+            focusedChoice = focusedChoice < 0 && backwards ? choices.size() - 1
+                    : Math.floorMod(focusedChoice + (backwards ? -1 : 1), choices.size());
+            Choice choice = choices.get(focusedChoice);
+            MusicTypography.narrate(Component.literal(choice.label()));
+            Panel row = choice.row();
+            double top = 0;
+            for (AbstractWidget<?> child : playlistList.getChildren()) {
+                if (child == row) break;
+                top += child.getHeight() + ROW_GAP;
+            }
+            double offset = playlistList.actualScrollOffset;
+            if (top < offset) playlistList.scrollToOffsetImmediately(top);
+            else if (top + row.getHeight() > offset + playlistList.getHeight()) {
+                playlistList.scrollToOffsetImmediately(top + row.getHeight() - playlistList.getHeight());
+            }
+        }
+    }
+
     @Override
     public void renderWidget(double mouseX, double mouseY, int dWheel) {
         layout.render(this, mouseX, mouseY, dWheel, (x, y, wheel) -> {
@@ -161,6 +220,11 @@ public class AddToPlaylistOverlay extends NCMPanel {
                 hostGeneration = NCMScreen.getInstance().getContentHostGeneration();
                 hostGenerationCaptured = true;
             } else if (hostGeneration != NCMScreen.getInstance().getContentHostGeneration()) requestClose();
+            if (showQQ && !qqPlaylists.available()) {
+                showQQ = false;
+                qqRows.clear();
+                rebuildPlaylistList();
+            }
             preferredHeight = heightMotion.update(feedbackState == FeedbackState.IDLE ? 640 : 550, 65, now);
             feedbackPresentation = feedbackMotion.update(feedbackState == FeedbackState.IDLE ? 0 : 1, 55, now);
             if (!submitting && closeAfterMillis > 0L && now >= closeAfterMillis) requestClose();
@@ -179,7 +243,7 @@ public class AddToPlaylistOverlay extends NCMPanel {
         });
         dialog = NcmExpressive.shell(this, 620, () -> preferredHeight,
                 () -> presentation, this::requestClose);
-        NcmExpressive.header(dialog, PartyIcons.QUEUE_MUSIC, () -> "收藏音乐", () -> "添加到歌单", this::requestClose);
+        NcmExpressive.header(dialog, PartyIcons.QUEUE_MUSIC, () -> "", () -> text("title"), this::requestClose);
         if (music != null) CloudMusic.loadMusicCover(music);
         playlistList = new ScrollPanel();
         dialog.addChild(playlistList);
@@ -194,22 +258,47 @@ public class AddToPlaylistOverlay extends NCMPanel {
             }
         });
         buildFeedbackPanel();
-        NcmExpressive.label(dialog, () -> submitting ? "正在请求平台，请稍候" : feedbackState == FeedbackState.ERROR
-                        ? "未完成的操作不会显示为成功" : "本地歌单支持跨音源收藏", NcmExpressive.captionFont(),
-                () -> 24, () -> dialog.getHeight() - 49, () -> Math.max(1, dialog.getWidth() - 212),
-                () -> NcmExpressivePalette.live().muted());
-        NcmExpressive.action(dialog, null, () -> submitting ? "稍后查看" : feedbackState == FeedbackState.SUCCESS
-                        || feedbackState == FeedbackState.ALREADY_EXISTS ? "完成" : "取消", NcmExpressive.ActionStyle.NEUTRAL,
+        NcmExpressive.action(dialog, null, () -> text(submitting ? "close" : terminalSuccess() ? "done" : "cancel"),
+                NcmExpressive.ActionStyle.NEUTRAL,
                 () -> Math.max(24, dialog.getWidth() - 158), () -> dialog.getHeight() - 74,
                 () -> Math.min(134, Math.max(1, dialog.getWidth() - 48)), () -> NcmExpressive.BUTTON_HEIGHT,
                 this::requestClose);
-        rebuildPlaylistList();
-        if (music != null && music.isKuGou() && !KuGouMusicService.areUserPlaylistsLoaded() && !kuGouCallbackPending) {
+        if (showQQ) loadQQPlaylists();
+        else rebuildPlaylistList();
+        if (music != null && music.isKuGou() && KuGouMusicService.isLoggedIn()
+                && !KuGouMusicService.areUserPlaylistsLoaded() && !kuGouCallbackPending) {
             kuGouCallbackPending = true;
             KuGouMusicService.ensureUserPlaylistsAsync(() -> MultiThreadingUtil.runOnMainThread(() -> {
                     if (!closing && canPresentResult()) rebuildPlaylistList();
             }));
         }
+    }
+
+    void reloadQQPlaylists() {
+        if (qqPlaylists != null) loadQQPlaylists();
+    }
+
+    private void loadQQPlaylists() {
+        if (closing || !showQQ || qqLoading || !qqPlaylists.available()) return;
+        qqLoading = true;
+        qqLoadFailed = false;
+        rebuildPlaylistList();
+        qqPlaylists.list().whenComplete((targets, failure) -> MultiThreadingUtil.runOnMainThread(() -> {
+            if (!showQQ || !canPresentResult()) return;
+            qqLoading = false;
+            qqLoadFailed = failure != null;
+            qqRows.clear();
+            qqTargets.clear();
+            if (failure == null) {
+                for (var target : targets) {
+                    var row = new PlayList(target.id(), target.name(), "", target.trackCount(), 0L, null, "", 0L);
+                    row.setPlatform(MusicPlatform.QQ);
+                    qqRows.add(row);
+                    qqTargets.put(row, target);
+                }
+            }
+            rebuildPlaylistList();
+        }));
     }
 
     private void buildFeedbackPanel() {
@@ -264,7 +353,7 @@ public class AddToPlaylistOverlay extends NCMPanel {
         });
         NcmExpressive.progress(feedbackPanel, () -> 24, () -> feedbackPanel.getHeight() - 24,
                 () -> submitting ? Math.max(0, feedbackPanel.getWidth() - 48) : 0, () -> -1, () -> submitting);
-        NcmExpressive.action(feedbackPanel, PartyIcons.SYNC, () -> "重试加入", NcmExpressive.ActionStyle.PRIMARY,
+        NcmExpressive.action(feedbackPanel, PartyIcons.SYNC, () -> text("retry"), NcmExpressive.ActionStyle.PRIMARY,
                 () -> Math.max(16, feedbackPanel.getWidth() * .5 - 104), () -> feedbackPanel.getHeight() - 68,
                 () -> feedbackState == FeedbackState.ERROR && selectedPlaylist != null ? Math.min(208, feedbackPanel.getWidth() - 32) : 0,
                 () -> feedbackState == FeedbackState.ERROR ? 44 : 0, () -> submitToPlaylist(selectedPlaylist));
@@ -275,10 +364,10 @@ public class AddToPlaylistOverlay extends NCMPanel {
     }
 
     private String feedbackTitle() {
-        if (submitting) return "正在加入歌单";
-        if (feedbackState == FeedbackState.SUCCESS) return "已加入歌单";
-        if (feedbackState == FeedbackState.ALREADY_EXISTS) return "歌单中已存在";
-        return "这次没有加入成功";
+        if (submitting) return text("progress");
+        if (feedbackState == FeedbackState.SUCCESS) return text("success");
+        if (feedbackState == FeedbackState.ALREADY_EXISTS) return text("duplicate");
+        return text("failure");
     }
 
     private void wrapFeedback(double width) {
@@ -295,10 +384,17 @@ public class AddToPlaylistOverlay extends NCMPanel {
         if (closing || playlistList == null) return;
         List<PlayList> available = playListsForSource();
         if (available == null) available = new ArrayList<>();
-        if (samePlaylistRows(available) && !playlistList.getChildren().isEmpty()) return;
+        if (qqPlaylists == null && samePlaylistRows(available) && !playlistList.getChildren().isEmpty()) return;
         displayedPlaylists = new ArrayList<>(available);
         playlistList.getChildren().clear();
+        choices.clear();
+        focusedChoice = -1;
         addTrackPreview();
+        addChoice("create_local", PartyIcons.ADD, () -> NCMScreen.getInstance().openPlaylistCreateForTrack(music, null));
+        if (showQQ) {
+            addChoice("create_qq", PartyIcons.ADD, () -> NCMScreen.getInstance().openPlaylistCreateForTrack(music, qqPlaylists));
+            if (qqLoadFailed) addChoice("retry_qq", PartyIcons.SYNC, this::loadQQPlaylists);
+        }
         if (available.isEmpty()) {
             Panel empty = new Panel();
             empty.setBounds(1, 120);
@@ -307,16 +403,41 @@ public class AddToPlaylistOverlay extends NCMPanel {
             NcmExpressive.loading(empty, () -> empty.getWidth() * .5, () -> 34,
                     () -> music != null && music.isKuGou() && KuGouMusicService.areUserPlaylistsLoading() ? 36 : 0,
                     () -> NcmExpressivePalette.live().primary());
-            NcmExpressive.centered(empty, () -> music != null && music.isKuGou()
-                            && KuGouMusicService.areUserPlaylistsLoading() ? "正在获取你的歌单" : "暂无可用歌单",
+            NcmExpressive.centered(empty, () -> qqLoading || music != null && music.isKuGou()
+                            && KuGouMusicService.areUserPlaylistsLoading() ? text("loading") : text("no_destinations"),
                     NcmExpressive.labelFont(), () -> empty.getWidth() * .5, () -> 80,
                     () -> empty.getWidth() - 24, () -> NcmExpressivePalette.live().muted());
         } else {
             for (PlayList playlist : available) {
-                if (playlist != null) playlistList.addChild(new PlaylistRow(playlist));
+                if (playlist == null) continue;
+                var row = new PlaylistRow(playlist);
+                playlistList.addChild(row);
+                choices.add(new Choice(row, getPlaylistName(playlist)));
             }
         }
         // 这些行在渲染回调中量尺寸，不能开启依赖显式失效的布局快路径。
+    }
+
+    private void addChoice(String label, String icon, Runnable action) {
+        Panel row = new Panel();
+        row.setBounds(1, 52);
+        playlistList.addChild(row);
+        choices.add(new Choice(row, text(label)));
+        NcmExpressive.surface(row, 0, 0, row::getWidth, row::getHeight, NcmExpressive.CARD_RADIUS,
+                () -> highlighted(row) ? NcmExpressivePalette.live().primaryContainer() : NcmExpressivePalette.live().container());
+        NcmExpressive.icon(row, icon, NcmSheet.ICON_M, () -> 28, () -> 26, () -> NcmExpressivePalette.live().primary());
+        NcmExpressive.label(row, () -> text(label), NcmExpressive.labelFont(),
+                () -> 55, () -> 26, () -> row.getWidth() - 70, () -> NcmExpressivePalette.live().text());
+        row.setShouldOverrideMouseCursor(true);
+        row.setOnClickCallback((x, y, button) -> {
+            if (button != 0) return false;
+            action.run();
+            return true;
+        });
+    }
+
+    private boolean highlighted(Panel row) {
+        return row.isHovering() || focusedChoice >= 0 && choices.get(focusedChoice).row() == row;
     }
 
     private void addTrackPreview() {
@@ -342,7 +463,7 @@ public class AddToPlaylistOverlay extends NCMPanel {
         heading.setBounds(1, 42);
         playlistList.addChild(heading);
         heading.setBeforeRenderCallback(() -> heading.setBounds(Math.max(1, playlistList.getWidth()), 42));
-        NcmExpressive.label(heading, () -> "点击目标歌单即可加入", NcmExpressive.labelFont(),
+        NcmExpressive.label(heading, () -> text("choose"), NcmExpressive.labelFont(),
                 () -> 0, () -> 21, () -> Math.max(1, heading.getWidth() * .56), () -> NcmExpressivePalette.live().text());
         NcmExpressive.rightAligned(heading, () -> accountSourceLabel, NcmExpressive.captionFont(),
                 heading::getWidth, () -> 21, () -> Math.max(1, heading.getWidth() * .40),
@@ -369,8 +490,11 @@ public class AddToPlaylistOverlay extends NCMPanel {
      */
     private List<PlayList> playListsForSource() {
         List<PlayList> combined = new ArrayList<>(LocalPlaylistStore.list());
-        accountSourceLabel = "仅本地歌单";
-        if (music != null && music.isKuGou()) {
+        accountSourceLabel = text("local");
+        if (showQQ) {
+            accountSourceLabel = text(qqLoading ? "loading_qq" : "local_and_qq");
+            combined.addAll(qqRows);
+        } else if (music != null && music.isKuGou() && KuGouMusicService.isLoggedIn()) {
             accountSourceLabel = KuGouMusicService.areUserPlaylistsLoading() ? "正在加载酷狗歌单" : "本地 · 酷狗";
             combined.addAll(KuGouMusicService.getUserPlaylistsSnapshot());
         } else if (music != null && music.isNetease()) {
@@ -398,6 +522,10 @@ public class AddToPlaylistOverlay extends NCMPanel {
         // 本地单先走：它没有任何上游，也就没有「同源」这回事。
         if (playlist.isLocalPlaylist()) {
             submitToLocal(playlist, playlistName);
+            return;
+        }
+        if (playlist.getPlatform() == MusicPlatform.QQ && qqTargets.containsKey(playlist)) {
+            submitToQQ(playlistName, qqTargets.get(playlist));
             return;
         }
         // 曲目与目标歌单必须是同一个音源：两边的曲目 id 体系不同，跨源提交只会写进一首错误的歌。
@@ -452,18 +580,52 @@ public class AddToPlaylistOverlay extends NCMPanel {
         // 请求在后台执行；保留本层等待真实验证结果，不提前播放成功动画。
     }
 
-    /** 本地布尔返回值不能区分重复和失效目标；不把所有 false 都伪装成已存在。 */
     private void submitToLocal(PlayList playlist, String playlistName) {
         closeAfterMillis = -1L;
-        if (LocalPlaylistStore.addTrack(playlist, music)) {
-            showStatus("已添加到本地歌单「" + playlistName + "」", FeedbackState.SUCCESS);
-            DownloadDynamicIsland.showPlaylistTrackAddSuccess(playlistName);
-        } else {
-            showStatus("未添加：歌曲可能已存在，或这张本地歌单已不可用。", FeedbackState.ERROR);
-            DownloadDynamicIsland.showPlaylistTrackAddFailure(playlistName, "可能已存在或歌单不可用");
+        switch (LocalPlaylistStore.addTrackWithResult(playlist, music)) {
+            case ADDED -> {
+                showStatus(text("added", playlistName), FeedbackState.SUCCESS);
+                DownloadDynamicIsland.showPlaylistTrackAddSuccess(playlistName);
+                NCMScreen.getInstance().markDirty();
+            }
+            case ALREADY_PRESENT -> {
+                showStatus(text("already_present", playlistName), FeedbackState.ALREADY_EXISTS);
+                DownloadDynamicIsland.showPlaylistTrackAlreadyExists(playlistName);
+            }
+            case UNAVAILABLE -> showStatus(text("unavailable"), FeedbackState.ERROR);
+            case SAVE_FAILED -> showStatus(text("save_failed"), FeedbackState.ERROR);
         }
-        NCMScreen.getInstance().markDirty();
-        // 本地操作立即给出真实结果，不人为制造联网等待。
+    }
+
+    private void submitToQQ(String name, QQMusicPlaylists.Playlist target) {
+        submitting = true;
+        showStatus(text("adding", name), FeedbackState.PROCESSING);
+        qqPlaylists.add(target, music.getSourceMid()).whenComplete((result, failure) ->
+                MultiThreadingUtil.runOnMainThread(() -> {
+                    submitting = false;
+                    if (!qqPlaylists.available()) {
+                        if (canPresentResult()) showStatus(text("qq_account_changed"), FeedbackState.ERROR);
+                        return;
+                    }
+                    if (failure != null) {
+                        DownloadDynamicIsland.showPlaylistTrackAddFailure(name, text("qq_add_failed"));
+                        if (canPresentResult()) showStatus(text("qq_add_failed"), FeedbackState.ERROR);
+                    } else if (result == QQMusicPlaylists.AddResult.ALREADY_PRESENT) {
+                        DownloadDynamicIsland.showPlaylistTrackAlreadyExists(name);
+                        if (canPresentResult()) showStatus(text("already_present", name), FeedbackState.ALREADY_EXISTS);
+                    } else {
+                        DownloadDynamicIsland.showPlaylistTrackAddSuccess(name);
+                        refreshQQSidebar(qqPlaylists);
+                        if (canPresentResult()) showStatus(text("added", name), FeedbackState.SUCCESS);
+                    }
+                }));
+    }
+
+    static void refreshQQSidebar(QQMusicPlaylists session) {
+        if (!session.available()) return;
+        NeteaseMusicService.forceRefreshQQAccountAsync(result -> MultiThreadingUtil.runOnMainThread(() -> {
+            if (session.available()) NCMScreen.getInstance().markDirty();
+        }));
     }
 
     /**
@@ -582,7 +744,7 @@ public class AddToPlaylistOverlay extends NCMPanel {
             setShouldOverrideMouseCursor(true);
             requestPlaylistCover(playlist);
             NcmExpressive.surface(this, 0, 0, this::getWidth, this::getHeight, NcmExpressive.CARD_RADIUS,
-                    () -> isHovering() ? NcmExpressivePalette.live().primaryContainer() : NcmExpressivePalette.live().container());
+                    () -> highlighted(this) ? NcmExpressivePalette.live().primaryContainer() : NcmExpressivePalette.live().container());
             NcmExpressive.surface(this, 12, 10, () -> 52, () -> 52, 12,
                     () -> NcmExpressivePalette.live().primaryContainer());
             NcmExpressive.icon(this, LocalPlaylistStore.isLocal(playlist) ? PartyIcons.ALBUM : PartyIcons.QUEUE_MUSIC,
@@ -592,9 +754,9 @@ public class AddToPlaylistOverlay extends NCMPanel {
             cover.setClickable(false).setRadius(12).setLinearFilter(true).fadeIn();
             NcmExpressive.label(this, () -> getPlaylistName(playlist), NcmExpressive.labelFont(),
                     () -> 76, () -> 27, () -> Math.max(1, getWidth() - 140), () -> NcmExpressivePalette.live().text());
-            String source = LocalPlaylistStore.isLocal(playlist) ? "本地歌单" : playlist.getPlatform().getDisplayName() + "歌单";
+            String source = text(playlist.isLocalPlaylist() ? "local" : "platform", playlist.getPlatform().getDisplayName());
             int count = LocalPlaylistStore.isLocal(playlist) && playlist.musics != null ? playlist.musics.size() : playlist.getCount();
-            NcmExpressive.label(this, () -> source + " · " + Math.max(0, count) + " 首", NcmExpressive.captionFont(),
+            NcmExpressive.label(this, () -> text("count", source, Math.max(0, count)), NcmExpressive.captionFont(),
                     () -> 76, () -> 50, () -> Math.max(1, getWidth() - 140), () -> NcmExpressivePalette.live().muted());
             NcmExpressive.hitSurface(this, () -> getWidth() - 54, () -> 17, () -> 38, () -> 38, 19,
                     () -> NcmExpressivePalette.live().primaryContainer(), () -> submitToPlaylist(playlist));

@@ -524,7 +524,7 @@ final class CappellaLyricRenderer extends AbstractStageLyricRenderer {
 
             // 有对唱标记时按对唱槽位分左右，没有才退回逐条交替：同一个演唱者始终待在同一侧，
             // 头像也就跟着稳定下来（参考实现按 TTML 的 agentId 分，duetSlot 是我们这边的等价物）。
-            boolean right = line.duetSlot >= 0 ? line.duetSlot == 1 : (indexOf(line) & 1) == 1;
+            boolean right = line.duetSlot >= 0 ? LyricDuetGroups.rightAligned(line.duetSlot) : (indexOf(line) & 1) == 1;
             int avatarSlot = Math.max(0, line.duetSlot);
 
             if (emojiChance > 0.0 && linesSinceEmoji >= EMOJI_MIN_GAP_LINES

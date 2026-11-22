@@ -2,19 +2,26 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.kernel.api.music.platform.AppleMusicBrowserLogin;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 import java.io.IOException;
 import java.net.URI;
 import java.net.http.HttpClient;
 import java.net.http.HttpRequest;
 import java.net.http.HttpResponse;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.time.Instant;
+import java.util.Base64;
 import java.util.Map;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.atomic.AtomicReference;
 
 import static org.junit.jupiter.api.Assertions.*;
 
 class AppleMusicAccountTest {
-    private static final String FIXTURE_TOKEN = "header.payload.signature";
+    private static final String FIXTURE_TOKEN = token(Instant.now().plusSeconds(600), "");
     private static final Map<String, String> TEST_CONFIG = Map.of(
             AppleMusicAccount.TOKEN_ENV, FIXTURE_TOKEN, AppleMusicAccount.PORT_ENV, "0");
 
@@ -27,7 +34,7 @@ class AppleMusicAccountTest {
         }
         try (var invalid = new AppleMusicAccount(Map.of(AppleMusicAccount.PORT_PROPERTY, "65536")::get,
                 TEST_CONFIG::get, uri -> fail("Unexpected launch"))) {
-            assertEquals("ready", invalid.stateKey());
+            assertEquals("configuration_invalid", invalid.stateKey());
             invalid.open();
             assertEquals("configuration_invalid", invalid.stateKey());
             assertFalse(invalid.running());
@@ -66,25 +73,111 @@ class AppleMusicAccountTest {
         }
     }
 
-    @Test void onlyCompleteProjectConfigurationEnablesOpenButRunningSessionCanCloseRegardless() throws Exception {
+    @Test void tokenWithoutOriginUsesTheDefaultPort() {
+        var config = AppleMusicProjectConfig.load(null, FIXTURE_TOKEN, "");
+        assertNull(config.issue());
+        assertEquals(17832, config.port);
+    }
+
+    @Test void retryCanOpenButRunningSessionCanCloseRegardless() {
         var config = new java.util.HashMap<String,String>();
         try (var account = new AppleMusicAccount(k -> null, config::get, uri -> {})) {
-            assertFalse(account.primaryAvailable(true));
+            assertEquals("open", account.actionKey());
+            assertTrue(account.primaryAvailable(true));
+            account.toggleConnection(true);
+            assertEquals("configuration_missing", account.stateKey());
             config.put(AppleMusicAccount.TOKEN_ENV, FIXTURE_TOKEN);
-            assertFalse(account.primaryAvailable(true), "the token alone is not project configuration");
-            config.clear();
             config.put(AppleMusicAccount.PORT_ENV, "0");
-            assertFalse(account.primaryAvailable(true), "the port alone is not project configuration");
-            config.put(AppleMusicAccount.TOKEN_ENV, FIXTURE_TOKEN);
             assertTrue(account.primaryAvailable(true));
             assertFalse(account.primaryAvailable(false));
-            account.open();
+            account.toggleConnection(true);
             assertTrue(account.running());
             config.clear();
             assertTrue(account.primaryAvailable(false), "Close stays available even if configuration or link access was removed");
             account.close();
-            assertFalse(account.primaryAvailable(true));
+            assertTrue(account.primaryAvailable(true));
+            account.toggleConnection(true);
             assertEquals("configuration_missing", account.stateKey());
+        }
+    }
+
+    @Test void retryLoadsInstanceFileAndUsesPortFromTokenOrigin(@TempDir Path configDirectory) throws Exception {
+        int port;
+        try (var other = new AppleMusicBrowserLogin(FIXTURE_TOKEN)) {
+            port = other.browserUri().getPort();
+        }
+        var launched = new AtomicReference<URI>();
+        try (var account = new AppleMusicAccount(() -> configDirectory, k -> null, k -> null, launched::set)) {
+            assertFalse(account.available());
+            account.toggleConnection(true);
+            assertNull(launched.get());
+            String token = token(Instant.now().plusSeconds(600),
+                    ",\"origin\":[\"https://music.example.com\",\"http://127.0.0.1:" + port + "\"]");
+            Files.writeString(configDirectory.resolve("sh_better_ui-apple-music.properties"), "developerToken=" + token);
+            account.toggleConnection(true);
+            assertEquals(port, launched.get().getPort());
+            assertTrue(account.available());
+            assertTrue(account.running());
+        }
+    }
+
+    @Test void expiredTokenAndMismatchedOriginAreReportedBeforeOpeningBrowser() {
+        var config = new java.util.HashMap<String, String>();
+        try (var account = new AppleMusicAccount(config::get, k -> null, uri -> fail("Unexpected launch"))) {
+            config.put(AppleMusicAccount.TOKEN_PROPERTY, token(Instant.now().minusSeconds(1), ""));
+            account.toggleConnection(true);
+            assertEquals("configuration_expired", account.stateKey());
+            config.put(AppleMusicAccount.TOKEN_PROPERTY, token(Instant.now().plusSeconds(600),
+                    ",\"origin\":[\"http://127.0.0.1:12345\"]"));
+            config.put(AppleMusicAccount.PORT_PROPERTY, "12346");
+            account.toggleConnection(true);
+            assertEquals("configuration_origin", account.stateKey());
+            assertFalse(account.running());
+        }
+    }
+
+    private static String token(Instant expires, String extraClaims) {
+        String payload = "{\"exp\":" + expires.getEpochSecond() + extraClaims + "}";
+        return "eyJhbGciOiJFUzI1NiJ9." + Base64.getUrlEncoder().withoutPadding()
+                .encodeToString(payload.getBytes(StandardCharsets.UTF_8)) + ".signature";
+    }
+
+    @Test void ordinaryPlayerCanOpenBrowserWithoutLocalCredentials() throws Exception {
+        int port;
+        try (var other = new AppleMusicBrowserLogin(FIXTURE_TOKEN)) {
+            port = other.browserUri().getPort();
+        }
+        var next = new CompletableFuture<String>();
+        var launched = new AtomicReference<URI>();
+        try (var account = new AppleMusicAccount(() -> null, k -> null, k -> null, launched::set,
+                () -> next, Runnable::run)) {
+            assertEquals("ready", account.stateKey());
+            account.toggleConnection(true);
+            assertEquals("connecting", account.stateKey());
+            assertEquals("cancel_connection", account.actionKey());
+            assertNull(launched.get());
+            next.complete(token(Instant.now().plusSeconds(600), ",\"origin\":[\"http://127.0.0.1:" + port + "\"]"));
+            assertEquals("browser_open", account.stateKey());
+            assertEquals(port, launched.get().getPort());
+        }
+    }
+
+    @Test void failedServiceCanBeRetriedAndCancelledCompletionCannotOpenBrowser() {
+        var next = new AtomicReference<>(new CompletableFuture<String>());
+        var uiTask = new AtomicReference<Runnable>();
+        try (var account = new AppleMusicAccount(() -> null, k -> null, k -> null, uri -> fail("Unexpected launch"),
+                next::get, uiTask::set)) {
+            account.toggleConnection(true);
+            next.get().completeExceptionally(new IOException());
+            uiTask.getAndSet(null).run();
+            assertEquals("token_service_failed", account.stateKey());
+            next.set(new CompletableFuture<>());
+            account.toggleConnection(true);
+            next.get().complete(FIXTURE_TOKEN);
+            account.toggleConnection(true);
+            uiTask.getAndSet(null).run();
+            assertEquals("connection_cancelled", account.stateKey());
+            assertFalse(account.running());
         }
     }
 
@@ -94,7 +187,7 @@ class AppleMusicAccountTest {
                     TEST_CONFIG::get, uri -> fail("Unexpected browser launch"))) {
                 account.open();
                 assertFalse(account.running());
-                assertEquals("bridge_failed", account.stateKey());
+                assertEquals("port_unavailable", account.stateKey());
                 assertTrue(account.primaryAvailable(true), "fixing a port conflict does not require rebuilding the screen");
             }
         }

@@ -22,7 +22,7 @@ public final class LyricSearchHit {
     public final LyricSearchSource source;
     /** 该源内定位这首歌的 id。可能是网易云/QQ 的数字 id，也可能是酷狗歌词条目 id。 */
     public final String trackId;
-    /** 仅 {@link LyricSearchSource#AMLL} 有意义：这条词库条目挂在 ncm 还是 qq 的 id 下。其余为空串。 */
+    /** AMLL 的条目平台，或 Apple Music 的目录地区。 */
     public final String platform;
     public final String title;
     public final String artists;

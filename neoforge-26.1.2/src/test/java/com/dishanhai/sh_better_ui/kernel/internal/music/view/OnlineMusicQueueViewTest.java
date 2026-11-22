@@ -53,7 +53,7 @@ class OnlineMusicQueueViewTest {
                 if(args==null)yield this.crossfade;
                 this.crossfade=(int)args[0];this.crossfadeCommits++;yield null;
             }
-            default -> null;
+            default -> method.isDefault() ? java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args) : null;
         });
         int crossfade,crossfadeCommits;
         boolean nativeCrossfade, signedIn;
@@ -807,7 +807,7 @@ class OnlineMusicQueueViewTest {
             case "playlists"->List.of(new OnlinePlaylist("qq","new","New account list",1));
             case "supportsLikes"->false;
             case "credentials"->null;
-            default->null;
+            default->method.isDefault() ? java.lang.reflect.InvocationHandler.invokeDefault(proxy, method, args) : null;
         }));
         var constructor=Class.forName("com.dishanhai.sh_better_ui.kernel.internal.music.OnlinePlayerSession").getDeclaredConstructor(List.class);
         constructor.setAccessible(true);return (OnlineMusicPlayer)constructor.newInstance(providers);

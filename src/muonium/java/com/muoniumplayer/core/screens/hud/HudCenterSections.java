@@ -46,6 +46,7 @@ final class HudCenterSections {
     private static Language language;
     private static Entry hostControls;
     private static Entry hostTheme;
+    private static Entry narrowPlayerLyrics;
 
     private HudCenterSections() {}
 
@@ -65,9 +66,17 @@ final class HudCenterSections {
         return hostTheme;
     }
 
+    static Entry narrowPlayerLyricsOption() {
+        narrowPlayerLyrics = toggle(text("narrow_player_lyrics"), text("narrow_player_lyrics.desc"),
+                PlayerAppearance::replaceTitleWithLyrics,
+                () -> PlayerAppearance.setReplaceTitleWithLyrics(!PlayerAppearance.replaceTitleWithLyrics()));
+        return narrowPlayerLyrics;
+    }
+
     static String hostOptionId(Entry entry) {
         if (entry != null && entry == hostControls) return "shbui_controls";
         if (entry != null && entry == hostTheme) return "shbui_theme";
+        if (entry != null && entry == narrowPlayerLyrics) return "narrow_player_lyrics";
         return null;
     }
 

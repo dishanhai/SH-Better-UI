@@ -319,6 +319,7 @@ final class MusicFrontendSoundPanel {
                 item.setPreview(label);
             }
             item.setSelected(row.selected());
+            item.setTextInset(screen == Screen.APPEARANCE ? 39 : 0);
             item.setTrailingGlyph(row.submenu() ? MusicTransportControl.Glyph.NEXT : null);
         }
         positionRows();
@@ -380,6 +381,7 @@ final class MusicFrontendSoundPanel {
                         ui.preferences().highContrast() ? 1 : 0, INK, SURFACE);
             }
         }
+        if (screen == Screen.APPEARANCE) paintThemePreviews(ui);
         for (var slot : slots) {
             slot.setPreferences(ui.preferences());
             slot.setInk(INK, muted);
@@ -411,5 +413,30 @@ final class MusicFrontendSoundPanel {
                         new Bounds(panel.x()+8, y, panel.width()-16, panel.bottom()-y), muted);
             }
         }
+    }
+
+    private void paintThemePreviews(UiFrame ui) {
+        var list = listBounds();
+        OnlineMusicViewPaint.clip(ui, list);
+        try {
+            for (int i = 0; i < visibleRows.size(); i++) {
+                var slot = slots.get(i);
+                if (!slot.visible) continue;
+                var swatch = new Bounds(slot.getX() + 8, slot.getY() + 4, 31, 13);
+                String id = visibleRows.get(i).id();
+                if (id.equals("appearance:rainbow")) MusicRainbowTheme.paint(ui, swatch, INK);
+                else {
+                    int upper = id.equals("appearance:classic") ? 0xff626371 : 0xff8598b7;
+                    ui.graphics().fillGradient(swatch.x(), swatch.y(), swatch.right(), swatch.bottom(), upper, 0xff262939);
+                }
+                if (visibleRows.get(i).selected() || ui.preferences().highContrast())
+                    RoundedCorners.draw(ui.graphics(), swatch.x(), swatch.y(), swatch.width(), swatch.height(), 1, 1, INK, 0);
+            }
+        } finally {
+            OnlineMusicViewPaint.unclip(ui);
+        }
+        int y = list.y() + MusicAppearanceStore.Preference.values().length * (ROW_HEIGHT + SPACING) + 8;
+        int height = Math.min(108, panel.bottom() - 20 - y);
+        if (height >= 52) MusicRainbowTheme.paint(ui, new Bounds(panel.x(), y, panel.width(), height), INK);
     }
 }

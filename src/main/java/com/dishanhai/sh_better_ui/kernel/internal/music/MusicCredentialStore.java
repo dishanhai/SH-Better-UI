@@ -4,6 +4,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music;
 import com.sun.jna.platform.win32.Crypt32Util;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
+import java.nio.channels.FileChannel;
 import java.nio.file.*;
 import java.nio.file.attribute.PosixFilePermission;
 import java.nio.file.attribute.PosixFilePermissions;
@@ -16,7 +17,7 @@ import javax.crypto.spec.SecretKeySpec;
 
 /** Opt-in storage for source cookies. The local POSIX key is accessible to the same OS user. */
 final class MusicCredentialStore {
-    private static final int MAX_COOKIE = 16_384, MAX_FILE = 65_536;
+    private static final int MAX_COOKIE = 16_384, DEFAULT_FILE_LIMIT = 65_536, MAX_RECORD = 1_048_576;
     private static final String SUFFIX = ".credential";
     private static final Set<PosixFilePermission> PRIVATE_FILE = PosixFilePermissions.fromString("rw-------");
     private static final Set<PosixFilePermission> PRIVATE_DIRECTORY = PosixFilePermissions.fromString("rwx------");
@@ -29,9 +30,37 @@ final class MusicCredentialStore {
     }
     private final SecureRandom random = new SecureRandom();
     private final Path directory;
+    private final int textLimit;
+    private final int fileLimit;
+    private final Object refreshLock = new Object();
     private final boolean windows = System.getProperty("os.name", "").toLowerCase(Locale.ROOT).startsWith("windows");
 
-    MusicCredentialStore(Path directory) { this.directory = Objects.requireNonNull(directory).toAbsolutePath().normalize(); }
+    MusicCredentialStore(Path directory) { this(directory, MAX_COOKIE); }
+
+    MusicCredentialStore(Path directory, int textLimit) {
+        this.directory = Objects.requireNonNull(directory).toAbsolutePath().normalize();
+        if (textLimit <= 0 || textLimit > MAX_RECORD) throw new IllegalArgumentException("Invalid credential limit");
+        this.textLimit = textLimit;
+        fileLimit = Math.max(DEFAULT_FILE_LIMIT, textLimit * 2);
+    }
+
+    @FunctionalInterface
+    interface Update<T> { T run() throws IOException; }
+
+    /** Hold the OS lock across read/refresh/write so separate game processes cannot rotate the same OAuth token. */
+    <T> T locked(String source, Update<T> update) throws IOException {
+        validateSource(source);
+        prepareDirectory();
+        Path path = directory.resolve(source + ".lock");
+        var options = Set.<OpenOption>of(StandardOpenOption.CREATE, StandardOpenOption.WRITE, LinkOption.NOFOLLOW_LINKS);
+        synchronized (refreshLock) {
+            try (var channel = windows ? FileChannel.open(path, options)
+                    : FileChannel.open(path, options, PosixFilePermissions.asFileAttribute(PRIVATE_FILE));
+                 var lock = channel.lock()) {
+                return update.run();
+            }
+        }
+    }
 
     synchronized Map<String, String> load() throws IOException {
         synchronized (LEASE_LOCK) {
@@ -137,7 +166,7 @@ final class MusicCredentialStore {
     }
 
     private String readCookie(Path path) throws IOException {
-        String cookie = decrypt(readBounded(path, MAX_FILE));
+        String cookie = decrypt(readBounded(path, fileLimit));
         try {
             cookie = validatedCookie(cookie);
             if (cookie.isBlank()) throw failure();
@@ -176,7 +205,7 @@ final class MusicCredentialStore {
                         new GCMParameterSpec(128, input, 1, 12));
                 plain = cipher.doFinal(input, 13, input.length - 13);
             } else throw failure();
-            if (plain.length > MAX_COOKIE) throw failure();
+            if (plain.length > textLimit) throw failure();
             return new String(plain, StandardCharsets.UTF_8);
         } catch (GeneralSecurityException | RuntimeException | LinkageError error) { throw failure(); }
     }
@@ -241,9 +270,9 @@ final class MusicCredentialStore {
     private static void validateSource(String source) {
         if (!validSource(source)) throw new IllegalArgumentException("Invalid music source");
     }
-    private static String validatedCookie(String cookie) {
-        String result = MusicHttp.cookie(cookie);
-        if (result.getBytes(StandardCharsets.UTF_8).length > MAX_COOKIE)
+    private String validatedCookie(String cookie) {
+        String result = textLimit == MAX_COOKIE ? MusicHttp.cookie(cookie) : cookie.strip();
+        if (result.getBytes(StandardCharsets.UTF_8).length > textLimit)
             throw new IllegalArgumentException("Invalid music credentials");
         return result;
     }

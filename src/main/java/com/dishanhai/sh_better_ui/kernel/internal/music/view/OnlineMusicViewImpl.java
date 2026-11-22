@@ -25,22 +25,73 @@ import java.util.concurrent.CompletableFuture;
 
 /** Complete UUK player page; all widgets remain native and all asynchronous work belongs to the session. */
 public final class OnlineMusicViewImpl implements OnlineMusicView {
-    private enum Page { SEARCH, LIBRARY, LYRICS, QUEUE, ACCOUNTS, HISTORY, ARTIST }
+    private enum Page { SEARCH, LIBRARY, LYRICS, QUEUE, ACCOUNTS, HISTORY, ARTIST, COMMENTS, APPEARANCE }
     private final ArtistDetailPanel artistDetail;
+    private final MusicFrontendSoundPanel appearance;
+    private static final MusicFrontendRoutes.Route APPEARANCE_ROUTE =
+            new MusicFrontendRoutes.Route(MusicFrontendRoutes.Page.SETTINGS, "", "appearance");
+    private final MusicCommentsPanel comments;
+    private final List<MusicTextControl> searchComments = new ArrayList<>();
+    private final List<MusicTrackCredits> searchCredits = new ArrayList<>(), libraryCredits = new ArrayList<>();
+    private Page commentsReturn = Page.SEARCH;
+    private Page commentsStageReturn = Page.SEARCH;
+    private StagePage commentsStage;
+    private int commentsReturnSlot = -1;
+    private void openComments(OnlineTrack track, int searchSlot) {
+        if (!comments.supports(track)) return;
+        commentsReturn = page;
+        commentsStage = immersive ? stagePage : null;
+        commentsStageReturn = stageReturnPage;
+        commentsReturnSlot = searchSlot;
+        show(Page.COMMENTS);
+        comments.open(track);
+    }
+    private void leaveComments() {
+        show(commentsReturn);
+        if (commentsStage != null) {
+            enterImmersive(commentsStage);
+            stageReturnPage = commentsStageReturn;
+            host.screen().setFocused(nowPlayingMore);
+        } else if (commentsReturn == Page.SEARCH && commentsReturnSlot >= 0 && commentsReturnSlot < resultRows.size()) {
+            var entry = searchComments.get(commentsReturnSlot);
+            var row = resultRows.get(commentsReturnSlot);
+            if (entry.visible) host.screen().setFocused(entry);
+            else if (row.visible) host.screen().setFocused(row);
+        }
+    }
     private Page artistReturnPage=Page.SEARCH;
     private boolean artistReturnImmersive;
     private Page artistStageReturnPage=Page.SEARCH;
     private StagePage artistReturnStage=StagePage.LYRICS;
+    private MusicTextControl detailReturnFocus;
     private void openArtist(OnlineArtist artist) {
-        if(!player.supportsArtistTracks(artist.source()))return;
+        openArtist(artist, null);
+    }
+    private void openArtist(OnlineArtist artist, MusicTextControl origin) {
+        if (!player.supportsArtistTracks(artist.source())) return;
+        openDetail(origin);
+        artistDetail.open(artist);
+    }
+    private void openAlbum(OnlineAlbum album, MusicTextControl origin) {
+        if (!player.supportsAlbumDetail(album.source())) return;
+        openDetail(origin);
+        artistDetail.open(album);
+    }
+    private void openDetail(MusicTextControl origin) {
+        detailReturnFocus = origin;
         artistReturnPage=page==Page.ARTIST?artistReturnPage:page;
         artistReturnImmersive=immersive;artistReturnStage=stagePage;
         artistStageReturnPage=stageReturnPage;
-        show(Page.ARTIST);artistDetail.open(artist);
+        show(Page.ARTIST);
     }
     private void leaveArtist() {
+        if (artistDetail.back()) return;
+        var focus = detailReturnFocus;
+        detailReturnFocus = null;
         var target=artistReturnPage;boolean stage=artistReturnImmersive;
         show(target);if(stage){enterImmersive(artistReturnStage);stageReturnPage=artistStageReturnPage;}
+        else if (focus != null && focus.visible && focus.active && host.screen().children().contains(focus))
+            host.screen().setFocused(focus);
     }
     private final OnlineMusicRouteMotion routeMotion = new OnlineMusicRouteMotion();
     private record SearchRoute(String source, long rowsRevision) {}
@@ -75,6 +126,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(track==null||!immersive)return;
         boolean liked=Boolean.TRUE.equals(knownLike(track));
         var actions=new ArrayList<NowPlayingMenu.Entry>();
+        if (comments.supports(track)) actions.add(new NowPlayingMenu.Entry(MusicCommentsPanel.label("title"),
+                MusicControlRenderer.Icon.COMMENTS, true, () -> openComments(track, -1)));
         actions.add(new NowPlayingMenu.Entry(label(liked?"menu.unlike":"menu.like"),MusicControlRenderer.Icon.FAVORITE,
                 player.supportsLikes(track.source())&&player.authenticated(track.source())&&pendingLike==null,
                 ()->changeLike(track,!liked)));
@@ -83,7 +136,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 libraryProviders.contains(track.source()),()->{
                     librarySource=track.source();libraryGroup=Library.PLAYLISTS;library=Library.NONE;enterLibrary();
                 }));
-        actions.add(new NowPlayingMenu.Entry(label("menu.search_album"),MusicControlRenderer.Icon.SEARCH,
+        var release = track.release();
+        if (release != null && player.supportsAlbumDetail(release.source()))
+            actions.add(new NowPlayingMenu.Entry(label("album.open", release.name()), MusicControlRenderer.Icon.PLAYLIST,
+                    true, () -> openAlbum(release, null)));
+        else actions.add(new NowPlayingMenu.Entry(label("menu.search_album"),MusicControlRenderer.Icon.SEARCH,
                 !track.album().isBlank()&&searchSourceIds.contains(track.source()),()->searchFromMenu(track,track.album())));
         var artist=track.artists().stream().filter(a->player.supportsArtistTracks(a.source())).findFirst();
         if(artist.isPresent())actions.add(new NowPlayingMenu.Entry(label("artist.open",artist.get().name()),
@@ -319,6 +376,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     public OnlineMusicViewImpl(OnlineMusicPlayer player, boolean ownsPlayer, Listen1Backup.Session listen1Session) {
         this.player = Objects.requireNonNull(player); this.queue = new PlayerQueue(player); this.ownsPlayer = ownsPlayer;
         this.artistDetail = new ArtistDetailPanel(player);
+        this.appearance = new MusicFrontendSoundPanel(player, route -> {});
+        this.comments = new MusicCommentsPanel(player);
         this.discovery = new NativePlaylistDiscovery(player);
         this.listen1Session = Objects.requireNonNull(listen1Session);
     }
@@ -326,6 +385,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     @Override public void layout(PreviewContext context) {
         if (closed) throw new IllegalStateException("Music view closed");
         closeNowPlayingMenu();
+        appearance.cancel();
         if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction();
         if(queuePlaybackMode!=null)queuePlaybackMode.cancelInteraction();
         if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
@@ -338,6 +398,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         libraryHeaderControls.clear();librarySources=null;libraryGroups=null;discoveryInput=null;discoveryOpen=null;discoveryBrowse=null;listen1Path=null;listen1ImportButton=null;
         searchControls.clear(); lyricControls.clear(); accountControls.clear(); detailControls.clear(); libraryControls.clear();
         resultRows.clear(); lyricRows.clear(); libraryRows.clear(); searchLikes.clear(); searchUnlikes.clear(); libraryLikes.clear(); libraryUnlikes.clear(); lyricTargets.clear(); sources.clear(); accounts.clear(); loginSources.clear();
+        searchComments.clear();
         exitControl = OnlineMusicScreen.exitControl(context);
         if (!layout.supported()) {
             searchLoading.reset(); libraryLoading.reset();
@@ -352,8 +413,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         searchSkeleton = loadingBlocks(resultRows, true);
         librarySkeleton = loadingBlocks(libraryRows, false);
         var h = layout.searchBar();
+        var header = layout.header();
+        comments.mount(context, new Bounds(header.x(), header.y(), header.width(), 28),
+                new Bounds(h.x() + 92, h.y() + 2, h.width() - 92, 22), layout.content());
         back = button(new Bounds(h.x(), h.y() + 2, Math.min(88, h.width() / 2), 22), label("view.back"), () -> {
+            if(page==Page.COMMENTS){leaveComments();return;}
             if(page==Page.ARTIST){leaveArtist();return;}
+            if(page==Page.APPEARANCE){leaveAppearance();return;}
             if(returnFromLibraryLogin()||returnFromHistoryDestination()) return;
             if(page==Page.HISTORY) { leaveHistory();
             } else if(page==Page.QUEUE&&crossfadeOpen) { setCrossfadeOpen(false);
@@ -367,6 +433,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             else show(page == Page.LYRICS ? lyricsReturnPage : Page.SEARCH);
         }, null);
         back.setLeadingIcon(GraphicIcon.BACK);
+        appearance.mount(context, layout.content(), back, null);
         updateRows(); updateLibraryRows(); updateVisibility();
         if (pendingHistory != null) {
             var target = pendingHistory;
@@ -387,7 +454,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                     :new Bounds(n.x()+offset+target.ordinal()*tabWidth,n.y(),tabWidth,26);
             var item=button(box,label("view."+target.name().toLowerCase(Locale.ROOT)),()->navigate(target),null);
             item.setVariant(MusicTextControl.Variant.NAVIGATION);item.setPreview(item.getMessage());
-            if(!layout.sidebar()&&tabWidth<60) item.setIcon(switch(target){case SEARCH->GraphicIcon.SEARCH;case LYRICS->GraphicIcon.MUSIC;case ACCOUNTS,HISTORY,ARTIST->GraphicIcon.USER;case QUEUE->GraphicIcon.QUEUE;case LIBRARY->GraphicIcon.FAVORITE;});
+            if(!layout.sidebar()&&tabWidth<60) item.setIcon(switch(target){case SEARCH->GraphicIcon.SEARCH;case LYRICS->GraphicIcon.MUSIC;case ACCOUNTS,HISTORY,ARTIST,COMMENTS,APPEARANCE->GraphicIcon.USER;case QUEUE->GraphicIcon.QUEUE;case LIBRARY->GraphicIcon.FAVORITE;});
             if(target==Page.LIBRARY){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.LIBRARY);else item.setLeadingIcon(MusicControlRenderer.Icon.LIBRARY);}
             if(target==Page.ACCOUNTS){if(!layout.sidebar()&&tabWidth<60)item.setGlyphOnly(MusicControlRenderer.Icon.USER);else item.setLeadingIcon(MusicControlRenderer.Icon.USER);}
             navigation.add(item);
@@ -431,7 +498,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         historyScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(),
                 label("operations.title"), value -> { historyFirst = value; updateHistory(); }));
         searchScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_search"), offset -> {
-            cancelBoundRows(resultRows, searchLikes, searchUnlikes);
+            cancelBoundRows(resultRows, searchLikes, searchUnlikes, searchComments);
             scrollParallax.scroll(offset - first); first = offset; updateRows();
         }));
         libraryScroll = host.add(new OnlineMusicScrollRegion(area.x(), area.y(), area.width(), area.height(), label("view.scroll_library"), offset -> {
@@ -454,7 +521,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         for (var list : List.of(historyScroll, searchScroll, libraryScroll, queueScroll)) list.setStep(2);
         if (MusicScrollRows.spill(host, layout.rows().size()) > 0) {
             historyScroll.pixelRows(musicRowPitch(), shift -> { positionRows(historyScroll, historyRows); updateHistory(); });
-            searchScroll.pixelRows(musicRowPitch(), shift -> { positionRows(searchScroll, resultRows, searchLikes, searchUnlikes); updateRows(); });
+            searchScroll.pixelRows(musicRowPitch(), shift -> { positionRows(searchScroll, resultRows, searchLikes, searchUnlikes, searchComments); updateRows(); });
             libraryScroll.pixelRows(musicRowPitch(), shift -> { positionRows(libraryScroll, libraryRows, libraryLikes, libraryUnlikes); updateLibraryRows(); });
             queueScroll.pixelRows(musicRowPitch(), shift -> { positionRows(queueScroll, queueRows, queueUps, queueDowns, queueRemoves); updateQueueRows(); });
         }
@@ -517,9 +584,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         }
     }
     private Component sourceLabel(String id) {
-        return switch(id){case "netease","qq",Listen1Backup.ID->label("source."+id);case "apple"->MusicTypography.text("Apple Music");default->MusicTypography.text(id);};
+        return switch(id){case "netease","qq","kugou",Listen1Backup.ID->label("source."+id);case "apple"->MusicTypography.text("Apple Music");default->MusicTypography.text(id);};
     }
     private void buildSearch() {
+        searchCredits.clear();
         var h = layout.searchBar();
         searchSourceIds=List.copyOf(player.sources());
         if(!searchSourceIds.isEmpty()&&!searchSourceIds.contains(source))source=searchSourceIds.get(0);
@@ -573,12 +641,25 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             var button = rowButton(new Bounds(row.x(), row.y(), titleWidth, row.height()), Component.empty(), () -> {
                 int i = first + slot;
                 if (showSuggestions()) { if (i < suggestions.size()) { String selected = suggestions.get(i); queryField.setValue(selected); query = selected; search(1, true); } }
-                else if (i < results.size()) playCollection(results, i);
+                else if (i < results.size()) {
+                    var track = results.get(i);
+                    if (player.supportsPlayback(track.source())) playCollection(results, i);
+                    else openComments(track, slot);
+                }
             }, searchControls);
             button.setLeadingIcon(GraphicIcon.RUN);
             button.setVariant(MusicTextControl.Variant.ROW); resultRows.add(button);
             searchLikes.add(trackAction(row, slot, false, true));
             searchUnlikes.add(trackAction(row, slot, false, false));
+            var comment = rowButton(new Bounds(row.right() - 72, row.y(), 24, row.height()),
+                    MusicCommentsPanel.label("title"), () -> {
+                        int i = first + slot;
+                        if (!showSuggestions() && i < results.size()) openComments(results.get(i), slot);
+                    }, searchControls);
+            comment.setGlyphOnly(MusicControlRenderer.Icon.COMMENTS);
+            comment.setPreview(comment.getMessage());
+            searchComments.add(comment);
+            searchCredits.add(new MusicTrackCredits(host, this::listScrollArea, this::openArtist, this::openAlbum));
         }
         searchContinuationRetry = button(continuationActionBounds(), label("library.retry"), this::submitSearch, searchControls);
     }
@@ -790,12 +871,14 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         int left = c.x();
         var material = button(new Bounds(left, c.y() + 4, width, 24),
                 MusicAppearanceLabels.label("summary", MusicAppearanceLabels.current()),
-                () -> feedback(MusicAppearance.select(MusicAppearance.current().next())
-                        ? MusicAppearanceLabels.current() : MusicAppearanceLabels.label("save_failed")),
+                () -> {
+                    show(Page.APPEARANCE);
+                    appearance.focusEntry();
+                },
                 accountControls);
         material.setVariant(MusicTextControl.Variant.ROW);
-        material.setAvailable(!MusicAppearance.locked());
-        material.setPreview(MusicAppearanceLabels.label(MusicAppearance.locked() ? "locked" : "cycle_hint"));
+        material.setTrailingGlyph(MusicTransportControl.Glyph.NEXT);
+        material.setPreview(MusicAppearanceLabels.label("title"));
         musicAppearanceButton = material;
         for (String id : List.of("netease", "qq")) {
             final String selected = id; int i = accounts.size();
@@ -849,6 +932,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         return button;
     }
     private void buildLibrary() {
+        libraryCredits.clear();
         var c = layout.content();
         libraryProviders=player.sources().stream().filter(id->id.equals("netease")||id.equals("qq")).distinct().toList();
         var ids=new ArrayList<>(libraryProviders);
@@ -929,6 +1013,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             libraryRows.get(slot).setVariant(MusicTextControl.Variant.ROW);
             libraryLikes.add(trackAction(row, slot, true, true));
             libraryUnlikes.add(trackAction(row, slot, true, false));
+            libraryCredits.add(new MusicTrackCredits(host, this::listScrollArea, this::openArtist, this::openAlbum));
         }
         libraryContinuationRetry = button(continuationActionBounds(), label("library.retry"), this::extendLibrary, libraryControls);
     }
@@ -1230,6 +1315,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         cancelListen1(); enterImmersive(StagePage.LYRICS); }
     private void enterImmersive(StagePage mode) {
         if(page==Page.ARTIST)artistDetail.cancel();
+        if(page==Page.COMMENTS){comments.clear();page=commentsReturn;}
         if (!immersive) {historyDestination=null;stageReturnPage=page==Page.ARTIST?(artistReturnImmersive?artistStageReturnPage:artistReturnPage):page;if(page==Page.SEARCH)detachSearch();if(page==Page.LIBRARY)detachLibrary();}
         immersive=true;page=Page.LYRICS;setStagePage(mode);cancelSuggestions();
         updateVisibility();host.screen().setFocused(stageReturnControl());
@@ -1240,7 +1326,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         updateStageGeometry();updateVisibility();
     }
     boolean permitsScreenClose() {
+        if(!immersive&&page==Page.COMMENTS){leaveComments();return false;}
         if(!immersive&&page==Page.ARTIST){leaveArtist();return false;}
+        if(!immersive&&page==Page.APPEARANCE){leaveAppearance();return false;}
         if(!immersive&&seek!=null&&seek.isEditing()){seek.cancelInteraction();return false;}
         if(returnFromLibraryLogin()||returnFromHistoryDestination())return false;
         if(dismissListen1Editor())return false;
@@ -1263,6 +1351,10 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(cancelled)return false;
         if(stageLyrics!=null&&stageLyrics.browsing()){stageLyrics.follow();return false;}
         leaveImmersive(); return false;
+    }
+    private void leaveAppearance() {
+        show(Page.ACCOUNTS);
+        host.screen().setFocused(musicAppearanceButton);
     }
     private void leaveImmersive() {
         closeNowPlayingMenu();
@@ -1363,6 +1455,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void show(Page next) {
         closeNowPlayingMenu();
         if(page==Page.ARTIST&&next!=page)artistDetail.cancel();
+        if(page==Page.COMMENTS&&next!=page)comments.clear();
         if (immersive) { immersive = false; }
         if (next == Page.LYRICS && page != Page.LYRICS) lyricsReturnPage = page;
         for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag();
@@ -1371,7 +1464,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             if(crossfadeSlider!=null)crossfadeSlider.cancelInteraction();
         }
         if (page == Page.ACCOUNTS && next != page){leaveAccountDetail();libraryLoginReturn=false;}
-        if(page==Page.LIBRARY&&next!=page){boolean loading=pendingPlaylists!=null||pendingLibrary!=null;detachLibrary();cancelListen1();if(loading)library=Library.NONE;}
+        if (next != Page.LIBRARY && next != Page.ARTIST
+                && (page == Page.LIBRARY || page == Page.ARTIST && artistReturnPage == Page.LIBRARY)) {
+            boolean loading = pendingPlaylists != null || pendingLibrary != null;
+            detachLibrary();
+            cancelListen1();
+            if (loading) library = Library.NONE;
+        }
         if (page == Page.SEARCH && next != page) { detachSearch(); cancelSuggestions(); }
         if (page != next) visualMotion.pulse(System.nanoTime() / 1_000_000L);
         page = next; if (back != null) back.setY(layout.searchBar().y() + 2); updateVisibility();
@@ -1390,6 +1489,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void updateVisibility() {
         if (queryField == null) return;
         artistDetail.visible(!immersive&&page==Page.ARTIST);
+        appearance.update(!immersive && page == Page.APPEARANCE ? APPEARANCE_ROUTE
+                : MusicFrontendRoutes.Route.of(MusicFrontendRoutes.Page.SEARCH));
         if (exitControl != null) { exitControl.visible = !immersive; if (immersive) exitControl.cancelInteraction(); }
         historyControls.forEach(w->w.visible=!immersive&&page==Page.HISTORY);
         if(page==Page.HISTORY)updateHistory();
@@ -1872,10 +1973,12 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (libraryRefresh == null) return;
         for (int slot = 0; slot < libraryRows.size(); slot++) {
             int i = libraryFirst + slot; var row = libraryRows.get(slot);
-            boolean available = page == Page.LIBRARY && !immersive && !listen1EditorVisible() && !libraryLogin.visible && i < librarySize() && rowIntersects(libraryScroll, slot, row.getHeight());
+            int height = rowSlots.get(slot).height();
+            boolean available = page == Page.LIBRARY && !immersive && !listen1EditorVisible() && !libraryLogin.visible && i < librarySize() && rowIntersects(libraryScroll, slot, height);
             row.setVisible(available); row.active = available;
             Object identity=available?(library==Library.PLAYLISTS?playlists.get(i):libraryTracks.get(i)):null;
             if(!Objects.equals(resultIdentities.put(row,identity),identity)){row.cancelInteraction();libraryLikes.get(slot).cancelInteraction();libraryUnlikes.get(slot).cancelInteraction();}
+            boolean linked = bindCredits(libraryCredits.get(slot), identity instanceof OnlineTrack track ? track : null, row, height);
             if (available) {
                 if (library == Library.PLAYLISTS) {
                     var playlist = playlists.get(i); row.setMessage(MusicTypography.text(playlist.name()));
@@ -1883,7 +1986,7 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                     row.setPreview(label("library.playlist_details", playlist.name(), playlist.trackCount()));
                 } else {
                     var track = libraryTracks.get(i); row.setMessage(MusicTypography.text(track.title()));
-                    row.setSecondary(MusicTypography.text(track.artist()+" · "+time(track.durationMs())));
+                    row.setSecondary(linked ? Component.empty() : MusicTypography.text(track.artist()+" · "+time(track.durationMs())));
                     row.setPreview(label("play_track", track.title(), track.artist()).append("\n").append(MusicTypography.text(track.album())));
                 }
             }
@@ -2019,21 +2122,34 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         var current = player.snapshot().track();
         for (int slot = 0; slot < resultRows.size(); slot++) {
             int i = first + slot; var row = resultRows.get(slot); boolean suggesting = showSuggestions();
+            int height = rowSlots.get(slot).height();
             row.active = i < (suggesting ? suggestions.size() : results.size());
             row.setVisible(page == Page.SEARCH && !immersive && row.active
-                    && rowIntersects(searchScroll, slot, row.getHeight()));
+                    && rowIntersects(searchScroll, slot, height));
             Object identity=row.active?(suggesting?suggestions.get(i):results.get(i)):null;
             if(!Objects.equals(resultIdentities.put(row,identity),identity)) {
                 row.cancelInteraction();searchLikes.get(slot).cancelInteraction();searchUnlikes.get(slot).cancelInteraction();
+                searchComments.get(slot).cancelInteraction();
             }
+            var track = !suggesting && row.active ? results.get(i) : null;
+            boolean playable = track == null || player.supportsPlayback(track.source());
+            boolean commentAction = playable && comments.supports(track);
+            row.setWidth(resultTitleWidth(rowSlots.get(slot)) - (commentAction ? 24 : 0));
+            boolean linked = bindCredits(searchCredits.get(slot), row.visible ? track : null, row, height);
+            if (playable) row.setLeadingIcon(GraphicIcon.RUN);
+            else row.setLeadingIcon(MusicControlRenderer.Icon.COMMENTS);
+            var comment = searchComments.get(slot);
+            comment.setVisible(row.visible && commentAction);
+            comment.setAvailable(comment.visible);
             var nextLabel=row.active ? MusicTypography.text(suggesting ? suggestions.get(i) : results.get(i).title()) : Component.empty();
             if(!row.getMessage().equals(nextLabel))row.rebind(nextLabel);
-            row.setSecondary(row.active&&!suggesting?MusicTypography.text(results.get(i).artist()+" · "+time(results.get(i).durationMs())):Component.empty());
+            row.setSecondary(row.active&&!suggesting&&!linked?MusicTypography.text(results.get(i).artist()+" · "+time(results.get(i).durationMs())):Component.empty());
             row.setSelected(!suggesting && row.active && results.get(i).equals(current));
-            if (row.active && !suggesting) row.setPreview(label("play_track", results.get(i).title(), results.get(i).artist())
-                    .append("\n").append(MusicTypography.text(results.get(i).album())));
+            if (track != null) row.setPreview((playable ? label("play_track", track.title(), track.artist())
+                    : MusicCommentsPanel.label("open_track", track.title()))
+                    .copy().append("\n").append(MusicTypography.text(track.album())));
             else if (row.active) row.setPreview(label("suggestion_pick", suggestions.get(i)));
-            boolean actions = row.visible && !suggesting && i < results.size();
+            boolean actions = row.visible && track != null && playable;
             searchLikes.get(slot).visible = actions; searchUnlikes.get(slot).visible = actions;
             boolean supported = actions && player.supportsLikes(results.get(i).source());
             boolean enabled = supported && pendingLike == null && player.authenticated(results.get(i).source());
@@ -2045,6 +2161,13 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 : retryingSearchExtension() ? MusicControlRenderer.Icon.REFRESH : MusicControlRenderer.Icon.SEARCH);
         searchButton.setAvailable(!searchSourceIds.isEmpty());
         updateSearchFeedback();
+    }
+    private boolean bindCredits(MusicTrackCredits credits, OnlineTrack track, MusicTextControl row, int height) {
+        boolean linked = height >= 28 && credits.bind(player, track, row.getX() + 6, row.getY() + height - 16,
+                row.getWidth() - 8);
+        if (height < 28) credits.bind(player, null, 0, 0, 0);
+        row.setHeight(linked ? height - 16 : height);
+        return linked;
     }
     private void updateSearchFeedback() {
         if(results.isEmpty()&&!showSuggestions()) {
@@ -2063,6 +2186,9 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
             navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction();
             for(var group:List.of(searchControls,lyricControls,queueControls,accountControls,detailControls,libraryControls,historyControls))
                 for(var widget:group)if(widget instanceof MusicTextControl text)text.cancelInteraction();
+            searchCredits.forEach(MusicTrackCredits::cancel);
+            libraryCredits.forEach(MusicTrackCredits::cancel);
+            artistDetail.cancelInteraction();
         }
         if (!layout.supported()) { text(ui, label("space"), layout.frame().x() + 4, layout.frame().y() + 4, Math.max(0, layout.frame().width() - 8)); return; }
         pollOperations();
@@ -2082,9 +2208,11 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
                 ui.preferences().reducedMotion() || ui.preferences().highContrast()
                         || seek!=null && seek.isEditing() || stageSeek!=null && stageSeek.isEditing());
         boolean glass = MusicGlass.active();
+        boolean rainbow = MusicRainbowTheme.active(ui);
         boolean defaultGlassCanvas = glass && com.dishanhai.sh_better_ui.config.ClientUiSettings.current().theme().mode()
                 == com.dishanhai.sh_better_ui.config.ThemeSettings.Mode.DARK;
-        if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
+        if (rainbow && !immersive) MusicRainbowTheme.paint(ui, layout.frame(), theme.text());
+        else if(qqStyle()&&!ui.preferences().highContrast()) paintParallaxBackground(ui,layout.frame(),()->qqBackground(ui,parallaxBounds(layout.frame())));
         else if (!immersive && (page==Page.SEARCH || page==Page.LIBRARY || page==Page.QUEUE || page==Page.LYRICS) && !ui.preferences().highContrast()) {
             var palette = new com.dishanhai.sh_better_ui.kernel.api.music.presentation.ArtworkPalette(
                     com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion.lerpColor(theme.background()|0xff000000,theme.accent()|0xff000000,.045f),
@@ -2100,7 +2228,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (glass && !immersive)
             MusicGlass.paletteChrome(ui, layout.navigation(), layout.transport());
         if (layout.sidebar() && !immersive) {
-            if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
+            if (rainbow) MusicRainbowTheme.chrome(ui, layout.navigation(), theme.text());
+            else if (!glass) OnlineMusicViewPaint.panel(ui, layout.navigation(), theme.surface(), false);
             text(ui, label("view.brand"), layout.navigation().x() + (exitControl == null ? 6 : 30), layout.navigation().y() + 7, layout.navigation().width() - (exitControl == null ? 12 : 36));
 
         }
@@ -2127,14 +2256,25 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if (immersive) { seek.cancelInteraction(); renderImmersive(ui, current, glass); return; }
         stageSeek.sync(current.track()==null?"":trackKey(current.track()),current.positionMs(),current.durationMs(),false);
         stageVolume.sync("volume",0,1000,false);
-        if (!glass) OnlineMusicViewPaint.transportSurface(ui, layout.transport(), Math.max(visual.activity(),visual.emphasis()));
+        if (rainbow) MusicRainbowTheme.chrome(ui, layout.transport(), theme.text());
+        else if (!glass) OnlineMusicViewPaint.transportSurface(ui, layout.transport(), Math.max(visual.activity(),visual.emphasis()));
         if (layout.expanded()) {
-            if (page != Page.LYRICS) OnlineMusicViewPaint.hero(ui, host.font(), browsingHero(), label("view.brand"),
+            if (page != Page.LYRICS && page != Page.COMMENTS && page != Page.ARTIST && page != Page.APPEARANCE) OnlineMusicViewPaint.hero(ui, host.font(), browsingHero(), label("view.brand"),
                     page==Page.LIBRARY&&(library==Library.TRACKS||library==Library.DISCOVERY_TRACKS)&&selectedPlaylist!=null?MusicTypography.text(selectedPlaylist.name()):label("refresh." + page.name().toLowerCase(Locale.ROOT)), Component.empty(), visual.emphasis());
             paintArtwork(ui, layout.cover(), current.track(), visual.activity());
         }
         renderTransport(ui, current);
         if (page == Page.ARTIST) artistDetail.render(ui);
+        else if (page == Page.APPEARANCE) {
+            var header = layout.searchBar();
+            int x = back.getX() + back.getWidth() + 8;
+            text(ui, appearance.heading(), x, header.y() + 8, header.right() - x);
+            appearance.render(ui, 0xffccd0dc);
+        }
+        else if (page == Page.COMMENTS) {
+            comments.show(true);
+            comments.render(ui, theme.text(), theme.secondaryText(0xff94a3b8, .25f));
+        }
         else if (page == Page.SEARCH) renderResults(ui, current);
         else if (page == Page.QUEUE) renderQueue(ui, current);
         else if (page == Page.HISTORY) {
@@ -2348,7 +2488,8 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
         if(failed!=stageFailure){stageFailure=failed;stage=FullscreenLyricLayout.of(layout.frame(),shellBack==null,failed,stagePage!=StagePage.ARTWORK);updateStageGeometry();}
         var cover = artwork.sample(ui, current.track());
         paintParallaxBackground(ui,stage.frame(),()-> {
-            if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,parallaxBounds(stage.frame()));
+            if (MusicRainbowTheme.active(ui)) MusicRainbowTheme.paint(ui, parallaxBounds(stage.frame()), MusicArtworkStage.FOREGROUND);
+            else if(qqStyle()&&!ui.preferences().highContrast())qqBackground(ui,parallaxBounds(stage.frame()));
             else artworkStage.renderAudioBackground(ui,parallaxBounds(stage.frame()),cover.background(),ui.nowMs(),ui.preferences().reducedMotion(),
                     current.state()==OnlineMusicPlayer.State.PLAYING?player.audioActivity():0f);
         });
@@ -2558,6 +2699,6 @@ public final class OnlineMusicViewImpl implements OnlineMusicView {
     private void muted(UiFrame ui, Component text, int x, int y, int width) { OnlineMusicViewPaint.line(ui, host.font(), text, x, y, width, UiTheme.current().secondaryText(0xff94a3b8, .25f)); }
     private static String time(long millis) { long seconds = Math.max(0, millis) / 1000; return String.format(Locale.ROOT, "%d:%02d", seconds / 60, seconds % 60); }
     private static MutableComponent label(String key, Object... args) { return MusicTypography.text(Component.translatable(TEXT + key, args)); }
-    @Override public void suspend() { artistDetail.cancel(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
-    @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artwork.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
+    @Override public void suspend() { artistDetail.cancel(); comments.suspend(); cancelListen1(); closeNowPlayingMenu(); routeMotion.reset(); historyDestination=null; interactionFeedback.clear(); for(var control:historyControls)if(control instanceof MusicTextControl text)text.cancelInteraction(); for(var control:queueControls) if(control instanceof MusicTextControl text)text.cancelInteraction(); if(stagePlaybackMode!=null)stagePlaybackMode.cancelInteraction(); if(seek!=null)seek.cancelInteraction(); for(var c:new MusicTransportControl[]{playback,stop,lyricsToggle,miniQueue,miniPrevious,miniNext})if(c!=null)c.cancelInteraction(); if(stageSeek!=null)stageSeek.cancelInteraction(); if(stageVolume!=null)stageVolume.cancelInteraction(); queue.suspend(); if(stageQueueScroll!=null)stageQueueScroll.cancelDrag(); for(var control:new MusicTransportControl[]{stageBack,stagePlay,stagePrevious,stageNext,stageMode,stageQueue})if(control!=null)control.cancelInteraction(); for (var scroll : new OnlineMusicScrollRegion[]{searchScroll, libraryScroll, lyricsScroll, accountScroll, queueScroll, historyScroll}) if (scroll != null) scroll.cancelDrag(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); detachSearch(); cancelSuggestions(); detachLogin(); detachLibrary(); clearAccountFeedback(); library = Library.NONE; accountDetail = false; interactionFeedback.clear(); if (ownsPlayer) player.pause(); }
+    @Override public void close() { if (!closed) { suspend(); navigation.forEach(MusicTextControl::cancelInteraction); if(sourceSegments!=null)sourceSegments.cancelInteraction();if(librarySources!=null)librarySources.cancelInteraction();if(libraryGroups!=null)libraryGroups.cancelInteraction(); visualMotion.close(); artistDetail.close(); artwork.close(); artworkStage.close(); if (ownsPlayer) player.close(); closed = true; } }
 }

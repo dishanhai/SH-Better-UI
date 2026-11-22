@@ -1,5 +1,8 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGradient;
+import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
 import com.muoniumplayer.core.settings.TouchSettings;
@@ -13,8 +16,11 @@ import com.muoniumplayer.core.rendering.ui.widgets.LabelWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RectWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedButtonWidget;
 import com.muoniumplayer.core.rendering.ui.widgets.RoundedRectWidget;
+import net.minecraft.network.chat.Component;
 
 import java.awt.Color;
+import java.util.Arrays;
+import java.util.List;
 
 /**
  * 播放器主题调色板：在主题按钮上右键打开的二级菜单。
@@ -30,17 +36,29 @@ public final class ThemePaletteOverlay extends NCMPanel {
 
     private static final double DIALOG_WIDTH = 468.0;
     private static final double DIALOG_HEIGHT = 356.0;
-    private static final double CELL_HEIGHT = 30.0;
+    private static final double CELL_HEIGHT = 27.0;
+    private static final double COLORS_TOP = 83.0;
+    private static final double PREVIEW_GAP = 6.0;
+    private static final double FOOTER_INSET = 38.0;
+    private static final double SLIDER_HEIGHT = 16.0;
+    private static final double SLIDERS_BOTTOM = COLORS_TOP
+            + (NCMScreen.ColorType.values().length + 1) / 2 * CELL_HEIGHT + 8.0 + 72.0 + SLIDER_HEIGHT;
+    private static final List<NCMTheme.ThemePreset> GRADIENTS = Arrays.stream(NCMTheme.ThemePreset.values())
+            .filter(preset -> preset.gradient() != null)
+            .toList();
 
     private boolean closing;
     /** 进出场那一条时钟；遮罩与弹窗共用同一个 progress，不再各自渐近。 */
     private final SheetClock clock = new SheetClock();
     private double presentation;
+    private double contentScale = 1.0;
 
     private NCMScreen.ColorType editing = NCMScreen.ColorType.ACCENT;
     private float hue;
     private float saturation;
     private float brightness;
+    private NCMTheme.ThemePreset previousTheme = NCMTheme.defaultTheme();
+    private int focusedPreview = -1;
 
     @Override
     public void onInit() {
@@ -64,8 +82,20 @@ public final class ThemePaletteOverlay extends NCMPanel {
         this.clock.requestDismiss();
     }
 
-    public void handleEscape() {
-        dispose();
+    void handleKey(int key) {
+        if (closing) return;
+        if (key == Keyboard.KEY_ESCAPE) {
+            dispose();
+        } else if (key == Keyboard.KEY_TAB || key == Keyboard.KEY_LEFT || key == Keyboard.KEY_RIGHT) {
+            boolean backwards = key == Keyboard.KEY_LEFT || key == Keyboard.KEY_TAB
+                    && (Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
+            focusedPreview = focusedPreview < 0 && backwards ? GRADIENTS.size() - 1
+                    : Math.floorMod(focusedPreview + (backwards ? -1 : 1), GRADIENTS.size());
+            MusicTypography.narrate(Component.literal(GRADIENTS.get(focusedPreview).getDisplayName()));
+        } else if (focusedPreview >= 0
+                && (key == Keyboard.KEY_RETURN || key == Keyboard.KEY_NUMPADENTER || key == Keyboard.KEY_SPACE)) {
+            selectPreview(GRADIENTS.get(focusedPreview));
+        }
     }
 
     private void build() {
@@ -74,16 +104,17 @@ public final class ThemePaletteOverlay extends NCMPanel {
         Panel dialog = createDialog();
         addTitle(dialog, "主题调色板",
                 "实时预览 · 松手即保存 · 每套主题各自记住自己的调色");
+        for (int index = 0; index < GRADIENTS.size(); index++) addGradientPreview(dialog, index);
 
         NCMScreen.ColorType[] types = NCMScreen.ColorType.values();
         int rows = (types.length + 1) / 2;
         for (int index = 0; index < types.length; index++) {
             double cellX = 16.0 + (index / rows) * 220.0;
-            double cellY = 66.0 + (index % rows) * CELL_HEIGHT;
+            double cellY = COLORS_TOP + (index % rows) * CELL_HEIGHT;
             addColorCell(dialog, types[index], cellX, cellY);
         }
 
-        double sliderTop = 66.0 + rows * CELL_HEIGHT + 10.0;
+        double sliderTop = COLORS_TOP + rows * CELL_HEIGHT + 8.0;
         addEditorLabel(dialog, sliderTop);
         addSlider(dialog, PaletteChannel.HUE, sliderTop + 20.0);
         addSlider(dialog, PaletteChannel.SATURATION, sliderTop + 46.0);
@@ -92,13 +123,59 @@ public final class ThemePaletteOverlay extends NCMPanel {
         addFooter(dialog);
     }
 
+    private void addGradientPreview(Panel dialog, int index) {
+        var preset = GRADIENTS.get(index);
+        var preview = new RoundedRectWidget() {
+            @Override public void onRender(double mouseX, double mouseY) {
+                EmbeddedMusicGradient.paint(preset, getX(), getY(), getWidth(), getHeight(), getRadius(), getAlpha());
+                boolean selected = NCMTheme.getCurrent() == preset;
+                if (selected || isHovering())
+                    roundedOutline(getX(), getY(), getWidth(), getHeight(), getRadius(), selected ? 2 : 1, getColor());
+                if (focusedPreview == index && getWidth() > 6 && getHeight() > 6)
+                    roundedOutline(getX() + 3, getY() + 3, getWidth() - 6, getHeight() - 6, 4, 1, getColor());
+            }
+        };
+        preview.setRadius(7);
+        preview.setColor(0xFFFFFF);
+        preview.setShouldOverrideMouseCursor(true);
+        preview.setBeforeRenderCallback(() -> {
+            double width = Math.max(0, (dialog.getWidth() - 32 - PREVIEW_GAP * (GRADIENTS.size() - 1)) / GRADIENTS.size());
+            preview.setBounds(width, 22 * contentScale)
+                    .setPosition(16 + index * (width + PREVIEW_GAP), 55 * contentScale);
+        });
+        preview.setOnClickCallback((x, y, button) -> {
+            if (button != 0) return false;
+            focusedPreview = -1;
+            selectPreview(preset);
+            return true;
+        });
+        dialog.addChild(preview);
+
+        var label = new LabelWidget(preset::getDisplayName, FontManager.pf10bold);
+        label.setClickable(false);
+        label.setColor(0xFFFFFF);
+        label.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
+        label.setBeforeRenderCallback(() -> label.setMaxWidth(Math.max(0, preview.getWidth() - 12)).center());
+        preview.addChild(label);
+    }
+
+    private void selectPreview(NCMTheme.ThemePreset preset) {
+        if (NCMTheme.getCurrent() == preset) NCMTheme.setCurrent(previousTheme);
+        else {
+            previousTheme = NCMTheme.getCurrent();
+            NCMTheme.setCurrent(preset);
+        }
+        loadEditingColor();
+        MusicTypography.narrate(Component.literal(NCMTheme.getCurrentName()));
+    }
+
     private void addColorCell(Panel dialog, NCMScreen.ColorType type, double x, double y) {
         RoundedRectWidget cell = new RoundedRectWidget();
         dialog.addChild(cell);
         cell.setRadius(6.0);
         cell.setShouldOverrideMouseCursor(true);
         cell.setBeforeRenderCallback(() -> {
-            cell.setBounds(212.0, CELL_HEIGHT - 4.0).setPosition(x, y);
+            cell.setBounds(212.0, (CELL_HEIGHT - 4.0) * contentScale).setPosition(x, y * contentScale);
             boolean selected = this.editing == type;
             cell.setColor(selected
                     ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
@@ -123,7 +200,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
         label.setClickable(false);
         label.setBeforeRenderCallback(() -> label
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
-                .setPosition(8.0, (CELL_HEIGHT - 4.0 - label.getHeight()) * .5));
+                .setPosition(8.0, (cell.getHeight() - label.getHeight()) * .5));
 
         LabelWidget hex = new LabelWidget(() -> hexText(NCMTheme.getTargetColor(type))
                 + (NCMTheme.hasCustomColor(type) ? " ·" : ""), FontManager.pf10bold);
@@ -132,14 +209,14 @@ public final class ThemePaletteOverlay extends NCMPanel {
         hex.setBeforeRenderCallback(() -> hex
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT))
                 .setPosition(212.0 - 44.0 - hex.getWidth() - 6.0,
-                        (CELL_HEIGHT - 4.0 - hex.getHeight()) * .5));
+                        (cell.getHeight() - hex.getHeight()) * .5));
 
         SwatchWidget swatch = new SwatchWidget(type);
         cell.addChild(swatch);
         swatch.setClickable(false);
         swatch.setBeforeRenderCallback(() -> swatch
-                .setBounds(38.0, 16.0)
-                .setPosition(212.0 - 38.0 - 6.0, (CELL_HEIGHT - 4.0 - 16.0) * .5));
+                .setBounds(38.0, 16.0 * contentScale)
+                .setPosition(212.0 - 38.0 - 6.0, (cell.getHeight() - swatch.getHeight()) * .5));
     }
 
     private void addEditorLabel(Panel dialog, double y) {
@@ -150,14 +227,14 @@ public final class ThemePaletteOverlay extends NCMPanel {
         label.setClickable(false);
         label.setBeforeRenderCallback(() -> label
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
-                .setPosition(16.0, y));
+                .setPosition(16.0, y * contentScale));
 
         LabelWidget hint = new LabelWidget("右键色块可撤销该项", FontManager.pf10bold);
         dialog.addChild(hint);
         hint.setClickable(false);
         hint.setBeforeRenderCallback(() -> hint
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT))
-                .setPosition(Math.max(16.0, dialog.getWidth() - 16.0 - hint.getWidth()), y + 1.0));
+                .setPosition(Math.max(16.0, dialog.getWidth() - 16.0 - hint.getWidth()), y * contentScale + 1.0));
     }
 
     private void addSlider(Panel dialog, PaletteChannel channel, double y) {
@@ -166,20 +243,20 @@ public final class ThemePaletteOverlay extends NCMPanel {
         label.setClickable(false);
         label.setBeforeRenderCallback(() -> label
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT))
-                .setPosition(16.0, y + 5.0));
+                .setPosition(16.0, (y + 5.0) * contentScale));
 
         SliderWidget slider = new SliderWidget(channel);
         dialog.addChild(slider);
         slider.setBeforeRenderCallback(() -> slider
-                .setBounds(Math.max(40.0, dialog.getWidth() - 16.0 - 46.0 - 40.0), 16.0)
-                .setPosition(46.0, y));
+                .setBounds(Math.max(40.0, dialog.getWidth() - 16.0 - 46.0 - 40.0), SLIDER_HEIGHT * contentScale)
+                .setPosition(46.0, y * contentScale));
 
         LabelWidget value = new LabelWidget(() -> channel.format(this), FontManager.pf10bold);
         dialog.addChild(value);
         value.setClickable(false);
         value.setBeforeRenderCallback(() -> value
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT))
-                .setPosition(Math.max(16.0, dialog.getWidth() - 16.0 - value.getWidth()), y + 5.0));
+                .setPosition(Math.max(16.0, dialog.getWidth() - 16.0 - value.getWidth()), (y + 5.0) * contentScale));
     }
 
     private void addFooter(Panel dialog) {
@@ -194,7 +271,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
             return true;
         });
         resetOne.setBeforeRenderCallback(() -> {
-            resetOne.setBounds(88.0, 26.0).setPosition(16.0, dialog.getHeight() - 38.0);
+            resetOne.setBounds(88.0, 26.0).setPosition(16.0, dialog.getHeight() - FOOTER_INSET);
             resetOne.setColor(resetOne.isHovering()
                     ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
                     : NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
@@ -213,7 +290,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
             return true;
         });
         resetAll.setBeforeRenderCallback(() -> {
-            resetAll.setBounds(112.0, 26.0).setPosition(112.0, dialog.getHeight() - 38.0);
+            resetAll.setBounds(112.0, 26.0).setPosition(112.0, dialog.getHeight() - FOOTER_INSET);
             resetAll.setColor(resetAll.isHovering()
                     ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
                     : NCMScreen.getColor(NCMScreen.ColorType.INPUT_BACKGROUND));
@@ -232,7 +309,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
         });
         done.setBeforeRenderCallback(() -> {
             done.setBounds(84.0, 26.0)
-                    .setPosition(Math.max(16.0, dialog.getWidth() - 100.0), dialog.getHeight() - 38.0);
+                    .setPosition(Math.max(16.0, dialog.getWidth() - 100.0), dialog.getHeight() - FOOTER_INSET);
             done.setColor(done.isHovering()
                     ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT_HOVER)
                     : NCMScreen.getColor(NCMScreen.ColorType.ACCENT));
@@ -273,6 +350,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
         dialog.setBeforeRenderCallback(() -> {
             double width = Math.max(1.0, Math.min(DIALOG_WIDTH, getWidth() - 24.0));
             double height = Math.max(1.0, Math.min(DIALOG_HEIGHT, getHeight() - 24.0));
+            contentScale = Math.max(0, Math.min(1, (height - FOOTER_INSET - 6.0) / SLIDERS_BOTTOM));
             dialog.setBounds(width, height);
             dialog.setAlpha((float) this.presentation);
             dialog.setPosition(getWidth() * .5 - width * .5,
@@ -298,7 +376,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
         title.setClickable(false);
         title.setBeforeRenderCallback(() -> title
                 .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
-                .setPosition(16.0, 14.0));
+                .setPosition(16.0, 14.0 * contentScale));
 
         LabelWidget subtitle = new LabelWidget(subtitleText, FontManager.pf12);
         dialog.addChild(subtitle);
@@ -307,7 +385,7 @@ public final class ThemePaletteOverlay extends NCMPanel {
             subtitle.setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
             subtitle.setMaxWidth(Math.max(1.0, dialog.getWidth() - 32.0));
             subtitle.setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH);
-            subtitle.setPosition(16.0, 39.0);
+            subtitle.setPosition(16.0, 39.0 * contentScale);
         });
     }
 

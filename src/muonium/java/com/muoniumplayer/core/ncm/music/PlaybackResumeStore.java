@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.PlaybackQueueOrder;
 import com.google.gson.Gson;
 import com.google.gson.GsonBuilder;
 import com.google.gson.JsonArray;
@@ -107,7 +108,8 @@ public final class PlaybackResumeStore {
             if (minimumIntervalMillis > 0L && lastRequestedAtMillis > 0L
                     && now - lastRequestedAtMillis < minimumIntervalMillis) return;
             try {
-                List<Music> snapshot = queue == null ? new ArrayList<>() : new ArrayList<>(queue);
+                List<Music> snapshot = queue == null ? new ArrayList<>()
+                        : new PlaybackQueueOrder<>(queue, Music::getStableKey, originalShuffleOrder(queue));
                 pendingSave = new Snapshot(snapshot, index, positionMillis, playMode, context);
                 pendingClear = false;
                 lastRequestedAtMillis = now;
@@ -232,6 +234,12 @@ public final class PlaybackResumeStore {
                 }
             }
             root.add("queue", tracks);
+            List<String> original = originalShuffleOrder(queue);
+            if (original != null && playMode.isShuffled()) {
+                JsonArray keys = new JsonArray();
+                for (int i = 0; i < Math.min(original.size(), MAX_QUEUE); i++) keys.add(original.get(i));
+                root.add("shuffleOrder", keys);
+            }
             if (context != null) {
                 JsonObject ctx = new JsonObject();
                 ctx.addProperty("id", context.getId());
@@ -322,7 +330,19 @@ public final class PlaybackResumeStore {
                 }
             }
 
-            return new Snapshot(queue, index, position, playMode, readContext(root));
+            List<String> original = null;
+            if (playMode.isShuffled() && root.get("shuffleOrder") instanceof JsonArray keys) {
+                original = new ArrayList<>();
+                for (int i = 0; i < Math.min(keys.size(), MAX_QUEUE); i++) {
+                    JsonElement key = keys.get(i);
+                    if (key.isJsonPrimitive() && key.getAsJsonPrimitive().isString()) {
+                        String value = key.getAsString();
+                        if (value.length() <= 80) original.add(value);
+                    }
+                }
+            }
+            return new Snapshot(new PlaybackQueueOrder<>(queue, Music::getStableKey, original),
+                    index, position, playMode, readContext(root));
         } catch (Throwable ignored) {
             return null;
         }
@@ -359,6 +379,10 @@ public final class PlaybackResumeStore {
         } catch (Throwable ignored) {
             return null;
         }
+    }
+
+    private static List<String> originalShuffleOrder(List<Music> queue) {
+        return queue instanceof PlaybackQueueOrder<?> ordered ? ordered.getOriginalOrder() : null;
     }
 
     // ─────────────────────────── 小工具 ───────────────────────────

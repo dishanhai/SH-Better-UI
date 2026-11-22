@@ -58,7 +58,7 @@ public final class LyricManualMemory {
         public final LyricSearchSource source;
         /** 该源内定位这首歌的 id（网易云 songId、QQ songid、酷狗歌词 id、AMLL 词条 id）。 */
         public final String trackId;
-        /** 仅 AMLL 用：这条 TTML 是按 ncm 还是 qq 的 id 存的。其它源为空串。 */
+        /** AMLL 的条目平台，或 Apple Music 的目录地区。 */
         public final String platform;
         /** 候选卡片上显示的歌名/歌手/专辑，用于「当前钉的是哪一首」这一行说明。 */
         public final String title;

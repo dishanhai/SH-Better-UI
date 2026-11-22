@@ -12,6 +12,7 @@ record MusicFrontendNowPlayingLayout(Bounds cover, Bounds title, Bounds subtitle
         // Stay below compact lyrics, and stay in the same column as the controls.
         return new Bounds(progress.x(), progress.y(), progress.width(), queue.bottom() - progress.y());
     }
+    Bounds comments() { return new Bounds(queue.right() + 4, queue.y(), 24, queue.height()); }
 
     static MusicFrontendNowPlayingLayout fit(Bounds frame, boolean detailOpen) {
         int inset = frame.width() >= 420 ? 24 : 16;

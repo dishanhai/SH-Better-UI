@@ -1,11 +1,17 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.muoniumplayer.core.management.FontManager;
+import com.muoniumplayer.core.rendering.font.CFontRenderer;
+import com.muoniumplayer.render.skija.SkijaText;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.condition.EnabledOnOs;
+import org.junit.jupiter.api.condition.OS;
 
 import java.util.Arrays;
 import java.util.List;
 
 import static org.junit.jupiter.api.Assertions.assertEquals;
+import static org.junit.jupiter.api.Assertions.assertArrayEquals;
 import static org.junit.jupiter.api.Assertions.assertNotSame;
 import static org.junit.jupiter.api.Assertions.assertSame;
 import static org.junit.jupiter.api.Assertions.assertTrue;
@@ -18,6 +24,50 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
  * emoji ZWJ 序列与代理对，因为手写实现恰恰会在这两类上出错，而它们真的会出现在歌词里。</p>
  */
 class LyricGraphemeTimelineProbeTest {
+
+    @Test
+    void timedChineseBreaksPreferWordsAndKeepClosingPunctuationOnTheLine() {
+        var units = List.of("这", "片", "土", "地", "，", "很", "美");
+        var rows = com.dishanhai.sh_better_ui.kernel.api.music.LyricLineWrap.rows(
+                units, new double[]{1, 1, 1, 1, 1, 1, 1}, 3);
+        assertEquals(rows[2], rows[3]);
+        assertEquals(rows[3], rows[4]);
+        assertTrue(rows[2] > rows[1]);
+        assertTrue(rows[5] > rows[4]);
+    }
+
+    @Test
+    @EnabledOnOs(OS.WINDOWS) // The Forge test runtime ships the Windows Skija native.
+    void classicPlaybackKeepsEachClusterTogetherAndMeasuresTheSameRunAsIdleText() throws Exception {
+        byte[] bytes = FontManager.builtinUiFallbackBytes(true);
+        var face = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, new java.io.ByteArrayInputStream(bytes));
+        SkijaText.register(face, bytes);
+        try (var font = new CFontRenderer(face, 32)) {
+            String text = "（e\u0301𝄞・字）";
+            LyricLine line = new LyricLine(1000, text);
+            line.words.add(new LyricLine.Word(text, 1000, 600));
+            var placement = LyricWordPlacement.build(line, font, 0, 500, false);
+            assertArrayEquals(
+                    new String[]{"（", "e\u0301", "𝄞", "・", "字", "）"}, placement.glyphs[0]);
+            assertArrayEquals(
+                    new long[]{1000, 1100, 1200, 1300, 1400, 1500}, placement.glyphStarts[0]);
+            assertTrue(font.getStringWidthD("字") > 0);
+            assertEquals(font.getStringWidthD(text), Arrays.stream(placement.glyphAdvances[0]).sum(), .001);
+
+            List<String> words = List.of("这", "片", "土", "地", "，", "很", "美");
+            var timed = new LyricLine(0, String.join("", words));
+            for (int i = 0; i < words.size(); i++) {
+                timed.words.add(new LyricLine.Word(words.get(i), i * 100L, 100));
+            }
+            double width = font.getStringWidthD("这片土") + .1;
+            var wrapped = LyricWordPlacement.build(timed, font, 10, width, true);
+            assertEquals(wrapped.row[2], wrapped.row[3]);
+            assertEquals(200, wrapped.glyphStarts[2][0]);
+            assertEquals(300, wrapped.glyphStarts[3][0]);
+            assertEquals(10 + width, wrapped.x[wrapped.last[0]] + wrapped.widths[wrapped.last[0]], .001);
+            assertArrayEquals(new String[]{"这片", "土地，", "很美"}, timed.wrappedRows(font, timed.lyric, width));
+        }
+    }
 
     /** U+1F469 ZWJ U+1F469 ZWJ U+1F467：一个 emoji ZWJ 序列（家庭）。 */
     private static final String ZWJ_FAMILY =

@@ -1,6 +1,7 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.kernel.internal.PlaylistArtwork;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -1981,12 +1982,8 @@ public class HomePanel extends NCMPanel {
             if (textureManager.getTexture(coverLoc) != null)
                 return true;
 
-            String coverUrl = playList.getCoverUrl();
-            if (coverUrl == null || coverUrl.trim().isEmpty()) return false;
-            String secureUrl = coverUrl.replace("http://", "https://");
-            String requestUrl = playList.getPlatform() == MusicPlatform.QQ || playList.getPlatform() == MusicPlatform.QISHUI || playList.isSearchMode()
-                    ? secureUrl
-                    : secureUrl + "?param=256y256";
+            String requestUrl = PlaylistArtwork.requestUrl(playList);
+            if (requestUrl.isEmpty()) return false;
             // 入队（下载闸门在 Textures.PENDING_DOWNLOADS 里去重）。已经在下/已下载的
             // 第二次调用会在闸门处被吞掉，按「已受理」返回 true。
             Textures.downloadTextureAndLoadAsync(requestUrl, coverLoc);

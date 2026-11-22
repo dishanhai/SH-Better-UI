@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.MusicSearchRecommendations;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
@@ -715,25 +716,17 @@ public final class NeteaseDiscoveryPanel extends NCMPanel {
     }
 
     private List<Entry> hotEntries() {
-        JsonObject root = CloudMusicApi.searchHotDetail().toJsonObject();
-        JsonArray data = array(root, "data");
         List<Entry> result = new ArrayList<>();
-        if (data == null) return result;
         int index = 1;
-        for (JsonElement element : data) {
-            if (!element.isJsonObject()) continue;
-            JsonObject item = element.getAsJsonObject();
-            String keyword = text(item, "searchWord", "first", "keyword");
-            if (keyword.isEmpty()) continue;
+        for (var hot : MusicSearchRecommendations.neteaseHotSearches()) {
             // 右侧 meta 优先用接口给的 content（热搜说明/热度文案）；缺了就退回 score 折算，
             // 再没有才显示「点击搜索」—— 那一栏总有东西可读，又不编造新数据。
-            String meta = text(item, "content");
+            String meta = hot.description();
             if (meta.isEmpty()) {
-                long score = number(item, "score");
+                long score = hot.score();
                 meta = score > 0L ? "热度 " + score : "点击搜索";
             }
-            final String selected = keyword;
-            result.add(new Entry(index++, keyword, meta, () -> openLegacySongSearch(selected)));
+            result.add(new Entry(index++, hot.keyword(), meta, () -> openLegacySongSearch(hot.keyword())));
         }
         return result;
     }

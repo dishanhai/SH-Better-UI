@@ -13,7 +13,7 @@ record MusicFrontendLayout(Bounds frame, boolean supported, Mode mode, Bounds ba
                            Bounds navigation, Bounds content, Bounds header, Bounds body,
                            Bounds transport, Bounds queueRail, Map<Route, Bounds> tabs,
                            Transport transportControls) {
-    enum Route { DISCOVER, LIBRARY, SEARCH, NOW_PLAYING, LYRICS, QUEUE, SETTINGS, ACCOUNTS, ACCOUNT, DISCOVERY, ARTIST, PLAYLIST, HISTORY }
+    enum Route { DISCOVER, LIBRARY, SEARCH, NOW_PLAYING, LYRICS, QUEUE, SETTINGS, ACCOUNTS, ACCOUNT, DISCOVERY, ARTIST, ALBUM, PLAYLIST, HISTORY, COMMENTS }
     enum Mode { COMPACT, DESKTOP }
 
     static final int MIN_WIDTH = 208;

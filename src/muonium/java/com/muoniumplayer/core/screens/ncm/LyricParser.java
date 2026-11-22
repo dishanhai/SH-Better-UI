@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.ncm;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.LyricVocalist;
 import com.google.gson.JsonObject;
 import org.w3c.dom.Document;
 import org.w3c.dom.Element;
@@ -685,8 +686,11 @@ public class LyricParser {
 
         Document document = readTtmlDocument(ttml);
         if (document == null) return;
+        Element root = document.getDocumentElement();
+        if ("None".equalsIgnoreCase(root.getAttributeNS("http://music.apple.com/lyric-ttml-internal", "timing"))) return;
+        Map<String, LyricVocalist> vocalists = LyricVocalist.ttmlDefinitions(root);
 
-        NodeList paragraphs = document.getElementsByTagName("p");
+        NodeList paragraphs = root.getElementsByTagNameNS("*", "p");
         for (int i = 0; i < paragraphs.getLength(); i++) {
             Node node = paragraphs.item(i);
             if (node.getNodeType() != Node.ELEMENT_NODE) continue;
@@ -701,10 +705,17 @@ public class LyricParser {
             if (collector.words.isEmpty()) {
                 // 行级 TTML:整段只有文本没有音节 span,按整行一个词处理。
                 String text = collector.pendingPrefix.trim();
-                if (text.isEmpty()) continue;
-                long duration = lineEnd > lineStart ? lineEnd - lineStart : 0L;
-                collector.words.add(new TimedText(text, lineStart, duration));
-                collector.pendingPrefix = "";
+                if (!text.isEmpty()) {
+                    long duration = lineEnd > lineStart ? lineEnd - lineStart : 0L;
+                    collector.words.add(new TimedText(text, lineStart, duration));
+                }
+            }
+            if (!collector.backgroundWords.isEmpty()) {
+                if (!collector.words.isEmpty()) {
+                    TimedText last = collector.words.get(collector.words.size() - 1);
+                    if (!last.text.endsWith(" ")) last.text += " ";
+                }
+                collector.words.addAll(collector.backgroundWords);
             }
 
             StringBuilder text = new StringBuilder();
@@ -713,6 +724,7 @@ public class LyricParser {
             if (lineText.isEmpty()) continue;
 
             LyricLine line = new LyricLine(lineStart, lineText);
+            line.vocalist = LyricVocalist.fromTtml(paragraph, vocalists);
             // 和声 span 常常越过 <p> 自己的 end(它一直唱到下一行开始),行窗口必须覆盖到
             // 最后一个词,否则 normalizeWordDurations 之后仍有词落在行外,逐字扫词会提前停住。
             long wordsEnd = lineEnd;
@@ -795,28 +807,23 @@ public class LyricParser {
         }
     }
 
-    /**
-     * 把 {@code x-bg} 和声 span 追加到主行末尾。只有当和声排在主行最后一个词之后时才追加:
-     * 时间戳倒退会让逐字扫词回跳,那比丢掉一句和声更糟。和声自带的翻译不覆盖主行翻译。
-     */
+    /** 和声可与主唱同时开始。保留各自的时间，并按主唱、和声顺序提供文字。 */
     private static void appendTtmlBackground(Element backgroundSpan, TtmlCollector main) {
         TtmlCollector background = new TtmlCollector();
         collectTtmlSpans(backgroundSpan, background, false);
-        if (background.words.isEmpty()) return;
-        if (!main.words.isEmpty()) {
-            TimedText last = main.words.get(main.words.size() - 1);
-            if (background.words.get(0).start < last.start) return;
-            if (!last.text.endsWith(" ")) last.text += " ";
+        if (background.words.isEmpty()) {
+            long start = parseTtmlClock(backgroundSpan.getAttribute("begin"));
+            long end = parseTtmlClock(backgroundSpan.getAttribute("end"));
+            String text = background.pendingPrefix.trim();
+            if (start < 0 || end <= start || text.isEmpty()) return;
+            background.words.add(new TimedText(text, start, end - start));
         }
-        // 追加进主行的同时留下和声标记：渲染模型上它们和主歌词的音节混在一条词表里，
-        // 想按 Apple 的排版把和声单独排一行，就只能靠这个标记把两路分开。
         for (TimedText word : background.words) word.background = true;
-        main.words.addAll(background.words);
-        main.pendingPrefix = "";
+        main.backgroundWords.addAll(background.words);
     }
 
     private static String ttmlRole(Element span) {
-        String role = span.getAttribute("ttm:role");
+        String role = span.getAttributeNS(LyricVocalist.TTML_METADATA, "role");
         if (role == null || role.isEmpty()) role = span.getAttribute("role");
         return role == null ? "" : role.trim().toLowerCase(Locale.ROOT);
     }
@@ -845,7 +852,7 @@ public class LyricParser {
         }
     }
 
-    /** 命名空间无关的安全解析:歌词是远端内容,禁掉 DTD 与外部实体,失败一律返回 null。 */
+    /** 安全解析远端歌词，禁掉 DTD 与外部实体。 */
     private static Document readTtmlDocument(String ttml) {
         try {
             String text = ttml;
@@ -859,7 +866,7 @@ public class LyricParser {
             }
 
             DocumentBuilderFactory factory = DocumentBuilderFactory.newInstance();
-            factory.setNamespaceAware(false);
+            factory.setNamespaceAware(true);
             factory.setValidating(false);
             factory.setExpandEntityReferences(false);
             setFeatureQuietly(factory, "http://apache.org/xml/features/disallow-doctype-decl", true);
@@ -1170,6 +1177,7 @@ public class LyricParser {
     /** TTML 解析中转:词表、待拼接前缀,以及行级的翻译/罗马音。 */
     private static final class TtmlCollector {
         private final List<TimedText> words = new ArrayList<>();
+        private final List<TimedText> backgroundWords = new ArrayList<>();
         private String pendingPrefix = "";
         private String translation;
         private String romanization;

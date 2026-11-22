@@ -1,6 +1,10 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.ncm.effects;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer;
+import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer.Mode;
+import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer.Soundscape;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
@@ -25,6 +29,7 @@ import com.muoniumplayer.render.skija.SkijaGfx;
 import io.github.humbleui.skija.Canvas;
 import io.github.humbleui.skija.Path;
 import io.github.humbleui.skija.PathBuilder;
+import net.minecraft.network.chat.Component;
 
 import java.io.File;
 import java.util.ArrayDeque;
@@ -58,14 +63,19 @@ public class EffectsWorkbench extends NcmSheet {
         return thread;
     });
     private static final int HISTORY_LIMIT = 32;
+    private static final String NOISE_VOLUME_ID = "noise.volume";
 
     private enum Page {
         PRESETS("ViPER 预设", "预设", Icon.PRESETS), EQ("图形均衡器", "EQ", Icon.EQ),
         EFFECTS("高级效果器", "效果器", Icon.EFFECTS), ACOUSTICS("场景声学", "声学", Icon.ROOM),
-        AMBIENT("环境选曲", "选曲", Icon.AMBIENT);
+        AMBIENT("环境选曲", "选曲", Icon.AMBIENT),
+        NOISE("", "", Icon.AMBIENT);
         final String title, compact;
         final Icon icon;
         Page(String title, String compact, Icon icon) { this.title = title; this.compact = compact; this.icon = icon; }
+        String label(boolean small) {
+            return this == NOISE ? noiseText(small ? "tab" : "title").getString() : small ? compact : title;
+        }
     }
 
     private record View(Page page, ViperPresetEditor editor, int group, ViperWorkbenchCatalog.Category category,
@@ -86,6 +96,7 @@ public class EffectsWorkbench extends NcmSheet {
     private record MenuItem(String label, Icon icon, boolean danger, Runnable action) { }
     private record Numeric(String title, String unit, double min, double max, boolean integer,
                            DoubleSupplier value, DoubleConsumer write) { }
+    private record NoiseControl(String id, Box bounds, Component label, Runnable activate) { }
     private interface Job<T> { T run() throws Exception; }
 
     private EffectsPaint painter;
@@ -170,6 +181,8 @@ public class EffectsWorkbench extends NcmSheet {
     private int pendingSaves;
     private final Deque<ViperPresetEditor> undo = new ArrayDeque<>(), redo = new ArrayDeque<>();
     private final List<Hit> hits = new ArrayList<>();
+    private final List<NoiseControl> noiseControls = new ArrayList<>();
+    private int noiseFocus = -1;
     private final Map<String, EffectsMotion> hover = new HashMap<>(), selection = new HashMap<>();
     private final Map<String, EffectsMotion.Spring> shape = new HashMap<>(), press = new HashMap<>();
     private final EffectsMotion.Spring navigationIndicator = new EffectsMotion.Spring(0, EffectsMotion.Scheme.DEFAULT_SPATIAL);
@@ -187,7 +200,7 @@ public class EffectsWorkbench extends NcmSheet {
     private long suppressClickUntil;
     private Hit drag;
     private ViperPresetEditor dragBaseline;
-    private int dragStrength, dragStable;
+    private int dragStrength, dragStable, dragNoiseVolume;
     private boolean dragChanged, touchingScroll, touchGraphOwned;
     private double mouseX, mouseY;
 
@@ -238,9 +251,11 @@ public class EffectsWorkbench extends NcmSheet {
         if (painter == null) painter = new EffectsPaint();
         painter.setPalette(palette);
         layout = EffectsLayout.calculate(viewport.width(), viewport.height(),
-                reducedMotion ? 0 : (1 - EffectsMotion.spatial(pageFade, EffectsMotion.Scheme.DEFAULT_SPATIAL)) * 22);
+                reducedMotion ? 0 : (1 - EffectsMotion.spatial(pageFade, EffectsMotion.Scheme.DEFAULT_SPATIAL)) * 22,
+                current == Page.NOISE ? 70 : 100);
         samplePress(Mouse.isButtonDown(0));
         hits.clear();
+        noiseControls.clear();
         drawInHost(canvas, getAlpha() * presentation);
         advancePointer();
     }
@@ -329,6 +344,7 @@ public class EffectsWorkbench extends NcmSheet {
                 before.eqBand, before.dynamicBand, before.arrayBand), fading, sliding));
         if (departing.size() > 2) departing.remove(0);
         current = page;
+        noiseFocus = -1;
         selectedGroup = group;
         advanced = false;
         arrayBand = dynamicBand = 0;
@@ -362,31 +378,34 @@ public class EffectsWorkbench extends NcmSheet {
                 Icon.CLOSE, this::dispose, true, false, surface);
         Box nav = layout.navigation;
         navigationIndicator.retarget(current.ordinal(), now, spatialTime());
-        double indicator = Math.max(0, Math.min(Page.values().length - 1, navigationIndicator.value(now)));
+        Page[] pages = Page.values();
+        double tabWidth = nav.width() / pages.length;
+        double railStep = Math.min(57, Math.max(1, (nav.height() - 20) / pages.length));
+        double railHeight = Math.max(1, railStep - 9);
+        double indicator = Math.max(0, Math.min(pages.length - 1, navigationIndicator.value(now)));
         double travel = reducedMotion ? 0 : Math.min(1, Math.abs(navigationIndicator.velocity(now)) * .035);
         Box indicatorBox;
-        if (layout.rail) indicatorBox = new Box(nav.x() + 2, nav.y() + indicator * 57 - travel * 3,
-                nav.width() - 4, 48 + travel * 6);
+        if (layout.rail) indicatorBox = new Box(nav.x() + 2, nav.y() + indicator * railStep - travel * 3,
+                nav.width() - 4, railHeight + travel * 6);
         else {
-            double width = nav.width() / Page.values().length;
-            indicatorBox = new Box(nav.x() + indicator * width + 3 - travel * 3, nav.y() + 3,
-                    Math.max(1, width - 6 + travel * 6), 38);
+            indicatorBox = new Box(nav.x() + indicator * tabWidth + 3 - travel * 3, nav.y() + 3,
+                    Math.max(1, tabWidth - 6 + travel * 6), 38);
         }
         painter.round(canvas, indicatorBox, layout.rail ? 18 + travel * 6 : 15 + travel * 4, PRIMARY_CONTAINER);
-        for (Page page : Page.values()) {
-            Box target = layout.rail ? new Box(nav.x(), nav.y() + page.ordinal() * 57, nav.width(), 48)
-                    : new Box(nav.x() + nav.width() * page.ordinal() / 5, nav.y() + 3, nav.width() / 5, 38);
+        for (Page page : pages) {
+            Box target = layout.rail ? new Box(nav.x(), nav.y() + page.ordinal() * railStep, nav.width(), railHeight)
+                    : new Box(nav.x() + tabWidth * page.ordinal(), nav.y() + 3, tabWidth, 38);
             double h = hover("nav." + page, target, true), p = press("nav." + page, true);
             if (h + p > .01) painter.round(canvas, target.inset(3 + Math.max(0, p)), 16, alpha(PRIMARY, h * .06 + Math.max(0, p) * .08));
             double state = selected("nav.color." + page, current == page);
             int color = EffectsPaint.mix(MUTED, PRIMARY, state);
             if (layout.rail) {
-                painter.icon(canvas, page.icon, new Box(target.x() + 16, target.y() + 14, 20, 20), color);
-                painter.text(canvas, EffectsTypography.label(), page.title, target.x() + 47, target.centerY(), target.width() - 59, color);
+                painter.icon(canvas, page.icon, new Box(target.x() + 16, target.centerY() - 10, 20, 20), color);
+                painter.text(canvas, EffectsTypography.label(), page.label(false), target.x() + 47, target.centerY(), target.width() - 59, color);
                 if (current == page) painter.circle(canvas, target.right() - 15, target.centerY(), 2.5, PRIMARY);
             } else {
                 boolean icons = target.width() >= 93;
-                painter.buttonLabel(canvas, EffectsTypography.label(), page.compact, icons ? page.icon : null, target.inset(2), color);
+                painter.buttonLabel(canvas, EffectsTypography.label(), page.label(true), icons ? page.icon : null, target.inset(2), color);
             }
             addHit("nav." + page, target, layout.surface, () -> navigate(page, -1), null, false, false, null, true);
         }
@@ -417,13 +436,22 @@ public class EffectsWorkbench extends NcmSheet {
 
     private void drawToolbar(Canvas canvas) {
         Box bar = layout.toolbar;
-        String title = current.title;
+        if (current == Page.NOISE) {
+            searchBox = new Box(0, 0, 0, 0);
+            painter.text(canvas, EffectsTypography.heading(), current.label(false), bar.x(), bar.y() + 20, bar.width(), TEXT);
+            var state = AmbientSoundPlayer.status();
+            painter.paragraph(canvas, EffectsTypography.body(), state.label().getString(), bar.x(), bar.y() + 38,
+                    bar.width(), state == AmbientSoundPlayer.Status.PLAYING ? GREEN : MUTED);
+            return;
+        }
+        String title = current.label(false);
         String subtitle = switch (current) {
             case PRESETS -> "选择完整音效方案，均衡与空间效果分开管理";
             case EQ -> "编辑：「" + targetName() + "」 · 拖动完成后保存并应用";
             case EFFECTS -> selectedGroup < 0 ? "按用途分类，开启状态与编辑入口分开" : "编辑：「" + targetName() + "」";
             case ACOUSTICS -> "环境改变声音，不改变正在播放的歌曲";
             case AMBIENT -> "环境改变选曲，不属于音效处理链";
+            case NOISE -> "";
         };
         double titleX = bar.x();
         if (current == Page.EFFECTS && selectedGroup >= 0 && editor != null) {
@@ -466,6 +494,10 @@ public class EffectsWorkbench extends NcmSheet {
     }
 
     private void drawPage(Canvas canvas, View view, boolean interactive) {
+        if (view.page == Page.NOISE) {
+            drawNoise(canvas, view, interactive);
+            return;
+        }
         if (view.editor == null || loading) {
             if (!loading && !busy && view.editor == null) {
                 section(canvas, "音效配置无法读取", notice, layout.viewport.y() + 14, layout.viewport.width());
@@ -490,11 +522,18 @@ public class EffectsWorkbench extends NcmSheet {
             }
             case ACOUSTICS -> drawAcoustics(canvas, view, interactive);
             case AMBIENT -> drawAmbient(canvas, view, interactive);
+            case NOISE -> { }
         }
     }
 
     private void drawStatus(Canvas canvas) {
         Box status = layout.status;
+        if (current == Page.NOISE) {
+            painter.line(canvas, status.x(), status.y(), status.right(), status.y(), 1, alpha(OUTLINE, .45));
+            painter.paragraph(canvas, EffectsTypography.caption(), noiseText("keys").getString(),
+                    status.x(), status.y() + 6, status.width(), MUTED);
+            return;
+        }
         painter.line(canvas, status.x(), status.y(), status.right(), status.y(), 1, alpha(OUTLINE, .45));
         int color = saveError != null ? ERROR : switch (noticeTone) {
             case INFO -> MUTED;
@@ -1317,7 +1356,7 @@ public class EffectsWorkbench extends NcmSheet {
         painter.circle(canvas, x, box.centerY(), 11 + active * 2, alpha(PRIMARY, hover(id, box, interactive) * .08));
         painter.round(canvas, new Box(x - 2.5 - feedback, box.centerY() - 9 - active, 5 + feedback * 2, 18 + active * 2), 3, PRIMARY);
         addHit(id, box, pageClip, () -> { }, pct -> write.accept(log ? min * Math.pow(max / min, pct) : min + (max - min) * pct),
-                false, false, null, interactive && !busy);
+                false, false, null, interactive && (!busy || NOISE_VOLUME_ID.equals(id)));
     }
 
     private static String format(double value, boolean integer) {
@@ -1506,6 +1545,104 @@ public class EffectsWorkbench extends NcmSheet {
         top = readonly(canvas, "与场景声学不同", "此页调整的是选曲行为；声学页只处理声音，两者开关互不依赖。",
                 new Box(layout.viewport.x(), top, width, 62));
         contentBounds(canvas, top + 12 - contentTop(view), interactive);
+    }
+
+    private void drawNoise(Canvas canvas, View view, boolean interactive) {
+        double left = layout.viewport.x() + 2;
+        double width = Math.max(1, layout.viewport.width() - 10);
+        double top = contentTop(view);
+        Mode[] modes = Mode.values();
+        boolean stack = width < 420;
+        double modeWidth = stack ? width : (width - 16) / modes.length;
+        for (Mode mode : modes) {
+            String id = "noise.mode." + mode.name();
+            Box box = new Box(stack ? left : left + mode.ordinal() * (modeWidth + 8), top, modeWidth, 34);
+            boolean selectedMode = AmbientSoundPlayer.mode() == mode;
+            Runnable select = () -> {
+                AmbientSoundPlayer.setMode(mode);
+                MusicTypography.narrate(noiseChoiceLabel(mode.label(), true));
+            };
+            chip(canvas, id, box, mode.label().getString(), selectedMode, select, interactive, pageClip);
+            if (selectedMode) painter.outline(canvas, box.inset(1), 15, 1, PRIMARY);
+            noiseControl(canvas, id, box, noiseChoiceLabel(mode.label(), selectedMode), select, interactive);
+            if (stack) top += 39;
+        }
+        if (!stack) top += 39;
+
+        top += 12;
+        int volume = AmbientSoundPlayer.volumePercent();
+        Component volumeLabel = noiseText("volume", volume);
+        painter.text(canvas, EffectsTypography.label(), volumeLabel.getString(), left, top + 10, width, TEXT);
+        Box volumeBox = new Box(left + 6, top + 22, Math.max(1, width - 12), 24);
+        slider(canvas, NOISE_VOLUME_ID, volumeBox, volume, 0, 100, false,
+                value -> AmbientSoundPlayer.setVolumePercent((int) Math.round(value)), interactive);
+        noiseControl(canvas, NOISE_VOLUME_ID, volumeBox, volumeLabel, null, interactive);
+
+        top += 68;
+        painter.text(canvas, EffectsTypography.section(), noiseText("sounds").getString(), left, top, width, TEXT);
+        top += 17;
+        for (Soundscape sound : Soundscape.values()) {
+            String id = "noise.sound." + sound.name();
+            Box row = new Box(left, top, width, 37);
+            boolean picked = AmbientSoundPlayer.soundscape() == sound;
+            double over = hover(id, row.intersect(pageClip), interactive);
+            double pressed = Math.max(0, press(id, interactive));
+            if (picked || over + pressed > .01) {
+                painter.round(canvas, row.inset(pressed), 10,
+                        EffectsPaint.mix(picked ? PRIMARY_CONTAINER : BACKGROUND, HIGH, over * .45 + pressed * .25));
+            }
+            painter.text(canvas, EffectsTypography.body(), sound.label().getString(), left + 12,
+                    row.centerY(), Math.max(1, width - 50), picked ? PRIMARY : TEXT);
+            if (picked) painter.icon(canvas, Icon.CHECK,
+                    new Box(row.right() - 29, row.centerY() - 8, 16, 16), PRIMARY);
+            else painter.line(canvas, left + 12, row.bottom(), row.right() - 12, row.bottom(), 1, alpha(OUTLINE, .3));
+            Runnable select = () -> {
+                AmbientSoundPlayer.select(sound);
+                MusicTypography.narrate(noiseChoiceLabel(sound.label(), true));
+            };
+            addHit(id, row, pageClip, select, null, false, false, null, interactive);
+            noiseControl(canvas, id, row, noiseChoiceLabel(sound.label(), picked), select, interactive);
+            top += 39;
+        }
+        contentBounds(canvas, top - contentTop(view), interactive);
+    }
+
+    private void noiseControl(Canvas canvas, String id, Box box, Component label, Runnable activate, boolean interactive) {
+        if (!interactive || !ownsInput) return;
+        if (noiseControls.size() == noiseFocus) painter.outline(canvas, box.inset(1), 9, 2, PRIMARY);
+        noiseControls.add(new NoiseControl(id, box, label, activate));
+    }
+
+    private static Component noiseChoiceLabel(Component label, boolean selected) {
+        return selected ? noiseText("selected", label) : label;
+    }
+
+    private static Component noiseText(String key, Object... arguments) {
+        return Component.translatable("sh_better_ui.muonium.ambient_sound." + key, arguments);
+    }
+
+    private void noiseKey(int keyCode, boolean activate) {
+        if (noiseControls.isEmpty() || drag != null) return;
+        if (keyCode == Keyboard.KEY_UP || keyCode == Keyboard.KEY_DOWN) {
+            int step = keyCode == Keyboard.KEY_UP ? -1 : 1;
+            noiseFocus = noiseFocus < 0 ? (step > 0 ? 0 : noiseControls.size() - 1)
+                    : Math.max(0, Math.min(noiseControls.size() - 1, noiseFocus + step));
+            NoiseControl control = noiseControls.get(noiseFocus);
+            double correction = control.bounds.y() < layout.viewport.y() ? control.bounds.y() - layout.viewport.y() - 4
+                    : Math.max(0, control.bounds.bottom() - layout.viewport.bottom() + 4);
+            if (correction != 0) scroll.drag(scroll.value(now) - scroll.target() + correction, now);
+            MusicTypography.narrate(control.label);
+        } else if (noiseFocus >= 0 && noiseFocus < noiseControls.size()) {
+            NoiseControl control = noiseControls.get(noiseFocus);
+            if (activate && control.activate != null) {
+                control.activate.run();
+            } else if (NOISE_VOLUME_ID.equals(control.id)
+                    && (keyCode == Keyboard.KEY_LEFT || keyCode == Keyboard.KEY_RIGHT)) {
+                int change = keyCode == Keyboard.KEY_LEFT ? -5 : 5;
+                AmbientSoundPlayer.setVolumePercent(AmbientSoundPlayer.volumePercent() + change);
+                MusicTypography.narrate(noiseText("volume", AmbientSoundPlayer.volumePercent()));
+            }
+        }
     }
 
     private String targetName() { return editor == null ? "读取中" : editor.targetName(); }
@@ -2090,6 +2227,7 @@ public class EffectsWorkbench extends NcmSheet {
     private void dispatchClick(double x, double y) {
         Hit found = findHit(x, y);
         if (found == null) return;
+        if (current == Page.NOISE) noiseFocus = -1;
         if (found.drag == null) {
             EffectsMotion.Spring state = press.computeIfAbsent(found.id, ignored -> new EffectsMotion.Spring(0, EffectsMotion.Scheme.FAST_SPATIAL));
             state.retarget(1, now, spatialTime());
@@ -2112,12 +2250,14 @@ public class EffectsWorkbench extends NcmSheet {
     }
 
     private void beginDrag(Hit hit) {
-        if (drag != null || busy || loading || dialogTitle != null || menu != null) return;
+        boolean noiseVolume = NOISE_VOLUME_ID.equals(hit.id);
+        if (drag != null || dialogTitle != null || menu != null || !noiseVolume && (busy || loading)) return;
         search.setFocused(false);
         drag = hit;
-        dragBaseline = editor == null ? null : editor.copy();
+        dragBaseline = noiseVolume || editor == null ? null : editor.copy();
         dragStrength = strength;
         dragStable = stableMs;
+        if (noiseVolume) dragNoiseVolume = AmbientSoundPlayer.volumePercent();
         dragChanged = false;
         touchGraphOwned = false;
         if (hit.click != null) hit.click.run();
@@ -2177,6 +2317,7 @@ public class EffectsWorkbench extends NcmSheet {
             if (dragBaseline != null) editor = dragBaseline;
             strength = dragStrength;
             stableMs = dragStable;
+            if (NOISE_VOLUME_ID.equals(ended.id)) AmbientSoundPlayer.setVolumePercent(dragNoiseVolume);
         } else if (dragChanged) {
             if (ended.id.startsWith("acoustics.")) saveEnvironment(Page.ACOUSTICS);
             else if (ended.id.startsWith("ambient.")) saveEnvironment(Page.AMBIENT);
@@ -2215,6 +2356,7 @@ public class EffectsWorkbench extends NcmSheet {
         if (!ownsInput || closing || !hostAlive) return false;
         boolean enter = keyCode == Keyboard.KEY_RETURN || keyCode == Keyboard.KEY_NUMPADENTER;
         if (keyCode == Keyboard.KEY_ESCAPE) {
+            if (drag != null && NOISE_VOLUME_ID.equals(drag.id)) { finishDrag(false); return true; }
             if (dialogTitle != null) { closeDialog(); return true; }
             if (menu != null) { closeMenu(); return true; }
             if (search.isFocused()) { search.setFocused(false); return true; }
@@ -2237,7 +2379,13 @@ public class EffectsWorkbench extends NcmSheet {
         if (ctrl && keyCode == Keyboard.KEY_Z) { if (shift) redo(); else undo(); return true; }
         if (ctrl && keyCode == Keyboard.KEY_Y) { redo(); return true; }
         if (keyCode == Keyboard.KEY_TAB) {
-            navigate(Page.values()[(current.ordinal() + (shift ? 4 : 1)) % 5], -1);
+            Page[] pages = Page.values();
+            navigate(pages[Math.floorMod(current.ordinal() + (shift ? -1 : 1), pages.length)], -1);
+            if (current == Page.NOISE) MusicTypography.narrate(noiseText("title"));
+            return true;
+        }
+        if (current == Page.NOISE) {
+            noiseKey(keyCode, enter || keyCode == Keyboard.KEY_SPACE);
             return true;
         }
         if (current == Page.EQ && editor != null && !busy) {

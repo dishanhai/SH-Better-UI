@@ -1,5 +1,6 @@
 package com.muoniumplayer.core.screens.hud;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.PointerDrag;
 import com.muoniumplayer.core.settings.HudConfig;
 import com.muoniumplayer.core.settings.HudSetting;
 
@@ -24,8 +25,7 @@ import java.util.List;
  *   <li>所有改动只在松手时由调用方落一次盘（{@code HudConfig.save()}）。</li>
  * </ul>
  *
- * <p>坐标约定：外部世界全是屏幕像素；只有读写 HudConfig 的一刻做归一化（位置）与
- * 「除以 scale」（歌词宽高）的换算。窗口尺寸由 {@code update} 每帧传入，不缓存。</p>
+ * <p>绘制与鼠标事件均使用布局坐标。位置以可移动范围的比例存入 HudConfig。</p>
  */
 final class HudOverlayStage {
 
@@ -41,6 +41,8 @@ final class HudOverlayStage {
 
     /** 点按位移超过这一像素才算拖动；以内松开算「点选」。 */
     private static final int SELECT_THRESHOLD = 4;
+    private static final int INFO_BASE_W = 230;
+    private static final int INFO_BASE_H = 56;
     /** 边缘/角落把手的命中带（从矩形边线往内外各延这么多像素）。 */
     private static final int HANDLE_BAND = 7;
     /** 吸附判定阈值（像素）。 */
@@ -53,27 +55,19 @@ final class HudOverlayStage {
     /** 本轮按住的是哪一块。 */
     private Kind engaged = Kind.NONE;
     private Zone zone = Zone.MOVE;
-    private boolean pressed;
+    private final PointerDrag pointer = new PointerDrag();
     private boolean moved;
-    private int pressX;
-    private int pressY;
-    private int grabOffX;
-    private int grabOffY;
     /** 缩放起点的各原始值（换算回配置单位），用于「对边固定」的反算。 */
     private float originX;
     private float originY;
     private float originW;
     private float originH;
     private float originScale;
-    /** 按下那一刻的像素跨度（宽、高），作为信息卡等比缩放的比例分母。 */
-    private int originPxW;
-    private int originPxH;
+    private int[] originRect;
     /** 本帧要画的参考线（1px 横/竖线）。 */
     final List<int[]> guides = new ArrayList<int[]>();
     /** 缩放期间跟随的尺寸读数（如 {@code 480 × 160}）；非缩放期间为 null。 */
     String bubble;
-    /** 上一次松手时是否有值得落盘的改动（移动、缩放或滚轮）。 */
-    private boolean releaseDirty;
 
     Kind selected() {
         return selected;
@@ -83,94 +77,95 @@ final class HudOverlayStage {
         return selected != Kind.NONE;
     }
 
-    /** 点击面板内部等场景：外部明确要求清掉选中态（同时撤销未完成的按住）。 */
     void clearSelection() {
+        cancelGesture();
         selected = Kind.NONE;
-        pressed = false;
-        engaged = Kind.NONE;
-        zone = Zone.MOVE;
-        guides.clear();
-        bubble = null;
     }
 
-    /**
-     * 每帧推进一次。
-     *
-     * @param lmb      左键是否处于按下（且界面层允许操作叠加层）
-     * @param wheel    本帧滚轮增量（只在悬停叠加层时用于整体缩放）
-     * @param mx/my    鼠标屏幕坐标
-     * @param info     信息卡矩形 {@code [x,y,w,h]}（像素）
-     * @param lyrics   歌词卡矩形
-     * @param infoBase 信息卡未缩放基准尺寸（宽、高），换算 scale 用
-     * @param screenW/H 屏幕尺寸
-     * @return 本帧是否发生了「松手且有改动」—— 调用方据此 {@code HudConfig.save()} 一次
-     */
-    boolean update(boolean lmb, int wheel, int mx, int my,
-                   int[] info, int[] lyrics, int[] infoBase, int screenW, int screenH) {
-        guides.clear();
-        bubble = null;
-        releaseDirty = false;
+    boolean isEngaged(Kind kind) {
+        return engaged == kind;
+    }
 
-        if (!lmb) {
-            if (pressed) {
-                // 位移没过阈值就松开 = 点选：选中这一块（再点同一块 = 取消）。
-                if (!moved && zone == Zone.MOVE) {
-                    selected = selected == engaged ? Kind.NONE : engaged;
-                }
-                pressed = false;
-                engaged = Kind.NONE;
-                zone = Zone.MOVE;
-            }
-            applyWheel(wheel, mx, my, info, lyrics, infoBase);
-            return takeReleaseDirty();
-        }
+    static int[] widgetRect(Kind kind, int screenW, int screenH) {
+        boolean info = kind == Kind.INFO;
+        float scale = info ? HudConfig.infoScale : HudConfig.lyricScale;
+        int w = (int) ((info ? INFO_BASE_W : HudConfig.lyricWidth) * scale);
+        int h = (int) ((info ? INFO_BASE_H : HudConfig.lyricHeight) * scale);
+        return new int[] { (int) ((info ? HudConfig.infoX : HudConfig.lyricX) * (screenW - w)),
+                (int) ((info ? HudConfig.infoY : HudConfig.lyricY) * (screenH - h)), w, h };
+    }
 
-        if (!pressed) {
-            Kind hit = kindAt(mx, my, info, lyrics);
-            if (hit == Kind.NONE) {
-                // 点在空白处（面板/小窗已被调用方挡在外面）：有选中就收掉，与桌面「点掉选中」一致。
-                selected = Kind.NONE;
-                applyWheel(wheel, mx, my, info, lyrics, infoBase);
-                return takeReleaseDirty();
-            }
-            pressed = true;
-            moved = false;
-            engaged = hit;
-            int[] rect = rectOf(hit, info, lyrics);
-            zone = hit == selected ? zoneAt(rect, mx, my) : Zone.MOVE;
-            pressX = mx;
-            pressY = my;
-            grabOffX = mx - rect[0];
-            grabOffY = my - rect[1];
-            originPxW = rect[2];
-            originPxH = rect[3];
-            snapshotOrigin(hit);
-            return takeReleaseDirty();
-        }
+    static int labelY(int[] rect) {
+        return Math.max(14, rect[1] - 6);
+    }
 
-        // 按住中：过阈值才动手，纯粹的点按（哪怕是按在把手上不动）不算拖动。
-        if (!moved) {
-            if (Math.abs(mx - pressX) <= SELECT_THRESHOLD && Math.abs(my - pressY) <= SELECT_THRESHOLD) {
-                return takeReleaseDirty();
-            }
-            moved = true;
-        }
-        if (zone == Zone.MOVE) {
-            applyMove(engaged, mx, my, info, lyrics, screenW, screenH);
+    void press(int mx, int my, int screenW, int screenH, int infoTitleWidth, int lyricsTitleWidth) {
+        cancelGesture();
+        int[] info = widgetRect(Kind.INFO, screenW, screenH);
+        int[] lyrics = widgetRect(Kind.LYRICS, screenW, screenH);
+        Kind hit;
+        Zone hitZone = Zone.MOVE;
+        if (insideLabel(mx, my, info, infoTitleWidth)) {
+            hit = Kind.INFO;
+        } else if (insideLabel(mx, my, lyrics, lyricsTitleWidth)) {
+            hit = Kind.LYRICS;
         } else {
-            applyResize(engaged, mx, my, info, lyrics, infoBase, screenW, screenH);
+            if (hasSelection()) hitZone = zoneAt(rectOf(selected, info, lyrics), mx, my);
+            hit = hitZone != Zone.MOVE ? selected : kindAt(mx, my, info, lyrics);
         }
-        return takeReleaseDirty();
+        if (hit == Kind.NONE) {
+            selected = Kind.NONE;
+            return;
+        }
+        pointer.begin(0, mx, my);
+        engaged = hit;
+        zone = hitZone;
+        originRect = rectOf(hit, info, lyrics);
+        snapshotOrigin(hit);
     }
 
-    private boolean takeReleaseDirty() {
-        boolean dirty = releaseDirty || wheelDirty;
-        wheelDirty = false;
-        releaseDirty = false;
+    void drag(int mx, int my, int screenW, int screenH) {
+        if (pointer.move(0, mx, my) != null) applyDrag(screenW, screenH);
+    }
+
+    private void applyDrag(int screenW, int screenH) {
+        int dx = (int) pointer.offsetX();
+        int dy = (int) pointer.offsetY();
+        if (!moved && Math.abs(dx) <= SELECT_THRESHOLD && Math.abs(dy) <= SELECT_THRESHOLD) return;
+        moved = true;
+        guides.clear();
+        if (zone == Zone.MOVE) {
+            applyMove(engaged, dx, dy, screenW, screenH);
+        } else {
+            applyResize(engaged, dx, dy, screenW, screenH);
+        }
+    }
+
+    /** 一次完整的拖拽在松手时提交。直接使用松手坐标以补上两帧之间的位移。 */
+    boolean release(int mx, int my, int screenW, int screenH) {
+        if (pointer.release(0, mx, my) == null) return false;
+        applyDrag(screenW, screenH);
+        boolean dirty = moved && positionOrSizeChanged();
+        if (!moved && zone == Zone.MOVE) selected = selected == engaged ? Kind.NONE : engaged;
+        endGesture();
         return dirty;
     }
 
-    private boolean wheelDirty;
+    boolean cancelGesture() {
+        if (engaged == Kind.NONE) return false;
+        if (moved) restoreOrigin();
+        pointer.cancel();
+        endGesture();
+        return true;
+    }
+
+    private void endGesture() {
+        engaged = Kind.NONE;
+        zone = Zone.MOVE;
+        moved = false;
+        guides.clear();
+        bubble = null;
+    }
 
     // ==================== 命中判定 ====================
 
@@ -191,6 +186,11 @@ final class HudOverlayStage {
 
     private static boolean inside(int mx, int my, int[] r) {
         return mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3];
+    }
+
+    private static boolean insideLabel(int mx, int my, int[] r, int titleWidth) {
+        int y = labelY(r);
+        return mx >= r[0] && mx < r[0] + 21 + titleWidth && my >= y - 7 && my < y + 15;
     }
 
     /** 已选中矩形上的把手判定：先四角后四边（角比边窄，优先命中角）。 */
@@ -231,18 +231,37 @@ final class HudOverlayStage {
         }
     }
 
-    private void applyMove(Kind kind, int mx, int my, int[] info, int[] lyrics, int screenW, int screenH) {
-        int[] r = rectOf(kind, info, lyrics);
+    private boolean positionOrSizeChanged() {
+        return engaged == Kind.INFO
+                ? HudConfig.infoX != originX || HudConfig.infoY != originY || HudConfig.infoScale != originScale
+                : HudConfig.lyricX != originX || HudConfig.lyricY != originY || HudConfig.lyricScale != originScale
+                        || HudConfig.lyricWidth != originW || HudConfig.lyricHeight != originH;
+    }
+
+    private void restoreOrigin() {
+        if (engaged == Kind.INFO) {
+            HudConfig.infoX = originX;
+            HudConfig.infoY = originY;
+            HudConfig.infoScale = originScale;
+        } else {
+            HudConfig.lyricX = originX;
+            HudConfig.lyricY = originY;
+            HudConfig.lyricScale = originScale;
+            HudConfig.lyricWidth = originW;
+            HudConfig.lyricHeight = originH;
+        }
+    }
+
+    private void applyMove(Kind kind, int dx, int dy, int screenW, int screenH) {
+        int[] r = originRect;
         int maxX = Math.max(0, screenW - r[2]);
         int maxY = Math.max(0, screenH - r[3]);
-        int nx = clamp(mx - grabOffX, 0, maxX);
-        int ny = clamp(my - grabOffY, 0, maxY);
-        int[] other = rectOf(kind == Kind.INFO ? Kind.LYRICS : Kind.INFO, info, lyrics);
+        int nx = clamp(r[0] + dx, 0, maxX);
+        int ny = clamp(r[1] + dy, 0, maxY);
+        int[] other = widgetRect(kind == Kind.INFO ? Kind.LYRICS : Kind.INFO, screenW, screenH);
 
-        nx = snapAxis(nx, new int[] { maxX / 2, 0, maxX, other[0], other[0] + other[2] },
-                screenW, true, r[2]);
-        ny = snapAxis(ny, new int[] { maxY / 2, 0, maxY, other[1], other[1] + other[3] },
-                screenH, false, r[3]);
+        nx = clamp(snapAxis(nx, new int[] { maxX / 2, 0, maxX, other[0], other[0] + other[2] }, screenH, true), 0, maxX);
+        ny = clamp(snapAxis(ny, new int[] { maxY / 2, 0, maxY, other[1], other[1] + other[3] }, screenW, false), 0, maxY);
 
         if (kind == Kind.INFO) {
             HudConfig.infoX = maxX > 0 ? (float) nx / maxX : 0f;
@@ -257,7 +276,7 @@ final class HudOverlayStage {
      * 单轴吸附：候选点集 = 中心线、屏幕两侧、另一块的两侧。命中候选就把参考线加进
      * {@link #guides}，并用弱磁吸拉近。返回吸附后的坐标。
      */
-    private int snapAxis(int value, int[] candidates, int screenSpan, boolean horizontal, int widgetSpan) {
+    private int snapAxis(int value, int[] candidates, int screenSpan, boolean horizontal) {
         int best = Integer.MIN_VALUE;
         int bestDelta = Integer.MAX_VALUE;
         for (int candidate : candidates) {
@@ -288,9 +307,8 @@ final class HudOverlayStage {
 
     // ==================== 缩放 ====================
 
-    private void applyResize(Kind kind, int mx, int my, int[] info, int[] lyrics,
-                             int[] infoBase, int screenW, int screenH) {
-        int[] r = rectOf(kind, info, lyrics);
+    private void applyResize(Kind kind, int dx, int dy, int screenW, int screenH) {
+        int[] r = originRect;
         boolean east = zone == Zone.E || zone == Zone.NE || zone == Zone.SE;
         boolean west = zone == Zone.W || zone == Zone.NW || zone == Zone.SW;
         boolean south = zone == Zone.S || zone == Zone.SE || zone == Zone.SW;
@@ -298,17 +316,14 @@ final class HudOverlayStage {
 
         if (kind == Kind.INFO) {
             // 信息卡没有独立宽高：按拖拽方向从按下时的像素跨度缩放整体，锚在对面那条边/角。
-            float ratioW = east ? (mx - r[0]) / (float) Math.max(1, originPxW)
-                    : west ? (r[0] + r[2] - mx) / (float) Math.max(1, originPxW) : 1f;
-            float ratioH = south ? (my - r[1]) / (float) Math.max(1, originPxH)
-                    : north ? (r[1] + r[3] - my) / (float) Math.max(1, originPxH) : 1f;
-            float ratio = 1f;
-            if (ratioW != 1f && ratioH != 1f) ratio = (ratioW + ratioH) / 2f;
-            else if (ratioW != 1f) ratio = ratioW;
-            else if (ratioH != 1f) ratio = ratioH;
+            float ratioW = 1f + (east ? dx : -dx) / (float) Math.max(1, r[2]);
+            float ratioH = 1f + (south ? dy : -dy) / (float) Math.max(1, r[3]);
+            boolean horizontal = east || west;
+            boolean vertical = north || south;
+            float ratio = horizontal && vertical ? (ratioW + ratioH) / 2f : horizontal ? ratioW : ratioH;
             float scale = HudConfig.clampScale(originScale * Math.max(0.1f, ratio));
-            int newW = Math.round(infoBase[0] * scale);
-            int newH = Math.round(infoBase[1] * scale);
+            int newW = (int) (INFO_BASE_W * scale);
+            int newH = (int) (INFO_BASE_H * scale);
             // 对边固定：按被拖的那条边反推左上角（纯缩放方向居中收缩），再归一化。
             int left = west ? (r[0] + r[2] - newW) : east ? r[0] : r[0] + (r[2] - newW) / 2;
             int top = north ? (r[1] + r[3] - newH) : south ? r[1] : r[1] + (r[3] - newH) / 2;
@@ -322,23 +337,21 @@ final class HudOverlayStage {
         }
 
         // 歌词卡：写未缩放的 lyricWidth/lyricHeight（与设置页同一条钳制），对边固定。
-        float scale = HudConfig.lyricScale;
-        float width = HudConfig.lyricWidth;
-        float height = HudConfig.lyricHeight;
+        float scale = originScale;
+        float width = originW;
+        float height = originH;
         float minX = HudSetting.OSD_WIDTH.getMin();
         float maxXv = HudSetting.OSD_WIDTH.getMax();
         float minY = HudSetting.OSD_HEIGHT.getMin();
         float maxYv = HudSetting.OSD_HEIGHT.getMax();
         int fixedRight = r[0] + r[2];
         int fixedBottom = r[1] + r[3];
-        if (east) width = clamp((mx - r[0]) / scale, minX, maxXv);
-        if (west) width = clamp((fixedRight - mx) / scale, minX, maxXv);
-        if (south) height = clamp((my - r[1]) / scale, minY, maxYv);
-        if (north) height = clamp((fixedBottom - my) / scale, minY, maxYv);
+        if (east || west) width = clamp(originW + (east ? dx : -dx) / scale, minX, maxXv);
+        if (south || north) height = clamp(originH + (south ? dy : -dy) / scale, minY, maxYv);
         HudConfig.lyricWidth = width;
         HudConfig.lyricHeight = height;
-        int newW = Math.round(width * scale);
-        int newH = Math.round(height * scale);
+        int newW = (int) (width * scale);
+        int newH = (int) (height * scale);
         int left = west ? fixedRight - newW : r[0];
         int top = north ? fixedBottom - newH : r[1];
         int maxPx = Math.max(0, screenW - newW);
@@ -348,17 +361,19 @@ final class HudOverlayStage {
         bubble = Math.round(width) + " × " + Math.round(height);
     }
 
-    private void applyWheel(int wheel, int mx, int my, int[] info, int[] lyrics, int[] infoBase) {
-        if (wheel == 0) return;
+    boolean scroll(int wheel, int mx, int my, int screenW, int screenH) {
+        if (wheel == 0 || engaged != Kind.NONE) return false;
+        int[] info = widgetRect(Kind.INFO, screenW, screenH);
+        int[] lyrics = widgetRect(Kind.LYRICS, screenW, screenH);
         Kind over = kindAt(mx, my, info, lyrics);
-        if (over == Kind.NONE) return;
+        if (over == Kind.NONE) return false;
         float delta = wheel > 0 ? 0.05f : -0.05f;
         if (over == Kind.INFO) {
             HudConfig.infoScale = HudConfig.clampScale(HudConfig.infoScale + delta);
         } else {
             HudConfig.lyricScale = HudConfig.clampScale(HudConfig.lyricScale + delta);
         }
-        wheelDirty = true;
+        return true;
     }
 
     // ==================== 供渲染查询的几何 ====================

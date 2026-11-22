@@ -1,0 +1,23 @@
+// Author: dishanhai
+def tokenUrl = providers.environmentVariable('SHBUI_APPLE_MUSIC_TOKEN_URL').orElse('')
+def tokenResource = layout.buildDirectory.file('generated/music-kit/assets/sh_better_ui/music/token-url.txt')
+def generateTokenUrl = tasks.register('generateAppleMusicTokenUrl') {
+    inputs.property('tokenUrl', tokenUrl)
+    outputs.file(tokenResource)
+    doLast {
+        def value = tokenUrl.get().trim()
+        if (!value.isEmpty()) {
+            URI uri
+            try { uri = new URI(value) } catch (URISyntaxException invalid) { uri = null }
+            if (value.length() > 2048 || uri?.scheme != 'https' || uri.host == null || uri.userInfo != null || uri.query != null || uri.fragment != null) {
+                throw new GradleException('SHBUI_APPLE_MUSIC_TOKEN_URL must be a public HTTPS URL without credentials or query parameters')
+            }
+        }
+        def output = tokenResource.get().asFile
+        output.parentFile.mkdirs()
+        output.setText(value, 'UTF-8')
+    }
+}
+tasks.named('processResources') {
+    from(generateTokenUrl) { into 'assets/sh_better_ui/music' }
+}

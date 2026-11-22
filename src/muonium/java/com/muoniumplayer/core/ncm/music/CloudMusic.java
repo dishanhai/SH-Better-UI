@@ -1,6 +1,7 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.ncm.music;
 
+import com.dishanhai.sh_better_ui.kernel.internal.music.view.PlaybackQueueOrder;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonNull;
@@ -60,7 +61,9 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicReference;
@@ -120,6 +123,8 @@ public class CloudMusic implements SharedConstants {
     private static final AtomicBoolean NETEASE_REFRESHING = new AtomicBoolean(false);
 
     public static volatile PlayMode playMode = PlayMode.Sequential;
+    // An enable token also invalidates lookups started before an off/on toggle.
+    private static volatile Object autoplayToken;
     /**
  * 当前队列是否属于独立的私人 FM 会话。
  */
@@ -139,6 +144,9 @@ public class CloudMusic implements SharedConstants {
     public static Quality quality = Quality.LOSSLESS;
 
     public static final List<LyricLine> lyrics = new CopyOnWriteArrayList<>();
+    // HUD renderers hold the lyrics monitor while painting. Playback lookups only
+    // need to exclude replacement of the timeline and its timing mode.
+    private static final Object LYRIC_TIMELINE_LOCK = new Object();
     public static volatile LyricLine currentLyric = null;
     /**
  * {@link #lyrics} 所属曲目的稳定键，未提交任何内容时为 {@code null}。
@@ -215,7 +223,7 @@ public class CloudMusic implements SharedConstants {
         try {
             PlaybackResumeStore.Snapshot snapshot = PlaybackResumeStore.read();
             if (snapshot == null || personalFmActive) return;
-            List<Music> queue = new ArrayList<>(snapshot.queue);
+            List<Music> queue = snapshot.queue;
             int index = Math.max(0, Math.min(snapshot.index, queue.size() - 1));
 
             playList = queue;
@@ -388,7 +396,10 @@ public class CloudMusic implements SharedConstants {
         Random("F", "随机播放"),
         LoopInList("I", "列表循环"),
         LoopSingle("L", "单曲循环"),
-        Sequential("G", "顺序播放");
+        Sequential("G", "顺序播放"),
+        ShuffleOnce("F", "随机播放"),
+        ShuffleAll("F", "随机播放"),
+        ShuffleOne("L", "单曲循环");
 
         private final String icon;
         private final String displayName;
@@ -396,6 +407,30 @@ public class CloudMusic implements SharedConstants {
         PlayMode(String icon, String displayName) {
             this.icon = icon;
             this.displayName = displayName;
+        }
+
+        public boolean isShuffled() {
+            return this == Random || this == ShuffleOnce || this == ShuffleAll || this == ShuffleOne;
+        }
+
+        public boolean repeatsOne() {
+            return this == LoopSingle || this == ShuffleOne;
+        }
+
+        public boolean repeatsAll() {
+            return this == LoopInList || this == ShuffleAll || this == Random;
+        }
+
+        PlayMode withShuffle(boolean shuffled) {
+            if (repeatsOne()) return shuffled ? ShuffleOne : LoopSingle;
+            if (repeatsAll()) return shuffled ? ShuffleAll : LoopInList;
+            return shuffled ? ShuffleOnce : Sequential;
+        }
+
+        PlayMode nextRepeat() {
+            if (repeatsOne()) return isShuffled() ? ShuffleOnce : Sequential;
+            if (repeatsAll()) return isShuffled() ? ShuffleOne : LoopSingle;
+            return isShuffled() ? ShuffleAll : LoopInList;
         }
     }
 
@@ -407,48 +442,68 @@ public class CloudMusic implements SharedConstants {
         if (MpPartyClient.interceptPlayModeCycle()) return playMode;
         // 私人 FM 拥有自己的队列顺序；普通模式不会改动它。
         if (personalFmActive) return playMode;
-        switch (playMode) {
-            case Sequential:
-            case LoopInList:
-                playMode = PlayMode.Random;
-                prepareRandomQueue();
-                break;
-            case Random:
-                playMode = PlayMode.LoopSingle;
-                break;
-            case LoopSingle:
-            default:
-                playMode = PlayMode.Sequential;
-                break;
+        synchronized (PLAY_NEXT_LOCK) {
+            setPlayModeLocked(playMode.isShuffled() ? PlayMode.LoopSingle
+                    : playMode.repeatsOne() ? PlayMode.Sequential : PlayMode.Random);
         }
         return playMode;
+    }
+
+    /** Selects the local fullscreen queue mode without replacing or restarting the current track. */
+    public static synchronized void toggleFullscreenQueueMode(boolean shuffle) {
+        if (isFullscreenQueueModeLocked()) return;
+        synchronized (PLAY_NEXT_LOCK) {
+            setPlayModeLocked(shuffle ? playMode.withShuffle(!playMode.isShuffled()) : playMode.nextRepeat());
+        }
+        notePlaybackEvent();
+    }
+
+    /** Selects an explicit queue mode through the same transition as the fullscreen controls. */
+    public static synchronized boolean setLocalPlayMode(PlayMode target) {
+        if (isFullscreenQueueModeLocked()) return false;
+        synchronized (PLAY_NEXT_LOCK) {
+            if (playMode == target) return true;
+            setPlayModeLocked(target);
+        }
+        notePlaybackEvent();
+        return true;
+    }
+
+    public static boolean isFullscreenQueueModeLocked() {
+        return personalFmActive || MpPartyClient.inRoom() || NeteaseListenTogetherService.isActive()
+                || KuGouListenTogetherService.isActive() || ExternalPlayback.isMirroring()
+                || SpotifyConnectMirror.isMirroring() || LiveStreamSession.isActive();
+    }
+
+    public static boolean isQueueAutoplayEnabled() {
+        return autoplayToken != null;
+    }
+
+    public static boolean canQueueAutoplay(Music track) {
+        return track != null && switch (track.getSource()) {
+            case NETEASE, QQ, KUGOU, QISHUI, APPLE, SPOTIFY -> QueueAutoplay.artist(track) != null;
+            default -> false;
+        };
+    }
+
+    public static void toggleQueueAutoplay() {
+        if (isFullscreenQueueModeLocked() || !canQueueAutoplay(currentlyPlaying)) return;
+        synchronized (PLAY_NEXT_LOCK) {
+            autoplayToken = autoplayToken == null ? new Object() : null;
+        }
     }
 
     /**
      * 切入随机模式时保留正在播放的歌曲，并把它放在随机队列的开头。
      * 这样当前歌曲不会被中断，下一首立即按随机顺序播放。
      */
-    private static void prepareRandomQueue() {
-        if (playList == null || playList.size() < 2) {
-            return;
+    private static void setPlayModeLocked(PlayMode target) {
+        if (playMode.isShuffled() != target.isShuffled() && playList instanceof PlaybackQueueOrder<?> queue) {
+            int pending = pendingRunLocked();
+            curIdx = target.isShuffled() ? queue.shuffleFrom(curIdx, pending) : queue.restoreFrom(curIdx, pending);
         }
-
-        Music currentSong = currentlyPlaying;
-        int currentIndex = currentSong == null ? curIdx : playList.indexOf(currentSong);
-        if (currentIndex < 0 || currentIndex >= playList.size()) {
-            currentIndex = 0;
-        }
-
-        Music anchorSong = playList.get(currentIndex);
-        List<Music> shuffledSongs = new ArrayList<>(playList);
-        shuffledSongs.remove(anchorSong);
-        Collections.shuffle(shuffledSongs);
-        shuffledSongs.add(0, anchorSong);
-
-        // 保持 List 实例不变，播放线程据此识别“是否切换了播放列表”。
-        // 使用逐项覆盖而非 clear/addAll，避免播放线程在极短窗口读取到空队列。
-        Collections.copy(playList, shuffledSongs);
-        curIdx = 0;
+        playMode = target;
+        queueRevision++;
     }
 
     private static void reshuffleRandomQueueForNextCycle(List<Music> songs) {
@@ -519,7 +574,7 @@ public class CloudMusic implements SharedConstants {
             return true;
         }
 
-        if (playMode == PlayMode.LoopInList || playMode == PlayMode.Random || playMode == PlayMode.LoopSingle) {
+        if (playMode.repeatsAll() || playMode.repeatsOne()) {
             curIdx = playList.size();
             return true;
         }
@@ -661,6 +716,14 @@ public class CloudMusic implements SharedConstants {
     public static boolean playNext(Music song) {
         if (song == null) return false;
         if (MpPartyClient.interceptPlayNext(song)) return true;
+        return playNextBatch(List.of(song));
+    }
+
+    /** Inserts a confirmed local selection together, in its displayed playback order. */
+    public static boolean playNextBatch(List<Music> songs) {
+        if (songs.isEmpty()) return false;
+        var copies = songs.stream().map(Music::queueIdentityCopy).toList();
+        Music first = songs.get(0);
 
         int rank;
         boolean startDirectly;
@@ -678,8 +741,8 @@ public class CloudMusic implements SharedConstants {
                 // 若两格共用一个对象，之后换源录取点写在对象上的徽标与配对键会同时落到
                 // 两格（没轮到的那格行也亮「正在播放」高亮、也挂「已换源」徽标，而显示层
                 // 只认对象分不出它们）。拷贝体的 equals（platform+id）不变，账本语义照旧。
-                queue.add(insertAt, song.queueIdentityCopy());
-                playNextLedger.remember(song);
+                queue.addAll(insertAt, copies);
+                for (Music song : songs) playNextLedger.remember(song);
                 queueRevision++;
                 // 通知里那个「第几位」数的是真正的待播段，不再是从 curIdx 到某个尾下标的距离。
                 rank = Math.max(1, insertAt - Math.max(0, curIdx));
@@ -689,11 +752,11 @@ public class CloudMusic implements SharedConstants {
         if (startDirectly) {
             // 当前没有在播放，所以没有"下一首"可以插入。直接开始播放这首歌正是主流播放器
             // 在这里的做法，比什么都不做更有用。
-            play(Collections.singletonList(song), 0);
-            DownloadDynamicIsland.showQueuedNextStarted(song.getName());
+            play(songs, 0);
+            DownloadDynamicIsland.showQueuedNextStarted(first.getName());
             return true;
         }
-        DownloadDynamicIsland.showQueuedNext(song.getName(), rank);
+        DownloadDynamicIsland.showQueuedNext(first.getName(), rank);
         return true;
     }
 
@@ -704,6 +767,50 @@ public class CloudMusic implements SharedConstants {
     public static List<Music> getQueuedNextSongs() {
         synchronized (PLAY_NEXT_LOCK) {
             return playNextLedger.pending(playList, curIdx);
+        }
+    }
+
+    public record UpcomingPlayback(String source, List<Music> next, List<Music> radio, PlayMode mode) {}
+
+    private static List<Music> upcomingSource;
+    private static int upcomingAnchor;
+    private static long upcomingRevision;
+    private static PlayList upcomingContext;
+    private static boolean upcomingRadio;
+    private static UpcomingPlayback upcomingCache;
+
+    /** Read-only copy of the local session's known order, including pending entries just once. */
+    public static UpcomingPlayback upcomingPlayback(Music playing) {
+        synchronized (PLAY_NEXT_LOCK) {
+            var queue = playList;
+            int index = curIdx;
+            PlayMode mode = playMode;
+            PlayList context = currentPlaylistContext;
+            if (playing == null || queue == null || index < 0 || index >= queue.size()
+                    || queue.get(index) != playing
+                    || ExternalPlayback.isMirroring() || SpotifyConnectMirror.isMirroring() || LiveStreamSession.isActive()) {
+                return new UpcomingPlayback("", List.of(), List.of(), mode);
+            }
+            if (upcomingCache != null && upcomingSource == queue && upcomingAnchor == index && upcomingRadio == personalFmActive
+                    && upcomingRevision == queueRevision && upcomingContext == context && upcomingCache.mode() == mode) {
+                return upcomingCache;
+            }
+            int pending = playNextLedger.pendingRun(queue, index);
+            var order = com.dishanhai.sh_better_ui.kernel.internal.music.view.UpcomingQueueOrder.indices(
+                    queue.size(), index, pending, mode.repeatsOne(), mode.repeatsAll() && mode != PlayMode.Random,
+                    personalFmActive);
+            var next = new ArrayList<Music>(order.getNext().size());
+            var radio = new ArrayList<Music>(order.getRadio().size());
+            for (int at : order.getNext()) next.add(queue.get(at));
+            for (int at : order.getRadio()) radio.add(queue.get(at));
+            upcomingCache = new UpcomingPlayback(context == null || context.getName() == null
+                    ? "" : context.getName(), List.copyOf(next), List.copyOf(radio), mode);
+            upcomingSource = queue;
+            upcomingAnchor = index;
+            upcomingRevision = queueRevision;
+            upcomingContext = context;
+            upcomingRadio = personalFmActive;
+            return upcomingCache;
         }
     }
 
@@ -1236,7 +1343,7 @@ public class CloudMusic implements SharedConstants {
             return true;
         }
 
-        if (playMode == PlayMode.Sequential) {
+        if (!playMode.repeatsAll() && !playMode.repeatsOne()) {
             return false;
         }
 
@@ -1679,11 +1786,20 @@ public class CloudMusic implements SharedConstants {
         PersonalFmManager.clearPrefetchState();
 
         // 深拷贝一份以避免打乱时影响来源列表；FM 会话始终保持接口返回顺序。
-        List<Music> safeSongList = new ArrayList<>(songs);
-        if (!ordered && !personalFmActive && playMode == PlayMode.Random) {
-            startIdx = handleRandomPlayMode(safeSongList, startIdx);
+        if (songs == playList && songs instanceof PlaybackQueueOrder<?>) {
+            startIdx = Math.max(0, Math.min(startIdx, songs.size() - 1));
+        } else {
+            // The queue carries its original order through handovers and session snapshots.
+            PlaybackQueueOrder<Music> queue = new PlaybackQueueOrder<>(songs, Music::getStableKey, null);
+            if (!ordered && !personalFmActive && playMode.isShuffled()) {
+                int anchor = startIdx < 0 ? java.util.concurrent.ThreadLocalRandom.current().nextInt(queue.size())
+                        : Math.min(startIdx, queue.size() - 1);
+                startIdx = queue.shuffleFrom(anchor, 0);
+            }
+            songs = queue;
         }
 
+        List<Music> safeSongList = songs;
         startIdx = Math.max(0, Math.min(normalizeStartIndex(startIdx), safeSongList.size() - 1));
         long resumeOffset = takeResumeOffset(safeSongList.get(startIdx), resumeLastSession);
         Thread active = playThread;
@@ -1776,17 +1892,6 @@ public class CloudMusic implements SharedConstants {
      */
     static void exitPersonalFmSessionForLiveStream() {
         exitPersonalFmSession();
-    }
-
-    private static int handleRandomPlayMode(List<Music> songs, int startIdx) {
-        if (startIdx == -1) {
-            Collections.shuffle(songs);
-        } else {
-            Music selectedMusic = songs.get(startIdx);
-            Collections.shuffle(songs);
-            startIdx = songs.indexOf(selectedMusic);
-        }
-        return startIdx;
     }
 
     private static int normalizeStartIndex(int startIdx) {
@@ -1886,6 +1991,10 @@ public class CloudMusic implements SharedConstants {
         private volatile int fmPrefetchAttempts;
         /** 下一次私人 FM 预取尝试可以开始的最早墙钟时间。 */
         private volatile long nextFmPrefetchAt;
+        private record AutoplayLookup(Object token, PlaybackSession session, Music seed,
+                                     CompletableFuture<List<Music>> tracks) {}
+
+        private AutoplayLookup autoplayLookup;
         /**
          * 下一首「只下载不解播放牌」的预取是否在跑，见 {@link #maybePrefetchNextTrackAudio}。
          *
@@ -2024,7 +2133,9 @@ public class CloudMusic implements SharedConstants {
                     if (isPlaybackCancelled() || playListChanged() || session == null || !session.isActive()) {
                         break;
                     }
+                    boolean naturallyEnded = ownedPlayer != null && ownedPlayer.isFinished();
                     handlePlaybackCompletion();
+                    if (naturallyEnded) appendAutoplayAtEnd();
                     updateCurrentIndex();
                     if (personalFmActive && curIdx >= playList.size()) {
                         PersonalFmManager.requestNextBatchAsync();
@@ -2191,7 +2302,19 @@ public class CloudMusic implements SharedConstants {
             // 动态封面查找是可选的，绝不会阻塞音频启动或静态封面渲染。
             loadDynamicMusicCover(song);
 
-            // 每次点击/切歌都会重新创建解析任务；失败结果不会被缓存。
+            // A recently validated free, solo track can start from disk before resolving another URL.
+            String replayKey = replayKey(song);
+            File replay = replayKey == null ? null : MusicAudioCache.replayFile(replayKey, song);
+            if (replay != null) {
+                if (initializeAndPlaySong(song, null, session, replay)) {
+                    DownloadDynamicIsland.showPlaybackQuality(song.getPlaybackQuality().getDisplayName(),
+                            AudioContainerSupport.detectContainer(replay));
+                    return true;
+                }
+                MusicAudioCache.forgetReplay(replayKey);
+                if (!isSessionUsable(session) || isPlaybackCancelled()) return false;
+            }
+
             Tuple<String, String> playUrl = song.getPlayUrl();
             if (!isSessionUsable(session)) return false;
 
@@ -2405,13 +2528,19 @@ public class CloudMusic implements SharedConstants {
         private boolean lastStreamIncomplete;
 
         private boolean initializeAndPlaySong(Music song, Tuple<String, String> playUrl, PlaybackSession targetSession) {
+            return initializeAndPlaySong(song, playUrl, targetSession, null);
+        }
+
+        private boolean initializeAndPlaySong(Music song, Tuple<String, String> playUrl, PlaybackSession targetSession,
+                                              File replay) {
             MuoniumPlayerExtension.getInstance().musicInfo.downloading = false;
             DownloadDynamicIsland.cancelDownload();
             lastStreamIncomplete = false;
 
+            long cacheRevision = MusicAudioCache.revision();
             File musicFile;
             try {
-                musicFile = getMusicFile(playUrl, song);
+                musicFile = replay == null ? getMusicFile(playUrl, song) : resolvePlayableAudioFile(replay, song);
             } catch (Throwable e) {
                 if (!isPlaybackCancelled() && isSessionUsable(targetSession)) {
                     handlePlayerInitializationError(song, e);
@@ -2511,8 +2640,9 @@ public class CloudMusic implements SharedConstants {
             // 歌词异步加载绑定本 Session（两阶段提交），歌词可先到或后到。
             // 网盘歌曲额外携带本地缓存文件，用于优先读取音频标签中的内嵌 LRC/YRC。
             loadLyric(song, targetSession, musicFile);
-            if (!startPlayback(song, playUrl, musicFile, targetSession)) return false;
+            if (!startPlayback(song, targetSession)) return false;
             targetSession.audioActive = true;
+            if (replay == null && !trialClip) rememberReplay(song, musicFile, decodedMillis, cacheRevision);
             return true;
         }
 
@@ -2567,6 +2697,7 @@ public class CloudMusic implements SharedConstants {
                 // 私人 FM 的下一首得先请求回来才存在，所以排在 arm 之前：预备成功会递增 queueRevision，
                 // 紧接着的那次 arm 正好看到长出来的队列并立刻开始预解码。
                 maybePrefetchPersonalFm(activePlayer);
+                if (autoplayToken != null && curIdx + 1 == songs.size()) lookupAutoplay();
                 maybeArmNextTrack(activePlayer);
                 // 必须排在 arm 之后同一 tick：arm 刚把这一首接下来时 arming/armed 已经置位，
                 // 这一条看见就让路。它只补 arm 没做成的场合（见方法注释）。
@@ -2595,6 +2726,55 @@ public class CloudMusic implements SharedConstants {
                     Thread.currentThread().interrupt();
                     break;
                 }
+            }
+        }
+
+        private boolean atAutoplayBoundary(Music seed) {
+            return !doBreak && !dontAdd && manualSelection == null && !awaitingPlaybackAction
+                    && !playMode.repeatsOne() && !playMode.repeatsAll() && isSessionUsable(session)
+                    && curIdx >= 0 && curIdx + 1 == songs.size() && songs.get(curIdx) == seed
+                    && !isFullscreenQueueModeLocked();
+        }
+
+        private AutoplayLookup lookupAutoplay() {
+            synchronized (PLAY_NEXT_LOCK) {
+                Object token = autoplayToken;
+                Music seed = currentlyPlaying;
+                if (token == null || !atAutoplayBoundary(seed) || !canQueueAutoplay(seed)) return null;
+                AutoplayLookup lookup = autoplayLookup;
+                if (lookup != null && lookup.token() == token && lookup.session() == session && lookup.seed() == seed) {
+                    return lookup;
+                }
+                var tracks = new CompletableFuture<List<Music>>();
+                autoplayLookup = new AutoplayLookup(token, session, seed, tracks);
+                BackgroundWork.submit(() -> tracks.complete(QueueAutoplay.find(seed)))
+                        .exceptionally(failure -> {
+                            tracks.complete(List.of());
+                            return null;
+                        });
+                return autoplayLookup;
+            }
+        }
+
+        private void appendAutoplayAtEnd() {
+            AutoplayLookup lookup = lookupAutoplay();
+            if (lookup == null) return;
+            List<Music> candidates;
+            try {
+                candidates = lookup.tracks().get(1200, TimeUnit.MILLISECONDS);
+            } catch (InterruptedException interrupted) {
+                Thread.currentThread().interrupt();
+                return;
+            } catch (java.util.concurrent.ExecutionException | java.util.concurrent.TimeoutException unavailable) {
+                return;
+            }
+            synchronized (PLAY_NEXT_LOCK) {
+                if (lookup.token() != autoplayToken || lookup.session() != session
+                        || !atAutoplayBoundary(lookup.seed())) return;
+                Music next = QueueAutoplay.nextUnplayed(songs, candidates);
+                if (next == null) return;
+                songs.add(next);
+                queueRevision++;
             }
         }
 
@@ -2676,8 +2856,7 @@ public class CloudMusic implements SharedConstants {
             return message.length() > 90 ? message.substring(0, 90) : message;
         }
 
-        private boolean startPlayback(Music song, Tuple<String, String> playUrl, File musicFile,
-                                      PlaybackSession targetSession) {
+        private boolean startPlayback(Music song, PlaybackSession targetSession) {
             AudioPlayer activePlayer = ownedPlayer;
             if (activePlayer == null || !isSessionUsable(targetSession)) return false;
 
@@ -2741,7 +2920,9 @@ public class CloudMusic implements SharedConstants {
         }
 
         private void updateCurrentIndex() {
-            updateCurIdx();
+            synchronized (PLAY_NEXT_LOCK) {
+                updateCurIdx();
+            }
         }
 
         private File getMusicFile(Tuple<String, String> playUrl, Music song) {
@@ -2821,6 +3002,24 @@ public class CloudMusic implements SharedConstants {
         /** 下载缓存的主键（不含扩展名），淘汰分组的组名也因此天然带上世代标记。 */
         private static String audioCacheKey(Music song, String qualityId) {
             return audioCachePrefix(song) + qualityId;
+        }
+
+        private static String replayKey(Music song) {
+            String sharedUrl = song.getPartyStreamUrl();
+            if (song.getDuration() <= 0 || song.durationCameFromDecoder() || song.hasVipRestriction()
+                    || !(song.isQQ() || song.isNetease())
+                    || song.isGreyDetected() || !song.getUnblockedSourceLabel().isBlank()
+                    || sharedUrl != null && !sharedUrl.isBlank()
+                    || com.muoniumplayer.party.MpPartyClient.inRoom()
+                    || com.muoniumplayer.core.ncm.lxsource.LxSourceService.isEnabled()) return null;
+            return audioCacheKey(song, quality.getQuality());
+        }
+
+        private static void rememberReplay(Music song, File file, long duration, long revision) {
+            if (duration <= 0 || Math.abs(duration - song.getDuration()) > Math.max(2_000L, song.getDuration() / 20L)) return;
+            String key = replayKey(song);
+            if (key != null && key.equals(MusicAudioCache.groupOf(file.getName())))
+                MusicAudioCache.rememberReplay(key, file, song, revision);
         }
 
         private static final Object[] AUDIO_PREPARATION_LOCKS = new Object[64];
@@ -3306,7 +3505,7 @@ public class CloudMusic implements SharedConstants {
                 int next = curIdx + 1;
                 return next < queue.size() ? next : -1;
             }
-            if (playMode == PlayMode.LoopSingle) {
+            if (playMode.repeatsOne()) {
                 if (hasQueuedNext()) {
                     int queuedNext = curIdx + 1;
                     return queuedNext < queue.size() ? queuedNext : -1;
@@ -3319,7 +3518,7 @@ public class CloudMusic implements SharedConstants {
             int next = curIdx + 1;
             if (next < queue.size()) return next;
             // 随机播放会在队列循环时重新洗牌，因此这里的下一首曲目是真正未知的。
-            if (playMode == PlayMode.LoopInList) return 0;
+            if (playMode.repeatsAll() && playMode != PlayMode.Random) return 0;
             return -1;
         }
 
@@ -3428,7 +3627,12 @@ public class CloudMusic implements SharedConstants {
             final Music song = playList.get(nextIndex);
             if (!worthAudioPrefetch(song)) return;
             // 磁盘上已经有了就别再占那份余额 —— 实播会直接命中同一份缓存（缓存键只有曲目加音质）。
-            if (cachedAudioFileFor(song) != null) return;
+            if (cachedAudioFileFor(song) != null) {
+                // Container detection opens the file. A cache hit needs only an occasional
+                // recheck for eviction, not another header read on every 10 ms playback tick.
+                nextAudioPrefetchAt = now + 1_000L;
+                return;
+            }
 
             audioPrefetchAttempts++;
             nextAudioPrefetchAt = now + AUDIO_PREFETCH_RETRY_MILLIS;
@@ -4265,7 +4469,7 @@ public class CloudMusic implements SharedConstants {
                 int index = (pending == null ? curIdx : pending.index) + direction;
                 if (queue.isEmpty()) return false;
                 if (index < 0 || index >= queue.size()) {
-                    if (playMode == PlayMode.Sequential || pending != null && pending.ordered) return pending != null;
+                    if ((pending != null && pending.ordered) || (!playMode.repeatsAll() && !playMode.repeatsOne())) return pending != null;
                     index = Math.floorMod(index, queue.size());
                 }
                 return requestManualSelection(queue, index, pending != null && pending.replaceQueue,
@@ -4335,13 +4539,16 @@ public class CloudMusic implements SharedConstants {
             Music song = selection.selectedSong;
             try {
                 if (!manualSelectionCurrent(selection)) return;
-                Tuple<String, String> url = song.getPlayUrl();
+                long cacheRevision = MusicAudioCache.revision();
+                String replayKey = replayKey(song);
+                File replay = replayKey == null ? null : MusicAudioCache.replayFile(replayKey, song);
+                Tuple<String, String> url = replay == null ? song.getPlayUrl() : null;
                 if (!manualSelectionCurrent(selection)) return;
                 for (int attempt = 0; attempt < 2; attempt++) {
                     Throwable streamFailure = null;
-                    if (url != null) {
+                    if (url != null || replay != null) {
                         try {
-                            File file = getMusicFile(url, song);
+                            File file = replay == null ? getMusicFile(url, song) : resolvePlayableAudioFile(replay, song);
                             if (!manualSelectionCurrent(selection)) return;
                             deck = new AudioPlayer(file);
                             deck.setTrackName(trackDisplayName(song, file));
@@ -4366,6 +4573,7 @@ public class CloudMusic implements SharedConstants {
                             deck.enableManualTransitionProcessing();
                             deck.prepareStart(0f);
                             if (!deck.isUsable()) throw new IllegalStateException("音频解码失败");
+                            if (replay == null) rememberReplay(song, file, duration, cacheRevision);
                             ArmedTrack track = new ArmedTrack(song, file, deck, selection.index,
                                     generation.get(), queueRevision);
                             track.plan = manualSelectionPlan();
@@ -4387,6 +4595,13 @@ public class CloudMusic implements SharedConstants {
                         }
                     }
                     if (!manualSelectionCurrent(selection)) return;
+                    if (replay != null) {
+                        MusicAudioCache.forgetReplay(replayKey);
+                        replay = null;
+                        url = song.getPlayUrl();
+                        attempt--;
+                        continue;
+                    }
                     // 保留普通起播的跨平台救援，但绝不为失败而关掉旧歌，也不循环尝试整张队列。
                     // 账本拦住（典型：arm 预备救援正对同一首跑流水线，或 10 分钟内刚搜过）时
                     // 先看队列格：arm 的救援若已录取，兄弟格写入让这一格已经是替身本体 ——
@@ -5112,7 +5327,7 @@ public class CloudMusic implements SharedConstants {
             }
             // 换歌边界先记账：推进前的那首是「最后一次完整听到」的位置。
             notePlaybackEvent();
-            if (playMode == PlayMode.LoopSingle) {
+            if (playMode.repeatsOne()) {
                 // 单曲循环只影响自然播放结束；用户手动上一首/下一首仍可正常切歌。
                 if (dontAdd) {
                     dontAdd = false;
@@ -5140,14 +5355,13 @@ public class CloudMusic implements SharedConstants {
                 if (curIdx >= playList.size()) {
                     reshuffleRandomQueueForNextCycle(songs);
                     curIdx = 0;
-                    // 整条列表刚被就地重洗，用户那点"下一首播放"排出来的顺序已经不存在了：账本作废。
-                    // 曲目本身留在列表里，会按新的随机顺序被播到，这里不清它。
+                    // The new shuffle round invalidates the pending run.
                     clearQueuedNext();
                 }
                 return;
             }
 
-            if (playMode == PlayMode.LoopInList && curIdx >= playList.size()) {
+            if (playMode.repeatsAll() && curIdx >= playList.size()) {
                 curIdx = 0;
                 // 回到队首就是新一轮歌单，旧的那块插入已经落在播放指针后面了。
                 // 这一处正是原来那个绝对尾下标会算出「待播 99」的地方：指针跳回 0，
@@ -5361,6 +5575,29 @@ public class CloudMusic implements SharedConstants {
         }
     }
 
+    static boolean musicCacheGroupInUse(String group) {
+        AudioPlayer current = player;
+        if (current != null && !current.isFinished() && sameCacheGroup(current, group)) return true;
+        if (!(playThread instanceof PlayThread thread) || !thread.isAlive()) return false;
+        Music preparing = currentlyPlaying;
+        if (thread.preparingSong && preparing != null && group.startsWith(preparing.getStableKey() + "_")) return true;
+        var armed = thread.armed;
+        if (armed != null && sameCacheGroup(armed.deck, group)) return true;
+        var selection = thread.manualSelection;
+        if (selection != null && group.startsWith(selection.selectedSong.getStableKey() + "_")) return true;
+        var ready = selection == null ? null : selection.ready;
+        if (ready != null && sameCacheGroup(ready.deck, group)) return true;
+        var fade = thread.activeFade;
+        return fade != null && (sameCacheGroup(fade.outgoing, group) || sameCacheGroup(fade.incoming, group));
+    }
+
+    private static boolean sameCacheGroup(AudioPlayer deck, String group) {
+        if (deck == null) return false;
+        File file = deck.getSourceFile();
+        return file != null && MusicAudioCache.directory().equals(file.getParentFile())
+                && group.equals(MusicAudioCache.groupOf(file.getName()));
+    }
+
     /** 用户设置的音频缓存上限（字节）；{@code 0} = 不限制。 */
     public static long audioCacheLimitBytes() {
         try {
@@ -5547,10 +5784,8 @@ public class CloudMusic implements SharedConstants {
         synchronized (lyrics) {
             LyricTimelineSupport.PreparedTimeline timeline = LyricTimelineSupport.prepare(
                     parsedLyrics == null ? Collections.<LyricLine>emptyList() : parsedLyrics);
-            lyrics.clear();
-            lyrics.addAll(timeline.lines);
+            replaceLyricLines(timeline.lines, timeline.haveNoWords);
             currentLyric = lyrics.get(0);
-            haveNoWords = timeline.haveNoWords;
             lyricsTrackKey = music == null ? null : music.getStableKey();
             lyricsRevision++;
         }
@@ -5914,12 +6149,11 @@ public class CloudMusic implements SharedConstants {
         playing.set(true);
         // 直播没有歌词：主动清掉上一首的时间轴，桌面歌词/歌词页显示"暂无歌词"。
         synchronized (lyrics) {
-            lyrics.clear();
+            replaceLyricLines(List.of(), true);
             lyricsRevision++;
         }
         currentLyric = null;
         lyricsTrackKey = null;
-        haveNoWords = true;
         hasTransLyrics = false;
         hasRomanization = false;
     }
@@ -5938,12 +6172,11 @@ public class CloudMusic implements SharedConstants {
         playList = new ArrayList<Music>();
         curIdx = 0;
         synchronized (lyrics) {
-            lyrics.clear();
+            replaceLyricLines(List.of(), false);
             lyricsRevision++;
         }
         currentLyric = null;
         lyricsTrackKey = null;
-        haveNoWords = false;
         hasTransLyrics = false;
         hasRomanization = false;
     }
@@ -6312,7 +6545,29 @@ public class CloudMusic implements SharedConstants {
      * 全屏样式都走它。</p>
      */
     public static LyricLine findCurrentLyric(double songProgress) {
-        return LyricTimelineSupport.findCurrentLyric(lyrics, haveNoWords, songProgress + lyricOffsetMillis);
+        synchronized (LYRIC_TIMELINE_LOCK) {
+            return LyricTimelineSupport.findCurrentLyric(lyrics, haveNoWords, songProgress + lyricOffsetMillis);
+        }
+    }
+
+    /** Reads a displayable lyric for the track shown by this frame's playback bar. */
+    public static LyricLine findDisplayLyric(PlaybackPresentation presentation, double positionMs) {
+        if (presentation.preparing || presentation.displayTrack == null || !hasPlaybackClock()) return null;
+        synchronized (lyrics) {
+            if (presentation.audibleTrack != currentlyPlaying
+                    || !presentation.displayKey().equals(lyricsTrackKey)) return null;
+            synchronized (LYRIC_TIMELINE_LOCK) {
+                return LyricTimelineSupport.findDisplayLyric(lyrics, haveNoWords, positionMs + lyricOffsetMillis);
+            }
+        }
+    }
+
+    private static void replaceLyricLines(List<LyricLine> lines, boolean noWords) {
+        synchronized (LYRIC_TIMELINE_LOCK) {
+            lyrics.clear();
+            lyrics.addAll(lines);
+            haveNoWords = noWords;
+        }
     }
 
     /**

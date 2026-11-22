@@ -8,11 +8,19 @@ import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.ToLongFunction;
 
-/** A cancellable, account-scoped feed of provider artist matches, in provider order. */
+/** Account-scoped detail data. Track order is supplied by the provider. */
 final class ArtistDetailModel {
     final OnlineMusicPlayer player;
     private final ToLongFunction<String> epoch;
     OnlineArtist artist;
+    OnlineAlbum album;
+    OnlineAlbumDetail release;
+    OnlineArtistOverview overview;
+    List<OnlineAlbum> albums = List.of();
+    int albumPage;
+    long total = -1;
+    boolean overviewFailed;
+    private CompletableFuture<OnlineArtistOverview> overviewRequest;
     int page = 1;
     String status = "empty";
     List<OnlineTrack> tracks = List.of();
@@ -20,7 +28,7 @@ final class ArtistDetailModel {
     private long openedEpoch;
     private boolean extending;
     private int requestPage;
-    private CompletableFuture<OnlineArtistTracks> pending;
+    private CompletableFuture<?> pending;
 
     ArtistDetailModel(OnlineMusicPlayer player) {
         this(player, SessionMusicOperations.forPlayer(player).<ToLongFunction<String>>map(ops -> ops::accountVersion)
@@ -35,10 +43,34 @@ final class ArtistDetailModel {
     void open(OnlineArtist artist) {
         synchronized (player) {
             this.artist = Objects.requireNonNull(artist);
+            album = null;
             openedEpoch = epoch.applyAsLong(artist.source());
+            load(1);
+            if (player.supportsArtistOverview(artist.source())) loadOverview();
+        }
+    }
+
+    void open(OnlineAlbum album) {
+        synchronized (player) {
+            artist = null;
+            this.album = Objects.requireNonNull(album);
+            openedEpoch = epoch.applyAsLong(album.source());
             load(1);
         }
     }
+
+    String source() { return artist != null ? artist.source() : album != null ? album.source() : ""; }
+
+    void loadOverview() {
+        synchronized (player) {
+            if (artist == null || overviewLoading() || !ensureContext()) return;
+            overviewFailed = false;
+            try { overviewRequest = Objects.requireNonNull(player.artistOverview(artist, albumPage + 1)); }
+            catch (RuntimeException failure) { overviewFailed = true; }
+        }
+    }
+
+    boolean overviewLoading() { return overviewRequest != null; }
 
     void load(int requestedPage) {
         synchronized (player) {
@@ -61,8 +93,9 @@ final class ArtistDetailModel {
     }
 
     private boolean contextCurrent() {
-        return artist != null && epoch.applyAsLong(artist.source()) == openedEpoch
-                && player.sources().contains(artist.source()) && player.supportsArtistTracks(artist.source());
+        String source = source();
+        return !source.isEmpty() && epoch.applyAsLong(source) == openedEpoch && player.sources().contains(source)
+                && (artist != null ? player.supportsArtistTracks(source) : player.supportsAlbumDetail(source));
     }
 
     private boolean ensureContext() {
@@ -77,27 +110,55 @@ final class ArtistDetailModel {
         requestPage = page;
         if (!ensureContext()) return;
         status = "loading";
-        try { pending = Objects.requireNonNull(player.artistTracks(artist, page)); }
+        try { pending = Objects.requireNonNull(artist != null ? player.artistTracks(artist, page) : player.albumDetail(album)); }
         catch (RuntimeException failure) { fail(); }
     }
 
     void poll() {
         synchronized (player) {
-            if (artist == null || !ensureContext() || pending == null || !pending.isDone()) return;
+            if (source().isEmpty() || !ensureContext()) return;
+            pollOverview();
+            if (pending == null || !pending.isDone()) return;
             var request = pending;
             pending = null;
             try {
-                var result = request.join();
-                if (result.tracks().stream().anyMatch(track -> !artist.source().equals(track.source()))) {
+                var value = request.join();
+                var incoming = value instanceof OnlineAlbumDetail detail ? detail.tracks() : ((OnlineArtistTracks) value).tracks();
+                if (incoming.stream().anyMatch(track -> !source().equals(track.source()))) {
                     fail();
                     return;
                 }
-                tracks = extending ? MusicPageAppend.append(tracks, result.tracks()) : result.tracks();
+                if (value instanceof OnlineAlbumDetail detail) {
+                    if (!album.id().equals(detail.album().id()) || !album.source().equals(detail.album().source())) {
+                        fail();
+                        return;
+                    }
+                    release = detail;
+                    total = incoming.size();
+                } else total = ((OnlineArtistTracks) value).total();
+                tracks = extending ? MusicPageAppend.append(tracks, incoming) : incoming;
                 page = requestPage;
-                more = result.mayHaveMore() && page < 1000;
+                more = value instanceof OnlineArtistTracks result && result.mayHaveMore() && page < 1000;
                 status = tracks.isEmpty() ? "empty" : "ready";
             } catch (RuntimeException failure) { fail(); }
         }
+    }
+
+    private void pollOverview() {
+        if (overviewRequest == null || !overviewRequest.isDone()) return;
+        var request = overviewRequest;
+        overviewRequest = null;
+        try {
+            var next = request.join();
+            var releases = new java.util.LinkedHashMap<String, OnlineAlbum>();
+            albums.forEach(item -> releases.put(item.id(), item));
+            next.albums().stream().filter(item -> source().equals(item.source()))
+                    .forEach(item -> releases.putIfAbsent(item.id(), item));
+            albums = List.copyOf(releases.values());
+            overview = overview == null ? next : new OnlineArtistOverview(overview.artworkUrl(), overview.followers(),
+                    overview.description(), albums, next.albumCount(), next.mayHaveMore());
+            albumPage++;
+        } catch (RuntimeException failure) { overviewFailed = true; }
     }
 
     private void fail() {
@@ -111,6 +172,14 @@ final class ArtistDetailModel {
         var request = pending;
         pending = null;
         if (request != null) request.cancel(true);
+        if (overviewRequest != null) overviewRequest.cancel(true);
+        overviewRequest = null;
+        overview = null;
+        overviewFailed = false;
+        release = null;
+        albumPage = 0;
+        albums = List.of();
+        total = -1;
         tracks = List.of();
         more = false;
         status = "cancelled";

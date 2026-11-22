@@ -153,6 +153,11 @@ public class PlayQueuePanel extends NCMPanel {
         return this.open;
     }
 
+    /** Null outside a room. An empty list still represents an active room's queue. */
+    public List<Music> roomSongs() {
+        return PlayQueueRoomBridge.roomActive() ? this.room.snapshot() : null;
+    }
+
     /**
      * 由 {@code ControlsBar} 每帧推进来：触发这颗抽屉的按钮在本面板坐标系里的右边缘。
      *
@@ -451,8 +456,12 @@ public class PlayQueuePanel extends NCMPanel {
         this.list.contentHeight = contentHeight;
         this.emptyHint.setAlpha(rowCount == 0 ? 1.0f : 0.0f);
 
-        this.updateDrag(mouseX, mouseY, frameMs);
-        this.maybeBeginDragByLongPress();
+        if (NCMScreen.getInstance().isModalOverlayActive()) {
+            if (this.draggingRow != null) this.cancelDrag();
+        } else {
+            this.updateDrag(mouseX, mouseY, frameMs);
+            this.maybeBeginDragByLongPress();
+        }
 
         double frameDelta = RenderSystem.getFrameDeltaTime();
         long now = System.currentTimeMillis();
@@ -773,7 +782,7 @@ public class PlayQueuePanel extends NCMPanel {
                 this.drawer.getWidth(), this.drawer.getHeight());
     }
 
-    private static boolean loadCover(Music music) {
+    public static boolean loadQueueCover(Music music) {
         TextureManager textureManager = TextureManager.getInstance();
         Location coverLocation = music.getSmallCoverLocation();
         if (textureManager.getTexture(coverLocation) != null) return true;
@@ -785,6 +794,11 @@ public class PlayQueuePanel extends NCMPanel {
         }
         Textures.downloadTextureAndLoadAsync(url, coverLocation);
         return true;
+    }
+
+    public static Location queueCoverLocation(Music music) {
+        Location small = music.getSmallCoverLocation();
+        return TextureManager.getInstance().getTexture(small) == null ? music.getCoverLocation() : small;
     }
 
     /**
@@ -819,7 +833,8 @@ public class PlayQueuePanel extends NCMPanel {
          */
         private void advanceTouchDrag() {
             TouchGestures gestures = TouchGestures.get();
-            if (!TouchSettings.ENABLED || PlayQueuePanel.this.draggingRow != null) {
+            if (!TouchSettings.ENABLED || PlayQueuePanel.this.draggingRow != null
+                    || NCMScreen.getInstance().isModalOverlayActive()) {
                 this.touchDragging = false;
                 return;
             }
@@ -923,7 +938,7 @@ public class PlayQueuePanel extends NCMPanel {
             this.setGlassRim(GlassLook.Surface.PLAYER);
 
             this.setBeforeRenderCallback(() -> {
-                if (!this.coverLoaded) this.coverLoaded = loadCover(this.music);
+                if (!this.coverLoaded) this.coverLoaded = loadQueueCover(this.music);
 
                 boolean dragging = this == PlayQueuePanel.this.draggingRow;
                 this.setRadius(4.0);
