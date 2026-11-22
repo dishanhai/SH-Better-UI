@@ -215,6 +215,8 @@ final class PlayingCatalogPanel extends PlaylistPanel {
             albumList = new ScrollPanel();
             albumList.setSpacing(MusicArtworkGrid.GAP).enableScrollbarDrag()
                     .setAlignment(ScrollPanel.Alignment.VERTICAL_WITH_HORIZONTAL_FILL).setIndexedVerticalLayout();
+            if (artist != null) albumList.setEndPull(() -> acceptsEndInput() && tab == Tab.ALBUMS,
+                    () -> endStatus(moreAlbums, loadingAlbums, albumsFailed, albumPage), this::loadMoreAlbums);
             addChild(albumList);
             for (var release : albums) albumList.addChild(releaseCard(release, true));
         }
@@ -328,6 +330,24 @@ final class PlayingCatalogPanel extends PlaylistPanel {
     }
 
     private boolean showsSongs() { return tab == Tab.FEATURED || tab == Tab.SONGS; }
+
+    @Override protected void configureSongList(ScrollPanel list) {
+        if (artist != null) list.setEndPull(() -> acceptsEndInput() && showsSongs(),
+                () -> songRowsReady() ? endStatus(more, loadingMore, loadFailed, page)
+                        : ScrollPanel.EndStatus.HIDDEN,
+                this::loadMore);
+    }
+
+    private boolean acceptsEndInput() {
+        return !enteringPage && !enteringTab && NCMScreen.getInstance().acceptsListEndInput(this);
+    }
+
+    private static ScrollPanel.EndStatus endStatus(boolean more, boolean loading, boolean failed, int page) {
+        if (loading) return ScrollPanel.EndStatus.LOADING;
+        if (failed) return ScrollPanel.EndStatus.FAILED;
+        if (more) return ScrollPanel.EndStatus.MORE;
+        return page > 1 ? ScrollPanel.EndStatus.END : ScrollPanel.EndStatus.HIDDEN;
+    }
 
     private boolean featuredCards() { return tab == Tab.FEATURED && getHeight() - bodyY() >= 78; }
     private double coverSize() { return PlayingCatalogPresentation.coverSize(getWidth(), getHeight()); }

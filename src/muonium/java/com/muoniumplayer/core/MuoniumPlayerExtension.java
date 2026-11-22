@@ -62,6 +62,11 @@ public class MuoniumPlayerExtension {
             @Override public Object claimedBy() { return gestures().claimedBy(); }
             @Override public double dy() { return gestures().dy(); }
             @Override public boolean pressed() { return gestures().isPressed(); }
+            @Override public boolean tapCandidate() {
+                return gestures().isUnmoved()
+                        && com.muoniumplayer.core.screens.ncm.NCMScreen.getInstance().acceptsHeldControlFeedback();
+            }
+            @Override public boolean lastPressDragged() { return gestures().lastPressWasDrag(); }
             @Override public double velocityY() { return gestures().velocityY(); }
             @Override public double startX() { return gestures().startX(); }
             @Override public double startY() { return gestures().startY(); }

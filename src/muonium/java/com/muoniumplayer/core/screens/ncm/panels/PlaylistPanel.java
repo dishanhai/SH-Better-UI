@@ -53,6 +53,10 @@ public class PlaylistPanel extends NCMPanel {
     /** Optional header for read-only catalogue pages that reuse the playlist's song rows. */
     protected java.util.function.DoubleSupplier catalogHeader() { return null; }
 
+    protected void configureSongList(ScrollPanel list) {}
+
+    protected boolean songRowsReady() { return this.pendingMusicBuild == null; }
+
     protected void setCatalogTracksPresentation(boolean visible, float alpha, double offsetY) {
         catalogTracksOffset = offsetY;
         if (trackListContainer != null) trackListContainer.setHidden(!visible).setAlpha(alpha);
@@ -806,6 +810,7 @@ public class PlaylistPanel extends NCMPanel {
                 .enableScrollbarDrag()
                 .setIndexedVerticalLayout()
                 .setUniformVerticalItemHeight(30.0);
+        configureSongList(musicsPanel);
         // 行与行挨着，就按<em>一块</em>玻璃收尾：这一组里每行登记自己的轮廓，画完子控件之后
         // 由一趟着色器按整张距离场画边（设置里「玻璃融合半径」推到十几才看得见变化，0 就是
         // 原来那样每行一圈）。为什么点名的这个容器而不是那一排行：融合必须括在<em>同一层裁剪</em>

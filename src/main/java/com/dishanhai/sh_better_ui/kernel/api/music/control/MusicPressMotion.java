@@ -29,4 +29,15 @@ public final class MusicPressMotion {
         down = false;
         track.snapTo(0f);
     }
+
+    /** A quick activation starts its return even if no frame rendered while pressed. */
+    public void pulse(long now, boolean still) {
+        if (still) {
+            reset();
+            return;
+        }
+        if (track.sample(now) < .38f) track.snapTo(.38f);
+        down = false;
+        track.blendTo(0f, now, 0, 145L, InterruptibleAnimation.BlendCurve.SMOOTHSTEP);
+    }
 }

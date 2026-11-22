@@ -429,6 +429,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         this.pendingClickActive = false;
         this.pendingSearchClick = null;
         this.cancelPlaylistScrollbarDrag();
+        if (TouchGestures.get().claimedBy() instanceof ScrollPanel list) list.cancelEndPull();
         this.trackActionPointerOwner = null;
         this.catalogArtistMenu.close();
         this.catalogArtistAnchor = null;
@@ -1581,6 +1582,17 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         return this.currentPanel;
     }
 
+    public boolean acceptsHeldControlFeedback() {
+        return this.hostOpen && !this.closing && !this.blocksFullscreenLyricInput();
+    }
+
+    public boolean acceptsListEndInput(NCMPanel owner) {
+        return this.acceptsHeldControlFeedback() && this.currentPanel == owner && this.initialLayoutStage == 0
+                && this.prevAnimatingPanel == null && this.musicLyricsPanel == null
+                && !this.navigationLoading.isCatalogLoading() && !this.controlsBar.isQualityMenuOpen()
+                && (this.playQueuePanel == null || !this.playQueuePanel.isVisible());
+    }
+
     /**
      * 立即返回前一个内容页。现有鼠标侧键导航使用
      * 同一历史，因此页面动画
@@ -2029,6 +2041,8 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
     public void keyTyped(char typedChar, int keyCode) {
         if (keyCode == Keyboard.KEY_ESCAPE && musicLyricsPanel != null && musicLyricsPanel.cancelSeek()) return;
         if (keyCode == Keyboard.KEY_ESCAPE && this.cancelPlaylistScrollbarDrag()) return;
+        if (keyCode == Keyboard.KEY_ESCAPE && TouchGestures.get().claimedBy() instanceof ScrollPanel list
+                && list.cancelEndPull()) return;
         if (this.initialLayoutStage != 0) {
             if (keyCode == Keyboard.KEY_ESCAPE) {
                 this.closing = true;

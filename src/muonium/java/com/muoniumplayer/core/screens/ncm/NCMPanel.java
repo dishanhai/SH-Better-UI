@@ -86,6 +86,7 @@ public abstract class NCMPanel extends Panel {
 
     private static ScrollPanel findPrimaryVerticalScrollPanel(AbstractWidget<?> host) {
         for (AbstractWidget<?> child : host.getChildren()) {
+            if (child.isHidden()) continue;
             if (child instanceof ScrollPanel) {
                 ScrollPanel panel = (ScrollPanel) child;
                 if (panel.getAlignment() != ScrollPanel.Alignment.HORIZONTAL) return panel;
