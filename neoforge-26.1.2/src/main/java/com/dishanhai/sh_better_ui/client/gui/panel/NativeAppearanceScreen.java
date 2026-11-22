@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.gui.panel;
 
+import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.scaled.NativeAppearanceBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
@@ -67,10 +68,11 @@ public final class NativeAppearanceScreen extends Screen {
             }
         }
         content.addChild(new MultiLineTextWidget(label("background_hint"),font).setMaxWidth(available));
-        if(!NativeAppearanceBackground.supported(draft.state().background()))
+        var settings=ShBetterUiApi.settings();
+        if(!settings.supportsBackground(draft.state().background()))
             content.addChild(new MultiLineTextWidget(label("unsupported",draft.state().background()),font).setMaxWidth(available));
-        for(String id:NativeAppearanceBackground.supportedIds()) content.addChild(button("background:"+id,
-                label("choice",label("background."+id),draft.state().background().equals(id)?Component.literal("●"):Component.literal("○")),available,
+        for(String id:settings.backgroundIds()) content.addChild(button("background:"+id,
+                label("choice",label("background."+id),selectedBackground(id)?Component.literal("●"):Component.literal("○")),available,
                 ()->{draft.background(id);validate();init();}));
         content.addChild(button("preview",label("preview"),available,()->{
             validate();if(valid)NativePort.show(minecraft,new Preview(this,preview));
@@ -89,6 +91,10 @@ public final class NativeAppearanceScreen extends Screen {
         else setInitialFocus(restored==null?back:restored);
         validate();
     }
+    private boolean selectedBackground(String id) {
+        return id.equals(draft.state().background())
+                || NativeAppearanceBackground.BACKDROP.equals(id) && NativeAppearanceBackground.isBackdrop(draft.state().background());
+    }
     private void selectSuite(String id){
         validate();if(!valid)return;
         try{draft.suite(id);validate();init();}
@@ -102,7 +108,7 @@ public final class NativeAppearanceScreen extends Screen {
     private void apply(){
         validate();if(!valid)return;
         var value=draft.value(ControlPanelSettings.current().theme());
-        if(ControlPanelSettings.save(ControlPanelSettings.current().withTheme(value))){draft.applied(value);onApplied.accept(value);init();}
+        if(ShBetterUiApi.settings().saveTheme(value)){draft.applied(value);onApplied.accept(value);init();}
         else status=label("save_failed");
     }
     @Override public void extractBackground(GuiGraphicsExtractor graphics,int x,int y,float tick){

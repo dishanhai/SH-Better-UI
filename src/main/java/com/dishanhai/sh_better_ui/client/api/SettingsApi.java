@@ -50,6 +50,14 @@ public final class SettingsApi {
         return save(current().withTheme(theme));
     }
 
+    /** Background IDs rendered by this platform, in selection order. */
+    public List<String> backgroundIds() {
+        return ShBetterUiApi.backgrounds().entries().stream().map(BackgroundSpec::id).toList();
+    }
+
+    /** Includes compatibility aliases; unsupported saved options can remain dormant in the theme. */
+    public boolean supportsBackground(String id) { return ShBetterUiApi.backgrounds().find(id).isPresent(); }
+
     public java.util.Set<String> themeGroups() { return ThemeEffects.groups(); }
 
     public JsonObject themeTemplate(String group) { return ThemeEffects.template(group); }

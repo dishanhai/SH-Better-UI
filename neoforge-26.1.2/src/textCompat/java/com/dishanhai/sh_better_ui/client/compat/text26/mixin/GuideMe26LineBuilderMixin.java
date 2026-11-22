@@ -14,7 +14,7 @@ import org.spongepowered.asm.mixin.Pseudo;
 import org.spongepowered.asm.mixin.Unique;
 import org.spongepowered.asm.mixin.injection.At;
 
-/** Exact official 26.1.17-beta descriptors; optional config gates the target, required hits detect drift. */
+/** Shared descriptors in GuideME 26.1.17-beta and 26.2.2-alpha. Required hits detect drift when installed. */
 @Pseudo
 @Mixin(targets = "guideme.layout.flow.LineBuilder", remap = false)
 abstract class GuideMe26LineBuilderMixin {

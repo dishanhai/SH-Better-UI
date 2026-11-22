@@ -23,7 +23,7 @@ public abstract class EmbeddedMusicScreen extends ExtensionScreen {
         String effect = theme.backgroundEffect();
         themeBackdropVisible = PlayerAppearance.useShbuiTheme() && !preferences.highContrast()
                 && !EmbeddedMusicGradient.active() && NativeAppearanceBackground.supported(effect)
-                && !NativeAppearanceBackground.BACKDROP.equals(effect);
+                && !NativeAppearanceBackground.isBackdrop(effect);
         if (themeBackdropVisible) {
             NativeAppearanceBackground.draw(graphics, width, height, theme, preferences, System.nanoTime() / 1_000_000L);
         }

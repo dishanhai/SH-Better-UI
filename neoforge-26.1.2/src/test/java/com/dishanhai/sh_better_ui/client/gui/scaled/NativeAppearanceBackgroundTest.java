@@ -25,6 +25,14 @@ final class NativeAppearanceBackgroundTest {
         assertEquals("nativeBackdrop",sampled.effect()); assertEquals(0,sampled.countLimit());
         assertDoesNotThrow(() -> NativeAppearanceBackground.draw(null,800,450,settings,new UiPreferences(false,false,false),5000));
     }
+    @Test void importedPlainBackdropLeavesTheOriginalSceneUnchanged() {
+        var settings = custom("sh_better_ui:plain");
+        assertTrue(NativeAppearanceBackground.supported(settings.backgroundEffect()));
+        assertTrue(NativeAppearanceBackground.isBackdrop(settings.backgroundEffect()));
+        assertEquals("nativeBackdrop", NativeAppearanceBackground.sample(800, 450, settings,
+                new UiPreferences(false, false, false), 0).effect());
+        assertEquals("sh_better_ui:plain", settings.backgroundEffect());
+    }
     @Test void reducedMotionIsDeterministicButNormalDotsAnimate() {
         var settings=custom("dotMatrix");
         var reduced=new UiPreferences(false,true,false);

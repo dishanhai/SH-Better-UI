@@ -5,7 +5,9 @@ import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelSettings;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperGalleryScreen;
 import com.dishanhai.sh_better_ui.client.gui.panel.DeveloperPanelScreen;
+import com.dishanhai.sh_better_ui.client.gui.scaled.NativeAppearanceBackground;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.config.ThemeSettings;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.components.events.GuiEventListener;
 import net.minecraft.client.gui.screens.Screen;
@@ -19,6 +21,20 @@ public final class SettingsApi {
     SettingsApi() {}
 
     public ControlPanelSettings current() { return ControlPanelSettings.current(); }
+
+    /** Applied custom palette and independent appearance options. */
+    public ThemeSettings theme() { return current().theme(); }
+
+    /** Persists the theme without overwriting unrelated control panel settings. */
+    public boolean saveTheme(ThemeSettings theme) {
+        return ControlPanelSettings.save(current().withTheme(theme));
+    }
+
+    /** Background IDs rendered by this platform, in selection order. */
+    public List<String> backgroundIds() { return NativeAppearanceBackground.supportedIds(); }
+
+    /** Includes compatibility aliases; unsupported saved options can remain dormant in the theme. */
+    public boolean supportsBackground(String id) { return NativeAppearanceBackground.supported(id); }
 
     public UiPreferences preferences() { return UiPreferences.configured(); }
 

@@ -18,6 +18,7 @@ def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
         'client/api/UiCanvas.java',
+        'client/api/UiGlassPanel.java',
         'internal/fumo/FumoMusic.java',
         'internal/fumo/FumoMotion.java',
         'kernel/internal/live/SurfaceTransition.java',
@@ -291,6 +292,7 @@ sourceSets.test {
         include("${packagePath}/theme/DisplayStyleSuitesTest.java")
         include("${packagePath}/client/gui/scaled/DisplaySuiteButtonPaintTest.java")
         include("${packagePath}/client/gui/scaled/NativeAppearanceBackgroundTest.java")
+        include("${packagePath}/client/gui/scaled/NativeHudPanelSizingTest.java")
         include("${packagePath}/client/gui/panel/ConfigPageDraftTest.java")
         include("${packagePath}/client/gui/panel/GalleryExamplesTest.java")
         include("${packagePath}/client/gui/panel/GallerySampleInputTest.java")

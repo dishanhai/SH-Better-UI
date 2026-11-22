@@ -30,6 +30,16 @@ public interface UiCanvas {
     /** Intersects with the host clip, restores it on return, and skips an empty region. */
     void clipped(Bounds bounds, Runnable content);
 
+    /** Draw after the backdrop and before foreground text. Returns the presentation path used. */
+    default UiGlassPanel.Paint glass(UiGlassPanel panel) {
+        if (panel.empty()) return UiGlassPanel.Paint.EMPTY;
+        fill(panel.bounds(), panel.fallbackFill(preferences()));
+        return UiGlassPanel.Paint.SOLID;
+    }
+
+    /** Paints in a resolved layout node's local coordinates, with its screen-space clip. */
+    void placed(AlignmentLayout.View view, Runnable content);
+
     /** Creates a layout for this viewport. Retain it per screen, not per frame. */
     default AlignmentLayout createLayout() {
         return new AlignmentLayout(new Rect(viewport()));

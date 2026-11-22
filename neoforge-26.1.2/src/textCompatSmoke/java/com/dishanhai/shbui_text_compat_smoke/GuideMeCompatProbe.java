@@ -65,7 +65,7 @@ public final class GuideMeCompatProbe {
     }
     public int height() { return height; }
     public String evidence() {
-        return "GuideME official 26.1.17-beta layouts=" + (GuideMe26Text.LAYOUTS.get() - beforeLayouts)
+        return "GuideME official layouts=" + (GuideMe26Text.LAYOUTS.get() - beforeLayouts)
                 + " attached=" + (GuideMe26Text.ATTACHED.get() - beforeAttached)
                 + " rendered=" + (GuideMe26Text.RENDERED.get() - beforeRendered)
                 + " unsupported=" + (GuideMe26Text.UNSUPPORTED.get() - beforeUnsupported)

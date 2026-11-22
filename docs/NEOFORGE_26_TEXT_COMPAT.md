@@ -1,8 +1,10 @@
 <!-- Author: dishanhai -->
 # NeoForge 26.1.2 optional text integrations
 
-This slice is isolated to `neoforge-26.1.2/src/textCompat`. It is not enabled for
-26.2 or used to replace the existing older-loader adapters. The integrations use
+The adapter Java sources live in `neoforge-26.1.2/src/textCompat`. Minecraft
+26.1.2 enables both providers. Minecraft 26.2 compiles only the GuideME
+adapter against a separate official artifact and loads a GuideME-only Mixin
+config. Neither target replaces the existing older-loader adapters. The integrations use
 optional `@Pseudo` targets with required injection hits when their target exists;
 they are not silently accepted from a successful library build alone.
 
@@ -87,3 +89,28 @@ Old-loader source/configuration was unchanged by this optional 26.1.2 slice.
   not an FTB Quests screen or a user-authored GuideME book. They do not validate
   arbitrary provider versions, 26.2, PRE whitespace, hover-font metric changes,
   or all bidirectional/Arabic layout combinations.
+
+
+## GuideME on Minecraft 26.2
+
+The official Maven Central artifact
+[`org.appliedenergistics:guideme:26.2.2-alpha`](https://repo.maven.apache.org/maven2/org/appliedenergistics/guideme/26.2.2-alpha/)
+has SHA-256 `f34345bee2e53d3f5ade743f37f9ef00725111c4ce44c39380373f17d07906bd`.
+Its metadata allows Minecraft `[26.2.0,26.3.0)` and NeoForge
+`[26.2.0.88,26.3-)`, which include this project's 26.2 / 26.2.0.93 target.
+An artifact contract test reads the actual classfiles and verifies the
+`LineBuilder` constructor call and `LineTextRun` renderer call against the
+exact injection descriptors. The library jar includes the two SHBUI mixins,
+not GuideME implementation classes or the 26.1.2 FTB mixin.
+
+The same smoke task can launch the official GuideME-only consumer on 26.2
+using OpenGL. It records native paragraph bounds, layout/attachment hits, and
+rendered runs in `compat.txt`. The 26.1.2 dual-provider smoke keeps its existing
+framebuffer checks. JAR/classfile checks are not a substitute for running the
+26.2 client, and this slice does not claim FTB Library, JEI, KubeJS, LDLib or
+Vulkan acceptance on 26.2.
+
+```sh
+cd neoforge-26.2
+bash ../neoforge-1.21.1/gradlew -I ../gradle/neoforge-26-text-compat-smoke.init.gradle runTextCompatSmoke
+```

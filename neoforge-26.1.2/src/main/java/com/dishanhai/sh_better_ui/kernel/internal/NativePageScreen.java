@@ -3,7 +3,9 @@ package com.dishanhai.sh_better_ui.kernel.internal;
 
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
-import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
+import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
+import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToggleButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
@@ -14,6 +16,7 @@ import com.dishanhai.sh_better_ui.kernel.api.page.PageService;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiBuiltinComponents;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiNode;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiPageDefinition;
+import com.dishanhai.sh_better_ui.kernel.api.page.UiPageType;
 import com.dishanhai.sh_better_ui.kernel.api.page.UiValue;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -41,15 +44,18 @@ import java.util.stream.Collectors;
 
 /** Native widgets and a scrollable layout for the currently supported page nodes. */
 final class NativePageScreen extends Screen {
-    static final Map<UiId, UiVersion> COMPONENTS = Set.of("column", "row", "grid", "text", "button", "spacer", "toggle", "slider").stream()
+    static final Map<UiId, UiVersion> COMPONENTS = Set.of("column", "row", "grid", "modal", "text", "button", "spacer", "toggle", "slider").stream()
             .map(UiBuiltinComponents::id).collect(Collectors.toUnmodifiableMap(id -> id, id -> UiBuiltinComponents.VERSION));
     private static final int INSET = 8;
     private static final int BODY_TOP = 24;
     private static final int FOOTER_HEIGHT = 28;
     private static final int SCROLLBAR_RESERVE = 28;
     private static final int CONTENT_WIDTH = 384;
+    private static final int MODAL_WIDTH = CONTENT_WIDTH + 2 * INSET + SCROLLBAR_RESERVE;
+    private static final int MODAL_HEIGHT = 300;
 
     private final Screen parent;
+    private final boolean modal;
     private final UiNode root;
     private final Supplier<PageService.Snapshot> snapshot;
     private final Consumer<UiId> action;
@@ -70,6 +76,7 @@ final class NativePageScreen extends Screen {
                      Consumer<UiId> action, Runnable presented, Runnable close, Runnable removed) {
         super(Component.literal(definition.options().title()));
         this.parent = NativePort.screen(Minecraft.getInstance());
+        this.modal = definition.type() == UiPageType.MODAL;
         this.root = definition.root();
         this.snapshot = snapshot;
         this.action = action;
@@ -79,14 +86,17 @@ final class NativePageScreen extends Screen {
     }
 
     @Override protected void init() {
-        int backWidth = Math.max(1, Math.min(100, width - 2 * INSET));
+        var area = presentationBounds();
+        int backWidth = Math.max(1, Math.min(100, area.width() - 2 * INSET));
         back = addRenderableWidget(ShBetterUiApi.controls().button(
-                new Bounds((width - backWidth) / 2, Math.max(0, height - FOOTER_HEIGHT), backWidth, Math.min(20, height)),
+                new Bounds((width - backWidth) / 2, Math.max(area.y(), area.bottom() - FOOTER_HEIGHT), backWidth,
+                        Math.min(20, area.height())),
                 CommonComponents.GUI_BACK, button -> onClose()));
-        int statusWidth = Math.max(1, Math.min(CONTENT_WIDTH, width - 2 * INSET));
-        statusLabel = addRenderableWidget(new MultiLineTextWidget((width - statusWidth) / 2, 14, status, font)
+        int statusWidth = Math.max(1, Math.min(CONTENT_WIDTH, area.width() - 2 * INSET));
+        statusLabel = addRenderableWidget(new MultiLineTextWidget((width - statusWidth) / 2, area.y() + 14, status, font)
                 .setMaxWidth(statusWidth).setMaxRows(1).setCentered(true));
         refreshBody();
+        if (modal && getFocused() == null) setInitialFocus(back);
     }
 
     @Override protected void repositionElements() {
@@ -118,8 +128,9 @@ final class NativePageScreen extends Screen {
         var model = snapshot.get();
         inputs.synchronize(root, model.data());
         revision = model.revision();
-        int bodyHeight = height - BODY_TOP - FOOTER_HEIGHT;
-        int bodyWidth = Math.min(CONTENT_WIDTH, width - 2 * INSET - SCROLLBAR_RESERVE);
+        var area = presentationBounds();
+        int bodyHeight = area.height() - BODY_TOP - FOOTER_HEIGHT;
+        int bodyWidth = Math.min(CONTENT_WIDTH, area.width() - 2 * INSET - SCROLLBAR_RESERVE);
         if (bodyHeight <= 0 || bodyWidth <= 0) {
             statusLabel.setMessage(Component.translatable("sh_better_ui.pages.viewport_small"));
             return;
@@ -131,7 +142,7 @@ final class NativePageScreen extends Screen {
         var viewport = new ScrollableLayout(minecraft, content, bodyHeight);
         viewport.setMinWidth(bodyWidth);
         viewport.arrangeElements();
-        viewport.setPosition((width - viewport.getWidth()) / 2, BODY_TOP);
+        viewport.setPosition((width - viewport.getWidth()) / 2, area.y() + BODY_TOP);
         viewport.visitWidgets(widget -> scroll = (AbstractContainerWidget) addRenderableWidget(widget));
         scroll.setScrollAmount(offset);
         var focused = focusId == null ? null : buttons.get(focusId);
@@ -148,7 +159,7 @@ final class NativePageScreen extends Screen {
         if (width <= 0 || height == 0) return null;
         boolean enabled = parentEnabled && flag(node, "enabled", data);
         return switch (node.typeId().path()) {
-            case "column" -> {
+            case "column", "modal" -> {
                 int padding = Math.min(number(node, "padding", 0), (width - 1) / 2);
                 var column = LinearLayout.vertical().spacing(number(node, "gap", 4));
                 for (var child : node.children()) {
@@ -297,7 +308,18 @@ final class NativePageScreen extends Screen {
     }
 
     @Override public void extractRenderState(GuiGraphicsExtractor graphics, int mouseX, int mouseY, float partialTick) {
-        graphics.centeredText(font, getTitle(), width / 2, 4, 0xFFFFFFFF);
+        var area = presentationBounds();
+        if (modal) {
+            graphics.fill(0, 0, width, height, 0x90000000);
+            if (area.width() > 2 && area.height() > 2) {
+                var theme = UiTheme.current();
+                var preferences = UiPreferences.configured();
+                RoundedCorners.draw(graphics, area.x(), area.y(), area.width(), area.height(), 9, 1,
+                        preferences.highContrast() ? theme.text() : theme.border(), theme.surface() | 0xff000000);
+            }
+        }
+        var title = modal ? UiRichText.fit(font, getTitle(), Math.max(0, area.width() - 2 * INSET)) : getTitle();
+        graphics.centeredText(font, title, width / 2, area.y() + 4, modal ? UiTheme.current().text() : 0xFFFFFFFF);
         super.extractRenderState(graphics, mouseX, mouseY, partialTick);
         if (scroll != null) presented.run();
     }
@@ -312,6 +334,16 @@ final class NativePageScreen extends Screen {
     void restoreParent() {
         var client = Minecraft.getInstance();
         if (NativePort.screen(client) == this) NativePort.show(client, parent);
+    }
+
+    private Bounds presentationBounds() {
+        return modal ? modalBounds(width, height) : new Bounds(0, 0, width, height);
+    }
+
+    static Bounds modalBounds(int width, int height) {
+        int modalWidth = Math.min(MODAL_WIDTH, width - (width >= 80 ? 2 * INSET : 0));
+        int modalHeight = Math.min(MODAL_HEIGHT, height - (height >= 80 ? 2 * INSET : 0));
+        return new Bounds((width - modalWidth) / 2, (height - modalHeight) / 2, modalWidth, modalHeight);
     }
 
     static int boundedGap(int width, int columns, int requested) {
