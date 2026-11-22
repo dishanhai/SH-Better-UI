@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.client.visual;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Anchor;
 import com.dishanhai.sh_better_ui.client.gui.layout.AlignmentGeometry.Transform;
@@ -635,6 +636,13 @@ public final class RichTextView implements Subscription {
         int width = Math.max(1, (int) Math.round(image.width() * scale));
         int height = Math.max(1, (int) Math.round(image.height() * scale));
         int x = box.x() + (box.width() - width) / 2, y = box.y() + (box.height() - height) / 2;
+        if (LegacyGuiBackend.isNonOpenGlWindow()) {
+            LegacyGuiBackend.texturedQuad(graphics, image.location(), x, y, width, height,
+                    (float) image.u() / image.textureWidth(), (float) image.v() / image.textureHeight(),
+                    (float) (image.u() + image.width()) / image.textureWidth(),
+                    (float) (image.v() + image.height()) / image.textureHeight(), 0xffffffff);
+            return;
+        }
         graphics.flush();
         RenderSystem.enableBlend();
         RenderSystem.blendEquation(GL14.GL_FUNC_ADD);

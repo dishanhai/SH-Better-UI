@@ -1,5 +1,6 @@
 package com.muoniumplayer.render.skija;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.mojang.blaze3d.platform.GlStateManager;
 import io.github.humbleui.skija.BackendRenderTarget;
 import io.github.humbleui.skija.Canvas;
@@ -141,7 +142,7 @@ public final class SkijaHost {
 
     /** 渲染层是否可用。false 时上层应当整帧跳过绘制，而不是画一半。 */
     public static boolean isAvailable() {
-        return !disabled;
+        return !disabled && !LegacyGuiBackend.isNonOpenGlWindow();
     }
 
     /**
@@ -152,6 +153,7 @@ public final class SkijaHost {
      * 因此上层即使 push/pop 不配对也不会污染下一帧）。
      */
     public static Canvas beginFrame() {
+        if (LegacyGuiBackend.isNonOpenGlWindow()) return null;
         if (inFrame) {
             return null;
         }

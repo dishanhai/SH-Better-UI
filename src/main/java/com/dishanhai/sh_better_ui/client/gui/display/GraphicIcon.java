@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.gui.display;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.mojang.math.Axis;
@@ -399,6 +400,11 @@ public record GraphicIcon(ResourceLocation texture, GraphicIconShader shader, Gr
         int size = size(scale);
         if ((argb >>> 24) == 0) return;
 
+        if (LegacyGuiBackend.isNonOpenGlWindow()) {
+            drawInHostGui(graphics, x, y, size, argb, preferences);
+            return;
+        }
+
         float[] color = RenderSystem.getShaderColor().clone();
         var previousShader = RenderSystem.getShader();
         int previousTexture = RenderSystem.getShaderTexture(0);
@@ -423,18 +429,8 @@ public record GraphicIcon(ResourceLocation texture, GraphicIconShader shader, Gr
             var pose = graphics.pose();
             if (animate) pose.pushPose();
             try {
-                if (animate) {
-                    var frame = motion.sample(PageTransition.nowMs(), size, false);
-                    float centerX = x + size * 0.5f;
-                    float centerY = y + size * 0.5f;
-                    pose.translate(centerX, centerY + frame.offsetY(), 0f);
-                    pose.mulPose(Axis.ZP.rotationDegrees(frame.rotationDegrees()));
-                    pose.scale(frame.scale(), frame.scale(), 1f);
-                    pose.translate(-centerX, -centerY, 0f);
-                }
-                var matrix = pose.last().pose();
-                double density = Math.max(Math.hypot(matrix.m00(), matrix.m01()), Math.hypot(matrix.m10(), matrix.m11()));
-                var svg = SvgIconTexture.find(texture, size * density);
+                if (animate) applyMotion(pose, x, y, size);
+                var svg = svgRegion(graphics, size);
                 var drawnTexture = svg == null ? texture : svg.id();
                 int texels = svg == null ? PIXELS : svg.side();
                 if (shader == null || !shader.draw(graphics, drawnTexture, x, y, size, preferences)) {
@@ -454,6 +450,37 @@ public record GraphicIcon(ResourceLocation texture, GraphicIconShader shader, Gr
             if (depthTest) RenderSystem.enableDepthTest();
             else RenderSystem.disableDepthTest();
         }
+    }
+
+    private void drawInHostGui(GuiGraphics graphics, int x, int y, int size, int argb,
+                               UiPreferences preferences) {
+        boolean animate = motion != null && !preferences.reducedMotion();
+        var pose = graphics.pose();
+        if (animate) pose.pushPose();
+        try {
+            if (animate) applyMotion(pose, x, y, size);
+            var svg = svgRegion(graphics, size);
+            LegacyGuiBackend.texturedQuad(graphics, svg == null ? texture : svg.id(), x, y, size, size,
+                    0f, 0f, 1f, 1f, argb);
+        } finally {
+            if (animate) pose.popPose();
+        }
+    }
+
+    private void applyMotion(com.mojang.blaze3d.vertex.PoseStack pose, int x, int y, int size) {
+        var frame = motion.sample(PageTransition.nowMs(), size, false);
+        float centerX = x + size * 0.5f;
+        float centerY = y + size * 0.5f;
+        pose.translate(centerX, centerY + frame.offsetY(), 0f);
+        pose.mulPose(Axis.ZP.rotationDegrees(frame.rotationDegrees()));
+        pose.scale(frame.scale(), frame.scale(), 1f);
+        pose.translate(-centerX, -centerY, 0f);
+    }
+
+    private SvgIconTexture.Region svgRegion(GuiGraphics graphics, int size) {
+        var matrix = graphics.pose().last().pose();
+        double density = Math.max(Math.hypot(matrix.m00(), matrix.m01()), Math.hypot(matrix.m10(), matrix.m11()));
+        return SvgIconTexture.find(texture, size * density);
     }
 
     private static GraphicIcon builtIn(String name) {

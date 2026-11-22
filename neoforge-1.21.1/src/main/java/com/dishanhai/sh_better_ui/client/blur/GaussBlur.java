@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.blur;
 
+import com.dishanhai.sh_better_ui.client.gui.render.LegacyGuiBackend;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffects;
 
 import com.dishanhai.sh_better_ui.ShBetterUi;
@@ -184,6 +185,7 @@ public final class GaussBlur {
      * 失败时静默降级：调用方会继续使用原来的局部磨砂。
      */
     public static void warmUp() {
+        if (LegacyGuiBackend.isNonOpenGlWindow()) return;
         // 每次打开商店都给 uniform 一次重试机会；真失败会在首帧渲染时再次置位并回退磨砂。
         uniformFailed = false;
         PostChain post = ensureChain(Minecraft.getInstance());
@@ -859,7 +861,7 @@ public final class GaussBlur {
 
     /** 这个界面的帧末后处理是否放行。 */
     public static boolean isAllowed(Screen screen) {
-        if (screen == null) return false;
+        if (screen == null || LegacyGuiBackend.isNonOpenGlWindow()) return false;
         for (Predicate<Screen> guard : SCREEN_GUARDS) {
             if (guard.test(screen)) return true;
         }
@@ -1002,6 +1004,7 @@ public final class GaussBlur {
                                    float radiusPixels, GlassStyle glass, float cornerPixels,
                                    float fullBlurUntil, float sharpFrom, RoundedBackdrop shape, boolean loadOnDemand,
                                    GlassBackdropSettings settings, RevealDirection revealDirection, float axisX, float axisY) {
+        if (LegacyGuiBackend.isNonOpenGlWindow()) return false;
         float backdropStrength = clamp01(strength) * settings.strength();
         if (!settings.enabled() || !(backdropStrength > 0.01f) || w <= 0 || h <= 0 || uniformFailed) return false;
         boolean reveal = sharpFrom > fullBlurUntil;
