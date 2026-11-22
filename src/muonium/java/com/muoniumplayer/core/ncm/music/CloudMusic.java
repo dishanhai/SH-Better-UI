@@ -1171,6 +1171,7 @@ public class CloudMusic implements SharedConstants {
  * 把它放在播放层里，可以避免每个界面各自实现一条细节略有不同的跳转路径。
  */
     public static boolean seekByMillis(float deltaMillis) {
+        if (!Float.isFinite(deltaMillis)) return false;
         if (MpPartyClient.interceptSeekBy(deltaMillis)) return true;
         // 直播不能 seek：拖动的是"已收听时长"，不是媒体位置，跳了也只是数字游戏。
         if (LiveStreamSession.isActive()) return false;
@@ -1187,26 +1188,7 @@ public class CloudMusic implements SharedConstants {
             // 留下一个假进度（能力位说支持、播放器自己没做，这种播放器确实存在）。
             return external.canSeek();
         }
-        AudioPlayer activePlayer = player;
-        if (activePlayer == null || currentlyPlaying == null) {
-            return false;
-        }
-
-        float total = activePlayer.getTotalTimeMillis();
-        if (total <= 0.0f) {
-            return false;
-        }
-
-        float target = Math.max(0.0f, Math.min(total,
-                activePlayer.getCurrentTimeMillis() + deltaMillis));
-        activePlayer.setPlaybackTime(target);
-
-        float actual = activePlayer.getCurrentTimeMillis();
-        MusicLyricsWidget.resetProgress(actual);
-        MusicLyricsPanel.resetProgress(actual);
-        onSeekApplied();
-        noteSeekForResume();
-        return true;
+        return seekLocal(deltaMillis, true, null);
     }
 
     /**
@@ -1221,8 +1203,10 @@ public class CloudMusic implements SharedConstants {
     }
 
     public static boolean seekToMillis(float absoluteMillis, PlaybackSnapshot expected) {
+        if (!Float.isFinite(absoluteMillis)) return false;
         if (expected != null && !isExpectedPlayback(expected)) return false;
         if (MpPartyClient.interceptSeekTo(absoluteMillis)) return true;
+        if (LiveStreamSession.isActive()) return false;
         if (SpotifyConnectMirror.isMirroring()) {
             SpotifyConnectMirror.seekTo((long) absoluteMillis);
             return SpotifyConnectMirror.canSeek();
@@ -1231,20 +1215,22 @@ public class CloudMusic implements SharedConstants {
             ExternalPlayback.seekTo((long) absoluteMillis);
             return ExternalPlayback.rawSnapshot().canSeek();
         }
+        return seekLocal(absoluteMillis, false, expected);
+    }
+
+    private static boolean seekLocal(double millis, boolean relative, PlaybackSnapshot expected) {
         float actual;
         synchronized (PLAYER_STATE_LOCK) {
             if (expected != null && !isExpectedPlayback(expected)) return false;
             AudioPlayer activePlayer = player;
-            if (activePlayer == null || currentlyPlaying == null) return false;
-            float total = activePlayer.getTotalTimeMillis();
-            if (total <= 0.0f) return false;
-            float target = Math.max(0.0f, Math.min(total, absoluteMillis));
-            activePlayer.setPlaybackTime(target);
+            if (activePlayer == null || currentlyPlaying == null || activePlayer.isFinished()) return false;
+            double target = relative ? activePlayer.getCurrentTimeMillis() + millis : millis;
+            if (!activePlayer.seekToMillis(target)) return false;
             actual = activePlayer.getCurrentTimeMillis();
         }
+        onSeekApplied();
         MusicLyricsWidget.resetProgress(actual);
         MusicLyricsPanel.resetProgress(actual);
-        onSeekApplied();
         noteSeekForResume();
         return true;
     }
@@ -1269,6 +1255,10 @@ public class CloudMusic implements SharedConstants {
      * 10 ms tick 上，与自然结束时的交接同一根线程同一把锁。</p>
      */
     public static void onSeekApplied() {
+        synchronized (SMOOTH_CLOCK_LOCK) {
+            // An explicit short rewind must reset the monotonic clock too.
+            smoothClockRawMs = -1L;
+        }
         try {
             Thread active = playThread;
             if (!(active instanceof PlayThread)) return;

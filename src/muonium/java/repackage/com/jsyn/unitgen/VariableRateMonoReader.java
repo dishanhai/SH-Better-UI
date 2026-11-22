@@ -74,7 +74,7 @@ public class VariableRateMonoReader extends VariableRateDataReader {
 
             // 沿线段插值。
             current = ((target - source) * phase) + source;
-            outputs[i] = current * amplitudes[i];
+            outputs[i] = current * amplitudes[i] * nextFadeInGain();
 
             double phaseIncrement = baseIncrement * rates[i];
             phase += limitPhaseIncrement(phaseIncrement);

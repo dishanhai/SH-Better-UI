@@ -1,8 +1,9 @@
+// Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.ncm.music.acoustics;
 
 import java.util.Arrays;
 
-/** 真反射抽头的双耳渲染。两组交叉淡化期间只记最新待办,不重启正在进行的淡化。 */
+/** 真反射抽头的双耳渲染。两组交叉淡化期间保留当前几何变化,完成后应用最新计划。 */
 final class EarlyReflections {
 
     private static final int CAPACITY = 192;
@@ -13,7 +14,6 @@ final class EarlyReflections {
     private final StereoDelayLine ring = new StereoDelayLine();
     private TapSet active = new TapSet();
     private TapSet incoming = new TapSet();
-    private RoomPlan latest;
     private int rate;
     private boolean fading;
     private float fade;
@@ -26,13 +26,12 @@ final class EarlyReflections {
     }
 
     void update(RoomPlan plan, int frames) {
-        latest = plan;
         if (fading) {
             if (incoming.matches(plan, rate)) {
-                incoming.target = plan;
+                incoming.setTarget(plan);
             }
         } else if (active.matches(plan, rate)) {
-            active.target = plan;
+            active.setTarget(plan);
         } else if (active.count == 0) {
             active.build(plan, rate);
         } else {
@@ -42,22 +41,22 @@ final class EarlyReflections {
         }
         final float gainStep = (float) (1.0 - Math.exp(-frames / (rate * GAIN_TAU_SEC)));
         final float panStep = (float) (1.0 - Math.exp(-frames / (rate * PAN_TAU_SEC)));
-        active.smooth(gainStep, panStep);
+        active.smooth(gainStep, panStep, rate);
         if (fading) {
-            incoming.smooth(gainStep, panStep);
+            incoming.smooth(gainStep, panStep, rate);
         }
         fadeStep = (float) (1.0 / (rate * FADE_SEC));
     }
 
     void process(float left, float right, float[] out) {
         ring.write(left, right);
-        active.process(ring, rate, out);
+        active.process(ring, out);
         if (!fading) {
             return;
         }
         final float aL = out[0];
         final float aR = out[1];
-        incoming.process(ring, rate, out);
+        incoming.process(ring, out);
         out[0] = aL * (1f - fade) + out[0] * fade;
         out[1] = aR * (1f - fade) + out[1] * fade;
         fade = Math.min(1f, fade + fadeStep);
@@ -68,9 +67,6 @@ final class EarlyReflections {
             incoming.clear();
             fading = false;
             // 下一缓冲再接最新几何;本组的空气滤波历史随组一起交接。
-            if (latest != null && active.matches(latest, rate)) {
-                active.target = latest;
-            }
         }
     }
 
@@ -78,7 +74,6 @@ final class EarlyReflections {
         ring.flush();
         active.clear();
         incoming.clear();
-        latest = null;
         fading = false;
         fade = 1f;
     }
@@ -86,6 +81,11 @@ final class EarlyReflections {
     private static final class TapSet {
         private final int[] delay = new int[CAPACITY];
         private final float[] pan = new float[CAPACITY];
+        private final float[] targetPan = new float[CAPACITY];
+        private final int[] delayL = new int[CAPACITY];
+        private final int[] delayR = new int[CAPACITY];
+        private final float[] fractionL = new float[CAPACITY];
+        private final float[] fractionR = new float[CAPACITY];
         private final float[] gainL = new float[CAPACITY];
         private final float[] gainR = new float[CAPACITY];
         private final float[] air = new float[CAPACITY];
@@ -95,6 +95,9 @@ final class EarlyReflections {
         private RoomPlan target;
 
         boolean matches(RoomPlan plan, int rate) {
+            if (target == plan) {
+                return true;
+            }
             if (count != plan.tapCount) {
                 return false;
             }
@@ -106,13 +109,23 @@ final class EarlyReflections {
             return true;
         }
 
+        void setTarget(RoomPlan plan) {
+            if (target == plan) {
+                return;
+            }
+            target = plan;
+            for (int i = 0; i < count; i++) {
+                targetPan[i] = DirectPath.panFromGains(plan.tapGainL[i], plan.tapGainR[i]);
+            }
+        }
+
         void build(RoomPlan plan, int rate) {
             clear();
             count = plan.tapCount;
-            target = plan;
+            setTarget(plan);
             for (int i = 0; i < count; i++) {
                 delay[i] = sampleDelay(plan, i, rate);
-                pan[i] = DirectPath.panFromGains(plan.tapGainL[i], plan.tapGainR[i]);
+                pan[i] = targetPan[i];
                 gainL[i] = plan.tapGainL[i];
                 gainR[i] = plan.tapGainR[i];
                 final double path = plan.tapDelaySec[i] * 343.0 + plan.directDistanceMeters;
@@ -122,25 +135,31 @@ final class EarlyReflections {
             }
         }
 
-        void smooth(float gainStep, float panStep) {
+        void smooth(float gainStep, float panStep, int rate) {
             if (target == null) {
                 return;
             }
             for (int i = 0; i < count; i++) {
                 gainL[i] += (target.tapGainL[i] - gainL[i]) * gainStep;
                 gainR[i] += (target.tapGainR[i] - gainR[i]) * gainStep;
-                pan[i] += (DirectPath.panFromGains(target.tapGainL[i], target.tapGainR[i])
-                        - pan[i]) * panStep;
+                pan[i] += (targetPan[i] - pan[i]) * panStep;
+                // Both delays fit in the ring by construction. Their fractional parts stay fixed for the block.
+                final double itd = pan[i] * ITD_SEC * rate;
+                final double left = delay[i] + Math.max(0.0, itd);
+                final double right = delay[i] + Math.max(0.0, -itd);
+                delayL[i] = (int) left;
+                delayR[i] = (int) right;
+                fractionL[i] = (float) (left - delayL[i]);
+                fractionR[i] = (float) (right - delayR[i]);
             }
         }
 
-        void process(StereoDelayLine ring, int rate, float[] out) {
+        void process(StereoDelayLine ring, float[] out) {
             float l = 0f;
             float r = 0f;
             for (int i = 0; i < count; i++) {
-                final double itd = pan[i] * ITD_SEC * rate;
-                final float sampleL = ring.left(delay[i] + Math.max(0.0, itd));
-                final float sampleR = ring.right(delay[i] + Math.max(0.0, -itd));
+                final float sampleL = ring.left(delayL[i], fractionL[i]);
+                final float sampleR = ring.right(delayR[i], fractionR[i]);
                 historyL[i] += (sampleL - historyL[i]) * air[i];
                 historyR[i] += (sampleR - historyR[i]) * air[i];
                 l += historyL[i] * gainL[i];

@@ -20,7 +20,7 @@ import lombok.SneakyThrows;
 import repackage.com.jsyn.data.DownmixSample;
 import repackage.com.jsyn.data.FloatSample;
 import repackage.com.jsyn.util.soundfile.CustomSampleLoader;
-import repackage.com.jsyn.util.soundfile.streamed.buffered.BufferedSampleLoader;
+import repackage.com.jsyn.util.soundfile.streamed.FlacFloatSample;
 import repackage.com.jsyn.util.soundfile.streamed.raf.RafSampleLoader;
 import repackage.javazoom.jl.converter.Converter;
 
@@ -81,8 +81,7 @@ public class SampleLoader {
             // FLAC 的 StreamInfo 声道数原样透传：5.1 环绕声会建成 6 声道 FloatSample，
             // 而播放引擎只认 1/2 声道（mono/stereo 读头 + 端口声道数校验）。出口统一
             // 降混成立体声，1/2 声道的样本原样归还（零包装开销）。
-            return DownmixSample.stereoOrSame(new BufferedSampleLoader()
-                    .loadFromFlacStream(new BufferedInputStream(Files.newInputStream(fileIn.toPath()))));
+            return DownmixSample.stereoOrSame(FlacFloatSample.open(fileIn));
         } else if (name.endsWith(".wav")) {
             // WAV 的声道数来自 fmt 头，同样原样透传（多声道 WAV 走这里），出口同上。
             return DownmixSample.stereoOrSame(new RafSampleLoader()

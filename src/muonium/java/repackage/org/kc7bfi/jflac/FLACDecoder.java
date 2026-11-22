@@ -651,13 +651,18 @@ public class FLACDecoder {
      * @param to 终点（不含）
      * @throws 读取时IOException错误
      */
-    public void decode(SeekPoint from, SeekPoint to) throws IOException {
-        // 定位随机访问文件
+    // SHBUI playback reads the next frame on demand after repositioning.
+    public void seekToFrame(SeekPoint from) throws IOException {
         if (!(inputStream instanceof RandomFileInputStream))
             throw new IOException("Not a RandomFileInputStream: " + inputStream.getClass().getName());
         ((RandomFileInputStream) inputStream).seek(from.getStreamOffset());
         bitStream.reset();
         samplesDecoded = from.getSampleNumber();
+        eof = false;
+    }
+
+    public void decode(SeekPoint from, SeekPoint to) throws IOException {
+        seekToFrame(from);
 
         //state = DECODER_SEARCH_FOR_FRAME_SYNC;
         try {
