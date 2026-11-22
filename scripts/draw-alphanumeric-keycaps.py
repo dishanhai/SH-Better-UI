@@ -73,18 +73,24 @@ GLYPHS = {
     "z": "M.45 1.7h3.1L.45 5.8h3.1",
 }
 
-def svg(character):
-    # Apply the offset to a separate coordinate viewport so the paths remain editable.
-    height_offset = "4.35" if character.islower() else "4.55"
-    # Use translated paths from the same glyph coordinates (no font/text reference).
+def keycap(mark):
+    """Wrap path-only artwork in the same keycap used by all keyboard tiles."""
     return (
         '<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 16 16">\n'
         '  <g fill="none" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">\n'
         '    <rect x="2.1" y="2.1" width="11.8" height="11.8" rx="2.2" stroke-width="1.35"/>\n'
-        f'    <path d="{GLYPHS[character]}" transform="translate(6 {height_offset})" stroke-width="1.08"/>\n'
+        f'    {mark}\n'
         '  </g>\n'
         '</svg>\n'
     )
+
+
+def svg(character):
+    height_offset = "4.35" if character.islower() else "4.55"
+    return keycap(
+        f'<path d="{GLYPHS[character]}" transform="translate(6 {height_offset})" stroke-width="1.08"/>'
+    )
+
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
