@@ -181,6 +181,7 @@ public final class DeveloperGalleryScreen extends Screen {
 
     /** Built-in descriptors share discovery and ordering with extension registrations. */
     public static void registerBuiltins(PreviewRegistry registry) {
+        com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGalleryPreview.registerInto(registry);
         FolderFloatPreview.registerInto(registry);
         AnimatedListPreview.registerInto(registry);
         CardNavPreview.registerInto(registry);

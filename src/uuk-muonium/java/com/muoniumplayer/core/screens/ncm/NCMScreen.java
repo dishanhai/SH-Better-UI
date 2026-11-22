@@ -50,6 +50,7 @@ import com.muoniumplayer.core.utils.IMBlockerCompat;
 import com.muoniumplayer.core.utils.cursor.CursorUtils;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
 import com.muoniumplayer.party.ui.MpPartyOverlay;
+import net.minecraft.client.gui.screens.Screen;
 
 import java.awt.Color;
 import java.util.ArrayList;
@@ -75,6 +76,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
 
     float alpha = 0f;
     boolean closing = false;
+    private Screen previewReturnScreen;
 
     Panel basePanel = new Panel();
 
@@ -160,6 +162,11 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
 
     boolean blocksFullscreenLyricInput() {
         return isModalOverlayActive() || commentsDrawer.isOpen() || !net.minecraft.client.Minecraft.getInstance().isWindowActive();
+    }
+
+    public boolean blocksCompactTransportInput() {
+        return initialLayoutStage != 0 || closing || musicLyricsPanel != null
+                || CoverHeroTransition.isRunning() || PlayerIslandTransition.isRunning() || blocksFullscreenLyricInput();
     }
 
     public boolean positionComments(Music music, double x, double y, double bottom) {
@@ -269,6 +276,10 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
 
     public NCMScreen() {
 
+    }
+
+    public void setPreviewReturnScreen(Screen parent) {
+        this.previewReturnScreen = parent;
     }
 
     @Override
@@ -424,11 +435,13 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
 
     @Override
     public void onGuiClosed() {
+        this.previewReturnScreen = null;
         this.musicChat.hostClosed();
         if (this.playlistsPanel != null) this.playlistsPanel.getSearch().dispose();
         this.pendingClickActive = false;
         this.pendingSearchClick = null;
         this.cancelPlaylistScrollbarDrag();
+        if (this.controlsBar != null) this.controlsBar.cancelSliderPress();
         if (TouchGestures.get().claimedBy() instanceof ScrollPanel list) list.cancelEndPull();
         this.trackActionPointerOwner = null;
         this.catalogArtistMenu.close();
@@ -686,7 +699,12 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         CoverHeroTransition.tick(this.musicLyricsPanel != null);
 
         if (closing && PlayerIslandTransition.isFinished()) {
-            api.displayScreen(null);
+            if (this.previewReturnScreen != null) {
+                setReturnScreen(this.previewReturnScreen);
+                closeScreen();
+            } else {
+                api.displayScreen(null);
+            }
             WindowAdaptiveScale.end();
             return;
         }
@@ -2042,6 +2060,9 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
     @Override
     public void keyTyped(char typedChar, int keyCode) {
         if (keyCode == Keyboard.KEY_ESCAPE && musicLyricsPanel != null && musicLyricsPanel.cancelSeek()) return;
+        if (keyCode == Keyboard.KEY_ESCAPE && musicLyricsPanel != null && musicLyricsPanel.cancelVolumePress()) return;
+        if (keyCode == Keyboard.KEY_ESCAPE && musicLyricsPanel == null
+                && controlsBar != null && controlsBar.cancelSliderPress()) return;
         if (keyCode == Keyboard.KEY_ESCAPE && this.cancelPlaylistScrollbarDrag()) return;
         if (keyCode == Keyboard.KEY_ESCAPE && TouchGestures.get().claimedBy() instanceof ScrollPanel list
                 && list.cancelEndPull()) return;
@@ -2374,10 +2395,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
      * （{@link TouchGestures#consumeTap()}），是点按才补发，是拖动就整体吞掉。
      *
      * <h2>哪些交互不受影响</h2>
-     * 滑条/进度条/文本选择这一类不依赖 click 事件的交互（它们每帧轮询
-     * {@code Mouse.isButtonDown(0)}，按下即开始拖动）语义不变——它们与滚动的冲突由
-     * 手势层的<b>主轴锁定</b>仲裁（纵向手势滑过进度条不触发 seek，见各站点加的门）。
-     * 右键不参与拖动仲裁，但也延迟到松手分发，行为统一。
+     * 滑条和滚动条先接收按下事件。命中时由对应控件接收松手，点按不再补发到控件树。
      *
      * <h2>回滚</h2>
      * {@code TouchSettings.ENABLED=false} 时 {@link #mouseClicked} 立即走
@@ -2421,6 +2439,12 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
             this.pendingClickActive = false;
             return;
         }
+        if (this.musicLyricsPanel == null
+                ? this.controlsBar != null && this.controlsBar.pressSlider(mouseX, mouseY, mouseButton)
+                : this.musicLyricsPanel.pressVolume(mouseX, mouseY, mouseButton)) {
+            this.pendingClickActive = false;
+            return;
+        }
         if (mouseButton == 0 && (this.playQueuePanel == null || !this.playQueuePanel.capturesWheel(mouseX, mouseY))) {
             ScrollPanel scrollbar = this.activePlaylistScrollbar();
             if (scrollbar != null && scrollbar.pressScrollbar(mouseX, mouseY)) {
@@ -2433,6 +2457,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         if (mouseButton == 0 && this.musicLyricsPanel != null) {
             this.musicLyricsPanel.cancelLyricPointerPress();
             if ((!isModalOverlayActive() && !commentsDrawer.isOpen() && this.musicLyricsPanel.pressSeek(mouseX, mouseY))
+                    || (!isModalOverlayActive() && this.musicLyricsPanel.pressQueueAction(mouseX, mouseY))
                     || (!isModalOverlayActive() && this.musicLyricsPanel.pressQueueScrollbar(mouseX, mouseY))
                     || this.musicLyricsPanel.pressSingFader(mouseX, mouseY)
                     || this.musicLyricsPanel.pressLyricPointer(mouseX, mouseY)) {
@@ -2654,6 +2679,16 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
             else musicLyricsPanel.releaseSeek(x);
             return;
         }
+        if (state == 0 && (musicLyricsPanel != null && musicLyricsPanel.hasVolumePress()
+                || musicLyricsPanel == null && controlsBar != null && controlsBar.hasSliderPress())) {
+            RenderSystem.refreshResolution();
+            WindowAdaptiveScale.begin();
+            double x = mX / WindowAdaptiveScale.correctionX();
+            WindowAdaptiveScale.end();
+            if (musicLyricsPanel != null) musicLyricsPanel.releaseVolume(x);
+            else controlsBar.releaseSlider(x);
+            return;
+        }
         boolean singFaderPressed = this.musicLyricsPanel != null && this.musicLyricsPanel.hasSingFaderPress();
         if (state == 0 && (this.commentsDrawer.ownsPointer() || singFaderPressed)) {
             RenderSystem.refreshResolution();
@@ -2663,6 +2698,19 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
             WindowAdaptiveScale.end();
             if (this.commentsDrawer.release(mouseX, mouseY, state)) return;
             if (singFaderPressed && this.musicLyricsPanel.releaseSingFader(mouseX, mouseY)) return;
+        }
+        if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasQueueActionPress()) {
+            if (isModalOverlayActive() || (TouchSettings.ENABLED && !TouchGestures.get().consumeTap())) {
+                this.musicLyricsPanel.cancelQueueAction();
+            } else {
+                RenderSystem.refreshResolution();
+                WindowAdaptiveScale.begin();
+                double mouseX = mX / WindowAdaptiveScale.correctionX();
+                double mouseY = mY / WindowAdaptiveScale.correctionY();
+                WindowAdaptiveScale.end();
+                this.musicLyricsPanel.releaseQueueAction(mouseX, mouseY);
+            }
+            return;
         }
         if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.releaseQueueScrollbar()) return;
         if (state == 0 && this.musicLyricsPanel != null && this.musicLyricsPanel.hasLyricPointerPress()) {

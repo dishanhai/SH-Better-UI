@@ -1,9 +1,9 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
-import com.dishanhai.sh_better_ui.kernel.api.controls.ControlPaint;
 import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuMotion;
 import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
+import com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicSlider;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
 import com.muoniumplayer.core.management.FontManager;
@@ -14,11 +14,13 @@ import com.muoniumplayer.core.ncm.music.AutomixCueMarker;
 import com.muoniumplayer.core.ncm.music.AutomixSettings;
 import com.muoniumplayer.core.ncm.music.NeteaseMusicService;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
+import com.muoniumplayer.core.ncm.music.ExternalPlayback;
 import com.muoniumplayer.core.ncm.music.PlaybackPresentation;
 import com.muoniumplayer.core.ncm.music.KuGouMusicService;
 import com.muoniumplayer.core.ncm.music.ListenTogetherService;
 import com.muoniumplayer.core.ncm.music.MusicPlatform;
 import com.muoniumplayer.core.ncm.music.dto.Music;
+import com.muoniumplayer.core.ncm.spotify.SpotifyConnectMirror;
 import com.muoniumplayer.core.screens.ncm.NCMPlayerConfig;
 import com.muoniumplayer.core.rendering.AutomixCuePainter;
 import com.muoniumplayer.core.rendering.DownloadDynamicIsland;
@@ -46,10 +48,13 @@ import com.muoniumplayer.core.screens.ncm.TransitionCurveCache;
 import com.muoniumplayer.core.screens.ncm.VolumeControl;
 import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
 import com.muoniumplayer.core.settings.PlayerAppearance;
+import com.muoniumplayer.core.settings.TouchSettings;
+import com.muoniumplayer.core.utils.cursor.CursorUtils;
 import com.muoniumplayer.core.viper.ViperRuntime;
 import com.muoniumplayer.core.widget.impl.MusicLyricsWidget;
 import com.muoniumplayer.party.MpPartyClient;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
 
 import java.util.List;
 
@@ -59,6 +64,8 @@ import java.util.List;
 public class ControlsBar extends NCMPanel {
 
     private PlaybackPresentation presentation = new PlaybackPresentation(null, null, 0L);
+    private final EmbeddedMusicSlider seek = new EmbeddedMusicSlider();
+    private final VolumeControl compactVolumeControl = new VolumeControl();
     private final TrackSelectionMotion selectionMotion = new TrackSelectionMotion();
     /** 主界面稳定后分帧预热全屏歌词页，避免点击瞬间同步量整首歌词。 */
     private int lyricPrewarmStableFrames;
@@ -131,6 +138,7 @@ public class ControlsBar extends NCMPanel {
      * 不丢功能的办法。
      */
     private double centerShift;
+    private boolean compactFooter;
     /** 让位后居中簇的右边界。取目标值而不是动画中的值，免得拖窗口时入口一闪一闪。 */
     private double centerClusterRight;
     /** 图标带整条上抬的量：0 与音质/音量同高，4 抬到传输键那一行，让开下面一行的剩余时间标签。 */
@@ -140,6 +148,18 @@ public class ControlsBar extends NCMPanel {
      * 无关，因此可以安全地反馈给让位计算，不会形成逐帧抖动的回路。
      */
     private double listenTogetherPrimaryX;
+
+    private double transportStep() {
+        return compactFooter ? 23.0 : 30.0;
+    }
+
+    private double rightActionGap() {
+        return compactFooter ? 4.0 : 8.0;
+    }
+
+    private double volumeWidth() {
+        return compactFooter ? 64.0 : Math.max(74.0, Math.min(122.0, getWidth() * .18));
+    }
 
     /** automix 接缝记号在这条进度条上的平滑，见 {@link AutomixCueMarker.Glide}。 */
     private final AutomixCueMarker.Glide automixCueGlide = new AutomixCueMarker.Glide();
@@ -181,7 +201,7 @@ public class ControlsBar extends NCMPanel {
      * <p>带一层平滑，因为计划在真正交接之前会被换掉（整曲包络到货后的回头重算、拖过切点时
      * 顶住交接的那次重算）；换歌那一瞬不做补间，直接吸附。</p>
      */
-    private void drawAutomixCue(double barX, double barY, double barWidth, double barHeight, double playbackFraction) {
+    private void drawAutomixCue(double barX, double barY, double barWidth, double barHeight) {
         AutomixCueMarker cue = CloudMusic.automixCueNow();
         Music track = CloudMusic.currentlyPlaying;
         long songId = track == null ? Long.MIN_VALUE : track.getId();
@@ -271,6 +291,48 @@ public class ControlsBar extends NCMPanel {
     }
 
     public ControlsBar() {
+    }
+
+    private void syncSeek(CloudMusic.PlaybackSnapshot snapshot, boolean preparing) {
+        String key = snapshot.music == null ? null : snapshot.sessionId + "/" + snapshot.music.getStableKey();
+        boolean clock = SpotifyConnectMirror.isMirroring() ? SpotifyConnectMirror.canSeek()
+                : ExternalPlayback.isMirroring() ? ExternalPlayback.canSeek() : snapshot.player != null;
+        boolean available = clock && !preparing && !blocksSliderInput()
+                && !(TouchSettings.ENABLED && TouchGestures.get().isVerticalDrag());
+        seek.sync(key, preparing ? 0 : snapshot.positionMs, snapshot.durationMs, available);
+    }
+
+    private boolean blocksSliderInput() {
+        return isQualityMenuOpen() || NCMScreen.getInstance().blocksCompactTransportInput() || getAlpha() < .95f;
+    }
+
+    public boolean pressSlider(double x, double y, int button) {
+        if (blocksSliderInput()) return false;
+        if (compactVolumeControl.press(x, y, button)) return true;
+        if (button != 0) return false;
+        syncSeek(CloudMusic.getSnapshot(), CloudMusic.playbackPresentation().preparing);
+        return seek.press(x, y);
+    }
+
+    public boolean hasSliderPress() {
+        return seek.editing() || compactVolumeControl.hasPress();
+    }
+
+    public boolean cancelSliderPress() {
+        return seek.cancel() | compactVolumeControl.cancelPress();
+    }
+
+    public void releaseSlider(double x) {
+        if (blocksSliderInput()) {
+            cancelSliderPress();
+        } else if (compactVolumeControl.hasPress()) {
+            compactVolumeControl.release(x);
+        } else if (seek.editing()) {
+            var snapshot = CloudMusic.getSnapshot();
+            syncSeek(snapshot, CloudMusic.playbackPresentation().preparing);
+            seek.release(x).ifPresent(edit ->
+                    CloudMusic.seekToMillis(edit.positionMs(), snapshot.player == null ? null : snapshot));
+        }
     }
 
     @Override
@@ -375,7 +437,7 @@ public class ControlsBar extends NCMPanel {
 
                     return true;
                 });
-        double buttonsYOffset = -4;
+        double buttonsYOffset = -7;
 
         IconWidget playPause = new IconWidget("B", FontManager.icon30, 0, 0, 20, 20);
 
@@ -393,7 +455,10 @@ public class ControlsBar extends NCMPanel {
                             .setPosition(playPause.getRelativeX() - centerShift, playPause.getRelativeY() + buttonsYOffset)
                             .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT));
                 })
+                .setTooltip(() -> Component.translatable(CloudMusic.isAudibleNow()
+                        ? "sh_better_ui.online_music.pause" : "sh_better_ui.online_music.play").getString())
                 .setOnClickCallback((x, y, i) -> {
+                    if (i != 0) return false;
                     // 走 CloudMusic.togglePlayPause() 而不是直接动 player：一起听房间里传输控制权
                     // 归服务端，那条路径上有房间拦截（房主/管理员变成房间指令，普通成员被挡住）。
                     CloudMusic.togglePlayPause();
@@ -405,7 +470,9 @@ public class ControlsBar extends NCMPanel {
         this.addChild(prev);
 
         prev.enablePressMotion()
+                .setTooltip(() -> Component.translatable("key.muonium.previous_track").getString())
                 .setOnClickCallback((x, y, i) -> {
+                    if (i != 0) return false;
                     // 直播没有上一首：按了只提示，不吞掉点击的反馈。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive()) {
                         DownloadDynamicIsland.showModelOperationResult("广播电台",
@@ -422,13 +489,15 @@ public class ControlsBar extends NCMPanel {
                     prev.center()
                             .setColor(NCMScreen.getColor(liveDisabled
                                     ? NCMScreen.ColorType.SECONDARY_TEXT : NCMScreen.ColorType.PRIMARY_TEXT))
-                            .setPosition(prev.getRelativeX() - 20 - prev.getWidth() * .5 - centerShift, prev.getRelativeY() + buttonsYOffset);
+                            .setPosition(prev.getRelativeX() - transportStep() - centerShift, prev.getRelativeY() + buttonsYOffset);
                 });
         IconWidget next = new IconWidget("E", FontManager.icon30, 0, 0, 20, 20);
         this.addChild(next);
 
         next.enablePressMotion()
+                .setTooltip(() -> Component.translatable("key.muonium.next_track").getString())
                 .setOnClickCallback((x, y, i) -> {
+                    if (i != 0) return false;
                     // 直播没有下一首：同上一首，给一句说明而不是静默吞掉。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive()) {
                         DownloadDynamicIsland.showModelOperationResult("广播电台",
@@ -443,7 +512,7 @@ public class ControlsBar extends NCMPanel {
                 .setBeforeRenderCallback(() -> {
                     boolean liveDisabled = com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive();
                     next.center()
-                            .setPosition(next.getRelativeX() + next.getWidth() * .5 + 20 - centerShift, next.getRelativeY() + buttonsYOffset)
+                            .setPosition(next.getRelativeX() + transportStep() - centerShift, next.getRelativeY() + buttonsYOffset)
                             .setColor(NCMScreen.getColor(liveDisabled
                                     ? NCMScreen.ColorType.SECONDARY_TEXT : NCMScreen.ColorType.PRIMARY_TEXT));
                 });
@@ -469,7 +538,7 @@ public class ControlsBar extends NCMPanel {
                     boolean personalFm = CloudMusic.isPersonalFmActive();
                     playMode
                             .center()
-                            .setPosition(next.getRelativeX() + next.getWidth() + 10, next.getRelativeY())
+                            .setPosition(next.getRelativeX() + transportStep(), next.getRelativeY())
                             .setClickable(!personalFm)
                             .setAlpha(ControlsBar.this.getAlpha() * (personalFm ? .35f : 1.0f))
                             // 顺序播放是这一排的「没开任何东西」，所以它和邻居同色；随机与单曲循环
@@ -506,141 +575,54 @@ public class ControlsBar extends NCMPanel {
 
 
         RoundedRectWidget progressBarBg = new RoundedRectWidget() {
-
-            boolean prevMouse = false;
-
             @Override
             public void onRender(double mouseX, double mouseY) {
-                boolean hostControls = PlayerAppearance.useShbuiControls();
-                if (!hostControls) {
-                    super.onRender(mouseX, mouseY);
-                } else if (presentation.preparing) {
-                    roundedRect(getX(), getY() + getHeight() * .5 - .75, getWidth(), 1.5, 0,
-                            reAlpha(NCMScreen.getColor(NCMScreen.ColorType.BORDER), getAlpha() * .68f));
-                } else {
-                    double duration = CloudMusic.durationMsNow();
-                    double progress = duration > 0.0 ? CloudMusic.positionMsNow() / duration : 0.0;
-                    boolean active = !NCMScreen.getInstance().isModalOverlayActive()
-                            && testHovered(mouseX, mouseY, 1);
-                    ControlPaint.slider((x, y, width, height, color) ->
-                                    roundedRect(x, y, width, height, 0, color),
-                            getX(), getY() + getHeight() * .5 - .75, getWidth(), progress, 1.5,
-                            reAlpha(NCMScreen.getColor(NCMScreen.ColorType.BORDER),
-                                    getAlpha() * (active ? (Mouse.isButtonDown(0) ? 1.0f : .92f) : .68f)),
-                            reAlpha(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), getAlpha()));
-                }
+                double centerY = getY() + getHeight() * .5;
+                seek.layout(getX(), centerY, getWidth(), compactFooter ? 9 : 10);
+                var snapshot = CloudMusic.getSnapshot();
+                syncSeek(snapshot, presentation.preparing);
+                if (!Mouse.isButtonDown(0)) seek.cancel();
+                if (seek.editing()) seek.drag(mouseX);
+                boolean hovered = seek.hits(mouseX, mouseY);
+                int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT);
+                boolean flat = PlayerAppearance.useShbuiControls();
+                double height = seek.paintTrack(hovered, flat, flat ? 1.5 : 3, accent, getAlpha());
+                double top = centerY - height * .5;
 
-                if (presentation.preparing) {
-                    prevMouse = Mouse.isButtonDown(0);
-                    // 不把旧歌的 01:14 显示成新歌进度，也不让点击这根等待轨去 seek 旧歌。
-                    double travel = .5 - .5 * Math.cos(selectionMotion.travel() * Math.PI * 2);
+                if (snapshot.preparing || presentation.preparing) {
+                    boolean still = UiPreferences.configured().reducedMotion();
+                    double travel = still ? .5 : .5 - .5 * Math.cos(selectionMotion.travel() * Math.PI * 2);
                     double span = getWidth() * .24;
-                    roundedRect(getX() + (getWidth() - span) * travel, getY(), span, getHeight(), 1,
-                            reAlpha(NCMScreen.getColor(NCMScreen.ColorType.ACCENT), getAlpha() * .8f));
+                    roundedRect(getX() + (getWidth() - span) * travel, top, span, height, 1,
+                            reAlpha(accent, getAlpha() * .8f));
                     return;
                 }
 
-                // 触屏时代的点击时机：按下可能是滚动的起手，seek 改在「松手沿 + 这一按
-                // 从头到尾没拖过」（TouchGestures#lastPressWasDrag）时才结算。
-                // prevMouse 仍是按压锁存：按下沿置位，抬起沿结算点按后复位。
-                boolean lmbDownNow = Mouse.isButtonDown(0);
-                boolean tapEdge = prevMouse && !lmbDownNow
-                        && !TouchGestures.get().lastPressWasDrag();
-                if (lmbDownNow) {
-                    prevMouse = true;
-                } else {
-                    prevMouse = false;
+                drawAutomixCue(getX(), top, getWidth(), height);
+                seek.paintThumb(getAlpha());
+                if (hovered || seek.editing()) {
+                    double fraction = seek.editing() ? seek.fraction() : seek.fractionAt(mouseX);
+                    seek.paintPreview(formatDuration(Math.round(snapshot.durationMs * fraction)), fraction, getAlpha());
+                    CursorUtils.setOverride(CursorUtils.HAND);
                 }
-
-                // 模态浮层（歌词选词、建单、导入等）压在界面上时这一帧的鼠标状态不属于播放条：
-                // 点遮罩的那一下会同时落在这里，把底下的进度条当成拖到起点 seek 到 0——
-                // 用户看到的就是「开了个弹窗，歌回到开头」。命中判定与 Mouse 轮询一起停。
-                boolean modalOpen = NCMScreen.getInstance().isModalOverlayActive();
-                if (modalOpen) {
-                    prevMouse = false;
-                } else if (tapEdge && this.testHovered(mouseX, mouseY, 1)) {
-                    double xDelta = Math.max(0, Math.min(this.getWidth(), (mouseX - this.getX())));
-                    double percent = xDelta / this.getWidth();
-
-                    // 总时长与「能不能拖」都不能问 CloudMusic.player：镜像态下出声的是外部播放器，
-                    // 内部引擎是空的，照原样判就是进度条拖不动、进度也不显示。
-                    if (CloudMusic.hasPlaybackClock()) {
-                        float total = (float) CloudMusic.durationMsNow();
-                        if (total > 0.0f) {
-                            // 统一走 CloudMusic.seekToMillis()：里面既有一起听房间的拦截，
-                            // 也负责 seek 后按真实音频时钟对齐歌词与进度。
-                            CloudMusic.seekToMillis((float) (percent * total));
-                        }
-                    }
-                }
-
-                // automix 的接缝画在这条进度条上。位置刻意排在拖拽判定<b>之后</b>：新代码与那条
-                // 命中逻辑物理隔开，命中的条件与顺序一个字都不动（记号本身不可点）。
-                drawAutomixCue(this.getX(), this.getY(), this.getWidth(), this.getHeight(),
-                        CloudMusic.hasPlaybackClock() && CloudMusic.durationMsNow() > 0.0
-                                ? CloudMusic.positionMsNow() / CloudMusic.durationMsNow() : -1.0);
             }
         };
-
         this.addChild(progressBarBg);
-
-        progressBarBg
-                .setRadius(1)
-                .setBounds(135, 3)
-                .setShouldOverrideMouseCursor(true)
+        progressBarBg.setClickable(false)
                 .setBeforeRenderCallback(() -> {
-                    // 底色必须在每帧回调里取：主题色（含「封面跟随」与切主题的渐变）一直在动，
-                    // 放在下面那条建控件的链上，就是把整根进度条钉死在开屏那一刻的颜色上 ——
-                    // 同面板的音量条是每帧重取的，两者并排放在一起时这个差别一眼可见。
-                    progressBarBg.setColor(NCMScreen.getColor(NCMScreen.ColorType.BORDER));
-                    progressBarBg
-                            .center()
-                            .setPosition(progressBarBg.getRelativeX(), progressBarBg.getRelativeY() + 8);
-                });
-
-        RoundedRectWidget progressBar = new RoundedRectWidget();
-
-        progressBarBg.addChild(progressBar);
-        progressBar
-                .setWidth(0)
-                .setClickable(false)
-                .setBeforeRenderCallback(() -> {
-                    progressBar.setMargin(0);
-                    // 填充同样每帧重取强调色，且刻意排在下面那几个 return <b>之前</b>：
-                    // 系统播放器镜像态与「总时长还没落地」时进度条仍要画出来，那时候它也得跟着主题走。
-                    progressBar.setColor(NCMScreen.getColor(NCMScreen.ColorType.ACCENT));
-
-                    if (PlayerAppearance.useShbuiControls()) {
-                        progressBar.setWidth(0).setRadius(0);
-                        return;
-                    }
-
-                    // 恢复态也有冻结的进度快照，但没有可操作的音频时钟。
-                    if (presentation.preparing) {
-                        progressBar.setWidth(0).setRadius(0);
-                        return;
-                    }
-
-                    float total = (float) CloudMusic.durationMsNow();
-                    if (total <= 0.0f) {
-                        progressBar.setWidth(0).setRadius(0);
-                        return;
-                    }
-
-                    float perc = Math.max(0.0f,
-                            Math.min(1.0f, (float) CloudMusic.positionMsNow() / total));
-                    progressBar
-                            .setWidth(perc * progressBarBg.getWidth())
-                            .setRadius(perc);
+                    progressBarBg.setBounds(compactFooter ? Math.min(135, getWidth() * .36) : 135, 3);
+                    progressBarBg.center();
+                    progressBarBg.setPosition(progressBarBg.getRelativeX(), progressBarBg.getRelativeY() + 8);
                 });
 
         LabelWidget lblCurTime = new LabelWidget(
                 () -> {
-                    if (presentation.preparing) return "准备中";
+                    if (presentation.preparing)
+                        return Component.translatable("sh_better_ui.muonium.player.preparing").getString();
                     // 直播：左侧时间标是已收听时长（右侧让位给 LIVE 徽标）。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive())
-                        return formatDuration((float) com.muoniumplayer.core.ncm.music.LiveStreamSession.elapsedMillis());
-                    return formatDuration((float) CloudMusic.positionMsNow());
+                        return formatDuration(com.muoniumplayer.core.ncm.music.LiveStreamSession.elapsedMillis());
+                    return formatDuration(seek.position());
                 },
                 FontManager.pf12
         );
@@ -660,11 +642,9 @@ public class ControlsBar extends NCMPanel {
                     // 直播态：没有总时长，右侧时间标让位给 LIVE 徽标；左侧照旧走已收听时长。
                     if (com.muoniumplayer.core.ncm.music.LiveStreamSession.isActive()) return "LIVE";
                     if (presentation.preparing) return "--:--";
-                    float total = (float) CloudMusic.durationMsNow();
-                    if (total <= 0.0f)
-                        return "00:00";
-                    return "-" + formatDuration(Math.max(0.0f,
-                            total - (float) CloudMusic.positionMsNow()));
+                    long total = seek.duration();
+                    if (total <= 0) return "--:--";
+                    return "-" + formatDuration(total - seek.position());
                 },
                 FontManager.pf12
         );
@@ -695,6 +675,8 @@ public class ControlsBar extends NCMPanel {
 
         lblMusicName.setBeforeRenderCallback(() -> {
             long positionMs = CloudMusic.positionMsNow();
+            double textRight = compactFooter ? Math.min(lblCurTime.getRelativeX(), prev.getRelativeX())
+                    : lblCurTime.getRelativeX();
             lblMusicName.setLyric(CloudMusic.findDisplayLyric(presentation, positionMs), positionMs,
                     CloudMusic.getLyricOffsetMillis(), NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT),
                     PlayerAppearance.replaceTitleWithLyrics());
@@ -706,7 +688,7 @@ public class ControlsBar extends NCMPanel {
                             lblMusicName.getRelativeY() - lblMusicName.getHeight() * .5 - 2 + selectionMotion.offset()
                     )
                     .setMaxWidth(Math.max(0.0,
-                            lblCurTime.getRelativeX() - lblMusicName.getRelativeX() - 4
+                            textRight - lblMusicName.getRelativeX() - 4
                                     - mediaActionWidth.getAsInt()));
         });
 
@@ -803,23 +785,20 @@ public class ControlsBar extends NCMPanel {
 
         // 右对齐的紧凑音量条。它把所有视觉和输入行为委托给
         //全屏控件实现，因此两个界面保持视觉同步。
-        final VolumeControl compactVolumeControl = new VolumeControl();
         RoundedRectWidget compactVolumeWidget = new RoundedRectWidget() {
             @Override
             public void onRender(double mouseX, double mouseY) {
                 compactVolumeControl.render(mouseX, mouseY, this.getX(),
-                        this.getY() + this.getHeight() * .5, this.getWidth(), this.getAlpha());
+                        this.getY() + this.getHeight() * .5, this.getWidth(), this.getAlpha(), blocksSliderInput());
             }
         };
         this.addChild(compactVolumeWidget);
         compactVolumeWidget
                 .setClickable(false)
-                .setShouldOverrideMouseCursor(true)
-                .setTooltip(() -> "音量（右键切换播放时压掉游戏音乐 · "
-                        + (com.muoniumplayer.core.ncm.music.VanillaMusicDucker.isEnabled() ? "开" : "关") + "）")
+                .setTooltip(() -> blocksSliderInput() || compactVolumeControl.hasPress()
+                        ? null : compactVolumeControl.tooltip())
                 .setBeforeRenderCallback(() -> {
-                    double controlWidth = Math.max(74.0,
-                            Math.min(122.0, compactVolumeWidget.getParentWidth() * .18));
+                    double controlWidth = volumeWidth();
                     compactVolumeWidget
                             .setBounds(controlWidth, 20.0)
                             .setPosition(compactVolumeWidget.getParentWidth() - controlWidth - 8.0,
@@ -844,10 +823,12 @@ public class ControlsBar extends NCMPanel {
 
         qualityOptions = new RoundedRectWidget[selectableQualities.length];
         RoundedRectWidget qualitySelector = new RoundedRectWidget();
+        LabelWidget qualityText = new LabelWidget(this::qualityLabelCache, FontManager.pf12bold);
         this.addChild(qualitySelector);
         qualitySelector
                 .setClickable(true)
                 .setShouldOverrideMouseCursor(true)
+                .setTooltip(() -> compactFooter && !qualityMenuOpen ? qualityLabelCache() : null)
                 .setBeforeRenderCallback(() -> {
                     // 专用页脚槽：紧挨音量控件左侧，带一个
                     //与播放器布局匹配的固定视觉间隙。不要让瞬时
@@ -869,18 +850,17 @@ public class ControlsBar extends NCMPanel {
                     }
 
                     double scale = Math.max(.82, Math.min(1.0, NCMPlayerConfig.getPlayerScale()));
-                    double buttonHeight = qualityButtonHeight * scale;
+                    double buttonHeight = (compactFooter ? 16.0 : qualityButtonHeight) * scale;
                     double parentWidth = qualitySelector.getParentWidth();
-                    double volumeWidth = Math.max(74.0, Math.min(122.0, parentWidth * .18));
                     double volumeX = compactVolumeWidget.getRelativeX();
                     if (volumeX <= 0.0 || volumeX >= parentWidth) {
-                        volumeX = parentWidth - volumeWidth - 8.0;
+                        volumeX = parentWidth - volumeWidth() - 8.0;
                     }
                     // 音效入口（18 图标）钉死在芯片与音量之间：音量 ←10← 音效 ←10← 芯片。
                     // 原来这里是一段随面板宽度伸缩的空隙（clamp(宽×4.5%,14,38)+26，宽面板上
                     // 60px+ 的死空间），右侧看着永远空一块；改固定间距链之后整条右簇收紧，
                     // 无论面板多宽四颗入口都排在同一段里。
-                    double selectorGap = 10.0 + 18.0 + 10.0;
+                    double selectorGap = compactFooter ? 24.0 : 38.0;
                     // 箭头交给矢量画，文字里就不该再留那枚全角「﹀」：它既占宽又和文字基线对不齐，
                     // 而 LucideIconWidget 那一枚是随缩放算出来的，和菜单里的勾选/档位图标同一套笔画。
                     // 量宽与渲染必须同一份字体：标签固定 pf12bold，量宽也用它 —— 原来 scale<.9
@@ -890,7 +870,8 @@ public class ControlsBar extends NCMPanel {
                     double chevronWidth = 10.0 * scale;
                     double desiredWidth = qualityLabelWidthCache(selectorLabel)
                             + 7.0 * scale + chevronWidth + 6.0 * scale;
-                    double selectorWidth = Math.max(56.0 * scale, Math.min(112.0 * scale, desiredWidth));
+                    double selectorWidth = compactFooter ? 22.0
+                            : Math.max(56.0 * scale, Math.min(112.0 * scale, desiredWidth));
                     double selectorX = volumeX - selectorGap - selectorWidth;
 
                     // 在极窄的播放器上，仅收缩到足以留在页脚内；
@@ -915,6 +896,7 @@ public class ControlsBar extends NCMPanel {
                             .setPosition(selectorX,
                                     Math.max(1.0, (qualitySelector.getParentHeight() - buttonHeight) * .5
                                             - iconBandLift));
+                    qualityText.setHidden(compactFooter);
                 })
                 .setOnClickCallback((relativeX, relativeY, mouseButton) -> {
                     if (mouseButton == 0) {
@@ -928,7 +910,6 @@ public class ControlsBar extends NCMPanel {
                 });
 
         // 供应函数读同一份缓存：LabelWidget 每帧调一次，里面不再重新拼接字符串。
-        LabelWidget qualityText = new LabelWidget(this::qualityLabelCache, FontManager.pf12bold);
         qualitySelector.addChild(qualityText);
         qualityText.setClickable(false);
         qualityText.setBeforeRenderCallback(() -> qualityText
@@ -938,17 +919,19 @@ public class ControlsBar extends NCMPanel {
                 .setPosition(7.0, Math.max(2.0, (qualitySelector.getHeight() - qualityText.getHeight()) * .5)));
 
         LucideIconWidget qualityChevron = new LucideIconWidget(
-                () -> qualityMenuOpen ? FoliaLucideIcons.CHEVRON_UP : FoliaLucideIcons.CHEVRON_DOWN,
+                () -> compactFooter ? qualityTierIcon(cachedQuality)
+                        : qualityMenuOpen ? FoliaLucideIcons.CHEVRON_UP : FoliaLucideIcons.CHEVRON_DOWN,
                 () -> qualityMenuOpen ? "︿" : "﹀", FontManager.pf12bold, 0, 0, 10, 10);
         qualitySelector.addChild(qualityChevron);
         qualityChevron.setClickable(false);
         qualityChevron.setBeforeRenderCallback(() -> {
             double chevronScale = Math.max(.82, Math.min(1.0, NCMPlayerConfig.getPlayerScale()));
-            double chevronSize = 10.0 * chevronScale;
+            double chevronSize = (compactFooter ? 13.0 : 10.0) * chevronScale;
             qualityChevron
                     .setBounds(chevronSize, chevronSize)
                     .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT))
-                    .setPosition(qualitySelector.getWidth() - chevronSize - 6.0 * chevronScale,
+                    .setPosition(compactFooter ? (qualitySelector.getWidth() - chevronSize) * .5
+                                    : qualitySelector.getWidth() - chevronSize - 6.0 * chevronScale,
                             Math.max(0.0, (qualitySelector.getHeight() - chevronSize) * .5));
         });
 
@@ -966,7 +949,7 @@ public class ControlsBar extends NCMPanel {
         viperToggle.setBeforeRenderCallback(() -> {
             viperToggle
                     .setClickable(true)
-                    .setPosition(qualitySelector.getRelativeX() + qualitySelector.getWidth() + 10.0,
+                    .setPosition(qualitySelector.getRelativeX() + qualitySelector.getWidth() + (compactFooter ? 3.0 : 10.0),
                             Math.max(1.0, (viperToggle.getParentHeight() - 18.0) * .5 - iconBandLift));
             viperToggle
                     .setColor(ViperRuntime.isEnabled()
@@ -994,13 +977,13 @@ public class ControlsBar extends NCMPanel {
         queueToggle.setBeforeRenderCallback(() -> {
             PlayQueuePanel queuePanel = NCMScreen.getInstance().getPlayQueuePanel();
             boolean opened = queuePanel != null && queuePanel.isOpen();
-            double toggleX = qualitySelector.getRelativeX() - 8.0 - queueToggle.getWidth();
+            double toggleX = qualitySelector.getRelativeX() - rightActionGap() - queueToggle.getWidth();
             // 面板很窄时右下角排不下了：用 alpha 让它隐形并停止响应，而不是 setHidden——
             // 被隐藏的组件不会再执行自己的回调，也就再没有机会把自己显示回来。
             // 右界由播放条统一算（centerClusterRight）：让位之后才知道居中簇到哪里结束。
             // 这里额外减掉一颗图标的宽度，是给一起听入口留的：两颗排不下时先让待播退场，
             // 一起听顶上这个槽位，绝不能出现两个入口一起消失。
-            boolean fits = toggleX - 8.0 - queueToggle.getWidth() > ControlsBar.this.centerClusterRight + 6.0;
+            boolean fits = toggleX - rightActionGap() - queueToggle.getWidth() > ControlsBar.this.centerClusterRight + 5.0;
             queueToggle
                     .setClickable(fits)
                     .setAlpha(fits ? ControlsBar.this.getAlpha() : 0f);
@@ -1058,9 +1041,9 @@ public class ControlsBar extends NCMPanel {
             // 就是这个行为，别「顺手」改成 isAvailable()。
             boolean kugou = currentPlatform == MusicPlatform.KUGOU;
             // 首选槽位在待播入口左边。这条右锚点链只跟面板宽度有关，可以回喂给让位计算。
-            double primaryX = queueToggle.getRelativeX() - 8.0 - listenTogether.getWidth();
+            double primaryX = queueToggle.getRelativeX() - rightActionGap() - listenTogether.getWidth();
             ControlsBar.this.listenTogetherPrimaryX = primaryX;
-            boolean pairFits = primaryX > ControlsBar.this.centerClusterRight + 6.0;
+            boolean pairFits = primaryX > ControlsBar.this.centerClusterRight + 5.0;
             // 待播入口已经因为排不下退场了，这里接过它的槽位：一起听是主入口，不能跟着消失。
             double toggleX = pairFits ? primaryX : queueToggle.getRelativeX();
             boolean fits = pairFits || toggleX > ControlsBar.this.centerClusterRight + 6.0;
@@ -1092,10 +1075,11 @@ public class ControlsBar extends NCMPanel {
         // 播放条自己的每帧回调：算出窄面板下的让位量。放在 onInit 末尾是因为它要用到上面
         // 才声明的剩余时间标签与一起听入口 —— lambda 只能捕获已声明的局部变量。
         this.setBeforeRenderCallback(() -> {
+            compactFooter = getWidth() < 410;
             double half = this.getWidth() * .5;
             // 一律按「未让位」的几何算：改读 playMode 让位后的实际坐标，会把让位量自己反馈进
             // 输入，每帧收敛一点，肉眼看到的就是控件一直在抖。
-            double transportRight = half + 70.0;
+            double transportRight = half + transportStep() * 2 + 10.0;
             double progressRight = half + 71.5 + lblRemainingTime.getWidth();
             double bandLeft = listenTogetherPrimaryX;
             boolean firstFrame = bandLeft <= 0.0;
@@ -1104,16 +1088,16 @@ public class ControlsBar extends NCMPanel {
             // 剩余时间标签。让不出来（簇的左缘顶进标签）就整条簇一起抬 4 个单位：五颗入口
             // 永远在同一条水平线上，抬升是整簇的行为，不再是某两颗图标自己的事。
             boolean besideLabel = firstFrame || bandLeft > progressRight + 6.0;
-            iconBandLift = Interpolations.interpolate(iconBandLift, besideLabel ? 0.0 : 4.0, .35);
+            iconBandLift = compactFooter ? 7.0 : Interpolations.interpolate(iconBandLift, besideLabel ? 0.0 : 4.0, .35);
 
             // 只让传输簇左移，进度条与时间标签仍然居中：一起拖走会挤掉封面右边的歌名，窄面板上
             // 「传输键略微偏左」远好过「歌名没了」。
-            double shiftLimit = Math.max(0.0, half - 70.0 - 31.0);
+            double shiftLimit = Math.max(0.0, half - (compactFooter ? transportStep() + 56.0 : 101.0));
             double shiftTarget = firstFrame ? 0.0
                     : Math.max(0.0, Math.min(shiftLimit, transportRight + 6.5 - bandLeft));
-            centerShift = Interpolations.interpolate(centerShift, shiftTarget, .3);
+            centerShift = compactFooter ? shiftTarget : Interpolations.interpolate(centerShift, shiftTarget, .3);
             double shiftedTransportRight = transportRight - shiftTarget;
-            centerClusterRight = besideLabel
+            centerClusterRight = besideLabel && !compactFooter
                     ? Math.max(shiftedTransportRight, progressRight)
                     : shiftedTransportRight;
         });
@@ -1294,11 +1278,11 @@ public class ControlsBar extends NCMPanel {
         return cachedQualityLabel == label ? cachedQualityLabelWidth
                 : FontManager.pf12bold.getStringWidthD(label);
     }
-    private String formatDuration(float totalMillis) {
-        int totalSeconds = (int) (totalMillis / 1000);
-        int hours = totalSeconds / 3600;
-        int minutes = (totalSeconds % 3600) / 60;
-        int seconds = totalSeconds % 60;
+    private String formatDuration(long totalMillis) {
+        long totalSeconds = totalMillis / 1000;
+        long hours = totalSeconds / 3600;
+        long minutes = (totalSeconds % 3600) / 60;
+        long seconds = totalSeconds % 60;
 
         String result = "";
 
