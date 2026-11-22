@@ -37,7 +37,7 @@ class LyricGraphemeTimelineProbeTest {
     }
 
     @Test
-    @EnabledOnOs(OS.WINDOWS) // The Forge test runtime ships the Windows Skija native.
+    @EnabledOnOs(OS.WINDOWS) // The test runtime ships the Windows Skija native.
     void classicPlaybackKeepsEachClusterTogetherAndMeasuresTheSameRunAsIdleText() throws Exception {
         byte[] bytes = FontManager.builtinUiFallbackBytes(true);
         var face = java.awt.Font.createFont(java.awt.Font.TRUETYPE_FONT, new java.io.ByteArrayInputStream(bytes));

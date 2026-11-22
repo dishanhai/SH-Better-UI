@@ -70,6 +70,9 @@ dependencies {
     jarJar 'io.github.humbleui:skija-shared:0.143.17'
     compileOnly 'io.github.humbleui:types:0.2.0'
     compileOnly 'io.github.humbleui:skija-shared:0.143.17'
+    if (System.getProperty('os.name').startsWith('Windows')) {
+        testRuntimeOnly 'io.github.humbleui:skija-windows-x64:0.143.17'
+    }
     muoniumDevSkija 'io.github.humbleui:types:0.2.0'
     muoniumDevSkija 'io.github.humbleui:skija-shared:0.143.17'
     if (muoniumModernUi) {
