@@ -1,6 +1,8 @@
 package com.dishanhai.sh_better_ui.client.api;
 
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewRegistry;
+import com.dishanhai.sh_better_ui.kernel.api.UIEngine;
+import com.dishanhai.sh_better_ui.kernel.api.UnifiedUI;
 import com.dishanhai.sh_better_ui.client.gui.panel.BuiltinPreviews;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
 import com.dishanhai.sh_better_ui.theme.ThemeManager;
@@ -28,6 +30,9 @@ public final class ShBetterUiApi {
     private static final UiClientApi CLIENT = new UiClientApi();
 
     private ShBetterUiApi() {}
+
+    /** Canonical cross-platform service entry. Available after client kernel startup. */
+    public static UIEngine unified() { return UnifiedUI.get(); }
 
     public static UiClientApi client() {
         return CLIENT;

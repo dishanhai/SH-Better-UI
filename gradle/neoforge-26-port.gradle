@@ -17,6 +17,7 @@ kotlin { jvmToolchain(25) }
 def sharedJava = file('../src/main/java')
 def packagePath = 'com/dishanhai/sh_better_ui'
 def sharedSources = [
+        'client/api/UiCanvas.java',
         'internal/fumo/FumoMusic.java',
         'internal/fumo/FumoMotion.java',
         'kernel/internal/live/SurfaceTransition.java',
@@ -339,6 +340,7 @@ sourceSets.test {
         include("${packagePath}/client/gui/scaled/NativeGlassControlsLifecycleTest.java")
         include("${packagePath}/client/gui/scaled/ConfirmationGlassStyleTest.java")
         include("${packagePath}/client/api/MarkdownApiTest.java")
+        include("${packagePath}/client/api/PortableUiApiTest.java")
         include("${packagePath}/client/gui/panel/NativeMarkdownScreenTest.java")
         include("${packagePath}/kernel/api/music/**")
     }

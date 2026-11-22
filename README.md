@@ -6,6 +6,8 @@
 
 SH-Better-UI 是 Forge 1.20.1 与 NeoForge 1.21.1 的 Minecraft 客户端 UI 库。两个平台共用玻璃材质、模糊、动画、搜索与物品／流体选取组件，并各自提供独立模组 jar。接入方模组以外部依赖接入，更新时替换对应平台的 UI 库 jar。
 
+跨版本开发请从 [统一客户端 API](docs/UNIFIED_CLIENT_API.md) 开始；每个 Minecraft 版本仍需独立编译。
+
 ## Forge 1.20.1 环境与依赖
 
 - Minecraft 1.20.1、Forge 47.4.16 或更高、Java 17（运行端）。

@@ -617,7 +617,7 @@ public final class UiResourcePicker {
     private static void line(UiFrame frame, Component value, int x, int y, int width, int color) {
         if (width < 1) return;
         var font = Minecraft.getInstance().font;
-        frame.drawScaledText(font, UiRichText.fit(font, value, width), x, y, color, 1);
+        frame.canvas().drawScaledText(font, UiRichText.fit(font, value, width), x, y, color, 1);
     }
     private static Component text(String key, Object... args) { return Component.translatable("sh_better_ui.resource_picker." + key, args); }
 }
