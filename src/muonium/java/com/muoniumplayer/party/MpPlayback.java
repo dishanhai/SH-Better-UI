@@ -422,7 +422,7 @@ public final class MpPlayback {
             @Override
             public void run() {
                 AudioPlayer active = usablePlayer();
-                if (active == null) return;
+                if (active != player || MpPartyClient.selfPaused() || MpPartyClient.playing() != playing) return;
                 if (needSeek) active.setPlaybackTime(posMs);
                 if (playing && active.isPausing()) active.unpause();
                 if (!playing && !active.isPausing()) active.pause();
@@ -496,18 +496,18 @@ public final class MpPlayback {
         startPending = false;
         // 这是一次明确的对齐（刚起播完成），随后给一段静默期让缓冲跑起来，别马上又量漂移。
         MpSyncPolicy.markCommand();
-        final long target = MpPartyClient.positionMs();
-        final boolean playing = MpPartyClient.playing();
-        System.out.println("[MpParty] 已就绪，对齐到 " + target + "/"
-                + (long) player.getTotalTimeMillis() + " playing=" + playing
-                + " pausing=" + player.isPausing() + " vol=" + player.volume
-                + " fade=" + player.getFadeGain());
         onMainThread(new Runnable() {
             @Override
             public void run() {
                 AudioPlayer active = usablePlayer();
-                if (active == null) return;
-                if (target > 0L) active.setPlaybackTime(target);
+                if (active != player) return;
+                long target = MpPartyClient.positionMs();
+                boolean playing = MpPartyClient.playing() && !MpPartyClient.selfPaused();
+                System.out.println("[MpParty] 已就绪，对齐到 " + target + "/"
+                        + (long) active.getTotalTimeMillis() + " playing=" + playing
+                        + " pausing=" + active.isPausing() + " vol=" + active.volume
+                        + " fade=" + active.getFadeGain());
+                if (target != (long) active.getCurrentTimeMillis()) active.setPlaybackTime(target);
                 if (playing && active.isPausing()) active.unpause();
                 if (!playing && !active.isPausing()) active.pause();
             }

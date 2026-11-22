@@ -793,7 +793,10 @@ public final class MpPartyClient {
         if (paused) MpPlayback.pause(positionMs());
         JsonObject m = MpProto.msg(MpProto.C_SELF_PAUSE);
         m.addProperty("paused", paused);
-        send(m);
+        if (send(m) && !paused && currentTrack == null) {
+            // 老服务端在空房间恢复时只回普通 stop。此时没有音频需要等待对齐。
+            selfPaused = false;
+        }
         notifyListeners();
     }
 
@@ -1789,48 +1792,51 @@ public final class MpPartyClient {
             MpPlayback.stageNext(MpTrack.fromJson(staged), MpProto.obj(staged, "plan"));
             MpRoomPrefetch.onQueue(queue());
         } else if (MpProto.S_PLAY.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpTrack track = MpTrack.fromJson(MpProto.obj(msg, "track"));
             if (track == null) return;
-            // resync = 服务端单独补给我一份权威位置（个人暂停恢复时用），不是新曲目。
-            // 「立即同步播放进度」就落在这里：见到它就清掉个人暂停并直接跳到那个位置，
-            // 不用等下一发心跳。普通 play（换歌广播）同样把暂停落地 —— 帧里带的就是权威
-            // 位置与权威播放态；留着标记不清，resync 帧万一没来（服务端重启丢了会话）就会
-            // 永久静默卡死，而后果只是「自动恢复播放」，轻得多。
-            if (MpProto.bool(msg, "resync", false) || MpProto.bool(msg, "playing", true))
-                selfPaused = false;
-            long seq = MpProto.num(msg, "seq", 0L);
-            long pos = compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L));
-            startTrack(track, pos, MpProto.bool(msg, "playing", true), seq);
+            // 普通换歌只推进房间时钟。个人暂停由发给本人的恢复帧解除。
+            if (MpProto.bool(msg, "resync", false)) selfPaused = false;
+            boolean isPlaying = MpProto.bool(msg, "playing", true);
+            startTrack(track, framePosition(msg, 0L, isPlaying), isPlaying, seq);
         } else if (MpProto.S_PAUSE.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpSyncPolicy.markCommand();
-            stamp(MpProto.num(msg, "pos", positionMs()), false, MpProto.num(msg, "seq", 0L));
-            MpPlayback.pause(posBase);
+            stamp(framePosition(msg, positionMs(), false), false, seq);
+            if (!selfPaused) MpPlayback.pause(posBase);
             notifyListeners();
         } else if (MpProto.S_RESUME.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             MpSyncPolicy.markCommand();
-            stamp(compensate(MpProto.num(msg, "pos", positionMs()), MpProto.num(msg, "serverTime", 0L)),
-                    true, MpProto.num(msg, "seq", 0L));
+            stamp(framePosition(msg, positionMs(), true), true, seq);
             if (!selfPaused) MpPlayback.resume(posBase);
             notifyListeners();
         } else if (MpProto.S_SEEK.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
             // 房主／管理员拖进度是明确命令：立刻执行，不受软硬阈值和冷却约束。
             MpSyncPolicy.markCommand();
-            stamp(compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L)),
-                    playing, MpProto.num(msg, "seq", 0L));
+            stamp(framePosition(msg, 0L, playing), playing, seq);
             if (!selfPaused) MpPlayback.seek(posBase);
             notifyListeners();
         } else if (MpProto.S_STOP.equals(op)) {
+            long seq = playbackSequence(msg);
+            if (stalePlaybackSequence(seq)) return;
+            if (MpProto.bool(msg, "resync", false)) selfPaused = false;
             currentTrack = null;
-            playing = false;
-            posBase = 0L;
-            posStamp = System.currentTimeMillis();
+            stamp(0L, false, seq);
             durationMs = 0L;
+            waitingUrl = false;
             MpPlayback.stop();
             notifyListeners();
         } else if (MpProto.S_TIME.equals(op)) {
+            if (currentTrack == null || stalePlaybackSequence(playbackSequence(msg))) return;
             boolean isPlaying = MpProto.bool(msg, "playing", false);
             long dur = MpProto.num(msg, "duration", durationMs);
-            long pos = compensate(MpProto.num(msg, "pos", 0L), MpProto.num(msg, "serverTime", 0L));
+            long pos = framePosition(msg, 0L, isPlaying);
             durationMs = dur;
             stampSmooth(pos, isPlaying);
             // 交给播放层的仍是服务端的权威位置（未经平滑）：那边自己有三档判定，
@@ -1952,7 +1958,14 @@ public final class MpPartyClient {
     }
 
     private static void applySnapshot(JsonObject msg) {
+        JsonObject playback = MpProto.obj(msg, "playback");
+        long seq = playbackSequence(playback);
+        if (stalePlaybackSequence(seq)) return;
         MpRoom snapshot = MpRoom.fromJson(MpProto.obj(msg, "room"));
+        if (room == null && snapshot != null) {
+            MpMember member = snapshot.member(selfUuid());
+            selfPaused = member != null && member.selfPaused;
+        }
         room = snapshot;
         hintContributionOnce();
         // 快照里也带着「下一首」（服务端把它放在 room 对象里）：中途进房与断线重连的人
@@ -1961,7 +1974,6 @@ public final class MpPartyClient {
         MpPlayback.stageNext(MpTrack.fromJson(staged), MpProto.obj(staged, "plan"));
         // 快照是身份的权威来源（房主可能刚转让过），分析权跟着它刷新。
         MpPlayback.refreshRoomRole();
-        JsonObject playback = MpProto.obj(msg, "playback");
         waitingUrl = MpProto.bool(playback, "waitingUrl", false);
 
         if (playback == null) {
@@ -1970,21 +1982,20 @@ public final class MpPartyClient {
         }
         String state = MpProto.str(playback, "state", "idle");
         MpTrack track = MpTrack.fromJson(MpProto.obj(playback, "track"));
-        long seq = MpProto.num(playback, "seq", 0L);
 
         if (track == null || "idle".equals(state)) {
+            stamp(0L, false, seq);
+            durationMs = 0L;
             if (currentTrack != null) {
                 currentTrack = null;
-                playing = false;
-                durationMs = 0L;
                 MpPlayback.stop();
             }
             notifyListeners();
             return;
         }
 
-        long pos = compensate(MpProto.num(playback, "pos", 0L), MpProto.num(playback, "serverTime", 0L));
         boolean isPlaying = "playing".equals(state);
+        long pos = framePosition(playback, 0L, isPlaying);
         // 同一首歌按 source+songId 判：跨平台房间里两个平台的数字 id 会撞车。
         boolean sameTrack = currentTrack != null && currentTrack.key().equals(track.key());
 
@@ -2023,7 +2034,7 @@ public final class MpPartyClient {
     }
 
     private static void startTrack(MpTrack track, long pos, boolean isPlaying, long seq) {
-        if (seq < appliedSeq) return;            // 过期帧：已经有更新的指令生效了
+        if (stalePlaybackSequence(seq)) return;
         currentTrack = track;
         durationMs = track.durationMs;
         stamp(pos, isPlaying, seq);
@@ -2065,7 +2076,7 @@ public final class MpPartyClient {
     private static void stampSmooth(long pos, boolean isPlaying) {
         long target = Math.max(0L, pos);
         // 播放状态翻转、还没有曲目、或者时钟根本没起来：没有可收敛的基准，直接落地。
-        if (isPlaying != playing || currentTrack == null || posStamp == 0L) {
+        if (!isPlaying || !playing || currentTrack == null || posStamp == 0L) {
             stamp(target, isPlaying, appliedSeq);
             return;
         }
@@ -2079,9 +2090,20 @@ public final class MpPartyClient {
         stamp(own + diff / 4, isPlaying, appliedSeq);
     }
 
-    /** 把服务端报告的位置修正到「现在」，细节见 {@link MpSyncPolicy#compensate}。 */
-    private static long compensate(long pos, long serverTime) {
-        return MpSyncPolicy.compensate(pos, serverTime);
+    private static long playbackSequence(JsonObject frame) {
+        return MpProto.num(frame, "seq", -1L);
+    }
+
+    private static boolean stalePlaybackSequence(long seq) {
+        return seq >= 0L && seq < appliedSeq;
+    }
+
+    /** 把服务端正在播放的位置修正到当前时刻。 */
+    private static long framePosition(JsonObject frame, long fallback, boolean isPlaying) {
+        long pos = MpProto.num(frame, "pos", fallback);
+        // 暂停帧仍可采样时钟偏移，暂停的位置本身保持固定。
+        long compensated = MpSyncPolicy.compensate(pos, MpProto.num(frame, "serverTime", 0L));
+        return isPlaying ? compensated : pos;
     }
 
     /**

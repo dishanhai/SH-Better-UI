@@ -1971,7 +1971,9 @@ public final class Room {
         pausedPos = 0L;
         waitingUrl = false;
         seq++;
-        broadcast(Proto.msg(Proto.S_STOP));
+        JsonObject stop = Proto.msg(Proto.S_STOP);
+        stamp(stop, 0L);
+        broadcast(stop);
         broadcastQueue();
     }
 
@@ -2041,11 +2043,11 @@ public final class Room {
     public String setSelfPause(UUID uuid, boolean paused) {
         Member m = members.get(uuid);
         if (m == null) return "你不在这个房间里";
-        if (m.selfPaused == paused) return null;
+        boolean changed = m.selfPaused != paused;
         m.selfPaused = paused;
         if (!paused) sendResync(uuid);
         // 收听人数变了，全房都该看到。
-        broadcastState();
+        if (changed) broadcastState();
         return null;
     }
 
@@ -2057,7 +2059,10 @@ public final class Room {
      */
     public void sendResync(UUID uuid) {
         if (current == null) {
-            send(uuid, Proto.msg(Proto.S_STOP));
+            JsonObject stop = Proto.msg(Proto.S_STOP);
+            stop.addProperty("resync", true);
+            stamp(stop, 0L);
+            send(uuid, stop);
             return;
         }
         JsonObject m = Proto.msg(Proto.S_PLAY);
