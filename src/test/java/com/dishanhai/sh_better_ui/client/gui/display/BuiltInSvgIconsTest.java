@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.display;
 
 import org.junit.jupiter.api.Test;
 
+import java.io.ByteArrayInputStream;
 import java.nio.file.Files;
 import java.nio.file.Path;
 
@@ -30,6 +31,19 @@ class BuiltInSvgIconsTest {
                 assertTrue(containsVisibleInk, name);
             }
         }
+    }
+
+    @Test
+    void replacementPngWinsOverBundledSvg() throws Exception {
+        String path = "textures/gui/display/info.png";
+        byte[] bundled;
+        try (var in = BuiltInSvgIcons.class.getResourceAsStream("/assets/sh_better_ui/" + path)) {
+            bundled = in.readAllBytes();
+        }
+        assertEquals("info", BuiltInSvgIcons.select("sh_better_ui", path, () -> new ByteArrayInputStream(bundled)));
+        var replacement = bundled.clone();
+        replacement[replacement.length / 2] ^= 1;
+        assertNull(BuiltInSvgIcons.select("sh_better_ui", path, () -> new ByteArrayInputStream(replacement)));
     }
 
     @Test

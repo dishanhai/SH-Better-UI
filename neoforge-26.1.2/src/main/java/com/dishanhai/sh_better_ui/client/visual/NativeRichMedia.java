@@ -132,13 +132,14 @@ public final class NativeRichMedia implements AutoCloseable {
     }
     static RichMediaDecoder.Sheet decodePack(Identifier id,ResourceManager resources)throws IOException {
         if(!supports(id))throw new IOException("Only resource-pack textures are supported");
-        String svgName = BuiltInSvgIcons.name(id.getNamespace(), id.getPath());
-        if (BuiltInSvgIcons.hasSource(svgName)) {
+        var resource = resources.getResource(id).orElseThrow(() -> new IOException("Missing inline image"));
+        String svgName = BuiltInSvgIcons.select(id.getNamespace(), id.getPath(), resource::open);
+        if (svgName != null) {
             int side = 128;
             return new RichMediaDecoder.Sheet(BuiltInSvgIcons.render(svgName, side), side, side,
                     java.util.List.of(new RichMediaDecoder.Frame(0, 0, 0)), 1);
         }
-        var resource=resources.getResource(id).orElseThrow(()->new IOException("Missing inline image"));byte[] metadata=null;
+        byte[] metadata=null;
         if(id.getPath().endsWith(".png")){
             var sidecar=resources.getResource(Identifier.parse(id+".mcmeta")).orElse(null);
             if(sidecar!=null&&(sidecar.source()==resource.source()||resources.listPacks().dropWhile(pack->pack!=resource.source()).anyMatch(pack->pack==sidecar.source())))

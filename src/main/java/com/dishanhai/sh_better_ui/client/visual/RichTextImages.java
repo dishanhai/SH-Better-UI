@@ -223,14 +223,14 @@ final class RichTextImages {
     }
 
     private static RichMediaDecoder.Sheet decodePack(UiId id, ResourceManager resources) throws IOException {
-        String svgName = BuiltInSvgIcons.name(id.namespace(), id.path());
-        if (BuiltInSvgIcons.hasSource(svgName)) {
+        var location = ResourceLocation.tryParse(id.toString());
+        var resource = resources.getResource(location).orElseThrow(() -> new IOException("Missing inline image"));
+        String svgName = BuiltInSvgIcons.select(id.namespace(), id.path(), resource::open);
+        if (svgName != null) {
             int side = 128;
             return new RichMediaDecoder.Sheet(BuiltInSvgIcons.render(svgName, side), side, side,
                     java.util.List.of(new RichMediaDecoder.Frame(0, 0, 0)), 1);
         }
-        var location = ResourceLocation.tryParse(id.toString());
-        var resource = resources.getResource(location).orElseThrow(() -> new IOException("Missing inline image"));
         byte[] metadata = null;
         if (id.path().endsWith(".png")) {
             var metadataLocation = ResourceLocation.tryParse(id + ".mcmeta");

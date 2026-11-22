@@ -8,6 +8,8 @@ import com.github.weisj.jsvg.view.ViewBox;
 import java.awt.RenderingHints;
 import java.awt.image.BufferedImage;
 import java.io.IOException;
+import java.io.InputStream;
+import java.util.Arrays;
 import java.io.UncheckedIOException;
 import java.util.HashMap;
 import java.util.Map;
@@ -34,6 +36,27 @@ public final class BuiltInSvgIcons {
     public static synchronized boolean hasSource(String name) {
         return name != null && EXISTS.computeIfAbsent(name, key ->
                 BuiltInSvgIcons.class.getResource(SOURCE + key + ".svg") != null);
+    }
+
+    @FunctionalInterface
+    public interface PackTexture {
+        InputStream open() throws IOException;
+    }
+
+    /** Select SVG only in place of the project's own compatibility PNG. */
+    public static String select(String namespace, String path, PackTexture winningTexture) {
+        String name = name(namespace, path);
+        if (!hasSource(name)) return null;
+        if (winningTexture == null) return name;
+        try (var bundled = BuiltInSvgIcons.class.getResourceAsStream("/assets/" + namespace + "/" + path);
+             var selected = winningTexture.open()) {
+            if (bundled == null) return null;
+            byte[] baseline = bundled.readAllBytes();
+            return Arrays.equals(baseline, selected.readNBytes(baseline.length + 1)) ? name : null;
+        } catch (IOException unreadable) {
+            // Leave bad pack files to Minecraft's existing texture error handling.
+            return null;
+        }
     }
 
     /** Quantize demand so continuous HUD scale animations don't allocate a texture each frame. */
