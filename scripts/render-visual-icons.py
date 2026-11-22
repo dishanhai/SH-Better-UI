@@ -2,6 +2,7 @@
 """Rebuild the checked-in Minecraft textures from the bundled SVG masters."""
 import argparse
 from pathlib import Path
+import re
 import shutil
 import struct
 import subprocess
@@ -15,7 +16,7 @@ SVG_NS = "{http://www.w3.org/2000/svg}"
 GEOMETRY = {"svg", "g", "path", "rect", "circle", "ellipse"}
 ATTRIBUTES = {
     "width", "height", "viewBox", "fill", "stroke", "stroke-width",
-    "stroke-linecap", "stroke-linejoin", "d", "x", "y", "rx", "ry", "cx", "cy", "r",
+    "stroke-linecap", "stroke-linejoin", "transform", "d", "x", "y", "rx", "ry", "cx", "cy", "r",
 }
 
 
@@ -28,7 +29,10 @@ def validate_master(master):
         raise ValueError(f"{master.name}: expected a 16-unit SVG canvas")
     if any(e.tag not in {SVG_NS + name for name in GEOMETRY}
            or e.attrib.keys() - ATTRIBUTES
-           or any("url(" in v.lower() for v in e.attrib.values()) for e in root.iter()):
+           or any("url(" in v.lower() for v in e.attrib.values())
+           or ("transform" in e.attrib and not re.fullmatch(
+               r"translate\(-?(?:[0-9]+(?:\.[0-9]+)?) -?(?:[0-9]+(?:\.[0-9]+)?)\)", e.attrib["transform"]))
+           for e in root.iter()):
         raise ValueError(f"{master.name}: only local vector geometry is allowed")
 
 
