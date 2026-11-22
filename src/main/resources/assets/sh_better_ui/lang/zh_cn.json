@@ -1331,6 +1331,7 @@
   "sh_better_ui.muonium.experience.local_library": "本地歌单",
   "sh_better_ui.muonium.experience.welcome": "欢迎来到 SHBUI",
   "sh_better_ui.muonium.experience.ready": "SHBUI 已准备就绪",
+  "sh_better_ui.muonium.experience.source_note": "YouTube 与哔哩哔哩无需登录。汽水音乐需用外部工具（网盘或 QQ 群）获取 Cookie 登录。GD 音乐台沿用现有配置。",
   "sh_better_ui.muonium.center.host_controls": "使用 SHBUI 控件",
   "sh_better_ui.muonium.center.host_controls.desc": "在播放器里使用 SHBUI 控件和快捷入口。重新打开 HUD 设置后切换设置界面。",
   "sh_better_ui.muonium.center.host_theme": "跟随 SHBUI 主题",

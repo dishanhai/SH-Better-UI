@@ -252,14 +252,16 @@ public final class OnboardingUi {
      * —— 副标题那一长句在 272 宽的带子里本来就画不全，留着它只会压到下面的卡片上。</p>
      */
     public static void drawHeader(String eyebrow, String title, String subtitle,
-                                  double x, double y) {
+                                  double x, double y, double width) {
         OnboardingMetrics m = metric();
         if (eyebrow != null && !eyebrow.isEmpty() && m.tier.showsSubtitle()) {
-            drawEyebrow(eyebrow, x, y + m.eyebrowOffset);
+            drawEyebrow(ellipsize(FontManager.pf12bold, eyebrow, width - EYEBROW_TEXT_X),
+                    x, y + m.eyebrowOffset);
         }
-        drawText(m.titleFont(), title, x, y + m.titleOffset, textPrimary());
+        drawText(m.titleFont(), ellipsize(m.titleFont(), title, width), x, y + m.titleOffset, textPrimary());
         if (subtitle != null && !subtitle.isEmpty() && m.tier.showsSubtitle()) {
-            drawText(m.subtitleFont(), subtitle, x, y + m.subtitleOffset, textSecondary());
+            drawText(m.subtitleFont(), ellipsize(m.subtitleFont(), subtitle, width),
+                    x, y + m.subtitleOffset, textSecondary());
         }
     }
 
@@ -634,13 +636,14 @@ public final class OnboardingUi {
         com.muoniumplayer.core.rendering.font.CFontRenderer titleFont = metric().labelBold();
         com.muoniumplayer.core.rendering.font.CFontRenderer subFont = metric().bodyFont();
         double available = content[0] + content[2] - textX - rightReserve;
-        boolean hasSubtitle = metric().tier.showsCardDetail() && subtitle != null && !subtitle.isEmpty();
+        double titleH = OnboardingMetrics.lineHeight(titleFont);
+        double subH = OnboardingMetrics.lineHeight(subFont);
+        boolean hasSubtitle = metric().tier.showsCardDetail() && subtitle != null && !subtitle.isEmpty()
+                && titleH + subH <= content[3];
         int titleColor = state == CardState.LOCKED ? textMuted()
                 : (state == CardState.SELECTED ? textPrimary() : textSecondary());
         int subColor = state == CardState.SELECTED ? textSecondary() : textMuted();
 
-        double titleH = OnboardingMetrics.lineHeight(titleFont);
-        double subH = OnboardingMetrics.lineHeight(subFont);
         double total = hasSubtitle ? titleH + subH : titleH;
         // 两行整组在内容区里垂直居中；只有一行时也居中，而不是贴着上沿。
         double top = content[1] + (content[3] - total) * .5;

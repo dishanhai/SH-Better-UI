@@ -6,7 +6,9 @@ import com.muoniumplayer.core.screens.onboarding.OnboardingController;
 import com.muoniumplayer.core.screens.onboarding.OnboardingMetrics;
 import com.muoniumplayer.core.screens.onboarding.OnboardingStepView;
 import com.muoniumplayer.core.screens.onboarding.OnboardingUi;
+import com.muoniumplayer.core.screens.ncm.NcmExpressive;
 import com.muoniumplayer.party.ui.PartyIcons;
+import net.minecraft.network.chat.Component;
 
 /** 音乐源页。选择立即应用并由控制器持久化。 */
 public final class SourceStep implements OnboardingStepView {
@@ -22,13 +24,14 @@ public final class SourceStep implements OnboardingStepView {
     private static final double BASE_CARD_H = 56;
     private static final double CARD_GAP = 12;
     private static final double NOTE_GAP = 18;
+    private static final double NOTE_INSET = 22;
 
     @Override
     public void render(OnboardingController controller,
                        double x, double y, double width, double height,
                        double mouseX, double mouseY) {
         OnboardingUi.drawHeader("SOURCES", "选择音源",
-                "选中的来源会立即应用到播放器并保存。", x, y);
+                "选中的来源会立即应用到播放器并保存。", x, y, width);
 
         for (int i = 0; i < PLATFORMS.length; i++) {
             MusicPlatform platform = PLATFORMS[i];
@@ -62,14 +65,15 @@ public final class SourceStep implements OnboardingStepView {
             }
         }
 
-        double noteY = cardY(y, width, PLATFORMS.length) + NOTE_GAP;
-        OnboardingUi.drawIcon(FoliaLucideIcons.INFO, PartyIcons.INFO, x + 7, noteY + 6, 13,
+        double noteY = noteY(y, width);
+        var font = OnboardingUi.metric().bodyFont();
+        double lineHeight = OnboardingMetrics.lineHeight(font);
+        OnboardingUi.drawIcon(FoliaLucideIcons.INFO, PartyIcons.INFO, x + 7, noteY + lineHeight * .5, 13,
                 OnboardingUi.textMuted());
-        // 这句说明有 60 来字，窄档下比整条内容带还宽 —— 按可用宽截断，
-        // 而不是让它一路画到面板外边（那才是「文字重叠 / 溢出」最直观的一处）。
-        OnboardingUi.drawTextReserving(OnboardingUi.metric().bodyFont(),
-                "YouTube 与哔哩哔哩无需登录；汽水音乐需用外部工具（网盘 / QQ群）获取 Cookie 登录；GD 沿用现有配置。",
-                x + 22, noteY, x + width, 0, OnboardingUi.textMuted());
+        for (String line : noteLines(width)) {
+            OnboardingUi.drawText(font, line, x + NOTE_INSET, noteY, OnboardingUi.textMuted());
+            noteY += lineHeight;
+        }
     }
 
     /**
@@ -105,12 +109,19 @@ public final class SourceStep implements OnboardingStepView {
         return PLATFORMS.length;
     }
 
-    /** 整页要占多高（含最后那句说明），版式测试与「放不下先收装饰」用它。 */
-    static double contentHeight(double width) {
-        int columns = columnsFor(width);
-        int rows = (PLATFORMS.length + columns - 1) / columns;
-        return OnboardingUi.metric().bodyOffset
-                + rows * (cardHeight() + CARD_GAP) - CARD_GAP + NOTE_GAP + 14;
+    static double noteY(double y, double width) {
+        return cardY(y, width, PLATFORMS.length - 1) + cardHeight() + NOTE_GAP;
+    }
+
+    private static String[] noteLines(double width) {
+        String note = Component.translatable("sh_better_ui.muonium.experience.source_note").getString();
+        return NcmExpressive.wrap(OnboardingUi.metric().bodyFont(), note, Math.max(1, width - NOTE_INSET));
+    }
+
+    @Override
+    public double minimumHeight(double width) {
+        return noteY(0, width)
+                + noteLines(width).length * OnboardingMetrics.lineHeight(OnboardingUi.metric().bodyFont());
     }
 
     @Override

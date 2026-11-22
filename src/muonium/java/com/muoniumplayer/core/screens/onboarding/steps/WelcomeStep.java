@@ -145,7 +145,8 @@ public final class WelcomeStep implements OnboardingStepView {
         if (height < 12) return;
         OnboardingUi.drawText(OnboardingUi.metric().labelBold(),
                 OnboardingUi.ellipsize(OnboardingUi.metric().labelBold(), label, Math.max(1, width - 24)),
-                x + 12, y + height * .5 - 5, OnboardingUi.textPrimary());
+                x + 12, y + (height - OnboardingMetrics.lineHeight(OnboardingUi.metric().labelBold())) * .5,
+                OnboardingUi.textPrimary());
     }
 
     /** 胶囊高度：跟着档位走，大屏更高一些。 */
@@ -183,6 +184,7 @@ public final class WelcomeStep implements OnboardingStepView {
             for (int i = from; i < to; i++) {
                 rowWidth += widths[i] + (i > from ? PILL_GAP_X : 0);
             }
+            if (rowWidth > available) continue;
             double cursorX = centerX - rowWidth * .5;
             double rowY = top + row * (pillHeight() + PILL_GAP_Y);
             for (int i = from; i < to; i++) {

@@ -5,6 +5,10 @@ package com.muoniumplayer.core.screens.onboarding;
  * 处理，而导航和共享状态留在 {@link OnboardingScreen}。
  */
 public interface OnboardingStepView {
+    default double minimumHeight(double width) {
+        return 0;
+    }
+
     void render(OnboardingController controller,
                 double x, double y, double width, double height,
                 double mouseX, double mouseY);
