@@ -123,6 +123,8 @@ public record GraphicIcon(Identifier texture, @Nullable GraphicIconMotion motion
     public static final GraphicIcon ANDROID = builtIn("android");
     public static final GraphicIcon LINUX = builtIn("linux");
     public static final GraphicIcon MINECRAFT = builtIn("minecraft");
+    public static final GraphicIcon MINECRAFT_CREEPER_HEAD = builtIn("minecraft_creeper_head");
+    public static final GraphicIcon MINECRAFT_2D = MINECRAFT_CREEPER_HEAD;
     public static final GraphicIcon MINECRAFT_GRASS_BLOCK = builtIn("minecraft_grass_block");
     public static final GraphicIcon GAMEPAD = builtIn("gamepad");
     public static final GraphicIcon MOUSE = builtIn("mouse");

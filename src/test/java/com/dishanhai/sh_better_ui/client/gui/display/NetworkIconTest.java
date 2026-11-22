@@ -96,7 +96,9 @@ class NetworkIconTest {
 
     @Test
     void gameAndPeripheralIconsAreTransparentSixteenPixelTextures() throws IOException {
-        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.MINECRAFT_GRASS_BLOCK, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
+        assertEquals(GraphicIcon.MINECRAFT_CREEPER_HEAD, GraphicIcon.MINECRAFT_2D);
+        assertIconTextures(List.of(GraphicIcon.MINECRAFT, GraphicIcon.MINECRAFT_CREEPER_HEAD,
+                GraphicIcon.MINECRAFT_GRASS_BLOCK, GraphicIcon.GAMEPAD, GraphicIcon.MOUSE,
                 GraphicIcon.KEYBOARD, GraphicIcon.HEADPHONES, GraphicIcon.MICROPHONE, GraphicIcon.FORGE,
                 GraphicIcon.NEOFORGE));
     }
@@ -320,6 +322,7 @@ class NetworkIconTest {
             int blockAccent = switch (fileName) {
                 case "ae2_me_controller.png" -> 0x6199FF;
                 case "minecraft_grass_block.png" -> 0x6F903C;
+                case "minecraft_creeper_head.png" -> 0x70B94E;
                 default -> 0;
             };
             int accent = switch (fileName) {
