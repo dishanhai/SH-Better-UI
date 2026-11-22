@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.api.ShBetterUiApi;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.mojang.blaze3d.systems.RenderSystem;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.client.gui.screens.Screen;
@@ -50,10 +51,13 @@ public final class BackgroundRenderSmoke extends Screen {
                     verifyBlackHoleRelease(g, scene);
                     reloaded = true;
                 }
+                g.fill(0, 0, width, height, 0xFF305070);
+                g.flush();
                 if (!BlackHoleBackdropRenderer.draw(g, new Bounds(30, 30, 120, 60),
                         BlackHoleBackdropProfile.DEFAULT, 0)) return;
+                verifyCrosshairBlend(g);
                 verifyBlackHoleFailure(g, scene);
-                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels and vignette blending and black-hole reload/failure cleanup\n");
+                finish("success.txt", "PASS " + entries.size() + " backgrounds, resize, texture reveal, state, outside pixels, vignette and crosshair blending, and black-hole reload/failure cleanup\n");
                 return;
             }
             var entry = entries.get(index);
@@ -112,6 +116,34 @@ public final class BackgroundRenderSmoke extends Screen {
         require(Arrays.equals(before, RenderStateSmoke.snapshot()), "Black-hole reload cleanup changed the host bindings");
         require(scene.get(null) == null, "Black-hole reload retained its scene target");
         System.out.println("PASS black-hole reload cleanup keeps host bindings");
+    }
+
+    private static void verifyCrosshairBlend(GuiGraphics g) {
+        var icons = ResourceLocation.fromNamespaceAndPath("minecraft", "textures/gui/icons.png");
+        int x = 175;
+        int y = 30;
+        try {
+            RenderSystem.enableBlend();
+            RenderSystem.blendFuncSeparate(GL11.GL_ONE_MINUS_DST_COLOR, GL11.GL_ONE_MINUS_SRC_COLOR,
+                    GL11.GL_ONE, GL11.GL_ZERO);
+            g.blit(icons, x, y, 0, 0, 15, 15);
+            require(readGuiRgb(x, y) == 0x305070, "Crosshair changed the underlying color at its transparent edge");
+            int center = readGuiRgb(x + 7, y + 7);
+            require(center == 0xCFAF8F, "Crosshair stopped inverting the underlying color after black-hole compositing: 0x"
+                    + Integer.toHexString(center));
+        } finally {
+            RenderSystem.defaultBlendFunc();
+        }
+        System.out.println("PASS vanilla crosshair preserves invert blending after the black-hole composite");
+    }
+
+    private static int readGuiRgb(int x, int y) {
+        var window = Minecraft.getInstance().getWindow();
+        double scale = window.getGuiScale();
+        var pixel = org.lwjgl.BufferUtils.createByteBuffer(4);
+        GL11.glReadPixels((int) ((x + 0.5) * scale), window.getHeight() - 1 - (int) ((y + 0.5) * scale),
+                1, 1, GL11.GL_RGBA, GL11.GL_UNSIGNED_BYTE, pixel);
+        return ((pixel.get(0) & 255) << 16) | ((pixel.get(1) & 255) << 8) | (pixel.get(2) & 255);
     }
 
     private static void verifyBlackHoleFailure(GuiGraphics g, java.lang.reflect.Field scene) throws Exception {

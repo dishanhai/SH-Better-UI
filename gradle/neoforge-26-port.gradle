@@ -265,6 +265,8 @@ sourceSets.test {
         include("${packagePath}/kernel/internal/NativeAnimationPreferences.java")
         include("${packagePath}/kernel/internal/NativeAnimationExampleTest.java")
         include("${packagePath}/kernel/internal/NativeCollapseTest.java")
+        include("${packagePath}/kernel/internal/AnchoredActionMenuTest.java")
+        include("${packagePath}/kernel/internal/PlayerMenuMotionTest.java")
         include("${packagePath}/client/gui/scaled/NavigationRailStateTest.java")
         include("${packagePath}/client/gui/scaled/PopupMotionTest.java")
         include("${packagePath}/client/gui/scaled/UiPromptBarTest.java")

@@ -3,6 +3,7 @@ package com.dishanhai.sh_better_ui.kernel.internal.music.view;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
 import com.dishanhai.sh_better_ui.kernel.api.music.control.*;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
@@ -77,6 +78,7 @@ final class NowPlayingMenu  {
                     ?new Bounds(bounds.x()+8+i*quickWidth,y,Math.max(12,quickWidth),52)
                     :new Bounds(bounds.x()+8,bounds.y()+(quickCount>0?88:28)+(i-quickCount)*30,Math.max(12,bounds.width()-16),28);
             var button=new MusicTextControl(box,entry.label(),preferences,()->choose.accept(entry),()->{});
+            button.setVariant(MusicTextControl.Variant.MENU);
             button.setSelected(entry.selected());
             if(entry.selected()&&entry.available())selected=i;
             if(i<quickCount)button.setGlyphOnly(entry.icon());else button.setLeadingIcon(entry.icon()); button.setAvailable(entry.available());
@@ -93,17 +95,13 @@ final class NowPlayingMenu  {
         try {
         var font=Minecraft.getInstance().font;
         g.text(font,net.minecraft.locale.Language.getInstance().getVisualOrder(font.substrByWidth(MusicTypography.text(title),Math.max(0,bounds.width()-20))),
-                bounds.x()+10,bounds.y()+9,UiTheme.current().text(),false);
-        int divider=frameDividerColor();
-        // A separate group for account/queue actions and search destinations.
-        g.fill(bounds.x()+8,bounds.y()+25,bounds.right()-8,bounds.y()+26,divider);
-        if(quickCount>0&&controls.size()>quickCount)g.fill(bounds.x()+8,bounds.y()+83,bounds.right()-8,bounds.y()+84,divider);
+                bounds.x()+10,bounds.y()+9,0xffffffff,false);
         for(int i=0;i<controls.size();i++){
             var control=controls.get(i);control.extractRenderState(g,mouseX,mouseY,partialTick);
             if(i<quickCount){
                 var text=font.substrByWidth(control.getMessage(),Math.max(0,control.getWidth()-6));
                 g.text(font,net.minecraft.locale.Language.getInstance().getVisualOrder(text),control.getX()+(control.getWidth()-font.width(text))/2,
-                        control.getY()+40,control.active?UiTheme.current().text():UiTheme.current().secondaryText(0xff94a3b8,.25f),false);
+                        control.getY()+40,PlayerMenuStyle.text(control.active ? 1f : .4f, highContrast),false);
             }
         }
         } finally {g.disableScissor();}
@@ -136,7 +134,6 @@ final class NowPlayingMenu  {
     public void keyReleased(int key,int scan,int mods,long now){
         if(focus>=0){if(valid.getAsBoolean())controls.get(focus).keyReleased(key,scan,mods);else {cancel(now);dismiss.run();}}
     }
-    private int frameDividerColor(){return (UiTheme.current().text()&0xffffff)|(highContrast?0xff000000:0x40000000);}
     private void move(int delta){
         for(int n=1;n<=controls.size();n++){
             int candidate=Math.floorMod(focus+delta*n,controls.size());

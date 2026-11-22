@@ -2,9 +2,12 @@
 package com.muoniumplayer.core.screens.ncm.effects;
 
 import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer;
 import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer.Mode;
 import com.dishanhai.sh_better_ui.kernel.api.music.AmbientSoundPlayer.Soundscape;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuMotion;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
@@ -63,6 +66,9 @@ public class EffectsWorkbench extends NcmSheet {
         return thread;
     });
     private static final int HISTORY_LIMIT = 32;
+    private static final double MENU_PADDING = PlayerMenuStyle.PADDING * 1.5;
+    private static final double MENU_ROW_PITCH = 41;
+    private static final double MENU_ROW_GAP = PlayerMenuStyle.ROW_GAP * 1.5;
     private static final String NOISE_VOLUME_ID = "noise.volume";
 
     private enum Page {
@@ -1933,19 +1939,21 @@ public class EffectsWorkbench extends NcmSheet {
         retiringMenu = null;
         menuAnchor = anchor;
         menuScroll.reset();
-        menuProgress.snap(0);
-        menuProgress.retarget(1, now, reducedMotion ? 90 : motionMs(150));
+        menuProgress.snap(reducedMotion ? 1 : 0);
+        if (!reducedMotion) menuProgress.retarget(1, now, motionMs(205));
         menuOffset.snap(reducedMotion ? 0 : -10);
         menuOffset.retarget(0, now, spatialTime());
     }
 
     private void closeMenu() {
         if (menu == null) return;
-        EffectsMotion opacity = menuProgress.copy();
-        EffectsMotion.Spring offset = menuOffset.copy();
-        opacity.retarget(0, now, reducedMotion ? 90 : motionMs(120));
-        offset.retarget(reducedMotion ? 0 : -6, now, spatialTime());
-        retiringMenu = new Popup(List.copyOf(menu), menuAnchor, menuScroll.value(now), opacity, offset);
+        if (!reducedMotion) {
+            EffectsMotion opacity = menuProgress.copy();
+            EffectsMotion.Spring offset = menuOffset.copy();
+            opacity.retarget(0, now, motionMs(145));
+            offset.retarget(-6, now, spatialTime());
+            retiringMenu = new Popup(List.copyOf(menu), menuAnchor, menuScroll.value(now), opacity, offset);
+        }
         menu = null;
         pressedTarget = null;
         hits.clear();
@@ -1955,7 +1963,7 @@ public class EffectsWorkbench extends NcmSheet {
 
     private Box menuBox(List<MenuItem> items, Box anchor) {
         double width = Math.min(400, Math.max(1, layout.surface.width() - 32));
-        double height = Math.min(items.size() * 41 + 12, Math.max(40, layout.surface.height() - 48));
+        double height = Math.min(menuHeight(items.size()), Math.max(40, layout.surface.height() - 48));
         double x = Math.max(layout.surface.x() + 16, Math.min(anchor.x(), layout.surface.right() - width - 16));
         double y = Math.max(layout.surface.y() + 16, Math.min(anchor.bottom() + 4, layout.surface.bottom() - height - 16));
         return new Box(x, y, width, height);
@@ -1963,32 +1971,51 @@ public class EffectsWorkbench extends NcmSheet {
 
     private void drawMenu(Canvas canvas) {
         hits.clear();
-        menuScroll.bounds(menu.size() * 41 + 12, menuBox().height(), now);
+        menuScroll.bounds(menuHeight(menu.size()), menuBox().height(), now);
         drawPopup(canvas, menu, menuAnchor, menuScroll.value(now), menuProgress.value(now), menuOffset.value(now), true);
+    }
+
+    private static double menuHeight(int count) {
+        return MENU_PADDING * 2 + count * MENU_ROW_PITCH - MENU_ROW_GAP;
     }
 
     private void drawPopup(Canvas canvas, List<MenuItem> items, Box anchor, double scroll,
                            double opacity, double offset, boolean interactive) {
         if (opacity <= .003) return;
         Box box = menuBox(items, anchor).offset(0, offset);
-        painter.round(canvas, box.offset(0, 4), 20, alpha(0xFF000000, opacity * .18));
+        double radius = PlayerMenuStyle.RADIUS * 2;
+        boolean highContrast = UiPreferences.configured().highContrast();
+        double stroke = PlayerMenuStyle.borderWidth(highContrast) * 1.5;
+        Box content = box.inset(MENU_PADDING);
+        if (!highContrast) PlayerMenuStyle.shadow(canvas, box, 2, (float) opacity);
         int saved = canvas.saveLayerAlpha(EffectsPaint.rect(box), (int) Math.round(opacity * 255));
         boolean wasLive = paintingLive;
         paintingLive = interactive;
-        canvas.clipRRect(io.github.humbleui.types.RRect.makeXYWH((float) box.x(), (float) box.y(),
-                (float) box.width(), (float) box.height(), 20), true);
         try {
-            painter.round(canvas, box, 20, HIGH);
-            painter.outline(canvas, box.inset(.5), 19.5, 1, alpha(OUTLINE, .45));
+            painter.round(canvas, box, radius, PlayerMenuStyle.surface(1, highContrast));
+            painter.outline(canvas, box.inset(stroke * .5), radius - stroke * .5, stroke,
+                    PlayerMenuStyle.border(1, highContrast));
+            canvas.clipRect(EffectsPaint.rect(content), true);
             for (int i = 0; i < items.size(); i++) {
                 MenuItem item = items.get(i);
-                Box row = new Box(box.x() + 6, box.y() + 6 + i * 41 - scroll, box.width() - 12, 38);
-                double h = hover("menu." + i, row, interactive), p = press("menu." + i, interactive);
-                if (h + p > .01) painter.round(canvas, row.inset(Math.max(0, p)), 14,
-                        alpha(item.danger ? ERROR : PRIMARY, h * .08 + Math.max(0, p) * .08));
-                if (item.icon != null) painter.icon(canvas, item.icon, new Box(row.x() + 10, row.centerY() - 9, 18, 18), item.danger ? ERROR : PRIMARY);
-                painter.text(canvas, EffectsTypography.body(), item.label, row.x() + 38, row.centerY(), row.width() - 50, item.danger ? ERROR : TEXT);
-                addHit("menu." + i, row, box, () -> { closeMenu(); item.action.run(); }, null, false, false, null, interactive && opacity > .9);
+                Box row = new Box(content.x(), content.y() + i * MENU_ROW_PITCH - scroll,
+                        content.width(), MENU_ROW_PITCH - MENU_ROW_GAP);
+                Box hit = row.intersect(content);
+                if (hit.height() <= 0) continue;
+                float reveal = PlayerMenuMotion.rowReveal((float) opacity, i);
+                if (reveal <= .002f) continue;
+                String id = "menu." + i;
+                double h = hover(id, hit, interactive), p = Math.max(0, press(id, interactive));
+                float rowAlpha = PlayerMenuStyle.rowOpacity(false, false)
+                        + (float) (h + p) * (PlayerMenuStyle.rowOpacity(true, false) - PlayerMenuStyle.rowOpacity(false, false));
+                painter.round(canvas, row, PlayerMenuStyle.ROW_RADIUS * 1.5, PlayerMenuStyle.rowColor(rowAlpha * reveal));
+                int ink = item.danger && !highContrast ? alpha(0xffffaaaa, reveal) : PlayerMenuStyle.text(reveal, highContrast);
+                int iconInk = !item.danger && h > .5 ? PlayerMenuStyle.accent(reveal, highContrast) : ink;
+                double labelInset = item.icon == null ? 10 : 38;
+                if (item.icon != null) painter.icon(canvas, item.icon, new Box(row.x() + 10, row.centerY() - 9, 18, 18), iconInk);
+                painter.text(canvas, EffectsTypography.label(), item.label, row.x() + labelInset,
+                        row.centerY(), row.width() - labelInset - 10, ink);
+                addHit(id, row, content, () -> { closeMenu(); item.action.run(); }, null, false, false, null, interactive && opacity > .9);
             }
         } finally {
             paintingLive = wasLive;

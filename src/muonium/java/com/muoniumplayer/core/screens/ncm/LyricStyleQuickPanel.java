@@ -4,6 +4,9 @@ import java.awt.Color;
 import java.util.ArrayList;
 import java.util.List;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuMotion;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
 import com.muoniumplayer.core.settings.TouchSettings;
@@ -14,13 +17,15 @@ import com.muoniumplayer.core.management.FontManager;
 import com.muoniumplayer.core.ncm.music.CloudMusic;
 import com.muoniumplayer.core.ncm.music.LyricManualMemory;
 import com.muoniumplayer.core.ncm.music.LyricSourceMemory;
-import com.muoniumplayer.core.rendering.animation.Easing;
 import com.muoniumplayer.core.rendering.animation.Interpolations;
 import com.muoniumplayer.core.settings.HudConfig;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
 import com.muoniumplayer.core.screens.ncm.foliabg.FoliaBackgroundConfig;
 import com.muoniumplayer.core.screens.ncm.foliabg.FoliaBackgroundOptions;
 import com.muoniumplayer.core.settings.HudSetting;
 import com.muoniumplayer.core.utils.cursor.CursorUtils;
+import com.muoniumplayer.render.skija.SkijaGfx;
+import io.github.humbleui.types.Rect;
 
 /**
  * 全屏歌词页左上角的「A-Z」快捷面板：歌词样式、逐字特效、以及「律动词云」的背景配色。
@@ -371,8 +376,8 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
     }
     private static final double MARGIN = 12.0;
     private static final double BUTTON_SIZE = 24.0;
-    private static final double PANEL_WIDTH = 178.0;
-    private static final double PANEL_PADDING = 10.0;
+    private static final double PANEL_WIDTH = PlayerMenuStyle.WIDTH;
+    private static final double PANEL_PADDING = PlayerMenuStyle.PADDING;
     private static final double TITLE_HEIGHT = 18.0;
     private static final double ROW_HEIGHT = 30.0;
     /** 分列时列与列之间的空隙。 */
@@ -383,7 +388,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
     private static final double PANEL_RIGHT_GAP = 8.0;
     private static final double TRACK_HEIGHT = 4.0;
     /** 整行按钮的高度（样式切换、配色模式、颜色数量），不需要滑块那么高。 */
-    private static final double PICK_ROW_HEIGHT = 26.0;
+    private static final double PICK_ROW_HEIGHT = PlayerMenuStyle.ROW_PITCH;
     /** 分组小标题。 */
     private static final double SECTION_HEIGHT = 17.0;
     /** 色块行。 */
@@ -419,6 +424,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
      * 所以「看到的位置」和「点得到的位置」永远是同一处，过渡动画进行到一半时也不例外。</p>
      */
     private static final class Row {
+        PlayerMenuMotion.Row interaction;
         int kind;
         int index;
         /** 所在列的左边缘；不分列时恒为 {@code anchorX}。 */
@@ -495,8 +501,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
     /**
      * 布局跟随速度，交给 {@link Interpolations#interpolate} 用。
      *
-     * <p>与 {@code expandAnimation} 的 {@code .22f} 同一个量纲（乘帧时间），越大追得越快。取值下大约
-     * 八到十帧走完：切换样式时看得出是「长过去」的，又不会慢到让人以为没反应。</p>
+     * <p>切换样式时让面板尺寸和条目位置逐帧跟随新布局。</p>
      *
      * <p>刻意声明成 {@code float}：行透明度是 float，用它才能命中 {@code interpolate(float, float,
      * float)} 这个重载；位置那几个 double 传进去会自动提升，不影响精度。</p>
@@ -528,6 +533,10 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         return expanded;
     }
     private float expandAnimation;
+    private final PlayerMenuMotion menuMotion = new PlayerMenuMotion();
+    private final PlayerMenuMotion.Row buttonMotion = new PlayerMenuMotion.Row();
+    private long frameTime;
+    private boolean still, highContrast;
     private boolean pendingSave;
 
     /** 正在拖的是哪一行；{@code dragKind < 0} 表示没在拖。 */
@@ -572,6 +581,11 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         this.lastAlpha = alpha;
         this.viewWidth = viewWidth;
         this.panelSpaceBottom = posY + viewHeight - MARGIN;
+        var preferences = UiPreferences.configured();
+        highContrast = preferences.highContrast();
+        still = preferences.reducedMotion() || highContrast;
+        frameTime = System.nanoTime() / 1_000_000L;
+        expandAnimation = menuMotion.sample(expanded, frameTime, still);
 
         // 面板收起时不再跟随鼠标，拖动状态也要清掉，否则收起后仍然会改数值。
         if (!expanded && dragKind >= 0) {
@@ -592,8 +606,6 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         followLayout();
         syncEditColor();
         updateDrag(mouseX, mouseY);
-
-        expandAnimation = Interpolations.interpolate(expandAnimation, expanded ? 1f : 0f, .22f);
 
         renderPanel(toLayoutX(mouseX), toLayoutY(mouseY), alpha);
         // 按钮画在缩放之外，所以用未变换的鼠标坐标。
@@ -688,7 +700,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
                 return;
             }
             this.quickTouchDragging = false;
-            if (!gestures.isPressed()) {
+            if (!still && !gestures.isPressed()) {
                 double velocity = gestures.velocityY();
                 if (Math.abs(velocity) > QUICK_FLING_MIN_VELOCITY) {
                     double distance = Math.min(TouchSettings.FLING_MAX_DISTANCE,
@@ -713,7 +725,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         double max = Math.max(0.0, contentHeight() - panelHeight());
         if (scrollTarget > max) scrollTarget = max;
         if (scrollOffset > max) scrollOffset = max;
-        scrollOffset += (scrollTarget - scrollOffset) * .30;
+        scrollOffset += (scrollTarget - scrollOffset) * (still ? 1 : .30);
         if (Math.abs(scrollTarget - scrollOffset) < .1) scrollOffset = scrollTarget;
     }
 
@@ -734,7 +746,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
      * kind + index 唯一）只会认领到最近的那个，不会两行共用一个对象。</p>
      */
     private void followLayout() {
-        boolean first = shownWidth < 0;
+        boolean first = shownWidth < 0 || still;
         if (first) {
             // 面板第一次展开：直接落在目标尺寸上。出现的观感由 expandAnimation 负责，不必再叠一层。
             shownWidth = layoutWidth;
@@ -772,7 +784,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             row.targetAlpha = 0f;
             row.targetX = row.x;
             row.targetY = row.y + appliedScroll;
-            if (row.alpha > .015f) {
+            if (!still && row.alpha > .015f) {
                 mergedRows.add(row);
             }
         }
@@ -817,12 +829,16 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
 
     /** 屏幕坐标 -> 布局坐标。缩放是绕（anchorX, panelTop）做的，所以反变换也绕这一点。 */
     private double toLayoutX(double mouseX) {
-        return anchorX + (mouseX - anchorX) / Math.max(1.0e-3, uiScale);
+        return anchorX + (mouseX - anchorX) / panelScale();
     }
 
     private double toLayoutY(double mouseY) {
         double top = panelTop();
-        return top + (mouseY - top) / Math.max(1.0e-3, uiScale);
+        return top + (mouseY - top) / panelScale();
+    }
+
+    private double panelScale() {
+        return uiScale * (.94 + .06 * expandAnimation);
     }
 
     /**
@@ -983,11 +999,13 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             return false;
         }
 
-        if (mouseButton == 0 || mouseButton == 1) {
+        if ((mouseButton == 0 || mouseButton == 1)
+                && layoutY >= panelTop() + PANEL_PADDING + TITLE_HEIGHT
+                && layoutY < panelTop() + panelHeight() - PANEL_PADDING) {
             for (int i = 0; i < rows.size(); i++) {
                 Row row = rows.get(i);
                 // 正在淡入 / 淡出的行不接受点击：看得见一点点却点得到，比点不到更难理解。
-                if (row.alpha <= .5f) continue;
+                if (row.alpha * PlayerMenuMotion.rowReveal(expandAnimation, i) <= .5f) continue;
                 if (!isInside(layoutX, layoutY, rowLeft(row), row.y - 2, trackWidth(), row.height)) {
                     continue;
                 }
@@ -1314,7 +1332,8 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             CursorUtils.setOverride(CursorUtils.HAND);
         }
 
-        float backgroundAlpha = alpha * (expanded ? .34f : (hover ? .26f : .16f));
+        float backgroundAlpha = alpha * (.08f + .16f * expandAnimation
+                + buttonMotion.sample(hover, hover && Mouse.isButtonDown(0), frameTime, still));
         roundedRect(anchorX, anchorY, BUTTON_SIZE, BUTTON_SIZE, 7, hexColor(1f, 1f, 1f, backgroundAlpha));
 
         String label = "A-Z";
@@ -1329,8 +1348,7 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
             return;
         }
 
-        double eased = Easing.EASE_IN_OUT_QUAD.getFunction().apply((double) expandAnimation);
-        float panelAlpha = (float) (alpha * eased);
+        float panelAlpha = alpha * expandAnimation;
         double panelTop = panelTop();
         double height = panelHeight();
         // 画的是显示尺寸而不是目标尺寸：切换样式 / 分列时面板是「长过去」的，边框和内容一起动。
@@ -1339,46 +1357,50 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
         api.getGLStateManager().pushMatrix();
         // 从按钮左上角展开：只放大不平移，收起时看起来是被按钮"吸"回去的。
         // uiScale 是「装不下就整体缩小」，展开动画那一档只在动画期间偏离 1。
-        scaleAtPos(anchorX, panelTop, uiScale * (.90 + .10 * eased));
+        scaleAtPos(anchorX, panelTop, panelScale());
         try {
-            roundedRect(anchorX, panelTop, width, height, 10, hexColor(.06f, .07f, .09f, panelAlpha * .88f));
-            roundedOutline(anchorX, panelTop, width, height, 10, .8,
-                    new java.awt.Color(1f, 1f, 1f, Math.max(0f, Math.min(1f, panelAlpha * .16f))));
+            PlayerMenuStyle.panel(new Box(anchorX, panelTop, width, height), 1, panelAlpha, highContrast);
 
             FontManager.pf14bold.drawString("歌词显示", anchorX + PANEL_PADDING,
                     panelTop + PANEL_PADDING, hexColor(1f, 1f, 1f, panelAlpha));
 
             renderColumnDividers(panelTop, width, height, panelAlpha);
 
-            double top = panelTop();
-            double bottom = top + height;
-            double contentBottom = bottom - PANEL_PADDING;
-            double panelRight = anchorX + width;
+            renderPanelRows(mouseX, mouseY, alpha, panelTop, width, height);
+        } finally {
+            api.getGLStateManager().popMatrix();
+        }
+    }
+
+    private void renderPanelRows(double mouseX, double mouseY, float alpha,
+                                 double panelTop, double width, double height) {
+        var canvas = SkijaGfx.canvas();
+        double contentTop = panelTop + PANEL_PADDING + TITLE_HEIGHT;
+        double contentBottom = panelTop + height - PANEL_PADDING;
+        double panelRight = anchorX + width;
+        if (canvas == null || contentBottom <= contentTop) return;
+        int saved = canvas.save();
+        try {
+            canvas.clipRect(Rect.makeLTRB((float) (anchorX + 1), (float) contentTop,
+                    (float) (panelRight - 1), (float) contentBottom), true);
             for (int i = 0; i < rows.size(); i++) {
                 Row row = rows.get(i);
-                if (row.y + row.height < top || row.y > bottom) continue;
+                if (row.y + row.height <= contentTop || row.y >= contentBottom) continue;
 
-                float rowAlpha = panelAlpha * row.alpha;
-                // 面板还在变高时露头的行按「离内容区下沿多远」渐显，免得被硬切一刀；
-                // 分列时右侧那一列也是同样处理，面板还没长宽过去就先淡着。
-                double overflow = row.y + row.height - contentBottom;
-                if (overflow > 0) {
-                    rowAlpha *= (float) Math.max(0.0, 1.0 - overflow / 18.0);
-                }
-                double rightOverflow = row.x + PANEL_PADDING + trackWidth() - panelRight;
+                float rowAlpha = alpha * row.alpha * PlayerMenuMotion.rowReveal(expandAnimation, i);
+                double rightOverflow = rowLeft(row) + trackWidth() - panelRight;
                 if (rightOverflow > 0) {
                     rowAlpha *= (float) Math.max(0.0, 1.0 - rightOverflow / 12.0);
                 }
                 if (rowAlpha <= .004f) continue;
 
-                // 淡出中的行把鼠标坐标推到无穷远：不画 hover 高亮、也不出手型光标，
-                // 免得「看着已经没了却还有反应」。
-                boolean live = row.alpha > .5f;
+                boolean live = expanded && rowAlpha >= alpha * .5f
+                        && mouseY >= contentTop && mouseY < contentBottom;
                 renderRow(row, live ? mouseX : Double.NEGATIVE_INFINITY,
                         live ? mouseY : Double.NEGATIVE_INFINITY, rowAlpha);
             }
         } finally {
-            api.getGLStateManager().popMatrix();
+            canvas.restoreToCount(saved);
         }
     }
 
@@ -1624,23 +1646,26 @@ final class LyricStyleQuickPanel implements SharedRenderingConstants, SharedCons
                                double mouseX, double mouseY, float panelAlpha) {
         double left = rowLeft(row);
         double width = trackWidth();
-        double barHeight = row.height - 4;
+        double barHeight = row.height - PlayerMenuStyle.ROW_GAP;
         boolean hover = isInside(mouseX, mouseY, left, row.y, width, barHeight);
         if (hover) {
             CursorUtils.setOverride(CursorUtils.HAND);
         }
 
-        roundedRect(left, row.y, width, barHeight, 6,
-                hexColor(1f, 1f, 1f, panelAlpha * (hover ? .16f : .08f)));
+        if (row.interaction == null) row.interaction = new PlayerMenuMotion.Row();
+        float fill = row.interaction.sample(hover, hover && Mouse.isButtonDown(0), frameTime, still);
+        PlayerMenuStyle.row(new Box(left, row.y, width, barHeight), panelAlpha * fill);
 
-        double textY = row.y + (barHeight - FontManager.pf12bold.getFontHeight()) * .5;
-        FontManager.pf12bold.drawString(label, left + 6, textY,
-                hexColor(1f, 1f, 1f, panelAlpha * .82f));
-
-        int accent = NCMScreen.getColor(NCMScreen.ColorType.ACCENT);
-        FontManager.pf12bold.drawString(value,
-                left + width - 6 - FontManager.pf12bold.getStringWidthD(value), textY,
-                reAlpha(accent, panelAlpha));
+        var font = FontManager.pf12bold;
+        double inset = PlayerMenuStyle.ROW_INSET;
+        double innerWidth = width - inset * 2;
+        value = font.trim(value, innerWidth * .55);
+        double valueWidth = font.getStringWidthD(value);
+        label = font.trim(label, innerWidth - valueWidth - inset);
+        double textY = row.y + (barHeight - font.getFontHeight()) * .5;
+        font.drawString(label, left + inset, textY, PlayerMenuStyle.text(panelAlpha, highContrast));
+        font.drawString(value, left + width - inset - valueWidth, textY,
+                PlayerMenuStyle.accent(panelAlpha, highContrast));
     }
 
     /**

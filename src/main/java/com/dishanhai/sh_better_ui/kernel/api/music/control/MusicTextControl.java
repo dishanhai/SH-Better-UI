@@ -1,6 +1,9 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.api.music.control;
 
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuMotion;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
+
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
 import net.minecraft.client.Minecraft;
@@ -15,12 +18,13 @@ import java.util.Objects;
 
 /** Quiet reusable music text action, navigation item or list row. No vanilla button/slider skin. */
 public final class MusicTextControl extends AbstractWidget {
-    public enum Variant { ACTION, NAVIGATION, ROW, STACKED_NAVIGATION, LINK, UNDERLINED_TAB, ARTWORK_CARD }
+    public enum Variant { ACTION, NAVIGATION, ROW, STACKED_NAVIGATION, LINK, UNDERLINED_TAB, ARTWORK_CARD, MENU }
     private int textInset;
 
     /** Reserves space for artwork drawn by the owner, within the same hit area. */
     public void setTextInset(int inset) { textInset = Math.max(0, inset); }
     private Variant variant=Variant.ACTION;
+    private PlayerMenuMotion.Row menuMotion;
     private UiPreferences preferences;
     private final Runnable action,feedback;
     private Component secondary=Component.empty();
@@ -37,7 +41,10 @@ public final class MusicTextControl extends AbstractWidget {
         if(b.width()<12||b.height()<16)throw new IllegalArgumentException("Text control requires a 12 x 16 hit area");
         this.preferences=Objects.requireNonNull(preferences);this.action=Objects.requireNonNull(action);this.feedback=feedback;
     }
-    public void setVariant(Variant value){variant=Objects.requireNonNull(value);}
+    public void setVariant(Variant value) {
+        variant = Objects.requireNonNull(value);
+        if (variant == Variant.MENU && menuMotion == null) menuMotion = new PlayerMenuMotion.Row();
+    }
     public void setSelected(boolean value){selected=value;}
     public void setSecondary(Component value){secondary=Objects.requireNonNull(value);secondaryPresent=!value.equals(Component.empty());}
     public void setPreview(Component value){setTooltip(Tooltip.create(MusicTypography.text(Objects.requireNonNull(value))));}
@@ -115,12 +122,13 @@ public final class MusicTextControl extends AbstractWidget {
     @Override protected void renderWidget(GuiGraphics g,int mx,int my,float partial){
         if(!active)cancelInteraction();
         var theme=UiTheme.current();var font=Minecraft.getInstance().font;
-        int ink=mainInk==null?theme.text():mainInk;
+        boolean menu = variant == Variant.MENU;
+        boolean contrast = preferences.highContrast();
+        int ink = menu ? PlayerMenuStyle.text(1, contrast) : mainInk == null ? theme.text() : mainInk;
         int outlineInk=ink;
         int muted=secondaryInk==null?MpPageChrome.muted(theme,preferences):secondaryInk;
         if(variant==Variant.LINK&&!active)ink=muted;
         else if(!active){ink=alpha(ink,.4f);muted=alpha(muted,.4f);}
-        boolean contrast=preferences.highContrast();
         if (variant == Variant.UNDERLINED_TAB) {
             var title = MusicTextLayout.ellipsize(font, getMessage(), Math.max(0, width - 6), MusicTypography.font());
             int titleWidth = font.width(title);
@@ -139,7 +147,17 @@ public final class MusicTextControl extends AbstractWidget {
             return;
         }
         float surface=selected?.15f:pointerPressed||pressedKey!=-1?.12f:isHovered()?.07f:0;
-        if(surface>0||isFocused()||contrast&&selected)
+        if (menu) {
+            int accent = PlayerMenuStyle.themedAccent(theme.accent(), contrast);
+            boolean hover = active && isHovered();
+            float fill = menuMotion.sample(hover, isArmed(), System.nanoTime() / 1_000_000L,
+                    contrast || preferences.reducedMotion());
+            RoundedCorners.draw(g, getX(), getY(), width, height, PlayerMenuStyle.ROW_RADIUS,
+                    isFocused() ? (contrast ? 1.5f : 1f) : 0f, accent,
+                    PlayerMenuStyle.rowColor(fill));
+            if (active && selected) ink = accent;
+            if (hover || isFocused() || active && selected) outlineInk = accent;
+        } else if(surface>0||isFocused()||contrast&&selected)
             RoundedCorners.draw(g,getX(),getY(),width,height,variant==Variant.ACTION?5:7,
                     isFocused()||contrast&&selected?1:0,ink,alpha(ink,surface));
         if (variant == Variant.ARTWORK_CARD) {
@@ -169,7 +187,7 @@ public final class MusicTextControl extends AbstractWidget {
                     getY()+height-MusicTypography.LINE_HEIGHT-1,ink,false);
             return;
         }
-        int padding=variant==Variant.LINK?4:variant==Variant.ACTION?6:10;
+        int padding = menu ? PlayerMenuStyle.ROW_INSET : variant == Variant.LINK ? 4 : variant == Variant.ACTION ? 6 : 10;
         int left=getX()+padding+textInset,right=getX()+width-padding;
         if(outline!=null&&right-left>=48){
             MusicControlRenderer.icon(g,new Bounds(left,getY()+(height-22)/2,22,22),outline,isArmed(),active,outlineInk,preferences);left+=26;

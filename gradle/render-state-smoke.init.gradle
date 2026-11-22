@@ -32,6 +32,9 @@ gradle.beforeProject { p ->
             doFirst {
                 game.mkdirs()
                 new File(game, 'options.txt').text = 'onboardAccessibility:false\nlang:zh_cn\nguiScale:2\nmaxFps:60\n'
+                def musicNotice = new File(game, 'config/muonium/ffmpeg_notice.json')
+                musicNotice.parentFile.mkdirs()
+                musicNotice.text = '{"neverShow":true}'
                 ['success.txt', 'failure.txt'].each { java.nio.file.Files.deleteIfExists(new File(output, it).toPath()) }
             }
             doLast {

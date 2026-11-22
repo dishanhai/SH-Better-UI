@@ -749,7 +749,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         seekBounds = null;
         invalidateLyricPointers();
         singFader.dispose();
-        trackMenu.dismiss();
+        trackMenu.hide();
         closing = true;
         CoverHeroTransition.beginClose();
     }
@@ -809,12 +809,13 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         PlaybackPresentation presentation = CloudMusic.playbackPresentation();
         var host = NCMScreen.getInstance();
         boolean windowActive = net.minecraft.client.Minecraft.getInstance().isWindowActive();
-        if (isTrackMenuOpen() && (presentation.preparing || presentation.displayTrack != menuTrack
-                || host.isModalOverlayActive() || closing || !windowActive)) trackMenu.dismiss();
+        if (trackMenu.isVisible() && (presentation.preparing || presentation.displayTrack != menuTrack
+                || host.isModalOverlayActive() || closing || !windowActive)) trackMenu.hide();
         if (!windowActive) pressedTitleAction = null;
         double menuMouseX = mouseX;
         double menuMouseY = mouseY;
         if (isTrackMenuOpen()) {
+            trackMenu.wheel(menuMouseX, menuMouseY, dWheel);
             mouseX = mouseY = Double.NaN;
             dWheel = 0;
         }
@@ -896,9 +897,9 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
                 lmbDownNow);
         if (fullscreenQueue.wantsHandCursor()) CursorUtils.setOverride(CursorUtils.HAND);
         this.styleQuickPanel.render(mouseX, mouseY, posX, posY, width, height, alpha);
-        if (isTrackMenuOpen()) {
+        if (trackMenu.isVisible()) {
             Box anchor = nowPlaying.menuAnchor();
-            if (anchor == null) trackMenu.dismiss();
+            if (anchor == null) trackMenu.hide();
             else trackMenu.render(new Box(posX, posY, width, height), anchor, menuMouseX, menuMouseY, lmbDownNow, alpha);
         }
         api.getGLStateManager().popMatrix();
@@ -2588,7 +2589,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         pressedTitleAction = null;
         pressedTitleTrack = null;
         if (isTrackMenuOpen()) {
-            if (!isCurrentTrack(menuTrack)) trackMenu.dismiss();
+            if (!isCurrentTrack(menuTrack)) trackMenu.hide();
             trackMenu.release(x, y);
         } else if (!closing && action != null && track == metadataTrack && action == nowPlaying.hitAt(x, y)) {
             nowPlaying.clearFocus();
@@ -2598,7 +2599,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
 
     boolean trackMenuKeyPressed(int keyCode) {
         if (!isTrackMenuOpen()) return false;
-        if (!isCurrentTrack(menuTrack)) trackMenu.dismiss();
+        if (!isCurrentTrack(menuTrack)) trackMenu.hide();
         else trackMenu.key(keyCode, Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
         return true;
     }

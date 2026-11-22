@@ -11,14 +11,14 @@ class AnchoredActionMenuTest {
     void opensAboveTheAnchorAndStaysWithinTheLeftEdge() {
         var frame = new Box(20, 10, 460, 280);
         var anchor = new Box(78, 193, 20, 20);
-        assertEquals(new Box(20, 51, 196, 137), AnchoredActionMenu.position(frame, anchor, 5));
+        assertEquals(new Box(20, 42, 178, 146), AnchoredActionMenu.position(frame, anchor, 5));
     }
 
     @Test
     void opensBelowWhenTheTopEdgeBlocksTheMenu() {
         var frame = new Box(20, 10, 460, 280);
         var anchor = new Box(270, 40, 20, 20);
-        assertEquals(new Box(94, 65, 196, 87), AnchoredActionMenu.position(frame, anchor, 3));
+        assertEquals(new Box(112, 65, 178, 94), AnchoredActionMenu.position(frame, anchor, 3));
     }
 
     @Test

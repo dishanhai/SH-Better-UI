@@ -21,7 +21,7 @@ SH-Better-UI is a Minecraft client UI library for Forge 1.20.1 and NeoForge 1.21
 
 The NeoForge port for Minecraft 26.x uses separate builds and is currently an [alpha development version](#neoforge-26x-alpha).
 
-Use `build-local.ps1` to build Forge alone, or `簡易構建.bat` to build Forge and NeoForge in sequence. Both scripts start Gradle with JDK 21. Forge production classes use a JDK 17 toolchain and the existing tests use JDK 21. Forge uses Gradle 8.8 and the build includes JUnit and reobfJar. The batch script clears each platform's `build/libs` and lists the new artifacts.
+Run `簡易構建.bat` for everyday packaging. It uses JDK 21 to run `verifyLibraryJar` for Forge 1.20.1 and NeoForge 1.21.1 in sequence. It builds and verifies the mod JARs incrementally and skips the two mods' test suites and source JARs. The Forge mod goes to `build/libs/sh_better_ui-forge-1.20.1-<version>.jar`. The NeoForge mod goes to `neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-<version>.jar`. Run the platform's `build` task for a full build with JUnit tests.
 
 On the first build, omit `--offline` so Gradle can download the JEI compile-time API; restore it after the cache is populated. Keep `簡易構建.bat` as UTF-8 without BOM with Windows CRLF line endings. It leaves the result window open when double-clicked; automation can pass `--no-pause` and receive the build exit code.
 
@@ -29,7 +29,7 @@ On the first build, omit `--offline` so Gradle can download the JEI compile-time
 .\gradle-install\gradle-8.8\bin\gradle.bat build --offline --no-daemon --console=plain
 ```
 
-The runtime JAR is `build/libs/sh_better_ui-<version>.jar`, with the raw remapped output at `build/reobfJar/output.jar`. The development JAR is `build/libs/sh_better_ui-<version>-dev.jar` and is only for compilation and development. The `raw` JAR is an intermediate and must not be installed in the game. Use the `mod_version` in the corresponding `gradle.properties`.
+Use `build-local.ps1` for a full Forge-only build. Read `<version>` from the corresponding `gradle.properties`. The full build also produces `build/libs/sh_better_ui-<version>-dev.jar` for compilation and development. The `raw` JAR is an intermediate build artifact.
 
 ## Integrating with a mod
 

@@ -4,8 +4,7 @@ import com.dishanhai.sh_better_ui.client.api.UiFrame;
 import com.dishanhai.sh_better_ui.client.api.preview.PreviewContext;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.scaled.*;
-import com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface;
-import com.dishanhai.sh_better_ui.kernel.api.glass.*;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.AbstractWidget;
@@ -55,11 +54,10 @@ final class NowPlayingMenuHost {
         }
         expansion.advance(now());var box=expansion.frame();var target=expansion.target();
         var g=frame.graphics();g.nextStratum();
-        var theme=UiTheme.current();var preferences=host.preferences();
-        if(preferences.highContrast())RoundedCorners.draw(g,box.x(),box.y(),box.width(),box.height(),10,2,theme.text(),theme.surface()|0xff000000);
-        else LiquidGlassSurface.draw(g,box.x(),box.y(),box.width(),box.height(),10,
-                preferences.useBackdropBlur()?(theme.surface()&0xffffff)|0xe6000000:theme.surface()|0xff000000,
-                theme.border(),GlassMaterial.preset(GlassVariant.REGULAR).optics(),preferences);
+        boolean highContrast = host.preferences().highContrast();
+        RoundedCorners.draw(g, box.x(), box.y(), box.width(), box.height(), PlayerMenuStyle.RADIUS,
+                PlayerMenuStyle.borderWidth(highContrast), PlayerMenuStyle.border(1, highContrast),
+                PlayerMenuStyle.surface(1, highContrast));
         g.nextStratum();g.enableScissor(box.x(),box.y(),box.right(),box.bottom());
         g.pose().pushMatrix();
         try{

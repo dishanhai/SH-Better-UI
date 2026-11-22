@@ -1026,12 +1026,13 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         // 起落两点都在面板矩形内，出界的只有那圈飞行阴影。
         CoverHeroTransition.render();
 
-        if (this.catalogArtistMenu.isOpen()) {
+        if (this.catalogArtistMenu.isVisible()) {
             if (!catalogArtistMenuAvailable()) dismissCatalogArtistMenu();
             else {
                 this.catalogArtistMenu.wheel(mouseX, mouseY, dWheel);
                 this.catalogArtistMenu.render(new Box(basePanel.getX(), basePanel.getY(), basePanel.getWidth(), basePanel.getHeight()),
                         this.catalogArtistAnchor, mouseX, mouseY, Mouse.isButtonDown(0), alpha);
+                if (!this.catalogArtistMenu.isVisible()) dismissCatalogArtistMenu();
             }
         }
 
@@ -1517,7 +1518,7 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
     }
 
     private void dismissCatalogArtistMenu() {
-        this.catalogArtistMenu.dismiss();
+        this.catalogArtistMenu.hide();
         this.catalogArtistAnchor = null;
         this.catalogArtistAvailable = () -> false;
     }
@@ -2058,7 +2059,6 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
         if (this.catalogArtistMenu.isOpen()) {
             if (!catalogArtistMenuAvailable()) dismissCatalogArtistMenu();
             else this.catalogArtistMenu.key(keyCode, Keyboard.isKeyDown(Keyboard.KEY_LSHIFT) || Keyboard.isKeyDown(Keyboard.KEY_RSHIFT));
-            if (!this.catalogArtistMenu.isOpen()) dismissCatalogArtistMenu();
             return;
         }
         if (this.musicLyricsPanel != null && !isModalOverlayActive()
@@ -2615,7 +2615,6 @@ public class NCMScreen extends EmbeddedMusicScreen implements SharedConstants, S
                 WindowAdaptiveScale.end();
                 this.catalogArtistMenu.release(mouseX, mouseY);
             } else this.catalogArtistMenu.cancelPress();
-            if (!this.catalogArtistMenu.isOpen()) dismissCatalogArtistMenu();
             return;
         }
         if (state == 0 && this.trackActionPointerOwner != null) {

@@ -1,6 +1,9 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
 import com.dishanhai.sh_better_ui.kernel.api.controls.ControlPaint;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuMotion;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayerMenuStyle;
 import com.muoniumplayer.compat.lwjgl2.Mouse;
 import com.muoniumplayer.core.input.TouchGestures;
 import com.muoniumplayer.core.management.FontManager;
@@ -41,6 +44,7 @@ import com.muoniumplayer.core.screens.ncm.SheetClock;
 import com.muoniumplayer.core.screens.ncm.TrackSelectionMotion;
 import com.muoniumplayer.core.screens.ncm.TransitionCurveCache;
 import com.muoniumplayer.core.screens.ncm.VolumeControl;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
 import com.muoniumplayer.core.settings.PlayerAppearance;
 import com.muoniumplayer.core.viper.ViperRuntime;
 import com.muoniumplayer.core.widget.impl.MusicLyricsWidget;
@@ -65,9 +69,10 @@ public class ControlsBar extends NCMPanel {
      * 展开/收起的动画进度，0 为完全收起、1 为完全展开。由音质按钮的每帧回调推进：按钮常驻可见，
      * 而弹出层收起后会被隐藏、回调不再执行，进度放在弹出层里就没有帧可以播完收起动画。
      */
-    private double qualityMenuAnimation;
-    /** 上一帧的时刻。音质菜单和待播抽屉一样按实时毫秒推进，不再用帧耦合的指数逼近。 */
-    private long qualityMenuLastFrameNanos;
+    private float qualityMenuAnimation;
+    private final PlayerMenuMotion qualityMenuMotion = new PlayerMenuMotion();
+    private long qualityFrameTime;
+    private boolean qualityStill, qualityHighContrast;
     private RoundedRectWidget qualityMenuBackground;
     private RoundedRectWidget[] qualityOptions;
 
@@ -78,19 +83,14 @@ public class ControlsBar extends NCMPanel {
      * 横向又正好落在按钮自己那一片，视觉上是一块小方板而不是一条横幅。</p>
      */
     private static final int QUALITY_COLUMNS = 2;
-    private static final double QUALITY_OPTION_HEIGHT = 20.0;
-    private static final double QUALITY_MENU_PADDING = 3.0;
-    private static final double QUALITY_COLUMN_GAP = 3.0;
-    private static final double QUALITY_ROW_INSET = 6.0;
+    private static final double QUALITY_OPTION_HEIGHT = PlayerMenuStyle.ROW_PITCH;
+    private static final double QUALITY_MENU_PADDING = PlayerMenuStyle.PADDING;
+    private static final double QUALITY_COLUMN_GAP = PlayerMenuStyle.ROW_GAP;
+    private static final double QUALITY_ROW_INSET = PlayerMenuStyle.ROW_INSET;
     private static final double QUALITY_ICON_SIZE = 12.0;
     private static final double QUALITY_ICON_GAP = 5.0;
     private static final double QUALITY_CHECK_SIZE = 10.0;
     private static final double QUALITY_CHECK_GAP = 4.0;
-    /** 基准毫秒，运行时还要除以「界面切换动画速度」倍率（默认 3.0，也就是实际 200/120ms）。 */
-    private static final double QUALITY_OPEN_MS = 600.0;
-    private static final double QUALITY_CLOSE_MS = 360.0;
-    /** 一帧最多折算这么多毫秒：只挡切后台回来这类断档，正常卡顿照常按实时走。 */
-    private static final double QUALITY_MAX_FRAME_MS = 40.0;
 
     /**
      * 这一档用哪枚等级图标。
@@ -852,17 +852,12 @@ public class ControlsBar extends NCMPanel {
                     // 专用页脚槽：紧挨音量控件左侧，带一个
                     //与播放器布局匹配的固定视觉间隙。不要让瞬时
                     //布局值隐藏这个主要动作。
-                    // 常驻回调：在这里推进展开动画，收起过程才有帧可用。
-                    // 实时毫秒而不是帧耦合的指数逼近：后者在默认 3x 倍率下两三帧就吃掉九成，
-                    // 读起来是「先窜一下再慢慢糊住」，而不是「落到位」。中途反悔从当前位置折回。
-                    long clockNow = System.nanoTime();
-                    double frameMs = qualityMenuLastFrameNanos == 0L ? 0.0
-                            : Math.min(QUALITY_MAX_FRAME_MS, (clockNow - qualityMenuLastFrameNanos) / 1_000_000.0);
-                    qualityMenuLastFrameNanos = clockNow;
-                    double animationDuration = Math.max(1.0,
-                            (qualityMenuOpen ? QUALITY_OPEN_MS : QUALITY_CLOSE_MS) / SheetClock.speed());
-                    qualityMenuAnimation = Math.max(0.0, Math.min(1.0, qualityMenuAnimation
-                            + (qualityMenuOpen ? frameMs : -frameMs) / animationDuration));
+                    var preferences = UiPreferences.configured();
+                    qualityHighContrast = preferences.highContrast();
+                    qualityStill = qualityHighContrast || preferences.reducedMotion();
+                    qualityFrameTime = System.nanoTime() / 1_000_000L;
+                    qualityMenuAnimation = qualityMenuMotion.sample(qualityMenuOpen, qualityFrameTime,
+                            qualityStill, SheetClock.speed() / 3.0);
 
                     // 隐藏状态只在这里统一维护：被隐藏的组件不再执行自己的回调，没法自己复活。
                     boolean menuVisible = isQualityMenuVisible();
@@ -913,9 +908,7 @@ public class ControlsBar extends NCMPanel {
                             .setColor(qualitySelector.isHovering()
                                     ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
                                     : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND))
-                            // 这颗按钮和它弹出的那圈选项是同一块玻璃：贴在面板上，背后就是这一帧
-                            // 采进来的画面，所以走 PLATE（贴真背景 + 薄折射 + 边光），底色按浓度压薄。
-                            // 不压的话它还是一页脚那颗实心深色胶囊，跟刚上玻璃的播放键不是一套。
+                            // 紧凑触发按钮沿用播放条的玻璃控件。
                             .setGlassPlate(GlassLook.Surface.PLAYER)
                             .setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f))
                             .setAlpha(ControlsBar.this.getAlpha() * .94f)
@@ -1127,21 +1120,25 @@ public class ControlsBar extends NCMPanel {
 
         // 菜单声明在选择器之后，因此它在底栏之上渲染并命中测试。
         //它向上增长，因此从不覆盖紧凑控件。
-        qualityMenuBackground = new RoundedRectWidget();
+        qualityMenuBackground = new RoundedRectWidget() {
+            @Override
+            public void onRender(double mouseX, double mouseY) {
+                PlayerMenuStyle.panel(new Box(getX(), getY(), getWidth(), getHeight()),
+                        Math.max(.82, Math.min(1.0, NCMPlayerConfig.getPlayerScale())),
+                        getAlpha(), qualityHighContrast);
+            }
+        };
         this.addChild(qualityMenuBackground);
         qualityMenuBackground
                 .setClickable(false)
                 .setHidden(true)
-                // 那圈「音质」选项是从按钮里长出来的一块小玻璃：它背后就是这一帧采进来的画面，
-                // 所以贴真背景 + 薄折射 + 边光，而不是一块浮在界面之上的实心深色板。
-                .setGlassPlate(GlassLook.Surface.PLAYER)
                 .setBeforeRenderCallback(() -> {
                     double scale = Math.max(.82, Math.min(1.0, NCMPlayerConfig.getPlayerScale()));
                     double menuWidth = qualityMenuWidth(scale, qualityColumnWidths);
                     double menuHeight = qualityRows * QUALITY_OPTION_HEIGHT * scale
                             + QUALITY_MENU_PADDING * 2.0 * scale;
                     // 底边固定贴在按钮上方，只有上边沿随进度向上展开，看起来是从按钮里长出来的。
-                    double progress = smoothProgress(qualityMenuAnimation);
+                    double progress = qualityMenuAnimation;
                     double bottom = qualitySelector.getRelativeY() - 4.0;
                     double visibleHeight = Math.max(.01, menuHeight * progress);
                     // 两列比那颗按钮宽得多，所以对齐的是<b>右</b>边缘：按钮贴在页脚右侧，
@@ -1150,11 +1147,7 @@ public class ControlsBar extends NCMPanel {
                             .setBounds(menuWidth, visibleHeight)
                             .setPosition(Math.max(4.0, qualitySelector.getRelativeX()
                                     + qualitySelector.getWidth() - menuWidth), bottom - visibleHeight)
-                            .setRadius(6.0 * scale)
-                            .setColor(NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND))
-                            // 底色压薄，让刚贴上去的糊背景透出来（不压就仍然是一块实心深色菜单）。
-                            .setFillAlpha(GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f))
-                            .setAlpha((float) (ControlsBar.this.getAlpha() * .98f * progress));
+                            .setAlpha((float) progress);
                 });
 
         for (int index = 0; index < selectableQualities.length; index++) {
@@ -1165,6 +1158,7 @@ public class ControlsBar extends NCMPanel {
             final int optionRow = index / QUALITY_COLUMNS;
             qualityOptions[index] = new RoundedRectWidget();
             RoundedRectWidget qualityOption = qualityOptions[index];
+            var interaction = new PlayerMenuMotion.Row();
             this.addChild(qualityOption);
 
             // 档位图标。墨迹按 24 格网原样落到 12 逻辑像素的盒子里（drawScale 1.0），
@@ -1178,9 +1172,8 @@ public class ControlsBar extends NCMPanel {
                 double iconSize = QUALITY_ICON_SIZE * iconScale;
                 qualityOptionIcon
                         .setBounds(iconSize, iconSize)
-                        .setColor(isQualityUnavailable(option)
-                                ? NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT)
-                                : NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
+                        .setColor(0xffffff)
+                        .setAlpha(qualityHighContrast ? 1f : .82f)
                         .setPosition(QUALITY_ROW_INSET * iconScale,
                                 Math.max(0.0, (qualityOption.getHeight() - iconSize) * .5));
             });
@@ -1196,12 +1189,13 @@ public class ControlsBar extends NCMPanel {
                 double checkSize = QUALITY_CHECK_SIZE * checkScale;
                 qualityOptionCheck
                         .setBounds(checkSize, checkSize)
-                        .setColor(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
+                        .setColor(PlayerMenuStyle.accent(1, qualityHighContrast))
                         .setPosition(qualityOption.getWidth() - checkSize - QUALITY_ROW_INSET * checkScale,
                                 Math.max(0.0, (qualityOption.getHeight() - checkSize) * .5));
             });
 
             qualityOption
+                    .enablePressMotion()
                     .setShouldOverrideMouseCursor(true)
                     .setHidden(true)
                     .setBeforeRenderCallback(() -> {
@@ -1215,34 +1209,23 @@ public class ControlsBar extends NCMPanel {
                         double slotY = bottom - QUALITY_MENU_PADDING * scale
                                 - (qualityRows - optionRow) * optionHeight;
                         // 背景的上边沿扫过这一项时它才显形：任何时候都不会有选项浮在面板之外。
-                        double reveal = smoothProgress((slotY + optionHeight - qualityMenuBackground.getRelativeY())
-                                / Math.max(1.0, optionHeight));
+                        double reveal = smoothProgress((slotY - qualityMenuBackground.getRelativeY())
+                                / Math.max(1.0, QUALITY_MENU_PADDING * scale));
                         double slotX = qualityMenuBackground.getRelativeX() + QUALITY_MENU_PADDING * scale;
                         for (int previous = 0; previous < optionColumn; previous++) {
                             slotX += qualityColumnWidths[previous] * scale + QUALITY_COLUMN_GAP * scale;
                         }
                         qualityOption
-                                .setBounds(qualityColumnWidths[optionColumn] * scale, optionHeight - 2.0 * scale)
+                                .setBounds(qualityColumnWidths[optionColumn] * scale,
+                                        optionHeight - PlayerMenuStyle.ROW_GAP * scale)
                                 .setPosition(slotX, slotY + (1.0 - reveal) * 3.0)
-                                .setRadius(4.0 * scale)
-                                // 选项排在菜单那块玻璃<em>里面</em>，不能再各自去贴一遍真背景：
-                                // 那样每格透的是比周围更清楚的画面，读起来是一排挖在玻璃上的洞。
-                                // 所以走 RIM —— 只上那一圈边缘光，靠底色深浅分档。
-                                // 选中与探到的那一格不压薄：选中靠的就是这块实心强调色，
-                                // 压成玻璃会让「现在用的是哪一档」看不出来。
-                                .setGlassRim(GlassLook.Surface.PLAYER)
-                                .setFillAlpha(qualityOption.isHovering() || (selected && !unavailable)
-                                        ? 1.0f
-                                        : GlassLook.washAlpha(GlassLook.Surface.PLAYER, 1.0f))
-                                .setColor(qualityOption.isHovering()
-                                        ? NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_HOVER)
-                                        : (selected && !unavailable
-                                        ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT)
-                                        : NCMScreen.getColor(NCMScreen.ColorType.ELEMENT_BACKGROUND)))
-                                .setAlpha((float) (ControlsBar.this.getAlpha()
-                                        * (unavailable ? .38f : selected ? .72f : .98f) * reveal));
+                                .setRadius(PlayerMenuStyle.ROW_RADIUS * scale)
+                                .setFillAlpha(interaction.sample(qualityMenuOpen && qualityOption.isHovering(),
+                                        false, qualityFrameTime, qualityStill))
+                                .setColor(0xffffff)
+                                .setAlpha((float) ((unavailable ? .48 : 1) * reveal));
                         // 收起动画期间不再接受点击，避免"已经看不清"的选项还能被误中。
-                        qualityOption.setClickable(qualityMenuOpen && reveal > .35);
+                        qualityOption.setClickable(qualityMenuOpen && reveal > .72);
                         qualityOptionCheck.setHidden(!selected);
                     })
                     .setOnClickCallback((relativeX, relativeY, mouseButton) -> {
@@ -1269,9 +1252,8 @@ public class ControlsBar extends NCMPanel {
                 double textScale = Math.max(.82, Math.min(1.0, NCMPlayerConfig.getPlayerScale()));
                 double textX = (QUALITY_ROW_INSET + QUALITY_ICON_SIZE + QUALITY_ICON_GAP) * textScale;
                 optionText
-                        .setColor(isQualityUnavailable(option)
-                                ? NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT)
-                                : NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT))
+                        .setColor(0xffffff)
+                        .setAlpha(qualityHighContrast ? 1f : .82f)
                         .setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH)
                         .setMaxWidth(Math.max(0.0, qualityOption.getWidth() - textX
                                 - (QUALITY_CHECK_GAP + QUALITY_CHECK_SIZE + QUALITY_ROW_INSET) * textScale))

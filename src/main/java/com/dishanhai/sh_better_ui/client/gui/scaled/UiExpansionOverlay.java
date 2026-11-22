@@ -23,21 +23,8 @@ final class UiExpansionOverlay {
             graphics.enableScissor((int) Math.floor(x), (int) Math.floor(y),
                     (int) Math.ceil(x + width), (int) Math.ceil(y + height));
             try {
-                if (centeredMenu && UiTheme.current().liquidGlass()) {
-                    LiquidGlassTheme.centeredMenu(graphics, outline, frame.radius(), frame.preferences(),
-                            expansion, frame.focused());
-                } else {
-                    int surface = frame.preferences().highContrast() ? DarkModeTheme.backgroundColor()
-                            : DarkModeTheme.surfaceColor();
-                    if (!centeredMenu && expansion < 0.58f && !frame.preferences().highContrast()) {
-                        surface = GuiMotion.lerpColor(source.expansionFill(frame.nowMs()), surface, expansion / 0.58f);
-                    }
-                    int focus = frame.preferences().highContrast() ? DarkModeTheme.textColor() : LiquidGlassTheme.accentColor();
-                    int edge = DarkModeTheme.hoverBorderColor();
-                    float highlight = frame.state() == UiExpansionController.State.ACTIVATING ? frame.phaseProgress() : 1f;
-                    RoundedCorners.draw(graphics, x, y, width, height, frame.radius(),
-                            frame.focused() && frame.preferences().highContrast() ? 2f : 1f,
-                            frame.focused() ? GuiMotion.lerpColor(edge, focus, highlight) : edge, surface);
+                if (!content.renderSurface(graphics, outline, frame)) {
+                    drawDefaultSurface(graphics, source, frame, outline, expansion, centeredMenu);
                 }
                 if (expansion == 1f) {
                     boolean hover = frame.state() == UiExpansionController.State.ACTIVE
@@ -60,6 +47,25 @@ final class UiExpansionOverlay {
                 graphics.pose().popPose();
             }
         }
+    }
+
+    private static void drawDefaultSurface(GuiGraphics graphics, UiButton source, UiLocalModal.Frame frame,
+                                           GuiRect outline, float expansion, boolean centeredMenu) {
+        if (centeredMenu && UiTheme.current().liquidGlass()) {
+            LiquidGlassTheme.centeredMenu(graphics, outline, frame.radius(), frame.preferences(),
+                    expansion, frame.focused());
+            return;
+        }
+        int surface = frame.preferences().highContrast() ? DarkModeTheme.backgroundColor() : DarkModeTheme.surfaceColor();
+        if (!centeredMenu && expansion < 0.58f && !frame.preferences().highContrast()) {
+            surface = GuiMotion.lerpColor(source.expansionFill(frame.nowMs()), surface, expansion / 0.58f);
+        }
+        int focus = frame.preferences().highContrast() ? DarkModeTheme.textColor() : LiquidGlassTheme.accentColor();
+        int edge = DarkModeTheme.hoverBorderColor();
+        float highlight = frame.state() == UiExpansionController.State.ACTIVATING ? frame.phaseProgress() : 1f;
+        RoundedCorners.draw(graphics, outline.getX(), outline.getY(), outline.getW(), outline.getH(), frame.radius(),
+                frame.focused() && frame.preferences().highContrast() ? 2f : 1f,
+                frame.focused() ? GuiMotion.lerpColor(edge, focus, highlight) : edge, surface);
     }
 
     static float contentOpacity(float expansion) {

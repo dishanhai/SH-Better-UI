@@ -1,6 +1,7 @@
 package com.dishanhai.sh_better_ui.client.gui.scaled;
 
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
+import com.dishanhai.sh_better_ui.client.glass.GuiRect;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiExpansionController.Config;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiExpansionController.Placement;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiExpansionController.State;
@@ -32,6 +33,9 @@ public final class UiLocalModal {
     public interface Content {
         /** 绘制在 bounds 的圆角轮廓内。管理器负责底板、Z 层和外接矩形裁切。 */
         void render(GuiGraphics graphics, Frame frame, int mouseX, int mouseY, float partialTick);
+
+        /** 返回 true 表示内容已绘制弹层底板。轮廓、裁切和输入仍由管理器负责。 */
+        default boolean renderSurface(GuiGraphics graphics, GuiRect outline, Frame frame) { return false; }
 
         /** 允许前景内容在几何切换期间按目标坐标绘制，由管理器缩放并淡入淡出。 */
         default boolean animatesContents() { return false; }

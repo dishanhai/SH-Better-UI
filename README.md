@@ -19,7 +19,7 @@ SH-Better-UI 是 Forge 1.20.1 与 NeoForge 1.21.1 的 Minecraft 客户端 UI 库
 
 Minecraft 26.1.2 的 NeoForge 移植使用独立构建入口，当前为 [alpha 开发版](#neoforge-2612-alpha)。
 
-使用 `build-local.ps1` 单独构建 Forge，或执行 `簡易構建.bat` 依次构建 Forge 与 NeoForge。两个脚本以 JDK 21 启动 Gradle。Forge 生产类使用 JDK 17 工具链，现有测试使用 JDK 21。Forge 使用 Gradle 8.8，构建包含 JUnit 与 reobfJar。批处理脚本会清理两个平台各自的 `build/libs`，并列出新产物。
+日常打包运行 `簡易構建.bat`。它以 JDK 21 依次运行 Forge 1.20.1 和 NeoForge 1.21.1 的 `verifyLibraryJar`，增量构建并校验模组 JAR，跳过两个模组的测试套件和源码包。Forge 模组包输出到 `build/libs/sh_better_ui-forge-1.20.1-<version>.jar`，NeoForge 模组包输出到 `neoforge-1.21.1/build/libs/sh_better_ui-neoforge-1.21.1-<version>.jar`。需要完整构建和 JUnit 测试时，运行对应平台的 `build` 任务。
 
 首次构建时先移除命令中的 `--offline`，让 Gradle 下载 JEI 编译用 API。缓存建立后可恢复离线构建。
 
@@ -29,7 +29,7 @@ Minecraft 26.1.2 的 NeoForge 移植使用独立构建入口，当前为 [alpha 
 .\gradle-install\gradle-8.8\bin\gradle.bat build --offline --no-daemon --console=plain
 ```
 
-正式包为 `build/libs/sh_better_ui-1.0.3.jar`，原始重映射结果为 `build/reobfJar/output.jar`。开发包为 `build/libs/sh_better_ui-1.0.3-dev.jar`，只能用于编译与开发环境。`raw` 包是构建中间产物，不能放入游戏。
+也可用 `build-local.ps1` 单独完整构建 Forge。请以对应 `gradle.properties` 的 `mod_version` 替换 `<version>`。完整构建还会生成 `build/libs/sh_better_ui-<version>-dev.jar`，供编译与开发环境使用。`raw` 包是构建中间产物。
 
 ## 接入方接入
 
