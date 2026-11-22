@@ -2,10 +2,9 @@
 
 Every built-in catalog icon has an editable 16-unit SVG master. Most use
 a monochrome tint mask; a few gamepad icons retain their identifying accents.
-The platform and brand pictograms are redraws based on this repository’s
-existing icons, not official asset downloads.
-The [33-icon reference sheet](REFERENCE-ICONS.zh-TW.md) links each reworked
-master to its exact pre-migration PNG.
+The [33-icon source sheet](REFERENCE-ICONS.zh-TW.md) identifies the public
+brand, app artwork, or upstream prototypes and the tintable reconstructions.
+Brand rights are unchanged.
 Keep outlines rounded and use negative space to distinguish status or action icons.
 They contain editable geometry, not embedded images.
 
