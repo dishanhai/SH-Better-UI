@@ -121,12 +121,16 @@ class ControlPanelScreenTest {
     void searchingAndHistoryKeepPendingDraftAndRestoreTheQuery() throws ReflectiveOperationException {
         var screen = compactScreen();
         button(screen, "enabled").onPress();
+        int configurationTop = layoutCoordinate(screen, "bodyTop");
         var searchField = ControlPanelScreen.class.getDeclaredField("search"); searchField.setAccessible(true);
         var search = (net.minecraft.client.gui.components.EditBox) searchField.get(screen);
         search.setValue("display");
         screen.keyPressed(GLFW.GLFW_KEY_F12, 0, 0);
         assertTrue(button(screen, "apply").active);
         assertNull(findButton(screen, "enabled"));
+        assertNull(findButton(screen, "section.glass"));
+        assertTrue(layoutCoordinate(screen, "bodyTop") < configurationTop,
+                "search results should use the space freed by the hidden category bar");
         var rows = ControlPanelScreen.class.getDeclaredField("rows"); rows.setAccessible(true);
         var result = ((Map<?, ?>) rows.get(screen)).keySet().stream().filter(UiButton.class::isInstance)
                 .map(UiButton.class::cast).findFirst().orElseThrow();
@@ -138,19 +142,43 @@ class ControlPanelScreenTest {
         assertTrue(screen.keyPressed(GLFW.GLFW_KEY_ESCAPE, 0, 0));
         assertEquals("", search.getValue());
         assertNotNull(findButton(screen, "enabled"));
+        assertNotNull(findButton(screen, "section.glass"));
+        assertEquals(configurationTop, layoutCoordinate(screen, "bodyTop"));
     }
 
     @Test
     void responsiveSidebarFallsBackWithoutLosingTheDraft() throws ReflectiveOperationException {
         var screen = compactScreen();
         button(screen, "enabled").onPress();
+        int horizontalHeader = layoutCoordinate(screen, "bodyTop") - layoutCoordinate(screen, "top");
         var clear = Screen.class.getDeclaredMethod("clearWidgets"); clear.setAccessible(true);
         screen.width = 590; screen.height = 406; clear.invoke(screen); initialize(screen);
         var sidebar = ControlPanelScreen.class.getDeclaredField("sidebar"); sidebar.setAccessible(true);
         assertNotNull(sidebar.get(screen)); assertTrue(button(screen, "apply").active);
-        screen.width = 320; screen.height = 210; clear.invoke(screen); initialize(screen);
+        assertTrue(layoutCoordinate(screen, "bodyTop") - layoutCoordinate(screen, "top") < horizontalHeader,
+                "the sidebar should free the horizontal navigation row");
+        var back = screen.children().stream().filter(UiButton.class::isInstance).map(UiButton.class::cast)
+                .filter(widget -> widget.getMessage().getContents() instanceof TranslatableContents text
+                        && text.getKey().equals("gui.back"))
+                .findFirst().orElseThrow();
+        var reset = button(screen, "reset");
+        var apply = button(screen, "apply");
+        int actionGap = apply.getX() - reset.getX() - reset.getWidth();
+        assertTrue(actionGap >= 0);
+        assertTrue(reset.getX() - back.getX() - back.getWidth() > actionGap,
+                "the return action should sit apart from the adjacent draft actions");
+
+        screen.width = 240; screen.height = 200; clear.invoke(screen); initialize(screen);
         assertNull(sidebar.get(screen)); assertTrue(button(screen, "apply").active);
         assertNotNull(findButton(screen, "section.configuration"));
+        assertTrue(layoutCoordinate(screen, "bodyBottom") - layoutCoordinate(screen, "bodyTop") >= 30,
+                "the smallest supported screen should have space to show a complete settings row");
+    }
+
+    private static int layoutCoordinate(ControlPanelScreen screen, String name) throws ReflectiveOperationException {
+        var field = ControlPanelScreen.class.getDeclaredField(name);
+        field.setAccessible(true);
+        return field.getInt(screen);
     }
 
     @Test

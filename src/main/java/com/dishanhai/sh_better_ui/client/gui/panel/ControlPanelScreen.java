@@ -16,6 +16,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.GuiMotion;
 import com.dishanhai.sh_better_ui.client.gui.scaled.GuiRenderUtil;
 import com.dishanhai.sh_better_ui.client.gui.scaled.InterruptibleAnimation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.LiquidGlassTheme;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.PageTransition;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.Spring;
@@ -27,6 +28,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiScreenReturn;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiConfirmation;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiTheme;
 import com.dishanhai.sh_better_ui.client.gui.scaled.ThemeEffects;
 import com.dishanhai.sh_better_ui.client.theme.MinecraftThemes;
@@ -38,6 +40,7 @@ import com.dishanhai.sh_better_ui.client.gui.scaled.UiSlider;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiStyle;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToast;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiToggleButton;
+import com.dishanhai.sh_better_ui.client.gui.text.UiRichText;
 import com.dishanhai.sh_better_ui.config.ClientUiSettings;
 import com.dishanhai.sh_better_ui.config.DynamicThemeSettings;
 import com.dishanhai.sh_better_ui.config.ThemeSettings;
@@ -79,10 +82,11 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private static final int PADDING = 14;
     private static final int GAP = 8;
     private static final int BUTTON_HEIGHT = 22;
-    private static final int HEADER_HEIGHT = 92;
-    private static final int CONFIG_HEADER_HEIGHT = 122;
+    private static final int TOOLBAR_TOP = 8;
+    private static final int STACKED_SEARCH_TOP = 28;
+    private static final int NAVIGATION_GAP = 6;
     private static final int FOOTER_HEIGHT = 46;
-    private static final int GLASS_STACK_HEIGHT = 122;
+    private static final int GLASS_CARD_TOP = 6;
     private static final int GLASS_SIDE_HEIGHT = 116;
     private static final int MAX_CONTENT_HEIGHT = 190;
     private static final int SCROLLBAR_WIDTH = 5;
@@ -101,6 +105,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private final Screen parent;
     private final KeyMapping keyMapping;
     private final Predicate<ClientUiSettings> save;
+    private final Consumer<Screen> openAutomation = ShBetterUiApi.platform().controlPanelAutomation().orElse(null);
     private final Map<AbstractWidget, Integer> rows = new LinkedHashMap<>();
     private final List<ToggleOption> options = new ArrayList<>();
     private final List<SliderOption> optionSliders = new ArrayList<>();
@@ -121,13 +126,14 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private UiOverlayHost overlays;
     private UiScrollableSectionBar sections;
     private UiScrollableSectionBar navigation;
-    private com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail sidebar;
+    private UiNavigationRail sidebar;
     private final com.dishanhai.sh_better_ui.client.gui.scaled.UiLayeredMotion layers = ShBetterUiApi.motion().layeredMotion(380, 250);
     private MpThemeBrowser themeBrowser;
     private int retainedThemePage;
     private UiButton musicOpen;
     private UiButton themePrevious, themeNext;
     private EditBox search;
+    private UiButton automation;
     private String searchQuery = "";
     private boolean searchDirty;
     private UiButton historyBack, historyForward;
@@ -140,7 +146,17 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private final ControlCenterNavigation history = new ControlCenterNavigation(
             new ControlCenterNavigation.Location("CONFIGURATION", "GLASS", "", 0));
     private int bodyX() { return left + PADDING + sidebarWidth; }
-    private int bodyWidth() { return panelWidth - 2 * PADDING - sidebarWidth; }
+    private int toolbarWidth() { return panelWidth - 2 * PADDING; }
+    private int bodyWidth() { return toolbarWidth() - sidebarWidth; }
+    private int automationWidth() { return openAutomation == null ? 0 : toolbarWidth() < 280 ? 24 : 102; }
+    private int automationSpace() { return openAutomation == null ? 0 : automationWidth() + GAP; }
+    private boolean stacksSearch() { return toolbarWidth() - automationSpace() < 360 && headerOffset() == 0; }
+    private int navigationOffset() {
+        return (stacksSearch() ? STACKED_SEARCH_TOP : TOOLBAR_TOP) + BUTTON_HEIGHT + NAVIGATION_GAP;
+    }
+    private int sectionY() {
+        return top + navigationOffset() + (sidebarWidth == 0 ? BUTTON_HEIGHT + NAVIGATION_GAP : 0);
+    }
     private UiToggleButton enabled;
     private UiButton glassParameters;
     private com.dishanhai.sh_better_ui.client.gui.scaled.UiSettingCard glassCard;
@@ -223,6 +239,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         if (sidebar != null) sidebar.close();
         sidebar = null;
         search = null;
+        automation = null;
         historyBack = historyForward = null;
         if (width != layoutWidth || height != layoutHeight) {
             pageMorph.snapTo(1f);
@@ -245,9 +262,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         }
 
         panelWidth = Math.min(MAX_WIDTH, width - 12);
-        sidebarWidth = panelLayout().sidebarWidth(panelWidth,height);
+        sidebarWidth = panelLayout().sidebarWidth(panelWidth, height);
         sidePreview = bodyWidth() >= 388;
-        panelHeight = Math.min(height - 12, CONFIG_HEADER_HEIGHT + headerOffset() + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
+        int navigationHeight = (sidebarWidth == 0 ? 2 : 1) * (BUTTON_HEIGHT + NAVIGATION_GAP);
+        panelHeight = Math.min(height - 12, navigationOffset() + navigationHeight + MAX_CONTENT_HEIGHT + FOOTER_HEIGHT);
         left = (width - panelWidth) / 2;
         top = (height - panelHeight) / 2;
         if (!entered) {
@@ -255,42 +273,64 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             entrance.startAt(width * 0.5f, top + 5f);
         }
         layers.setShown(true, PageTransition.nowMs(), preferences.reducedMotion());
-        bodyTop = top + headerOffset() + (selectedArea == Area.CONFIGURATION ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
         bodyBottom = top + panelHeight - FOOTER_HEIGHT;
         int x = bodyX();
         int innerWidth = bodyWidth();
-        int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
-        navigation = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 63 + headerOffset(), innerWidth, BUTTON_HEIGHT),
-                preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
-                draft.settings().tabs(), mainTabWidth).withJellyRadio());
-        sections = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
-                new Bounds(x, top + 93 + headerOffset(), innerWidth, BUTTON_HEIGHT),
-                preferences, TABS, selectedSection.ordinal(), index -> requestedSection = SECTIONS.get(index),
-                draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH).withJellyRadio());
-        navigation.visible = navigation.active = sidebarWidth == 0;
-        if (sidebarWidth > 0) {
-            sidebar = addRenderableWidget(new com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail(
-                    font, new Bounds(left + PADDING, top + 63, sidebarWidth - GAP, Math.min(bodyBottom - top - 63, AREAS.size() * 28)),
-                    label("navigation"), AREAS.stream().map(area -> new com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Item(area.tab.label(), area.tab.icon())).toList(),
-                    selectedArea.ordinal(), com.dishanhai.sh_better_ui.client.gui.scaled.UiNavigationRail.Orientation.VERTICAL,
-                    preferences, index -> requestedArea = AREAS.get(index)));
+        boolean searchVisible = headerOffset() == 0;
+        boolean stacked = stacksSearch();
+        int toolbarRight = left + panelWidth - PADDING;
+        int searchWidth = !searchVisible || stacked ? toolbarWidth()
+                : Math.min(320, toolbarWidth() - 180 - automationSpace());
+        int searchX = toolbarRight - searchWidth;
+        int searchY = top + (stacked ? STACKED_SEARCH_TOP : TOOLBAR_TOP);
+        if (openAutomation != null) {
+            int right = searchVisible && !stacked ? searchX - GAP : toolbarRight;
+            int buttonWidth = automationWidth();
+            var caption = MpTypography.text(Component.translatable("sh_better_ui.automation.open"));
+            automation = addRenderableWidget(ShBetterUiApi.controls().button(
+                    new Bounds(right - buttonWidth, top + TOOLBAR_TOP + 1, buttonWidth, BUTTON_HEIGHT - 4),
+                    caption, ignored -> openAutomation.accept(this), preferences, false, UiStyle.LIQUID_GLASS));
+            automation.setSampleBackground(false);
+            automation.setPreview(caption);
+            if (buttonWidth == 24) automation.setIcon(GraphicIcon.CODE);
         }
-        historyBack = addRenderableWidget(button(x, top + 34, 24, label("history.back"), GraphicIcon.BACK, false, () -> restoreHistory(-1)));
-        historyForward = addRenderableWidget(button(x + 28, top + 34, 24, label("history.forward"), GraphicIcon.FORWARD, false, () -> restoreHistory(1)));
+        historyBack = addRenderableWidget(button(searchX, searchY, 24, label("history.back"), GraphicIcon.BACK,
+                false, () -> restoreHistory(-1)));
+        historyForward = addRenderableWidget(button(searchX + 28, searchY, 24, label("history.forward"), GraphicIcon.FORWARD,
+                false, () -> restoreHistory(1)));
         historyBack.setIcon(GraphicIcon.BACK);
         historyBack.setPreview(label("history.back"));
         historyForward.setIcon(GraphicIcon.FORWARD);
         historyForward.setPreview(label("history.forward"));
-        search = addRenderableWidget(new EditBox(font, x + 60, top + 34, innerWidth - 60, BUTTON_HEIGHT, label("search")));
+        search = addRenderableWidget(new EditBox(font, searchX + 60, searchY, Math.max(1, searchWidth - 60),
+                BUTTON_HEIGHT, label("search")));
         search.setMaxLength(128);
         search.setHint(label("search"));
         search.setValue(searchQuery);
         search.setResponder(value -> { searchQuery = value; searchDirty = true; });
-        boolean searchVisible=headerOffset()==0;
-        search.visible=search.active=searchVisible;
-        historyBack.visible=historyForward.visible=searchVisible;
-        addFooter(x, innerWidth);
+        search.visible = search.active = searchVisible;
+        historyBack.visible = historyForward.visible = searchVisible;
+
+        int navigationY = top + navigationOffset();
+        int mainTabWidth = Math.max(80, (innerWidth - 4 * (AREAS.size() - 1)) / AREAS.size());
+        navigation = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
+                new Bounds(x, navigationY, innerWidth, BUTTON_HEIGHT),
+                preferences, MAIN_TABS, selectedArea.ordinal(), index -> requestedArea = AREAS.get(index),
+                draft.settings().tabs(), mainTabWidth).withJellyRadio());
+        navigation.visible = navigation.active = sidebarWidth == 0;
+        if (sidebarWidth > 0) {
+            sidebar = addRenderableWidget(ShBetterUiApi.controls().navigationRail(
+                    font, new Bounds(left + PADDING, navigationY, sidebarWidth - 2 * GAP,
+                    Math.min(bodyBottom - navigationY, AREAS.size() * 28)),
+                    label("navigation"), AREAS.stream().map(area -> new UiNavigationRail.Item(area.tab.label(), area.tab.icon())).toList(),
+                    selectedArea.ordinal(), UiNavigationRail.Orientation.VERTICAL,
+                    preferences, index -> requestedArea = AREAS.get(index)));
+        }
+        sections = addRenderableWidget(ShBetterUiApi.controls().scrollableSectionBar(
+                new Bounds(x, sectionY(), innerWidth, BUTTON_HEIGHT),
+                preferences, TABS, selectedSection.ordinal(), index -> requestedSection = SECTIONS.get(index),
+                draft.settings().tabs(), UiScrollableSectionBar.DEFAULT_TAB_WIDTH).withJellyRadio());
+        addFooter(left + PADDING, toolbarWidth());
         buildPage();
         if (restoreThemeConfigureFocus && (themeConfigure != null || themeCustomize != null) && minecraft != null && minecraft.screen == this) {
             setFocused(returnThemeSection == null ? themeConfigure : switch (returnThemeSection) {
@@ -347,10 +387,10 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         boolean configuration = selectedArea == Area.CONFIGURATION;
         int retainedScroll = configuration ? sectionScroll[selectedSection.ordinal()] : areaScroll[selectedArea.ordinal()];
         sections.visible = sections.active = configuration && searchQuery.isBlank();
-        bodyTop = top + headerOffset() + (configuration ? CONFIG_HEADER_HEIGHT : HEADER_HEIGHT);
+        bodyTop = sectionY() + (sections.visible ? BUTTON_HEIGHT + NAVIGATION_GAP : 0);
         contentHeight = switch (selectedArea) {
             case CONFIGURATION -> switch (selectedSection) {
-                case GLASS -> sidePreview ? GLASS_SIDE_HEIGHT : GLASS_STACK_HEIGHT;
+                case GLASS -> 0;
                 case DISPLAY -> 250;
                 case FEEDBACK, TABS, DYNAMIC_THEME -> 120;
                 case SHORTCUT -> 42;
@@ -500,13 +540,26 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         // Replace the separately mounted parameter row with a real settings card and an independent arrow.
         rows.remove(enabled.button());
         removeWidget(enabled.button());
-        glassCard = ShBetterUiApi.controls().settingCard(font, new Bounds(x, 18, glassWidth, 0),
-                label("section.glass"), label("glass_parameters.tooltip"), enabled.button(),
+        glassCard = ShBetterUiApi.controls().settingCard(font, new Bounds(x, GLASS_CARD_TOP, glassWidth, 0),
+                MpTypography.bold(label("section.glass")), label("glass_parameters.tooltip"), enabled.button(),
                 label("glass_parameters"), preferences, this::openGlassParameters);
+        contentHeight = glassContentHeight();
+        // Wrapping can make this page scroll even at the same GUI height. Keep its cards clear of the thumb.
+        if (maxScroll() > 0) {
+            contentWidth -= SCROLLBAR_WIDTH + GAP;
+            glassWidth = sidePreview ? contentWidth * 5 / 8 : contentWidth;
+            glassCard.setBounds(new Bounds(x, GLASS_CARD_TOP, glassWidth, 0));
+            contentHeight = glassContentHeight();
+        }
         glassCard.widgets().forEach(this::row);
         glassParameters = glassCard.detailsButton();
         glassParameters.setMessage(label("glass_parameters"));
-        contentHeight = Math.max(contentHeight, glassCard.height() + (sidePreview ? 30 : 88));
+    }
+
+    private int glassStackPreviewTop() { return GLASS_CARD_TOP + glassCard.height() + 23; }
+    private int glassContentHeight() {
+        return sidePreview ? Math.max(GLASS_SIDE_HEIGHT, GLASS_CARD_TOP + glassCard.height() + GAP)
+                : glassStackPreviewTop() + 28 + GAP;
     }
 
     private void openGlassParameters() {
@@ -888,13 +941,18 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private void addFooter(int x, int width) {
         int y = bodyBottom + 16;
-        int column = (width - 2 * GAP) / 3;
-        back = addRenderableWidget(button(x, y, column, Component.translatable("gui.back"), GraphicIcon.BACK,
+        int available = (width - 2 * GAP) / 3;
+        int backWidth = Math.min(88, available);
+        int resetWidth = Math.min(128, available);
+        int applyWidth = Math.min(108, available);
+        int right = x + width;
+        back = addRenderableWidget(button(x, y, backWidth, Component.translatable("gui.back"), GraphicIcon.BACK,
                 false, this::onClose));
-        reset = addRenderableWidget(button(x + column + GAP, y, column, label("reset"), GraphicIcon.RESET,
+        reset = addRenderableWidget(button(right - applyWidth - GAP - resetWidth, y, resetWidth, label("reset"), GraphicIcon.RESET,
                 false, this::resetDraft));
-        apply = addRenderableWidget(button(x + 2 * (column + GAP), y, width - 2 * (column + GAP),
+        apply = addRenderableWidget(button(right - applyWidth, y, applyWidth,
                 label("apply"), GraphicIcon.SUCCESS, true, this::apply));
+        back.setPreview(CommonComponents.GUI_BACK);
         apply.setPreview(label("apply.tooltip"));
         back.setTabOrderGroup(2);
         reset.setTabOrderGroup(2);
@@ -1166,7 +1224,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             else areaScroll[selectedArea.ordinal()] = scroll;
         }
         rows.forEach((widget, y) -> widget.setY(bodyTop + y - scroll));
-        if (glassCard != null) glassCard.setBounds(new Bounds(bodyX(), bodyTop + 18 - scroll, glassWidth, 0));
+        if (glassCard != null) glassCard.setBounds(new Bounds(bodyX(), bodyTop + GLASS_CARD_TOP - scroll, glassWidth, 0));
     }
 
     private ControlCenterNavigation.Location location() {
@@ -1251,9 +1309,8 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     private boolean capturePage() {
         boolean continuing = pageHandoff.active();
         if (fits && minecraft != null && minecraft.screen == this) {
-            int captureTop = top + HEADER_HEIGHT + headerOffset();
-            pageHandoff.capture(new Bounds(bodyX() - 3, captureTop, bodyWidth() + 6,
-                    bodyBottom - captureTop), preferences);
+            pageHandoff.capture(new Bounds(bodyX() - 3, bodyTop, bodyWidth() + 6,
+                    bodyBottom - bodyTop), preferences);
         }
         return continuing;
     }
@@ -1528,12 +1585,27 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
             remountThemePage(0);
         }
         if (themeBrowser != null && selectedArea == Area.THEMES && themeBrowser.error() != null) status = themeBrowser.error();
-        graphics.drawString(font, title, x, top + 15, (LiquidGlassTheme.textColor() & 0xffffff)
+        int chromeX = left + PADDING;
+        int chromeRight = left + panelWidth - PADDING;
+        int titleRight = search.visible && !stacksSearch() ? historyBack.getX() - GAP : chromeRight;
+        if (automation != null) titleRight = automation.getX() - GAP;
+        var heading = UiRichText.fit(font, MpTypography.bold(title), titleRight - chromeX);
+        graphics.drawString(font, heading, chromeX, top + 14, (LiquidGlassTheme.textColor() & 0xffffff)
                 | (Math.max(1, (int)(255 * layers.layer(0, .45))) << 24), false);
+        int divider = preferences.highContrast() ? LiquidGlassTheme.textColor() : DarkModeTheme.borderColor();
+        if (sidebar != null) {
+            graphics.fill(x - GAP - 1, top + navigationOffset(), x - GAP, bodyBottom, divider);
+        }
+        graphics.fill(chromeX, bodyBottom, chromeRight, bodyBottom + 1, divider);
         renderBody(graphics, x, mouseX, mouseY, partialTick);
         pageHandoff.render(graphics, preferences);
         Component message = status != null ? status : !draft.equals(saved) ? label("unsaved") : null;
-        if (message != null) graphics.drawString(font, message, x, bodyBottom + 3, LiquidGlassTheme.mutedTextColor(), false);
+        if (message != null) {
+            int color = preferences.highContrast() || status != null
+                    ? LiquidGlassTheme.textColor() : LiquidGlassTheme.mutedTextColor();
+            graphics.drawString(font, UiRichText.fit(font, message, chromeRight - chromeX),
+                    chromeX, bodyBottom + 4, color, false);
+        }
         super.render(graphics, mouseX, mouseY, partialTick);
     }
 
@@ -1618,13 +1690,16 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
 
     private void renderPage(GuiGraphics graphics, int x, int mouseX, int mouseY, float partialTick) {
         int origin = bodyTop - scroll;
-        if (selectedArea != Area.OVERVIEW) {
-            graphics.drawString(font, searchQuery.isBlank() ? (selectedArea == Area.CONFIGURATION ? selectedSection.tab.label() : selectedArea.tab.label()) : label("search.results", searchEntries().size()),
-                    x, origin + 4, LiquidGlassTheme.accentColor(), false);
+        boolean searching = !searchQuery.isBlank();
+        Component pageTitle = searching ? label("search.results", searchEntries().size())
+                : selectedArea == Area.CONFIGURATION ? selectedSection.tab.label() : selectedArea.tab.label();
+        if (searching || (selectedArea != Area.OVERVIEW && glassCard == null)) {
+            graphics.drawString(font, UiRichText.fit(font, MpTypography.bold(pageTitle), contentWidth),
+                    x, origin + 4, LiquidGlassTheme.textColor(), false);
         }
-        if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION && selectedSection == Section.GLASS) {
-            if (glassCard != null) glassCard.render(graphics, mouseX, mouseY, partialTick);
-            renderPreview(graphics, x, origin + (sidePreview || glassCard == null ? 0 : Math.max(0, glassCard.height() - 60)));
+        if (glassCard != null) {
+            glassCard.render(graphics, mouseX, mouseY, partialTick);
+            renderPreview(graphics, x, origin);
         }
         if (searchQuery.isBlank() && selectedArea == Area.CONFIGURATION && selectedSection == Section.DISPLAY
                 && draft.settings().theme().mode() == ThemeSettings.Mode.CUSTOM && ThemeEffectPreview.supports(themeGroupId())
@@ -1654,7 +1729,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
         int originalX = sidePreview ? x + glassWidth + 2 * GAP : x;
         int sampleWidth = sidePreview ? x + contentWidth - originalX : (glassWidth - GAP) / 2;
         int previewX = sidePreview ? originalX : x + sampleWidth + GAP;
-        int originalY = origin + (sidePreview ? 17 : 90);
+        int originalY = origin + (sidePreview ? 18 : glassStackPreviewTop());
         int previewY = sidePreview ? origin + 75 : originalY;
         int sampleHeight = sidePreview ? 36 : 28;
         drawSample(graphics, originalX, originalY, sampleWidth, sampleHeight);
@@ -1664,8 +1739,11 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
                 1f, GlassStyle.LIQUID_REGULAR, 9f, 6f, backdrop);
         Component previewLabel = sampled ? label("preview")
                 : label(backdrop.enabled() && backdrop.strength() > 0.01f ? "preview.unavailable" : "preview.off");
-        graphics.drawString(font, label("original"), originalX, originalY - 12, LiquidGlassTheme.mutedTextColor(), false);
-        graphics.drawString(font, previewLabel, previewX, previewY - 12, LiquidGlassTheme.mutedTextColor(), false);
+        int color = preferences.highContrast() ? LiquidGlassTheme.textColor() : LiquidGlassTheme.mutedTextColor();
+        graphics.drawString(font, UiRichText.fit(font, label("original"), sampleWidth), originalX, originalY - 12,
+                color, false);
+        graphics.drawString(font, UiRichText.fit(font, previewLabel, sampleWidth), previewX, previewY - 12,
+                color, false);
     }
 
     private static void drawSample(GuiGraphics graphics, int x, int y, int width, int height) {
@@ -1681,7 +1759,7 @@ public final class ControlPanelScreen extends Screen implements UiScreenReturn.T
     }
 
     private static Component label(String key, Object... arguments) {
-        return com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography.text(Component.translatable("sh_better_ui.panel." + key, arguments));
+        return MpTypography.text(Component.translatable("sh_better_ui.panel." + key, arguments));
     }
 
     private enum Section {

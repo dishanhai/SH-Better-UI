@@ -1,5 +1,6 @@
 package com.dishanhai.sh_better_ui.client.api;
 
+import com.dishanhai.sh_better_ui.automation.client.AutomationClient;
 import com.dishanhai.sh_better_ui.client.glass.GlassTooltip;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiOverlayHost;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
@@ -19,6 +20,7 @@ import net.neoforged.fml.ModList;
 
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 import java.time.Duration;
 
@@ -47,6 +49,11 @@ public final class PlatformUiApi {
 
     public static String loaderId() {
         return "neoforge";
+    }
+
+    /** The loader's optional automation entry in the control center. */
+    public Optional<Consumer<Screen>> controlPanelAutomation() {
+        return Optional.of(AutomationClient::open);
     }
 
     /** Immutable metadata snapshot; no configuration factories or optional mod classes are loaded. */

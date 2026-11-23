@@ -4,7 +4,6 @@ package com.dishanhai.sh_better_ui.automation.client;
 import com.dishanhai.sh_better_ui.automation.AutomationPage;
 import com.dishanhai.sh_better_ui.automation.ae2.Ae2Compatibility;
 import com.dishanhai.sh_better_ui.client.api.UiScreen;
-import com.dishanhai.sh_better_ui.client.gui.panel.ControlPanelScreen;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.kernel.api.UiId;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
@@ -66,13 +65,11 @@ public final class AutomationClient {
     public static void screenInit(ScreenEvent.Init.Post event) {
         var screen = event.getScreen();
         if (screen == decorated) decorated = null;
-        if (screen instanceof ControlPanelScreen || supportedTerminal(screen)) {
-            // Match the control panel's header bounds; its entrance controller rejects clicks outside the panel.
-            int panelWidth = screen instanceof ControlPanelScreen ? Math.min(624, screen.width - 12) : screen.width;
-            int top = screen instanceof ControlPanelScreen ? (screen.height - Math.min(screen.height - 12, 330)) / 2 + 8 : 6;
-            event.addListener(new UiButton(Math.max(4, (screen.width + panelWidth) / 2 - 116), top, 102, 20,
+        if (supportedTerminal(screen)) {
+            int x = Math.max(4, screen.width - 116);
+            event.addListener(new UiButton(x, 6, 102, 20,
                     Component.translatable("sh_better_ui.automation.open"), ignored -> open(screen)));
-            if (supportedTerminal(screen)) event.addListener(new UiButton(Math.max(4, screen.width - 116), top + 24, 102, 20,
+            event.addListener(new UiButton(x, 30, 102, 20,
                     replacementLabel(screen), button -> {
                         boolean next = !AutomationClientPreferences.enabled("ae2", screen.getClass().getName());
                         if (AutomationClientPreferences.set("ae2", screen.getClass().getName(), next)) {

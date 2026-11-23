@@ -13,12 +13,14 @@ import com.lowdragmc.lowdraglib.gui.modular.ModularUIGuiContainer;
 import net.minecraft.client.renderer.Rect2i;
 import net.minecraft.client.gui.components.AbstractWidget;
 import net.minecraft.client.gui.components.events.GuiEventListener;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraftforge.client.event.RenderTooltipEvent;
 import net.minecraftforge.fluids.FluidStack;
 import net.minecraftforge.fml.ModList;
 
 import java.util.Optional;
 import java.util.function.BooleanSupplier;
+import java.util.function.Consumer;
 import java.util.function.Supplier;
 
 /** 山海：Forge 1.20.1 的原生类型与可选 LDLib 1.x 接入。 */
@@ -46,6 +48,11 @@ public final class PlatformUiApi {
 
     public static String loaderId() {
         return "forge";
+    }
+
+    /** The loader's optional automation entry in the control center. */
+    public Optional<Consumer<Screen>> controlPanelAutomation() {
+        return Optional.empty();
     }
 
     /** Immutable metadata snapshot; no configuration factories or optional mod classes are loaded. */

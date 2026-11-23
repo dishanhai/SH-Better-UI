@@ -6,6 +6,7 @@ import com.dishanhai.sh_better_ui.client.blur.BackgroundBlur;
 import com.dishanhai.sh_better_ui.client.glass.LiquidGlassSurface;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicDisplayLayout.Bounds;
 import com.dishanhai.sh_better_ui.client.gui.display.GraphicIcon;
+import com.dishanhai.sh_better_ui.client.gui.scaled.MpTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.RoundedCorners;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
@@ -48,9 +49,14 @@ import java.util.function.ToIntFunction;
 /** Native settings screen for the 26.x client. Preview changes are kept in the screen's draft. */
 public final class ControlPanelScreen extends Screen {
     private static final int PADDING = 12;
+    private static final int TITLE_TOP = 10;
+    private static final int TABS_TOP = 29;
+    private static final int CONTENT_TOP = 57;
     private static final int ROW_HEIGHT = 22;
     private static final int ROW_STEP = 27;
     private static final int STATUS_SPACE = 16;
+    private static final int FOOTER_BUTTON_GAP = 4;
+    private static final int FOOTER_BUTTON_MAX_WIDTH = 96;
     private static final int TOOLS_TAB = 3;
     private static final int FOOTER_TAB_ORDER = 1;
     private static final List<ThemeSettings.Mode> THEMES = List.of(ThemeSettings.Mode.DARK, ThemeSettings.Mode.LIGHT,
@@ -129,19 +135,20 @@ public final class ControlPanelScreen extends Screen {
         }
 
         contentX = left + PADDING;
-        contentY = Math.min(top + 57, footerY - STATUS_SPACE - ROW_HEIGHT);
+        contentY = Math.min(top + CONTENT_TOP, footerY - STATUS_SPACE - ROW_HEIGHT);
         contentWidth = panelWidth - 2 * PADDING;
         visibleRows = 1 + (footerY - STATUS_SPACE - contentY - ROW_HEIGHT) / ROW_STEP;
-        int tabsY = Math.min(top + 28, contentY - ROW_HEIGHT - 5);
+        int tabsY = Math.min(top + TABS_TOP, contentY - ROW_HEIGHT - 5);
         tabs = addRenderableWidget(ShBetterUiApi.controls().jellySectionBar(
                 new Bounds(contentX, tabsY, contentWidth, ROW_HEIGHT), preferences, TABS, tab, this::selectTab));
         initRows();
 
-        int column = (contentWidth - 8) / 3;
-        back = button(contentX, footerY, column, CommonComponents.GUI_BACK, this::onClose, false);
-        defaults = button(contentX + column + 4, footerY, column, label("reset"), this::resetDraft, false);
-        apply = button(contentX + 2 * (column + 4), footerY, contentWidth - 2 * (column + 4),
-                label("apply"), this::applyDraft, true);
+        int buttonWidth = Math.min(FOOTER_BUTTON_MAX_WIDTH, (contentWidth - 2 * FOOTER_BUTTON_GAP) / 3);
+        int applyX = contentX + contentWidth - buttonWidth;
+        back = button(contentX, footerY, buttonWidth, CommonComponents.GUI_BACK, this::onClose, false);
+        defaults = button(applyX - FOOTER_BUTTON_GAP - buttonWidth, footerY, buttonWidth,
+                label("reset"), this::resetDraft, false);
+        apply = button(applyX, footerY, buttonWidth, label("apply"), this::applyDraft, true);
         back.setTabOrderGroup(FOOTER_TAB_ORDER);
         defaults.setTabOrderGroup(FOOTER_TAB_ORDER);
         apply.setTabOrderGroup(FOOTER_TAB_ORDER);
@@ -712,10 +719,15 @@ public final class ControlPanelScreen extends Screen {
             PanelText.drawLine(graphics, font, label("compact"), left + 4, Math.max(0, top + 5),
                     Math.max(1, panelWidth - 8), theme.text(), mouseX, mouseY);
         } else {
-            PanelText.drawLine(graphics, font, currentTitle(), contentX, top + PADDING,
+            int divider = preferences.highContrast() ? theme.text() : (theme.border() & 0xFFFFFF) | 0x60000000;
+            int contentRight = contentX + contentWidth;
+            int footerTop = footerY - STATUS_SPACE;
+            graphics.fill(contentX, contentY - 3, contentRight, contentY - 2, divider);
+            graphics.fill(contentX, footerTop, contentRight, footerTop + 1, divider);
+            PanelText.drawLine(graphics, font, MpTypography.bold(currentTitle()), contentX, top + TITLE_TOP,
                     contentWidth, theme.text(), mouseX, mouseY);
             var message = statusMessage();
-            if (message != null) PanelText.drawLine(graphics, font, message, contentX, footerY - 13,
+            if (message != null) PanelText.drawLine(graphics, font, message, contentX, footerTop + 3,
                     contentWidth, theme.text(), mouseX, mouseY);
         }
         UiTheme.preview(theme, () -> super.extractRenderState(graphics, mouseX, mouseY, partialTick));
