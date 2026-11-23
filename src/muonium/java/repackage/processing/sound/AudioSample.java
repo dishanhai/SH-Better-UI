@@ -275,14 +275,7 @@ public class AudioSample extends SoundObject {
 	 * @ webBrief跳转到音频示例中的特定位置。
 	 **/
 	public void jump(float time) {
-		// FIXME 这目前仅适用于*播放*文件，如果
-		// @param time 要跳到的位置，单位秒
-		if (this.setStartTime(time)) {
-			this.player.dataQueue.clear();
-			// 如果调用jump()时文件没有播放，只需启动
-			// 当前播放为循环，则所有循环信息都会丢失
-			this.playInternal();
-		}
+		if (this.setStartTime(time)) jumpToStartFrame();
 	}
 
 	/**
@@ -295,11 +288,12 @@ public class AudioSample extends SoundObject {
 	 * @ webBrief在不中断播放的情况下跳转到音频采样中的特定位置。
 	 **/
 	public void jumpFrame(int frameNumber) {
-		if (this.setStartFrame(frameNumber)) {
-			this.stop();
-			// 如果调用jumpFrame()时文件尚未播放，只需开始播放即可
-			this.play();
-		}
+		if (this.setStartFrame(frameNumber)) jumpToStartFrame();
+	}
+
+	private void jumpToStartFrame() {
+		this.player.dataQueue.clear();
+		this.playInternal();
 	}
 
 	// helper函数：在已运行的声音文件上调用时，原始
@@ -451,7 +445,12 @@ public class AudioSample extends SoundObject {
 		public void looped(QueueDataEvent event) {
 		}
 		public void started(QueueDataEvent event) {
+			onPlaybackStarted();
 		}
+	}
+
+	/** Called on the synthesis thread when the first frame of a queued segment is read. */
+	protected void onPlaybackStarted() {
 	}
 
 	private void playInternal() {

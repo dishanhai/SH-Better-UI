@@ -5,6 +5,7 @@ import com.dishanhai.sh_better_ui.client.api.preview.PreviewSpec;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiButton;
 import com.dishanhai.sh_better_ui.client.theme.DynamicThemePreview;
 import com.dishanhai.sh_better_ui.kernel.internal.ClientUiKernel;
+import com.dishanhai.sh_better_ui.kernel.internal.music.EmbeddedMusicGalleryPreview;
 import net.minecraft.client.Minecraft;
 import net.minecraft.network.chat.Component;
 
@@ -13,6 +14,7 @@ public final class BuiltinPreviews {
     private BuiltinPreviews() {}
 
     public static void registerInto(PreviewRegistry registry) {
+        EmbeddedMusicGalleryPreview.registerInto(registry);
         for (var sample : DeveloperSamples.values()) {
             registry.register(sample.spec);
         }

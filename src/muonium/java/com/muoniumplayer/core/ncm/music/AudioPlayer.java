@@ -207,36 +207,30 @@ public class AudioPlayer {
         }
     }
 
-    @SneakyThrows
     public void setPlaybackTime(float millis) {
-        if (!isUsable())
-            return;
+        seekToMillis(millis);
+    }
 
-        float total = getTotalTimeMillis();
-        if (total <= 0.0f)
-            return;
-
-        float safeMillis = Math.max(0.0f, Math.min(total, millis));
+    boolean seekToMillis(double millis) {
+        if (!Double.isFinite(millis) || !isUsable()) return false;
+        SoundFile current = this.player;
         try {
-            // 暂停中挪进度只许挪读头，绝不许出声。AudioSample.jump() 的契约是
-            // 「跳转并继续播放，没在播就开播」：暂停时它会把这一路重新接回引擎开始出声，
-            // 而播放意图（playRequested）仍是 false —— 界面照旧画着播放键，用户再按一下
-            // 又会在「已在播放」的采样上触发第二次 play()，克隆出一路停不掉的读头（叠音）。
-            // 暂停态要的是 cue()：同样把读头放到目标位置，但保持静音，等真正的 play()
-            // 从那里续上。判据用播放意图而不是引擎瞬时状态：play() 命令排队后到引擎真正
-            // 开播之间有一个窗口，那里意图已是要播、引擎还没动，此时拖动进度条必须继续播。
+            // The right edge of the slider represents the end boundary, one frame past readable audio.
+            long requestedFrame = Math.round(millis * current.sampleRate() / 1000.0);
+            int frame = (int) Math.max(0, Math.min(current.frames() - 1L, requestedFrame));
             if (this.playRequested) {
-                this.player.jump(safeMillis / 1000F);
+                current.jumpFrame(frame);
             } else {
-                this.player.cue(safeMillis / 1000F);
+                current.cueFrame(frame);
             }
             lastSeekNanos = System.nanoTime();
-            this.player.resyncTimeStretch();
-            this.player.amp(effectiveAmp());
+            current.resyncTimeStretch();
+            current.amp(effectiveAmp());
             // 拖进度后声音内容不连续了：声场里的余音一并作废，否则旧句的尾巴会叠在新句上。
             com.muoniumplayer.core.ncm.music.acoustics.AcousticsRuntime.onTrackChanged();
+            return true;
         } catch (RuntimeException ignored) {
-            // 定位是尽力而为。畸形流绝不能让界面崩溃。
+            return false;
         }
     }
 

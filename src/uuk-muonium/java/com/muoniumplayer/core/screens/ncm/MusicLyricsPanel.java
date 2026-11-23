@@ -747,6 +747,7 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
     public void close() {
         seek.cancel();
         seekBounds = null;
+        volumeControl.cancelPress();
         invalidateLyricPointers();
         singFader.dispose();
         trackMenu.hide();
@@ -890,7 +891,8 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
                 prev.getY() + (prev.getHeight() - queueSize) * .5, queueSize, queueSize);
         fullscreenQueue.render(new Box(lyricViewport.left, lyricViewport.top, lyricViewport.width, lyricViewport.height),
                 queueButton, posX,
-                presentation.displayTrack, fullscreenQueue.isOpen() && roomQueue != null ? roomQueue.roomSongs() : null,
+                presentation.displayTrack, presentation.preparing,
+                fullscreenQueue.isOpen() && roomQueue != null ? roomQueue.roomSongs() : null,
                 mouseX, mouseY, lyricWheel, alpha * (float) CoverHeroTransition.chromeFade(),
                 !closing && !isTrackMenuOpen() && alpha >= .98f && !styleQuickPanel.isExpanded() && !lyricLanguagePicker.isOpen()
                         && !host.isModalOverlayActive() && net.minecraft.client.Minecraft.getInstance().isWindowActive(),
@@ -2117,6 +2119,29 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         });
     }
 
+    private boolean blocksVolumeInput() {
+        return closing || CoverHeroTransition.isRunning() || PlayerIslandTransition.isRunning()
+                || styleQuickPanel.isExpanded() || lyricLanguagePicker.isOpen() || isTrackMenuOpen()
+                || NCMScreen.getInstance().blocksFullscreenLyricInput();
+    }
+
+    boolean pressVolume(double x, double y, int button) {
+        return !blocksVolumeInput() && volumeControl.press(x, y, button);
+    }
+
+    boolean hasVolumePress() {
+        return volumeControl.hasPress();
+    }
+
+    boolean cancelVolumePress() {
+        return volumeControl.cancelPress();
+    }
+
+    void releaseVolume(double x) {
+        if (blocksVolumeInput()) volumeControl.cancelPress();
+        else volumeControl.release(x);
+    }
+
     private void renderControlsPart(double mouseX, double mouseY, double posX, double posY, double width, double height,
                                     float alphaIn, CloudMusic.PlaybackSnapshot snapshot, PlaybackPresentation presentation) {
         // 左栏这一簇（信息块 / 进度条 / 音量 / 控制键）比页面底色再晚一档到场：接力封面正飞在
@@ -2295,10 +2320,10 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
         double volumeBarXOffset = elementsXOffset + FontManager.music40.getStringWidthD("I") - 2;
         // 两个播放器界面都委托到这个确切控件，使拖拽行为、主题颜色、
         //悬停动画和灵动岛反馈保持同步。
-        boolean hoveringVolumeBar = volumeControl.render(mouseX, mouseY, elementsXOffset - 8,
-                volumeBarYOffset, progressBarWidth + 12.0, alpha, isTrackMenuOpen());
+        volumeControl.render(mouseX, mouseY, elementsXOffset - 8,
+                volumeBarYOffset, progressBarWidth + 12.0, alpha, blocksVolumeInput());
 
-        if (hoveringProgressBar || hoveringVolumeBar) {
+        if (hoveringProgressBar) {
             CursorUtils.setOverride(CursorUtils.HAND);
         }
         playPauseButton.setAlpha(alpha);
@@ -2456,6 +2481,18 @@ public class MusicLyricsPanel implements SharedRenderingConstants, SharedConstan
     boolean pressQueueScrollbar(double x, double y) {
         return fullscreenQueue.pressScrollbar(x, y);
     }
+
+    boolean pressQueueAction(double x, double y) {
+        if (!fullscreenQueue.pressAction(x, y)) return false;
+        invalidateLyricPointers();
+        return true;
+    }
+
+    boolean hasQueueActionPress() { return fullscreenQueue.hasActionPress(); }
+
+    void cancelQueueAction() { fullscreenQueue.cancelAction(); }
+
+    void releaseQueueAction(double x, double y) { fullscreenQueue.releaseAction(x, y); }
 
     boolean releaseQueueScrollbar() {
         return fullscreenQueue.releaseScrollbar();

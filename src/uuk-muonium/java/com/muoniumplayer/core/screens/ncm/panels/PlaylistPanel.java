@@ -1,6 +1,8 @@
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.MusicTypography;
 import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingCatalogPresentation;
 import com.dishanhai.sh_better_ui.kernel.internal.PlaylistArtwork;
 import com.muoniumplayer.compat.lwjgl2.Keyboard;
 import com.muoniumplayer.core.management.FontManager;
@@ -20,7 +22,6 @@ import com.muoniumplayer.core.rendering.GlassLook;
 import com.muoniumplayer.core.rendering.TextureManager;
 import com.muoniumplayer.core.rendering.animation.Interpolations;
 import com.muoniumplayer.core.rendering.rendersystem.RenderSystem;
-import com.muoniumplayer.core.rendering.svg.AnimatedIcons;
 import com.muoniumplayer.core.rendering.texture.Textures;
 import com.muoniumplayer.core.rendering.ui.AbstractWidget;
 import com.muoniumplayer.core.rendering.ui.container.Panel;
@@ -30,6 +31,7 @@ import com.muoniumplayer.core.screens.ncm.CoverflowOverlay;
 import com.muoniumplayer.core.screens.ncm.NCMPanel;
 import com.muoniumplayer.core.screens.ncm.PlaylistCoverHero;
 import com.muoniumplayer.core.screens.ncm.NCMScreen;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
 import com.muoniumplayer.core.utils.KeyboardUtils;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
@@ -133,7 +135,7 @@ public class PlaylistPanel extends NCMPanel {
     private ScrollPanel musicsPanel;
     private MusicWidget focusedActionRow;
     private RowAction focusedAction;
-    private enum RowAction { FAVORITE, ADD, ARTIST, ALBUM }
+    private enum RowAction { FAVORITE, ADD, PLAY_NEXT, ARTIST, ALBUM }
     private static final RowAction[] ROW_ACTIONS = RowAction.values();
 
     public ScrollPanel songListScrollPanel() {
@@ -145,6 +147,7 @@ public class PlaylistPanel extends NCMPanel {
             return focusedActionRow != null && switch (focusedAction) {
                 case FAVORITE -> focusedActionRow.activateFocusedFavorite();
                 case ADD -> focusedActionRow.activateFocusedPlaylistAdd();
+                case PLAY_NEXT -> focusedActionRow.activateFocusedPlayNext();
                 case ARTIST, ALBUM -> focusedActionRow.activateFocusedCredit(focusedAction == RowAction.ALBUM);
             };
         }
@@ -165,6 +168,7 @@ public class PlaylistPanel extends NCMPanel {
                 if (switch (candidate) {
                     case FAVORITE -> row.canFocusFavorite();
                     case ADD -> row.canFocusPlaylistAdd();
+                    case PLAY_NEXT -> row.canFocusPlayNext();
                     case ARTIST, ALBUM -> row.canFocusCredit(candidate == RowAction.ALBUM);
                 }) { available = candidate; break; }
             }
@@ -174,6 +178,7 @@ public class PlaylistPanel extends NCMPanel {
             switch (available) {
                 case FAVORITE -> row.focusFavorite(true);
                 case ADD -> row.focusPlaylistAdd(true);
+                case PLAY_NEXT -> row.focusPlayNext(true);
                 case ARTIST, ALBUM -> row.focusCredit(available == RowAction.ALBUM, true);
             }
             double top = 0;
@@ -196,6 +201,7 @@ public class PlaylistPanel extends NCMPanel {
         if (focusedActionRow == null) return;
         focusedActionRow.focusFavorite(false);
         focusedActionRow.focusPlaylistAdd(false);
+        focusedActionRow.focusPlayNext(false);
         focusedActionRow.focusCredit(false, false);
         focusedActionRow.focusCredit(true, false);
         focusedActionRow = null;
@@ -819,27 +825,23 @@ public class PlaylistPanel extends NCMPanel {
 
         musicsPanel.setBeforeRenderCallback(() -> musicsPanel.setMargin(0));
 
-        // 将加载反馈保持在被裁剪的歌曲列表上方。该控件会在
-        // 异步请求完成后自行淡出。
-        PanelLoadingWidget loadingWidget = new PanelLoadingWidget("正在加载曲目…");
-        // 只把搜索结果页换成 search.svg 那枚取景框动画。同一份控件也服务歌单详情、主页、发现页
-        // 与导航等待遮罩，那边等的是"一批曲目"而不是"一次搜索"，换成放大镜是在骗人。
-        if (playList.isSearchResultList()) {
-            loadingWidget.setAnimatedIcon(AnimatedIcons.search(), true);
-        }
-        this.addChild(loadingWidget);
-        loadingWidget
-                .setClickable(false)
-                .setAlpha(0f)
-                .setBeforeRenderCallback(() -> {
-                    loadingWidget.setBounds(rwMusicsContainer.getRelativeX(), rwMusicsContainer.getRelativeY(),
-                            rwMusicsContainer.getWidth(), rwMusicsContainer.getHeight());
+        Panel skeleton = new Panel() {
+            private boolean announced;
 
-                    float targetAlpha = musicsLoading ? 1f : 0f;
-                    float nextAlpha = Interpolations.interpolate(loadingWidget.getWidgetAlpha(), targetAlpha, .24f);
-                    loadingWidget.setAlpha(nextAlpha);
-                    loadingWidget.setHidden(!musicsLoading && nextAlpha <= .015f);
-                });
+            @Override public void onRender(double mouseX, double mouseY) {
+                if (!musicsLoading) return;
+                if (!announced) {
+                    MusicTypography.narrate(Component.translatable("sh_better_ui.online_music.detail.loading"));
+                    announced = true;
+                }
+                PlayingCatalogPresentation.trackListSkeleton(
+                        new Box(getX(), getY(), getWidth(), getHeight()), System.nanoTime() / 1_000_000L,
+                        UiPreferences.configured(), getAlpha());
+            }
+        };
+        skeleton.setClickable(false).setBeforeRenderCallback(
+                () -> skeleton.setBounds(rwMusicsContainer.getWidth(), rwMusicsContainer.getHeight()));
+        rwMusicsContainer.addChild(skeleton);
 
         playList.loadMusicsWithCallback(musics -> {
             // 不在网络回调里一次性构建整张歌单。先复制快照，再由 onRender 每帧补一小批，

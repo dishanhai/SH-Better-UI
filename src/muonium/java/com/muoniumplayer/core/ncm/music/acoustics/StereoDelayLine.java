@@ -1,3 +1,4 @@
+// Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.ncm.music.acoustics;
 
 import java.util.Arrays;
@@ -32,11 +33,23 @@ final class StereoDelayLine {
         return read(right, delay);
     }
 
+    /** The reflection renderer supplies delays already checked against the ring capacity. */
+    float left(int whole, float fraction) {
+        return read(left, whole, fraction);
+    }
+
+    float right(int whole, float fraction) {
+        return read(right, whole, fraction);
+    }
+
     private float read(float[] ring, double delay) {
         final double age = Double.isFinite(delay)
                 ? Math.max(0.0, Math.min(ring.length - 2.0, delay)) : 0.0;
         final int whole = (int) age;
-        final float fraction = (float) (age - whole);
+        return read(ring, whole, (float) (age - whole));
+    }
+
+    private float read(float[] ring, int whole, float fraction) {
         int index = written - whole;
         if (index < 0) {
             index += ring.length;

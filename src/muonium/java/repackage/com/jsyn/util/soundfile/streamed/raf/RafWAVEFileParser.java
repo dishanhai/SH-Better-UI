@@ -242,7 +242,7 @@ public class RafWAVEFileParser extends WAVEFileParser {
     }
 
     RafFloatSample makeSample(StreamedByteDataReader reader) {
-        RafFloatSample floatSample = new RafFloatSample(reader, numFrames, samplesPerFrame);
+        RafFloatSample floatSample = new RafFloatSample(reader, numFrames, samplesPerFrame, frameRate);
 
         floatSample.setChannelsPerFrame(samplesPerFrame);
         floatSample.setFrameRate(frameRate);

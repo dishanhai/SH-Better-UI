@@ -1,6 +1,7 @@
 // Author: dishanhai
 package com.dishanhai.sh_better_ui.kernel.internal.music;
 
+import com.dishanhai.sh_better_ui.kernel.api.music.SongEncyclopedia;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import com.sun.net.httpserver.HttpServer;
@@ -25,6 +26,34 @@ class MusicChatClientTest {
     private static final String TEST_KEY = "test-only-music-chat-credential";
     private static final MusicChatConfig PROFILE = new MusicChatConfig(
             MusicChatConfig.endpoint("https://music-ai.example/v1"), "chat-model", TEST_KEY);
+
+    @Test void automaticSongReviewsRequireOptInForTheActiveChannel() {
+        var saved = new JsonObject();
+        MusicChatConfig.activate(saved, PROFILE);
+        assertFalse(MusicChatConfig.automaticSongReview(saved));
+        saved.addProperty("automatic_song_review", "true");
+        assertFalse(MusicChatConfig.automaticSongReview(saved));
+        saved.addProperty("automatic_song_review", true);
+        MusicChatConfig.activate(saved, PROFILE);
+        assertTrue(MusicChatConfig.automaticSongReview(saved));
+        assertFalse(new SongAiReview(null, true).automatic());
+
+        var other = MusicChatConfig.subscription("oaiapp_demo", "review-model");
+        MusicChatConfig.activate(saved, other);
+        assertFalse(MusicChatConfig.automaticSongReview(saved));
+        MusicChatConfig.activate(saved, PROFILE);
+        assertFalse(MusicChatConfig.automaticSongReview(saved));
+    }
+
+    @Test void songReviewSharesOnlyBoundedCatalogueFields() {
+        var notes = new SongEncyclopedia("2006-09-05", "Hip hop", "Mandarin", "Label",
+                "a".repeat(299) + "🎵", "2006-09-05", "Album notes");
+        var song = SongAiReview.trackData(" Song ", "Artist", "Album", notes);
+        assertEquals(Set.of("title", "artist", "album", "genre", "introduction"), song.keySet());
+        assertEquals("Song", song.get("title").getAsString());
+        assertEquals("a".repeat(299), song.get("introduction").getAsString());
+        assertEquals(Set.of("title", "artist", "album"), SongAiReview.trackData("Song", "", "", null).keySet());
+    }
 
     @Test void fetchesModelsWithGetOnTheSameApiBase() {
         var base = MusicChatConfig.endpoint("https://music-ai.example:8443/api/v1/chat/completions/");

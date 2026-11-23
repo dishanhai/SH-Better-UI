@@ -69,10 +69,11 @@ public class VariableRateStereoReader extends VariableRateDataReader {
             }
 
             // 沿线段插值。
+            double gain = amplitudes[i] * nextFadeInGain();
             current0 = ((target0 - source0) * phase) + source0;
-            output0s[i] = current0 * amplitudes[i];
+            output0s[i] = current0 * gain;
             current1 = ((target1 - source1) * phase) + source1;
-            output1s[i] = current1 * amplitudes[i];
+            output1s[i] = current1 * gain;
 
             double phaseIncrement = baseIncrement * rates[i];
             phase += limitPhaseIncrement(phaseIncrement);

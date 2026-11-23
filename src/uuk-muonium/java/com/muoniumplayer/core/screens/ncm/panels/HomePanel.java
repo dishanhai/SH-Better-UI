@@ -1,6 +1,8 @@
 // Modified for SHBUI by dishanhai. See META-INF/third-party/muonium-player-2.6.0/SOURCE.
 package com.muoniumplayer.core.screens.ncm.panels;
 
+import com.dishanhai.sh_better_ui.client.gui.scaled.UiPreferences;
+import com.dishanhai.sh_better_ui.kernel.internal.PlayingCatalogPresentation;
 import com.dishanhai.sh_better_ui.kernel.internal.PlaylistArtwork;
 import com.google.gson.JsonArray;
 import com.google.gson.JsonElement;
@@ -30,6 +32,7 @@ import com.muoniumplayer.core.rendering.ui.widgets.RoundedImageWidget;
 import com.muoniumplayer.core.screens.ncm.NCMPanel;
 import com.muoniumplayer.core.screens.ncm.PlaylistCoverHero;
 import com.muoniumplayer.core.screens.ncm.NCMScreen;
+import com.muoniumplayer.core.screens.ncm.effects.EffectsLayout.Box;
 import com.muoniumplayer.core.utils.Location;
 import com.muoniumplayer.core.utils.json.JsonUtils;
 import com.muoniumplayer.core.utils.other.multithreading.MultiThreadingUtil;
@@ -375,11 +378,7 @@ public class HomePanel extends NCMPanel {
     }
 
     /**
-     * 首页只有<b>标题 + 一枚转子</b>的过渡布局。
-     *
-     * <p>冷启动时推荐歌单缓存是空的，原来这段等待里 {@code getChildren()} 也是空的 ——
-     * 页面整片空白，看不出是在加载还是坏了。{@link #layout} 开头就 {@code getChildren().clear()}，
-     * 所以数据回来时这份占位会被自然覆盖，不需要额外清理。</p>
+     * Cold recommendations reserve the live card grid; terminal states keep their status message.
      *
      * @param spinning {@code false} 用于终态提示（获取失败），此时不该继续转
      */
@@ -407,9 +406,31 @@ public class HomePanel extends NCMPanel {
 
         addQuickActions();
 
-        // 占位内容与正式网格从同一个 y 起排：数据回来换成网格时页面不会跳一下。
+        if (spinning) {
+            Panel skeleton = new Panel() {
+                @Override public void onRender(double mouseX, double mouseY) {
+                    PlayingCatalogPresentation.playlistGridSkeleton(
+                            new Box(getX(), getY(), getWidth(), getHeight()), grid.cardWidth, grid.coverSize,
+                            GRID_GAP, System.nanoTime() / 1_000_000L, UiPreferences.configured(), getAlpha());
+                }
+            };
+            skeleton.setClickable(false).setBeforeRenderCallback(() -> skeleton.setBounds(PAGE_MARGIN, contentTop(),
+                    Math.max(1, this.getWidth() - PAGE_MARGIN * 2),
+                    Math.max(0, this.getHeight() - contentTop() - CONTENT_BOTTOM_PADDING)));
+            this.addChild(skeleton);
+
+            LabelWidget label = new LabelWidget(message, FontManager.pf14bold);
+            label.setClickable(false).setBeforeRenderCallback(() -> label
+                    .setPosition(PAGE_MARGIN, HEADER_SUBTITLE_Y)
+                    .setMaxWidth(Math.max(1, this.getWidth() - PAGE_MARGIN * 2))
+                    .setWidthLimitType(LabelWidget.WidthLimitType.TRIM_TO_WIDTH)
+                    .setColor(NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT)));
+            this.addChild(label);
+            return;
+        }
+
         PanelLoadingWidget indicator = new PanelLoadingWidget(message);
-        indicator.setSpinning(spinning);
+        indicator.setSpinning(false);
         indicator.setClickable(false);
         indicator.setBeforeRenderCallback(() -> indicator.setBounds(PAGE_MARGIN, contentTop(),
                 Math.max(1.0, this.getWidth() - PAGE_MARGIN * 2.0),

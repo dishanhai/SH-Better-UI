@@ -21,9 +21,24 @@ import repackage.com.jsyn.ports.UnitInputPort;
 public abstract class VariableRateDataReader extends SequentialDataReader {
     /** 播放速率的缩放因子。名义上为 1.0。 */
     public UnitInputPort rate;
+    private int fadeInFrames;
+    private int fadeInRemaining;
 
     public VariableRateDataReader() {
         super();
         addPort(rate = new UnitInputPort("Rate", 1.0));
+    }
+
+    /** Starts a short gain ramp on the synthesis thread without modifying the amplitude port. */
+    public void beginFadeIn(double seconds) {
+        fadeInFrames = (int) Math.round(seconds * synthesisEngine.getFrameRate());
+        fadeInRemaining = fadeInFrames;
+    }
+
+    protected double nextFadeInGain() {
+        if (fadeInRemaining <= 0) return 1.0;
+        int elapsed = fadeInFrames - fadeInRemaining;
+        fadeInRemaining--;
+        return (double) elapsed / fadeInFrames;
     }
 }

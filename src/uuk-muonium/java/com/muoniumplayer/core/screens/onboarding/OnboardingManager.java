@@ -2,6 +2,9 @@ package com.muoniumplayer.core.screens.onboarding;
 
 import com.muoniumplayer.core.interfaces.SharedConstants;
 import com.muoniumplayer.core.screens.ncm.NCMScreen;
+import net.minecraft.client.gui.screens.Screen;
+
+import java.util.Objects;
 
 /**
  * 播放器开启决策的唯一入口。
@@ -24,6 +27,13 @@ public final class OnboardingManager implements SharedConstants {
         } else {
             api.displayScreen(new OnboardingScreen());
         }
+    }
+
+    /** Opens the real player from the developer gallery without changing onboarding state. */
+    public static void openPlayerPreview(Screen parent) {
+        NCMScreen screen = NCMScreen.getInstance();
+        screen.setPreviewReturnScreen(Objects.requireNonNull(parent));
+        api.displayScreen(screen);
     }
 
     public static void finish(OnboardingScreen screen) {

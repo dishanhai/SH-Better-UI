@@ -43,6 +43,11 @@ public class SoundFile extends AudioSample {
 		this.initiatePlayer();
 	}
 
+	@Override
+	protected void onPlaybackStarted() {
+		this.player.beginFadeIn(0.006);
+	}
+
 	/**
 	 * 把这首歌的人声素材接上（交接期用它把人声减掉）。
 	 *

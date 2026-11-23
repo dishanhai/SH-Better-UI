@@ -19,7 +19,7 @@
 | 五档耳机环绕 | [VHE](../src/muonium/java/com/muoniumplayer/core/viper/dsp/VHE.java)、[KEMAR 资源生成脚本](../scripts/generate-kemar-responses.py) | 已生成 20 个近／远耳响应，覆盖五个角度和 44.1／48 kHz。独立测试检查了实际资源的跨耳输出、本地覆盖、缺损旁路和分块处理。 |
 | 两个房间预设 | [房间核读取](../src/muonium/java/com/muoniumplayer/core/viper/ViperRoomKernels.java)、[安装逻辑](../src/muonium/java/com/muoniumplayer/core/viper/ViperBuiltin.java)、[生成脚本](../scripts/generate-room-responses.py) | 两个 Surrey 房间各有两种采样率的四声道 WAV。文件顺序为 LL、LR、RL、RR。独立测试覆盖新装、旧版标记、后放入的 IRS、删除、冲突及不支持硬链接的退路。 |
 | 切换预设及采样率 | [主处理器](../src/muonium/java/com/muoniumplayer/core/viper/ViperMasterProcessor.java)、[回归测试](../src/test/java/com/muoniumplayer/core/viper/ViperMasterProcessorTest.java) | 控制线程发布完整参数、卷积核和 DDC 快照。本机同名文件优先。独立测试的部分依赖使用了替身，须用正式构建及真实 JSON 再验。 |
-| H 页键盘操作 | [设置页](../src/muonium/java/com/muoniumplayer/core/screens/hud/MConfigHudScreen.java)、[针对性测试](../src/test/java/com/muoniumplayer/core/screens/hud/MConfigDetailHitTest.java) | 已补底栏恢复按钮、默认取消、确认与色板焦点。恢复默认应重置外观并保留 HUD 位置。独立编译及测试已通过，游戏内处理见下节。 |
+| H 页键盘操作 | [设置页](../src/uuk-muonium/java/com/muoniumplayer/core/screens/hud/MConfigHudScreen.java)、[针对性测试](../src/test/java/com/muoniumplayer/core/screens/hud/MConfigDetailHitTest.java) | 已补底栏恢复按钮、默认取消、确认与色板焦点。恢复默认应重置外观并保留 HUD 位置。独立编译及测试已通过，游戏内处理见下节。 |
 
 源数据已经随工作树存放，正常构建不需要重新下载生成。数据许可与转换依据见 [MIT KEMAR 声明](../src/muonium/resources/META-INF/third-party/mit-kemar/NOTICE.txt)及 [Surrey BRIR 声明](../src/muonium/resources/META-INF/third-party/surrey-brir/NOTICE.txt)。原版个人使用内核仍允许玩家从本机提供。
 

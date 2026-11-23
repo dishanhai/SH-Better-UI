@@ -269,7 +269,7 @@ public final class MusicDownloadSheet extends NcmSheet {
         }
         if (access == Access.SIGN_IN && options.qualities().isEmpty())
             row(() -> accessText(access), () -> "", "sign_in", this::openAccount);
-        if (access == Access.MEMBERSHIP || access == Access.PURCHASE || access == Access.UNAVAILABLE)
+        if (usesOfficialPage(access))
             row(() -> text("official_song"), () -> "", "open",
                     () -> openQqSong(track));
     }
@@ -334,8 +334,8 @@ public final class MusicDownloadSheet extends NcmSheet {
                 case COMPLETE -> "play";
                 case FAILED -> switch (task.access()) {
                     case SIGN_IN -> "sign_in";
-                    case MEMBERSHIP, PURCHASE -> "open";
-                    default -> "retry";
+                    case MEMBERSHIP, PURCHASE, UNAVAILABLE -> "open_official";
+                    case AVAILABLE -> "retry";
                 };
                 case CANCELLED -> "retry";
             };
@@ -346,7 +346,7 @@ public final class MusicDownloadSheet extends NcmSheet {
                             case COMPLETE -> playLocal(task.file());
                             case CANCELLED, FAILED -> {
                                 if (task.access() == Access.SIGN_IN) openAccount();
-                                else if (task.access() == Access.MEMBERSHIP || task.access() == Access.PURCHASE)
+                                else if (usesOfficialPage(task.access()))
                                     openQqSong(task.track());
                                 else NeteaseMusicService.downloadSong(task.track(), task.quality());
                             }
@@ -446,6 +446,10 @@ public final class MusicDownloadSheet extends NcmSheet {
 
     private static String accessText(Access access) {
         return text("access." + access.name().toLowerCase(Locale.ROOT));
+    }
+
+    private static boolean usesOfficialPage(Access access) {
+        return access == Access.MEMBERSHIP || access == Access.PURCHASE || access == Access.UNAVAILABLE;
     }
 
     private static String qualityText(Quality quality) {

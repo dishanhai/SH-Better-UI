@@ -28,19 +28,15 @@ public final class PlayingCatalogPresentation {
 
     public static void skeleton(Box frame, boolean artist, boolean credits, boolean featured,
                                 long nowMs, UiPreferences preferences, float alpha) {
-        var canvas = SkijaGfx.canvas();
-        if (canvas == null || frame.width() < 100 || frame.height() < 68 || alpha <= .01f) return;
-        var viewport = area(frame.x(), frame.y(), frame.width(), frame.height());
+        if (frame.width() < 100 || frame.height() < 68) return;
+        var blocks = painter(frame, nowMs, preferences, alpha);
+        if (blocks == null) return;
         double x = frame.x() + INSET;
         double y = frame.y();
         double cover = coverSize(frame.width(), frame.height());
         double textX = x + cover + 12;
         double textWidth = Math.max(0, frame.right() - INSET - textX);
         double tabsY = y + tabsY(cover, credits);
-        int ink = NCMScreen.getColor(ColorType.PRIMARY_TEXT);
-        var blocks = new Skeleton(canvas, viewport, nowMs, preferences.reducedMotion(),
-                RGBA.color(ink, preferences.highContrast() ? .47f : .12f),
-                RGBA.color(ink, preferences.highContrast() ? .67f : .27f), alpha);
         blocks.paint(x, y + 12, cover, cover, artist ? cover / 2 : 6);
         blocks.paint(textX, y + 18, textWidth * .65, cover < 68 ? 17 : 23, 4);
         blocks.paint(textX, y + (cover < 68 ? 41 : 49), textWidth * .43, 8, 4);
@@ -69,6 +65,44 @@ public final class PlayingCatalogPresentation {
             blocks.paint(x + 36, row + 5, (available - 45) * (.46 - i % 3 * .055), 7, 4);
             blocks.paint(x + 36, row + 17, (available - 45) * .24, 5, 3);
         }
+    }
+
+    /** Initial recommendations, aligned with the home page's live grid geometry. */
+    public static void playlistGridSkeleton(Box frame, double cardWidth, double coverSize, double gap,
+                                            long nowMs, UiPreferences preferences, float alpha) {
+        var blocks = painter(frame, nowMs, preferences, alpha);
+        if (blocks == null || coverSize < 16) return;
+        double inset = (cardWidth - coverSize) * .5;
+        double step = cardWidth + gap;
+        for (double y = frame.y() + inset; y + 12 <= frame.bottom(); y += step + 24) {
+            for (double x = frame.x() + inset; x + coverSize <= frame.right(); x += step) {
+                blocks.paint(x, y, coverSize, Math.min(coverSize, frame.bottom() - y), 6);
+                blocks.paint(x, y + coverSize + 7, coverSize * .74, 7, 4);
+                blocks.paint(x, y + coverSize + 20, coverSize * .48, 6, 3);
+            }
+        }
+    }
+
+    /** Initial song rows, aligned with 30-unit rows and their 24-unit covers. */
+    public static void trackListSkeleton(Box frame, long nowMs, UiPreferences preferences, float alpha) {
+        var blocks = painter(frame, nowMs, preferences, alpha);
+        if (blocks == null || frame.width() < 62) return;
+        double textWidth = frame.width() - 66;
+        for (double y = frame.y(); y + 27 <= frame.bottom(); y += 30) {
+            blocks.paint(frame.x() + 12, y + 12, 8, 6, 3);
+            blocks.paint(frame.x() + 30, y + 3, 24, 24, 2);
+            blocks.paint(frame.x() + 58, y + 6, textWidth * .58, 7, 4);
+            blocks.paint(frame.x() + 58, y + 19, textWidth * .36, 5, 3);
+        }
+    }
+
+    private static Skeleton painter(Box frame, long now, UiPreferences preferences, float alpha) {
+        var canvas = SkijaGfx.canvas();
+        if (canvas == null || alpha <= .01f || frame.width() < 1 || frame.height() < 1) return null;
+        int ink = NCMScreen.getColor(ColorType.PRIMARY_TEXT);
+        return new Skeleton(canvas, area(frame.x(), frame.y(), frame.width(), frame.height()), now,
+                preferences.reducedMotion(), RGBA.color(ink, preferences.highContrast() ? .47f : .12f),
+                RGBA.color(ink, preferences.highContrast() ? .67f : .27f), alpha);
     }
 
     private static Bounds area(double x, double y, double width, double height) {

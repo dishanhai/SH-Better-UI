@@ -53,6 +53,8 @@ public class MusicWidget extends RoundedRectWidget {
     private final TrackSelectionMotion selectionMotion = new TrackSelectionMotion();
     private IconWidget addToPlaylistButton;
     private boolean playlistAddFocused;
+    private boolean playNextFocused;
+    private IconWidget playNextButton;
     private PlaybackPresentation presentation = new PlaybackPresentation(null, null, 0L);
     private boolean displaySelected;
     private double selectionEmphasis;
@@ -626,7 +628,7 @@ public class MusicWidget extends RoundedRectWidget {
         IconWidget btnAddToPlaylist = PlayerQueueIcons.newAddToPlaylistButton(20);
         this.addToPlaylistButton = btnAddToPlaylist;
         this.addChild(btnAddToPlaylist);
-        btnAddToPlaylist.setShouldOverrideMouseCursor(true).setTooltip(() -> AddToPlaylistOverlay.text("title"));
+        btnAddToPlaylist.enablePressMotion().setTooltip(() -> AddToPlaylistOverlay.text("title"));
         btnAddToPlaylist.setBeforeRenderCallback(() -> {
             btnAddToPlaylist.setColor(NCMScreen.getColor(btnAddToPlaylist.isHovering()
                     ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
@@ -653,15 +655,15 @@ public class MusicWidget extends RoundedRectWidget {
         // ===== 下一首播放：把这首歌插到当前歌曲之后，按点击顺序排队 =====
         // 对所有源都可用，而不仅限于网易云：它只重排本地播放队列，因此它
         // 不需要任何账户或 API。
-        // 图标走字体（player-queue-icons U+E309）而不是贴图：烘成 PNG 的那一版把字形放大并裁掉了
-        // 一角，且每个播放器缩放下都要重新采样。
-        IconWidget btnPlayNext = PlayerQueueIcons.newPlayNextButton(20);
+        // 与底栏队列使用同一枚图标，和相邻的歌单加号区分。
+        IconWidget btnPlayNext = PlayerQueueIcons.newPlayQueueButton(20);
+        this.playNextButton = btnPlayNext;
         this.addChild(btnPlayNext);
-        btnPlayNext.setShouldOverrideMouseCursor(true);
+        btnPlayNext.enablePressMotion().setTooltip(() -> playNextLabel().getString());
         btnPlayNext.setBeforeRenderCallback(() -> {
             boolean queued = CloudMusic.isQueuedNext(music);
-            btnPlayNext.setColor(queued ? NCMScreen.getColor(NCMScreen.ColorType.ACCENT)
-                    : NCMScreen.getColor(NCMScreen.ColorType.SECONDARY_TEXT));
+            btnPlayNext.setColor(NCMScreen.getColor(queued ? NCMScreen.ColorType.ACCENT
+                    : btnPlayNext.isHovering() ? NCMScreen.ColorType.PRIMARY_TEXT : NCMScreen.ColorType.SECONDARY_TEXT));
             btnPlayNext.centerVertically();
             double anchorX = music.isQQ() ? actionsAnchorX(lblMusicDuration) : btnAddToPlaylist.getRelativeX();
             btnPlayNext.setPosition(anchorX - ACTION_GAP - btnPlayNext.getWidth(), btnPlayNext.getRelativeY());
@@ -677,7 +679,7 @@ public class MusicWidget extends RoundedRectWidget {
             IconWidget download = new IconWidget(com.muoniumplayer.core.rendering.IslandStatusIcons.DOWNLOAD,
                     FontManager.islandIcon16, 0, 0, ACTION_ICON_SIZE, ACTION_ICON_SIZE);
             this.addChild(download);
-            download.setShouldOverrideMouseCursor(true).setTooltip(
+            download.enablePressMotion().setTooltip(
                     () -> com.muoniumplayer.core.screens.ncm.MusicDownloadSheet.text("title"));
             download.setBeforeRenderCallback(() -> {
                 double left = btnPlayNext.getRelativeX() - ACTION_GAP - ACTION_ICON_SIZE;
@@ -790,6 +792,25 @@ public class MusicWidget extends RoundedRectWidget {
         return playlistAddFocused && canFocusPlaylistAdd() && addToPlaylistButton.onMouseClicked(0, 0, 0);
     }
 
+    private Component playNextLabel() {
+        return Component.translatable(CloudMusic.isQueuedNext(music)
+                ? "sh_better_ui.muonium.player.queued_next" : "sh_better_ui.muonium.player.play_next");
+    }
+
+    boolean canFocusPlayNext() {
+        return !isHidden() && playNextButton != null;
+    }
+
+    void focusPlayNext(boolean focused) {
+        playNextFocused = focused;
+        if (focused) MusicTypography.narrate(Component.translatable(
+                "sh_better_ui.muonium.player.track_action", playNextLabel(), music.getName()));
+    }
+
+    boolean activateFocusedPlayNext() {
+        return playNextFocused && canFocusPlayNext() && playNextButton.onMouseClicked(0, 0, 0);
+    }
+
     boolean canFocusCredit(boolean album) {
         return !isHidden() && (album ? albumCredit : artistCredit).isClickable();
     }
@@ -816,9 +837,10 @@ public class MusicWidget extends RoundedRectWidget {
                     LikeButton.BOX, LikeButton.BOX, 4, 1,
                     new Color(reAlpha(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), this.getAlpha()), true));
         }
-        if (playlistAddFocused && addToPlaylistButton != null) {
-            roundedOutline(addToPlaylistButton.getX(), addToPlaylistButton.getY(),
-                    addToPlaylistButton.getWidth(), addToPlaylistButton.getHeight(), 4, 1,
+        IconWidget focusedAction = playlistAddFocused ? addToPlaylistButton : playNextFocused ? playNextButton : null;
+        if (focusedAction != null) {
+            roundedOutline(focusedAction.getX(), focusedAction.getY(),
+                    focusedAction.getWidth(), focusedAction.getHeight(), 4, 1,
                     new Color(reAlpha(NCMScreen.getColor(NCMScreen.ColorType.PRIMARY_TEXT), getAlpha()), true));
         }
         if (focusedCredit != null && focusedCredit.getWidth() > 0) {
