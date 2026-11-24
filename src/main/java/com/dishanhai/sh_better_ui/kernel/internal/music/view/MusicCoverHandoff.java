@@ -16,10 +16,11 @@ final class MusicCoverHandoff<T> {
     }
 
     record Result<T>(T image, boolean loading) {}
-    record Frame<T>(T base, T incoming, float mix, ArtworkPalette background) {}
+    record Frame<T>(T base, T incoming, float mix, ArtworkPalette background, MusicCoverWait.Cue cue) {}
 
     private final List<Slot<T>> slots;
     private final Function<T,ArtworkPalette> palette;
+    private final MusicCoverWait wait = new MusicCoverWait();
     private String settledKey, transitioningKey, requestedKey;
     private T base, incoming;
     private int baseSlot = -1, incomingSlot = -1;
@@ -47,12 +48,14 @@ final class MusicCoverHandoff<T> {
             else if (!reversing && (still || fraction >= 1)) finish();
         }
 
+        boolean waiting = false;
         if (!transitioning) {
             int free = baseSlot == 0 ? 1 : 0;
             if (!key.equals(settledKey)) {
                 Result<T> result = key.isBlank() ? new Result<>(null, false) : slots.get(free).poll(key);
                 requestedKey = key;
-                if (!result.loading()) {
+                waiting = result.loading();
+                if (!waiting) {
                     transitioningKey = key;
                     incoming = result.image();
                     incomingSlot = incoming == null ? -1 : free;
@@ -71,7 +74,8 @@ final class MusicCoverHandoff<T> {
         }
 
         double t = transitioning ? Math.max(0d, Math.min(1d, fraction)) : 0d;
-        return new Frame<>(base, incoming, (float)(t * t * (3 - 2 * t)), base == null ? null : palette.apply(base));
+        return new Frame<>(base, incoming, (float)(t * t * (3 - 2 * t)),
+                base == null ? null : palette.apply(base), wait.sample(waiting, base != null, now, still));
     }
 
     private boolean owned(int slot, T image) { return image == null || slots.get(slot).owns(image); }
@@ -95,6 +99,7 @@ final class MusicCoverHandoff<T> {
     }
 
     private void clear() {
+        wait.reset();
         slots.forEach(Slot::clear);
         base = incoming = null;
         baseSlot = incomingSlot = -1;

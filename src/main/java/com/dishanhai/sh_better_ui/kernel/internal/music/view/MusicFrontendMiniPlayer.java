@@ -166,7 +166,7 @@ final class MusicFrontendMiniPlayer implements AutoCloseable {
 
     void paintCover(UiFrame ui, Bounds bounds, OnlineTrack song) {
         if(bounds.width()<=0||bounds.height()<=0)return;
-        OnlineCoverPresentation.paint(ui, artworkPaint, bounds, 0f, artwork.sample(ui, song));
+        OnlineCoverPresentation.paint(ui, artworkPaint, bounds, artwork.sample(ui, song));
     }
 
     void cancelInteraction() {
