@@ -125,6 +125,33 @@ class MusicCoverHandoffTest {
         assertEquals(C, shown);
     }
 
+    @Test void replacementWaitFollowsActiveRequestsWithoutRepaintingTheCover() {
+        first.ready("A", A);
+        cover.sample("A", 1000, true);
+        cover.sample("B", 1010, true);
+        var badge = cover.sample("B", 1150, true);
+        assertEquals(MusicCoverWait.Mode.BADGE, badge.cue().mode());
+        assertSame(A, badge.base());
+        assertSame(A, badge.background());
+        second.ready("B", B);
+        var newer = cover.sample("C", 1160, true);
+        assertEquals(badge.cue(), newer.cue());
+        assertNull(newer.incoming());
+        var unavailable = cover.sample("", 1170, true);
+        assertEquals(MusicCoverWait.Mode.NONE, unavailable.cue().mode());
+        assertNull(unavailable.base());
+    }
+
+    @Test void failureNeverLeavesTheInitialPlaceholderAnimating() {
+        cover.sample("A", 1000, true);
+        assertEquals(MusicCoverWait.Mode.SKELETON, cover.sample("A", 1140, true).cue().mode());
+        first.ready("A", null);
+        var failed = cover.sample("A", 1150, true);
+        assertEquals(MusicCoverWait.Mode.NONE, failed.cue().mode());
+        assertNull(failed.base());
+        assertEquals(failed, cover.sample("A", 1190, true));
+    }
+
     @Test void invalidatedGpuLeaseIsNotSentToPainter() {
         first.ready("A", A);
         cover.sample("A", 1000, true);
